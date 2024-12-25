@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SignUtil {
 
-    public static String mapToQueryString(Map<String, Object> params) {
+    private static String mapToQueryString(Map<String, Object> params) {
         // 过滤非空值，并将json数组转换为逗号分隔的字符串
         Map<String, String> filteredParams = params.entrySet().stream()
                 .filter(entry -> entry.getValue() != null && !entry.getValue().toString().isEmpty())
@@ -92,7 +92,7 @@ public class SignUtil {
     /**
      * 拼接参数md5加密，生成签名
      */
-    public static String stringToMD5UpperCase(String input) {
+    private static String stringToMD5UpperCase(String input) {
         try {
             // 获取MD5摘要算法的MessageDigest对象
             MessageDigest md = MessageDigest.getInstance("MD5");
@@ -115,6 +115,11 @@ public class SignUtil {
         }
     }
 
-
+    public static String sign(String appKey, String appSecret, Long timestamp, Map<String, Object> params) {
+        params.put("app_key", appKey);
+        params.put("timestamp", timestamp);
+        String baseQueryString = mapToQueryString(params);
+        return stringToMD5UpperCase(baseQueryString + appSecret);
+    }
 
 }

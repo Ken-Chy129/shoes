@@ -28,9 +28,14 @@ public class HttpUtil {
     }
 
     public static String doPost(String url, String json) {
+        return doPost(url, json, null);
+    }
+
+    public static String doPost(String url, String json, Headers headers) {
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
                 .url(url)
+                .headers(headers)
                 .post(body)
                 .build();
         try (Response response = client.newCall(request).execute()) {
