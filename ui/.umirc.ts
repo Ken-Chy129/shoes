@@ -18,6 +18,7 @@ export default defineConfig({
     {
       path: '/',
       component: '@/layouts/index',
+      wrappers: ['@/wrappers/auth'],
       routes: [
         { 
           path: '/', 
