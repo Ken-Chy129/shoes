@@ -1,25 +1,50 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.common.PoiSonApiConstant;
+import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
+import cn.ken.shoes.model.poinson.Item;
+import cn.ken.shoes.model.poinson.ItemPrice;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.TypeReference;
 import okhttp3.Headers;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class PoisonService {
 
-    public String queryItemByModelNumber(String modelNumber) {
+    public Result<List<Item>> queryItemByModelNumber(String modelNumber) {
         String url = PoisonConfig.getUrlPrefix() + PoiSonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
-        return HttpUtil.doPost(url, enhanceParams(params), buildHeaders());
+        String result = HttpUtil.doPost(url, enhanceParams(params), buildHeaders());
+        return JSON.parseObject(result, new TypeReference<>() {});
+    }
+
+    public Result<List<ItemPrice>> queryLowestPriceBySkuId(Long skuId, PriceEnum priceEnum) {
+        String url = PoisonConfig.getUrlPrefix() + getPriceApi(priceEnum);
+        Map<String, Object> params = new LinkedHashMap<>();
+        params.put("sku_id", skuId);
+        String result = HttpUtil.doPost(url, enhanceParams(params), buildHeaders());
+        return JSON.parseObject(result, new TypeReference<>() {});
+    }
+
+    private String getPriceApi(PriceEnum priceEnum) {
+        String priceApi;
+        switch (priceEnum) {
+            case LIGHTNING -> priceApi = PoiSonApiConstant.LOWEST_PRICE;
+            case FAST -> priceApi = PoiSonApiConstant.FAST_LOWEST_PRICE;
+            default -> priceApi = PoiSonApiConstant.NORMAL_LOWEST_PRICE;
+        }
+        return priceApi;
     }
 
     private Headers buildHeaders() {
