@@ -12,5 +12,7 @@ public class PriceRequest extends PageRequest {
 
     private String name;
 
+    private String brand;
+
     private Integer priceType;
 }

@@ -12,4 +12,13 @@ public enum PriceEnum {
     FAST(2);
 
     private final Integer code;
+
+    public static PriceEnum from(Integer code) {
+        for (PriceEnum priceEnum : PriceEnum.values()) {
+            if (priceEnum.getCode().equals(code)) {
+                return priceEnum;
+            }
+        }
+        return NORMAL;
+    }
 }

@@ -11,12 +11,42 @@ public class SizePrice {
     private Long skuId;
 
     /**
-     * 尺码
+     * 欧码
      */
-    private String size;
+    private String euSize;
 
     /**
-     * 价格
+     * 美码
      */
-    private Integer price;
+    private String usSize;
+
+    /**
+     * 英码
+     */
+    private String ukSize;
+
+    /**
+     * kickScrew平台价格
+     */
+    private Integer kickScrewPrice;
+
+    /**
+     * 得物普通发货价格
+     */
+    private Integer poisonNormalPrice;
+
+    /**
+     * 得物急速现货价格
+     */
+    private Integer poisonFastPrice;
+
+    /**
+     * 得物闪电发货价格
+     */
+    private Integer poisonLightningPrice;
+
+    /**
+     * 利润
+     */
+    private Integer profit;
 }
