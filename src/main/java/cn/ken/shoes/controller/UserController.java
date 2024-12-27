@@ -2,13 +2,11 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.annotation.CheckToken;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.model.req.LoginReq;
-import cn.ken.shoes.model.resp.UserResp;
+import cn.ken.shoes.model.user.LoginReq;
+import cn.ken.shoes.model.user.UserResp;
 import cn.ken.shoes.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
