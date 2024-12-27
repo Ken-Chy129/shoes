@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class Item {
+public class PoisonItem {
 
     private Long spuId;
 

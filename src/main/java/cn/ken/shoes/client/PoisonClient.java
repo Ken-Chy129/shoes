@@ -1,27 +1,27 @@
-package cn.ken.shoes.service;
+package cn.ken.shoes.client;
 
 import cn.ken.shoes.common.PoiSonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
-import cn.ken.shoes.model.poinson.Item;
 import cn.ken.shoes.model.poinson.ItemPrice;
+import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import okhttp3.Headers;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-@Service
-public class PoisonService {
+@Component
+public class PoisonClient {
 
-    public Result<List<Item>> queryItemByModelNumber(String modelNumber) {
+    public Result<List<PoisonItem>> queryItemByModelNumber(String modelNumber) {
         String url = PoisonConfig.getUrlPrefix() + PoiSonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
@@ -61,5 +61,4 @@ public class PoisonService {
         params.put("app_key", PoisonConfig.getAppKey());
         return JSON.toJSONString(params);
     }
-
 }
