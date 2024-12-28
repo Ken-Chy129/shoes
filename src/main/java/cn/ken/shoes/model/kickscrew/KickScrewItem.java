@@ -17,4 +17,9 @@ public class KickScrewItem {
 
     private Integer lowestPrice;
 
+    /**
+     * 根据此值查询尺码价格
+     */
+    private String handle;
+
 }
