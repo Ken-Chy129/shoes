@@ -1,7 +1,7 @@
 package cn.ken.shoes.service.impl;
 
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.entity.SysUser;
+import cn.ken.shoes.model.entity.SysUser;
 import cn.ken.shoes.model.user.LoginReq;
 import cn.ken.shoes.model.user.UserResp;
 import cn.ken.shoes.service.UserService;

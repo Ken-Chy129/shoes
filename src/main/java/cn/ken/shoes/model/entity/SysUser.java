@@ -1,4 +1,4 @@
-package cn.ken.shoes.entity;
+package cn.ken.shoes.model.entity;
 
 import lombok.Data;
 
