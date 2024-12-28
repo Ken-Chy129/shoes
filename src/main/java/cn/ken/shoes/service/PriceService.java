@@ -30,25 +30,25 @@ public class PriceService {
         List<Item> result = new ArrayList<>();
         PriceEnum priceType = PriceEnum.from(priceRequest.getPriceType());
         String brand = priceRequest.getBrand();
-        List<KickScrewItem> kickScrewItems = kickScrewClient.queryItemByBrand(brand);
-        for (KickScrewItem kickScrewItem : kickScrewItems) {
-            String modelNumber = kickScrewItem.getModelNumber();
-            Result<List<PoisonItem>> poisonResult = poisonClient.queryItemByModelNumber(modelNumber);
-            if (poisonResult == null || CollectionUtils.isEmpty(poisonResult.getData())) {
-                continue;
-            }
-            PoisonItem item = poisonResult.getData().getFirst();
-            for (Sku sku : item.getSkus()) {
-                Long skuId = sku.getSkuId();
-                Result<List<ItemPrice>> itemResult = poisonClient.queryLowestPriceBySkuId(skuId, priceType);
-                if (itemResult == null || CollectionUtils.isEmpty(itemResult.getData())) {
-                    continue;
-                }
-                for (ItemPrice price : itemResult.getData()) {
-
-                }
-            }
-        }
+//        List<KickScrewItem> kickScrewItems = kickScrewClient.queryItemByBrand(brand);
+//        for (KickScrewItem kickScrewItem : kickScrewItems) {
+//            String modelNumber = kickScrewItem.getModelNumber();
+//            Result<List<PoisonItem>> poisonResult = poisonClient.queryItemByModelNumber(modelNumber);
+//            if (poisonResult == null || CollectionUtils.isEmpty(poisonResult.getData())) {
+//                continue;
+//            }
+//            PoisonItem item = poisonResult.getData().getFirst();
+//            for (Sku sku : item.getSkus()) {
+//                Long skuId = sku.getSkuId();
+//                Result<List<ItemPrice>> itemResult = poisonClient.queryLowestPriceBySkuId(skuId, priceType);
+//                if (itemResult == null || CollectionUtils.isEmpty(itemResult.getData())) {
+//                    continue;
+//                }
+//                for (ItemPrice price : itemResult.getData()) {
+//
+//                }
+//            }
+//        }
         return Result.buildSuccess(result);
     }
 }

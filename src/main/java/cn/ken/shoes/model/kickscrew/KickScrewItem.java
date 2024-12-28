@@ -5,5 +5,16 @@ import lombok.Data;
 @Data
 public class KickScrewItem {
 
-    private String modelNumber;
+    private String title;
+
+    private String modelNo;
+
+    private String brand;
+
+    private String productType;
+
+    private String image;
+
+    private Integer lowestPrice;
+
 }

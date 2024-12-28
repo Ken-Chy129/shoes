@@ -1,7 +1,9 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
+import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,6 +13,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class ShoesController {
 
     private final String token = "902bee8bf35534400496b2519985cdf1";
+
+    @Resource
+    private KickScrewClient kickScrewClient;
 
     @GetMapping("list")
     public String getShoes() {
@@ -30,6 +35,11 @@ public class ShoesController {
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("token", token);
         return HttpUtil.doPost( "http://47.100.28.62:8000/getFundsbytoken", jsonObject.toJSONString());
+    }
+
+    @GetMapping("category")
+    public String category() {
+        return kickScrewClient.queryCategory();
     }
 
 }
