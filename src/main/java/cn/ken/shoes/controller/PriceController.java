@@ -2,7 +2,7 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.model.Item;
+import cn.ken.shoes.model.entity.Item;
 import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;

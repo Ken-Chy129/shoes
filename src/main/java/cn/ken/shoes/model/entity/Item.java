@@ -1,4 +1,4 @@
-package cn.ken.shoes.model;
+package cn.ken.shoes.model.entity;
 
 import lombok.Data;
 
@@ -23,8 +23,13 @@ public class Item {
     private String brandName;
 
     /**
-     * 尺码-价格
+     * 图片
      */
-    private List<SizePrice> sizePrices;
+    private String image;
+
+    /**
+     * 类型
+     */
+    private String productType;
 
 }

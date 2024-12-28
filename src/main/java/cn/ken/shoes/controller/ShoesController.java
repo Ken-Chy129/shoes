@@ -43,4 +43,8 @@ public class ShoesController {
         return JSONObject.toJSONString(KickScrewContext.brandSizes);
     }
 
+    @GetMapping("prices")
+    public String prices() {
+        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
+    }
 }
