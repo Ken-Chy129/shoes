@@ -6,4 +6,5 @@ public class KickScrewApiConstant {
 
     public static final String SEARCH_ITEMS = "https://www.kickscrew.com/_next/data/nRD-h3UUIV49b75S4DlzE/en-US/search.json";
 
+    public static final String BATCH_UPLOAD_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/batch-update";
 }

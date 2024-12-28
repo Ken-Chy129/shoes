@@ -1,7 +1,9 @@
 package cn.ken.shoes.client;
 
 import cn.ken.shoes.common.KickScrewApiConstant;
+import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -53,6 +55,13 @@ public class KickScrewClient {
         String result = HttpUtil.doGet(url);
         JSONObject jsonObject = parseResult(result);
         return jsonObject.toJSONString();
+    }
+
+    public void batchUploadItems(List<KickScrewUploadItem> items) {
+        HttpUtil.doPost(KickScrewApiConstant.BATCH_UPLOAD_ITEMS,
+            JSON.toJSONString(Collections.singletonMap("items", items)),
+            Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
     }
 
     private JSONObject parseResult(String result) {
