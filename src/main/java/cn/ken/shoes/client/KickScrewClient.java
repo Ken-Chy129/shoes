@@ -18,7 +18,7 @@ public class KickScrewClient {
 
     private static final String BODY = "{\"requests\":[{\"indexName\":\"prod_products\",\"params\":\"attributesToSnippet=%5B%22description%3A10%22%5D&clickAnalytics=true&facets=%5B%22brand%22%2C%22gender%22%2C%22lowest_price%22%2C%22main_color%22%2C%22product_type%22%2C%22release_year%22%2C%22sizes%22%5D&filters=NOT%20class%3A%200&highlightPostTag=__%2Fais-highlight__&highlightPreTag=__ais-highlight__&hitsPerPage=24&maxValuesPerFacet=10000&page=0&query=&removeWordsIfNoResults=allOptional&userToken=803310494-1734974059\"}]}";
 
-    public String queryCategory() {
+    public KickScrewCategory queryCategory() {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.CATEGORY)
                 .queryParam("x-algolia-agent", AGENT)
                 .toUriString();
@@ -26,14 +26,12 @@ public class KickScrewClient {
                 "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
                 "x-algolia-application-id", "7CCJSEVCO9"
         ));
-        System.out.println(result);
-        KickScrewCategory kickScrewCategory = Optional.ofNullable(result)
+        return Optional.ofNullable(result)
                 .map(JSON::parseObject)
                 .map(json -> json.getJSONArray("results"))
                 .map(jsonArray -> jsonArray.getJSONObject(0))
                 .map(json -> json.getObject("facets", KickScrewCategory.class))
                 .orElse(null);
-        return JSON.toJSONString(kickScrewCategory);
     }
 
 

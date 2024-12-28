@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.context.KickScrewContext;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -39,7 +40,7 @@ public class ShoesController {
 
     @GetMapping("category")
     public String category() {
-        return kickScrewClient.queryCategory();
+        return JSONObject.toJSONString(KickScrewContext.brandSizes);
     }
 
 }
