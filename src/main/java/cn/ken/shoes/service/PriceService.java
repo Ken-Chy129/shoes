@@ -7,7 +7,9 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.context.KickScrewContext;
 import cn.ken.shoes.model.entity.Item;
+import cn.ken.shoes.model.entity.SizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewItem;
+import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.poinson.ItemPrice;
 import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.model.poinson.Sku;
@@ -16,6 +18,7 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -66,5 +69,13 @@ public class PriceService {
 //            }
 
         }
+    }
+
+    private SizePrice toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
+        SizePrice sizePrice = new SizePrice();
+        Map<String, Object> price = kickScrewSizePrice.getPrice();
+        sizePrice.setKickScrewPrice((BigDecimal) price.get("amount"));
+        String title = kickScrewSizePrice.getTitle();
+        return sizePrice;
     }
 }

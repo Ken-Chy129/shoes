@@ -1,10 +1,13 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.context.KickScrewContext;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,6 +20,8 @@ public class ShoesController {
 
     @Resource
     private KickScrewClient kickScrewClient;
+    @Autowired
+    private PoisonClient poisonClient;
 
     @GetMapping("list")
     public String getShoes() {
@@ -44,7 +49,9 @@ public class ShoesController {
     }
 
     @GetMapping("prices")
-    public String prices() {
-        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
+    public String prices(String skuId) {
+//        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
+        return JSONObject.toJSONString(poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST));
+//        return null;
     }
 }

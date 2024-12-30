@@ -2,6 +2,8 @@ package cn.ken.shoes.model.entity;
 
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 @Data
 public class SizePrice {
 
@@ -26,27 +28,32 @@ public class SizePrice {
     private String ukSize;
 
     /**
-     * kickScrew平台价格
+     * kickScrew平台价格(USD)
      */
-    private Integer kickScrewPrice;
+    private BigDecimal kickScrewPrice;
 
     /**
-     * 得物普通发货价格
+     * 得物普通发货价格(RMB)
      */
-    private Integer poisonNormalPrice;
+    private BigDecimal poisonNormalPrice;
 
     /**
-     * 得物急速现货价格
+     * 得物急速现货价格(RMB)
      */
-    private Integer poisonFastPrice;
+    private BigDecimal poisonFastPrice;
 
     /**
-     * 得物闪电发货价格
+     * 得物闪电发货价格(RMB)
      */
-    private Integer poisonLightningPrice;
+    private BigDecimal poisonLightningPrice;
+
+    /**
+     * 汇率
+     */
+    private BigDecimal exchangeRate;
 
     /**
      * 利润
      */
-    private Integer profit;
+    private BigDecimal profit;
 }

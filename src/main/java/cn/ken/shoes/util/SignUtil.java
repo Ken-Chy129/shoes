@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 @Slf4j
 public class SignUtil {
 
-    private static String mapToQueryString(Map<String, Object> params) {
+    public static String mapToQueryString(Map<String, Object> params) {
         // 过滤非空值，并将json数组转换为逗号分隔的字符串
         Map<String, String> filteredParams = params.entrySet().stream()
                 .filter(entry -> entry.getValue() != null && !entry.getValue().toString().isEmpty())

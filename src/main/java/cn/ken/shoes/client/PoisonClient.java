@@ -25,15 +25,17 @@ public class PoisonClient {
         String url = PoisonConfig.getUrlPrefix() + PoiSonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
-        String result = HttpUtil.doPost(url, enhanceParams(params), buildHeaders());
+        enhanceParams(params);
+        String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
         return JSON.parseObject(result, new TypeReference<>() {});
     }
 
-    public Result<List<ItemPrice>> queryLowestPriceBySkuId(Long skuId, PriceEnum priceEnum) {
+    public Result<List<ItemPrice>> queryLowestPriceBySkuId(String skuId, PriceEnum priceEnum) {
         String url = PoisonConfig.getUrlPrefix() + getPriceApi(priceEnum);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("sku_id", skuId);
-        String result = HttpUtil.doPost(url, enhanceParams(params), buildHeaders());
+        enhanceParams(params);
+        String result = HttpUtil.doGet(url, params);
         return JSON.parseObject(result, new TypeReference<>() {});
     }
 
@@ -53,12 +55,11 @@ public class PoisonClient {
         );
     }
 
-    private String enhanceParams(Map<String, Object> params) {
+    private void enhanceParams(Map<String, Object> params) {
         long timestamp = System.currentTimeMillis();
         String sign = SignUtil.sign(PoisonConfig.getAppKey(), PoisonConfig.getAppSecret(), timestamp, params);
         params.put("sign", sign);
         params.put("timestamp", timestamp);
         params.put("app_key", PoisonConfig.getAppKey());
-        return JSON.toJSONString(params);
     }
 }
