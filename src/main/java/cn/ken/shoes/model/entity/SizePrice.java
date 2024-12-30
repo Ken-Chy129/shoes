@@ -18,14 +18,24 @@ public class SizePrice {
     private String euSize;
 
     /**
-     * 美码
+     * 男美码
      */
-    private String usSize;
+    private String memUSSize;
+
+    /**
+     * 女美码
+     */
+    private String womenUSSize;
 
     /**
      * 英码
      */
     private String ukSize;
+
+    /**
+     * jp（cm）
+     */
+    private String jpSize;
 
     /**
      * kickScrew平台价格(USD)
