@@ -19,9 +19,9 @@ public class PoisonItem {
 
     private String title;
 
-    private String articleName;
+    private String articleNumber;
 
-    private String otherNumber;
+    private String otherNumbers;
 
     private String spuLogo;
 

@@ -21,10 +21,7 @@ import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Service
 public class PriceService {
@@ -51,7 +48,7 @@ public class PriceService {
 
     public void scratchAndSaveItems() {
 //        Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
-        Map<String, Integer> brandSizes = Map.of("ANTA", 4516);
+        Map<String, Integer> brandSizes = Map.of("ANTA", 30);
         // 1.遍历所有品牌
         for (Map.Entry<String, Integer> entry : brandSizes.entrySet()) {
             String brand = entry.getKey();
@@ -80,7 +77,12 @@ public class PriceService {
                 // 查询kc价格
                 String handle = kickScrewItem.getHandle();
                 List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
-                kickScrewSizePrices.stream().map(this::toSizePrice).forEach(itemSizePriceDOS::add);
+                kickScrewSizePrices.stream()
+                        .map(this::toSizePrice)
+                        .forEach(itemSizePriceDO -> {
+                            itemSizePriceDO.setModelNumber(modelNumber);
+                            itemSizePriceDOS.add(itemSizePriceDO);
+                        });
                 // 查询得物价格
                 for (Sku sku : poisonItem.getSkus()) {
                     Long skuId = sku.getSkuId();
@@ -95,11 +97,12 @@ public class PriceService {
                     Integer fastPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
                     Integer normalPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
                     Integer lightningPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.LIGHTNING);
-                    itemSizePriceDO.setPoisonFastPrice(BigDecimal.valueOf(fastPrice));
-                    itemSizePriceDO.setPoisonNormalPrice(BigDecimal.valueOf(normalPrice));
-                    itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(lightningPrice));
+                    Optional.ofNullable(fastPrice).ifPresent(price -> itemSizePriceDO.setPoisonFastPrice(BigDecimal.valueOf(price)));
+                    Optional.ofNullable(normalPrice).ifPresent(price -> itemSizePriceDO.setPoisonNormalPrice(BigDecimal.valueOf(price)));
+                    Optional.ofNullable(lightningPrice).ifPresent(price -> itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(price)));
                     itemSizePriceDOS.add(itemSizePriceDO);
                 }
+                System.out.println(JSON.toJSONString(itemSizePriceDOS));
                 itemSizePriceMapper.insert(itemSizePriceDOS);
             }
         }
@@ -107,8 +110,8 @@ public class PriceService {
 
     private ItemSizePriceDO toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
         ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
-        Map<String, Object> price = kickScrewSizePrice.getPrice();
-        itemSizePriceDO.setKickScrewPrice((BigDecimal) price.get("amount"));
+        Map<String, String> price = kickScrewSizePrice.getPrice();
+        itemSizePriceDO.setKickScrewPrice(BigDecimal.valueOf(Double.parseDouble(price.get("amount"))));
         String title = kickScrewSizePrice.getTitle();
         List<String> sizeList = Arrays.stream(title.split("/")).map(String::trim).toList();
         for (String size : sizeList) {

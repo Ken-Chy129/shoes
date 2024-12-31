@@ -27,7 +27,9 @@ public class PoisonClient {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
         enhanceParams(params);
+        System.out.println(params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
+        System.out.println(result);
         Result<List<PoisonItem>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;
