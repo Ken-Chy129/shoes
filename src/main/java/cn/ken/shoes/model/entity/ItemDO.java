@@ -1,11 +1,11 @@
 package cn.ken.shoes.model.entity;
 
 import lombok.Data;
-
-import java.util.List;
+import lombok.EqualsAndHashCode;
 
 @Data
-public class Item {
+@EqualsAndHashCode(callSuper = true)
+public class ItemDO extends BaseDO {
 
     /**
      * 名称
@@ -33,3 +33,4 @@ public class Item {
     private String productType;
 
 }
+

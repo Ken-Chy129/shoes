@@ -12,7 +12,7 @@ public class ItemPrice {
     private List<Price> items;
 
     @Data
-    private static class Price {
+    public static class Price {
         private Integer lowestPrice;
 
         private Integer tradeType;

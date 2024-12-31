@@ -1,11 +1,18 @@
 package cn.ken.shoes.model.entity;
 
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 
 @Data
-public class SizePrice {
+@EqualsAndHashCode(callSuper = true)
+public class ItemSizePriceDO extends BaseDO {
+
+    /**
+     * 商品id
+     */
+    private Long itemId;
 
     /**
      * sku

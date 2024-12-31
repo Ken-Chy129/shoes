@@ -12,6 +12,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -21,22 +22,31 @@ import java.util.Map;
 @Component
 public class PoisonClient {
 
-    public Result<List<PoisonItem>> queryItemByModelNumber(String modelNumber) {
+    public PoisonItem queryItemByModelNumber(String modelNumber) {
         String url = PoisonConfig.getUrlPrefix() + PoiSonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
         enhanceParams(params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
-        return JSON.parseObject(result, new TypeReference<>() {});
+        Result<List<PoisonItem>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+        if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
+            return null;
+        }
+        return parseRes.getData().getFirst();
     }
 
-    public Result<List<ItemPrice>> queryLowestPriceBySkuId(String skuId, PriceEnum priceEnum) {
+    public Integer queryLowestPriceBySkuId(Long skuId, PriceEnum priceEnum) {
         String url = PoisonConfig.getUrlPrefix() + getPriceApi(priceEnum);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("sku_id", skuId);
         enhanceParams(params);
         String result = HttpUtil.doGet(url, params);
-        return JSON.parseObject(result, new TypeReference<>() {});
+        Result<List<ItemPrice>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+        if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
+            return null;
+        }
+        ItemPrice first = parseRes.getData().getFirst();
+        return first.getItems().getFirst().getLowestPrice();
     }
 
     private String getPriceApi(PriceEnum priceEnum) {

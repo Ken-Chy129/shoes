@@ -7,11 +7,14 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.context.KickScrewContext;
-import cn.ken.shoes.model.entity.Item;
-import cn.ken.shoes.model.entity.SizePrice;
+import cn.ken.shoes.model.entity.ItemDO;
+import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewItem;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
+import cn.ken.shoes.model.poinson.PoisonItem;
+import cn.ken.shoes.model.poinson.Sku;
 import cn.ken.shoes.model.price.PriceRequest;
+import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
@@ -30,8 +33,8 @@ public class PriceService {
     @Resource
     private KickScrewClient kickScrewClient;
 
-    public Result<List<Item>> queryPriceByCondition(PriceRequest priceRequest) {
-        List<Item> result = new ArrayList<>();
+    public Result<List<ItemDO>> queryPriceByCondition(PriceRequest priceRequest) {
+        List<ItemDO> result = new ArrayList<>();
         PriceEnum priceType = PriceEnum.from(priceRequest.getPriceType());
         String brand = priceRequest.getBrand();
 
@@ -46,35 +49,58 @@ public class PriceService {
             Integer total = entry.getValue();
             // 根据品牌的商品数量计算请求的分页次数
             int page = (int) Math.ceil(total / (double) KickScrewConfig.PAGE_SIZE);
+            List<KickScrewItem> brandItems = new ArrayList<>();
+            // 2.查询品牌下所有商品
             for (int i = 1; i <= page; i++) {
-                List<KickScrewItem> kickScrewItems = kickScrewClient.queryItemByBrand(brand, i);
+                brandItems.addAll(kickScrewClient.queryItemByBrand(brand, i));
             }
-//            for (KickScrewItem kickScrewItem : kickScrewItems) {
-//                String modelNumber = kickScrewItem.getModelNumber();
-//                Result<List<PoisonItem>> poisonResult = poisonClient.queryItemByModelNumber(modelNumber);
-//                if (poisonResult == null || CollectionUtils.isEmpty(poisonResult.getData())) {
-//                    continue;
-//                }
-//                PoisonItem item = poisonResult.getData().getFirst();
-//                for (Sku sku : item.getSkus()) {
-//                    Long skuId = sku.getSkuId();
-//                    Result<List<ItemPrice>> itemResult = poisonClient.queryLowestPriceBySkuId(skuId, priceType);
-//                    if (itemResult == null || CollectionUtils.isEmpty(itemResult.getData())) {
-//                        continue;
-//                    }
-//                    for (ItemPrice price : itemResult.getData()) {
-//
-//                    }
-//                }
-//            }
+            List<ItemDO> itemDOS = new ArrayList<>();
+            // 3.保存商品+价格信息
+            for (KickScrewItem kickScrewItem : brandItems) {
+                // 创建ItemDO
+                ItemDO itemDO = new ItemDO();
+                itemDO.setModelNumber(kickScrewItem.getModelNo());
+                itemDO.setImage(kickScrewItem.getImage());
+                itemDO.setBrandName(kickScrewItem.getBrand());
+                itemDO.setProductType(kickScrewItem.getProductType());
+                String modelNumber = kickScrewItem.getModelNo();
+                PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
+                itemDO.setName(poisonItem.getTitle());
 
+                // 查询商品不同尺码的价格
+                List<ItemSizePriceDO> itemSizePriceDOS = new ArrayList<>();
+                // 查询kc价格
+                String handle = kickScrewItem.getHandle();
+                List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
+                kickScrewSizePrices.stream().map(this::toSizePrice).forEach(itemSizePriceDOS::add);
+                // 查询得物价格
+                for (Sku sku : poisonItem.getSkus()) {
+                    Long skuId = sku.getSkuId();
+                    String size = JSON.parseObject(sku.getProperties()).getString("尺码");
+                    ItemSizePriceDO itemSizePriceDO = itemSizePriceDOS.stream().filter(itemSizePrice -> size.equals(itemSizePrice.getEuSize())).findFirst().orElse(null);
+                    if (itemSizePriceDO == null) {
+                        continue;
+                    }
+                    itemSizePriceDO.setSkuId(skuId);
+                    itemSizePriceDO.setEuSize(size);
+                    Integer fastPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
+                    Integer normalPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
+                    Integer lightningPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.LIGHTNING);
+                    itemSizePriceDO.setPoisonFastPrice(BigDecimal.valueOf(fastPrice));
+                    itemSizePriceDO.setPoisonNormalPrice(BigDecimal.valueOf(normalPrice));
+                    itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(lightningPrice));
+                    itemSizePriceDOS.add(itemSizePriceDO);
+                }
+
+            }
+            // 4.入库
         }
     }
 
-    private SizePrice toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
-        SizePrice sizePrice = new SizePrice();
+    private ItemSizePriceDO toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
+        ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
         Map<String, Object> price = kickScrewSizePrice.getPrice();
-        sizePrice.setKickScrewPrice((BigDecimal) price.get("amount"));
+        itemSizePriceDO.setKickScrewPrice((BigDecimal) price.get("amount"));
         String title = kickScrewSizePrice.getTitle();
         List<String> sizeList = Arrays.stream(title.split("/")).map(String::trim).toList();
         for (String size : sizeList) {
@@ -85,19 +111,18 @@ public class PriceService {
             String sizeType = split[0];
             String value = split.length > 2 ? split[2] : split[1];
             switch (SizeEnum.from(sizeType)) {
-                case MEN_US -> sizePrice.setMemUSSize(value);
-                case WOMAN_US -> sizePrice.setWomenUSSize(value);
-                case EU -> sizePrice.setEuSize(value);
-                case UK -> sizePrice.setUkSize(value);
-                case JP -> sizePrice.setJpSize(value);
+                case MEN_US -> itemSizePriceDO.setMemUSSize(value);
+                case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
+                case EU -> itemSizePriceDO.setEuSize(value);
+                case UK -> itemSizePriceDO.setUkSize(value);
+                case JP -> itemSizePriceDO.setJpSize(value);
             }
         }
-
-        return sizePrice;
+        return itemSizePriceDO;
     }
 
     public static void main(String[] args) {
-        SizePrice sizePrice = new SizePrice();
+        ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
         List<String> sizeList = Arrays.stream("MENS / Men's US 6.5 / Women's US 8 / UK 6 / EU 39 / JP 24.5".split("/")).map(String::trim).toList();
         for (String size : sizeList) {
             System.out.println(size);
@@ -109,13 +134,13 @@ public class PriceService {
             String sizeType = split[0];
             String value = split.length > 2 ? split[2] : split[1];
             switch (SizeEnum.from(sizeType)) {
-                case MEN_US -> sizePrice.setMemUSSize(value);
-                case WOMAN_US -> sizePrice.setWomenUSSize(value);
-                case EU -> sizePrice.setEuSize(value);
-                case UK -> sizePrice.setUkSize(value);
-                case JP -> sizePrice.setJpSize(value);
+                case MEN_US -> itemSizePriceDO.setMemUSSize(value);
+                case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
+                case EU -> itemSizePriceDO.setEuSize(value);
+                case UK -> itemSizePriceDO.setUkSize(value);
+                case JP -> itemSizePriceDO.setJpSize(value);
             }
         }
-        System.out.println(sizePrice);
+        System.out.println(itemSizePriceDO);
     }
 }

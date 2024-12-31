@@ -4,6 +4,8 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.context.KickScrewContext;
+import cn.ken.shoes.model.poinson.ItemPrice;
+import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -50,16 +52,16 @@ public class ShoesController {
     }
 
     @GetMapping("prices")
-    public String prices(String skuId) {
+    public Integer prices(Long skuId) {
 //        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
-        return JSONObject.toJSONString(poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST));
+        return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
 //        return null;
     }
 
     @GetMapping("queryByModelNo")
-    public String queryByModelNo(String modelNo) {
+    public PoisonItem queryByModelNo(String modelNo) {
 //        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
-        return JSONObject.toJSONString(poisonClient.queryItemByModelNumber(modelNo));
+        return poisonClient.queryItemByModelNumber(modelNo);
 //        return null;
     }
 
