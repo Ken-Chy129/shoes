@@ -1,5 +1,6 @@
 package cn.ken.shoes.model.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -12,9 +13,9 @@ import java.math.BigDecimal;
 public class ItemSizePriceDO extends BaseDO {
 
     /**
-     * 商品id
+     * 货号
      */
-    private Long itemId;
+    private String modelNumber;
 
     /**
      * sku
@@ -29,11 +30,13 @@ public class ItemSizePriceDO extends BaseDO {
     /**
      * 男美码
      */
-    private String memUSSize;
+    @TableField("men_us_size")
+    private String menUSSize;
 
     /**
      * 女美码
      */
+    @TableField("women_us_size")
     private String womenUSSize;
 
     /**
@@ -65,11 +68,6 @@ public class ItemSizePriceDO extends BaseDO {
      * 得物闪电发货价格(RMB)
      */
     private BigDecimal poisonLightningPrice;
-
-    /**
-     * 汇率
-     */
-    private BigDecimal exchangeRate;
 
     /**
      * 利润

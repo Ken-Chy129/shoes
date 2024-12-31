@@ -7,6 +7,8 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.context.KickScrewContext;
+import cn.ken.shoes.mapper.ItemMapper;
+import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.model.entity.ItemDO;
 import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewItem;
@@ -33,6 +35,12 @@ public class PriceService {
     @Resource
     private KickScrewClient kickScrewClient;
 
+    @Resource
+    private ItemMapper itemMapper;
+
+    @Resource
+    private ItemSizePriceMapper itemSizePriceMapper;
+
     public Result<List<ItemDO>> queryPriceByCondition(PriceRequest priceRequest) {
         List<ItemDO> result = new ArrayList<>();
         PriceEnum priceType = PriceEnum.from(priceRequest.getPriceType());
@@ -41,8 +49,9 @@ public class PriceService {
         return Result.buildSuccess(result);
     }
 
-    public void updateItems() {
-        Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
+    public void scratchAndSaveItems() {
+//        Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
+        Map<String, Integer> brandSizes = Map.of("ANTA", 4516);
         // 1.遍历所有品牌
         for (Map.Entry<String, Integer> entry : brandSizes.entrySet()) {
             String brand = entry.getKey();
@@ -54,7 +63,6 @@ public class PriceService {
             for (int i = 1; i <= page; i++) {
                 brandItems.addAll(kickScrewClient.queryItemByBrand(brand, i));
             }
-            List<ItemDO> itemDOS = new ArrayList<>();
             // 3.保存商品+价格信息
             for (KickScrewItem kickScrewItem : brandItems) {
                 // 创建ItemDO
@@ -66,7 +74,7 @@ public class PriceService {
                 String modelNumber = kickScrewItem.getModelNo();
                 PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
                 itemDO.setName(poisonItem.getTitle());
-
+                itemMapper.insert(itemDO);
                 // 查询商品不同尺码的价格
                 List<ItemSizePriceDO> itemSizePriceDOS = new ArrayList<>();
                 // 查询kc价格
@@ -81,6 +89,7 @@ public class PriceService {
                     if (itemSizePriceDO == null) {
                         continue;
                     }
+                    itemSizePriceDO.setModelNumber(modelNumber);
                     itemSizePriceDO.setSkuId(skuId);
                     itemSizePriceDO.setEuSize(size);
                     Integer fastPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
@@ -91,9 +100,8 @@ public class PriceService {
                     itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(lightningPrice));
                     itemSizePriceDOS.add(itemSizePriceDO);
                 }
-
+                itemSizePriceMapper.insert(itemSizePriceDOS);
             }
-            // 4.入库
         }
     }
 
@@ -111,7 +119,7 @@ public class PriceService {
             String sizeType = split[0];
             String value = split.length > 2 ? split[2] : split[1];
             switch (SizeEnum.from(sizeType)) {
-                case MEN_US -> itemSizePriceDO.setMemUSSize(value);
+                case MEN_US -> itemSizePriceDO.setMenUSSize(value);
                 case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
                 case EU -> itemSizePriceDO.setEuSize(value);
                 case UK -> itemSizePriceDO.setUkSize(value);
@@ -134,7 +142,7 @@ public class PriceService {
             String sizeType = split[0];
             String value = split.length > 2 ? split[2] : split[1];
             switch (SizeEnum.from(sizeType)) {
-                case MEN_US -> itemSizePriceDO.setMemUSSize(value);
+                case MEN_US -> itemSizePriceDO.setMenUSSize(value);
                 case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
                 case EU -> itemSizePriceDO.setEuSize(value);
                 case UK -> itemSizePriceDO.setUkSize(value);

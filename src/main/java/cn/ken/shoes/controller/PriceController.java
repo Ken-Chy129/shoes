@@ -32,4 +32,9 @@ public class PriceController {
     public List<KickScrewItem> list2(String brand) {
         return kickScrewClient.queryItemByBrand(brand, 1);
     }
+
+    @GetMapping("test")
+    public void scratch() {
+        priceService.scratchAndSaveItems();
+    }
 }
