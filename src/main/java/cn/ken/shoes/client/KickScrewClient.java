@@ -3,6 +3,7 @@ package cn.ken.shoes.client;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewItem;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
@@ -41,14 +42,22 @@ public class KickScrewClient {
     }
 
 
-    public String queryItemByBrand(String brand, Integer page) {
+    public List<KickScrewItem> queryItemByBrand(String brand, Integer page) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
                 .queryParam("brand", brand)
                 .queryParam("page", page)
                 .toUriString();
         String result = HttpUtil.doGet(url);
-        JSONObject jsonObject = parseResult(result);
-        return jsonObject.toJSONString();
+        return Optional.ofNullable(result)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONObject("pageProps"))
+                .map(json -> json.getJSONObject("serverState"))
+                .map(json -> json.getJSONObject("initialResults"))
+                .map(json -> json.getJSONObject("prod_products"))
+                .map(json -> json.getJSONArray("results"))
+                .map(jsonArray -> jsonArray.getJSONObject(0))
+                .map(json -> json.getJSONArray("hits"))
+                .map(jsonArray -> jsonArray.toJavaList(KickScrewItem.class)).orElse(new ArrayList<>());
     }
 
     public String queryItemByCategory(String brand, Integer page) {

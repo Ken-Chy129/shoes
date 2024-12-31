@@ -38,6 +38,7 @@ public class HttpUtil {
                 .get()
                 .build();
         try (Response response = client.newCall(request).execute()) {
+            System.out.println(response);
             return response.body().string();
         } catch (IOException e) {
             log.error(e.getMessage());

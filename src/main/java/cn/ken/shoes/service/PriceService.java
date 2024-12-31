@@ -9,6 +9,7 @@ import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.context.KickScrewContext;
 import cn.ken.shoes.model.entity.Item;
 import cn.ken.shoes.model.entity.SizePrice;
+import cn.ken.shoes.model.kickscrew.KickScrewItem;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.price.PriceRequest;
 import jakarta.annotation.Resource;
@@ -39,13 +40,15 @@ public class PriceService {
 
     public void updateItems() {
         Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
+        // 1.遍历所有品牌
         for (Map.Entry<String, Integer> entry : brandSizes.entrySet()) {
             String brand = entry.getKey();
             Integer total = entry.getValue();
+            // 根据品牌的商品数量计算请求的分页次数
             int page = (int) Math.ceil(total / (double) KickScrewConfig.PAGE_SIZE);
-//            for (int i = 1; i <= page; i++) {
-//                List<KickScrewItem> kickScrewItems = kickScrewClient.queryItemByBrand(brand, i);
-//            }
+            for (int i = 1; i <= page; i++) {
+                List<KickScrewItem> kickScrewItems = kickScrewClient.queryItemByBrand(brand, i);
+            }
 //            for (KickScrewItem kickScrewItem : kickScrewItems) {
 //                String modelNumber = kickScrewItem.getModelNumber();
 //                Result<List<PoisonItem>> poisonResult = poisonClient.queryItemByModelNumber(modelNumber);
