@@ -1,11 +1,13 @@
 package cn.ken.shoes.model.entity;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
 
 @Data
+@TableName("item_size_price")
 @EqualsAndHashCode(callSuper = true)
 public class ItemSizePriceDO extends BaseDO {
 
