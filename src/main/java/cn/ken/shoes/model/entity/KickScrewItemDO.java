@@ -1,9 +1,11 @@
-package cn.ken.shoes.model.kickscrew;
+package cn.ken.shoes.model.entity;
 
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 @Data
-public class KickScrewItem {
+@TableName("kick_screw_item")
+public class KickScrewItemDO {
 
     private String title;
 

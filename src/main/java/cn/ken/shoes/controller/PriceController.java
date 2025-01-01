@@ -3,7 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.ItemDO;
-import cn.ken.shoes.model.kickscrew.KickScrewItem;
+import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
@@ -29,7 +29,7 @@ public class PriceController {
     }
 
     @GetMapping("list2")
-    public List<KickScrewItem> list2(String brand) {
+    public List<KickScrewItemDO> list2(String brand) {
         return kickScrewClient.queryItemByBrand(brand, 1);
     }
 

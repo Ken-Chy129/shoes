@@ -6,12 +6,11 @@ import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.KickScrewConfig;
-import cn.ken.shoes.context.KickScrewContext;
 import cn.ken.shoes.mapper.ItemMapper;
 import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.model.entity.ItemDO;
 import cn.ken.shoes.model.entity.ItemSizePriceDO;
-import cn.ken.shoes.model.kickscrew.KickScrewItem;
+import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.model.poinson.Sku;
@@ -19,6 +18,7 @@ import cn.ken.shoes.model.price.PriceRequest;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -46,6 +46,7 @@ public class PriceService {
         return Result.buildSuccess(result);
     }
 
+    @Transactional(rollbackFor = Exception.class)
     public void scratchAndSaveItems() {
 //        Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
         Map<String, Integer> brandSizes = Map.of("ANTA", 30);
@@ -55,27 +56,27 @@ public class PriceService {
             Integer total = entry.getValue();
             // 根据品牌的商品数量计算请求的分页次数
             int page = (int) Math.ceil(total / (double) KickScrewConfig.PAGE_SIZE);
-            List<KickScrewItem> brandItems = new ArrayList<>();
+            List<KickScrewItemDO> brandItems = new ArrayList<>();
             // 2.查询品牌下所有商品
             for (int i = 1; i <= page; i++) {
                 brandItems.addAll(kickScrewClient.queryItemByBrand(brand, i));
             }
             // 3.保存商品+价格信息
-            for (KickScrewItem kickScrewItem : brandItems) {
+            for (KickScrewItemDO kickScrewItemDO : brandItems) {
                 // 创建ItemDO
                 ItemDO itemDO = new ItemDO();
-                itemDO.setModelNumber(kickScrewItem.getModelNo());
-                itemDO.setImage(kickScrewItem.getImage());
-                itemDO.setBrandName(kickScrewItem.getBrand());
-                itemDO.setProductType(kickScrewItem.getProductType());
-                String modelNumber = kickScrewItem.getModelNo();
+                itemDO.setModelNumber(kickScrewItemDO.getModelNo());
+                itemDO.setImage(kickScrewItemDO.getImage());
+                itemDO.setBrandName(kickScrewItemDO.getBrand());
+                itemDO.setProductType(kickScrewItemDO.getProductType());
+                String modelNumber = kickScrewItemDO.getModelNo();
                 PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
                 itemDO.setName(poisonItem.getTitle());
                 itemMapper.insert(itemDO);
                 // 查询商品不同尺码的价格
                 List<ItemSizePriceDO> itemSizePriceDOS = new ArrayList<>();
                 // 查询kc价格
-                String handle = kickScrewItem.getHandle();
+                String handle = kickScrewItemDO.getHandle();
                 List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
                 kickScrewSizePrices.stream()
                         .map(this::toSizePrice)

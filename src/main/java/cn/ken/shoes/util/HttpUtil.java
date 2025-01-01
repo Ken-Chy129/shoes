@@ -28,7 +28,6 @@ public class HttpUtil {
         if (StrUtil.isNotBlank(queryString)) {
             url += "?" + queryString;
         }
-        log.info("url:{}", url);
         return doGet(url);
     }
 

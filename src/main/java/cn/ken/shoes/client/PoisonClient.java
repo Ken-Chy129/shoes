@@ -10,6 +10,7 @@ import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -19,6 +20,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+@Slf4j
 @Component
 public class PoisonClient {
 
@@ -27,9 +29,9 @@ public class PoisonClient {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
         enhanceParams(params);
-        System.out.println(params);
+        log.info("queryItemByModelNumber-request:{}", params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
-        System.out.println(result);
+        log.info("queryItemByModelNumber-response:{}", result);
         Result<List<PoisonItem>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;

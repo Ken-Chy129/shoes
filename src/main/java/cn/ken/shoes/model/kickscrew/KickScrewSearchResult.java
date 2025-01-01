@@ -1,5 +1,6 @@
 package cn.ken.shoes.model.kickscrew;
 
+import cn.ken.shoes.model.entity.KickScrewItemDO;
 import lombok.Data;
 
 import java.util.List;
@@ -7,7 +8,7 @@ import java.util.List;
 @Data
 public class KickScrewSearchResult {
 
-    private List<KickScrewItem> hits;
+    private List<KickScrewItemDO> hits;
 
     private Integer nbHits;
 

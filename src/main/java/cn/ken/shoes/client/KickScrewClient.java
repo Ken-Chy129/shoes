@@ -3,20 +3,17 @@ package cn.ken.shoes.client;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
-import cn.ken.shoes.model.kickscrew.KickScrewItem;
+import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Component
 public class KickScrewClient {
@@ -42,7 +39,7 @@ public class KickScrewClient {
     }
 
 
-    public List<KickScrewItem> queryItemByBrand(String brand, Integer page) {
+    public List<KickScrewItemDO> queryItemByBrand(String brand, Integer page) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
                 .queryParam("brand", brand)
                 .queryParam("page", page)
@@ -57,7 +54,7 @@ public class KickScrewClient {
                 .map(json -> json.getJSONArray("results"))
                 .map(jsonArray -> jsonArray.getJSONObject(0))
                 .map(json -> json.getJSONArray("hits"))
-                .map(jsonArray -> jsonArray.toJavaList(KickScrewItem.class)).orElse(new ArrayList<>());
+                .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
     }
 
     public String queryItemByCategory(String brand, Integer page) {

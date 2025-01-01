@@ -3,8 +3,6 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
-import cn.ken.shoes.context.KickScrewContext;
-import cn.ken.shoes.model.poinson.ItemPrice;
 import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
@@ -48,7 +46,7 @@ public class ShoesController {
 
     @GetMapping("category")
     public String category() {
-        return JSONObject.toJSONString(KickScrewContext.brandSizes);
+        return JSONObject.toJSONString(1);
     }
 
     @GetMapping("prices")
