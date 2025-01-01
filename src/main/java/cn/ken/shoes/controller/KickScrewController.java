@@ -17,4 +17,9 @@ public class KickScrewController {
     public void refreshItems() {
         kickScrewService.scratchAndSaveItems();
     }
+
+    @GetMapping("refreshCategory")
+    public void refreshCategory() {
+        kickScrewService.scratchAndSaveCategories();
+    }
 }

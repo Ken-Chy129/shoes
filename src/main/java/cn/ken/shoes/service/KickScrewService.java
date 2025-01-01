@@ -30,6 +30,8 @@ public class KickScrewService {
     private KickScrewItemMapper kickScrewItemMapper;
 
     public void scratchAndSaveCategories() {
+        long startTime = System.currentTimeMillis();
+        log.info("scratchAndSaveCategories start");
         KickScrewCategory kickScrewCategory = kickScrewClient.queryCategory();
         if (kickScrewCategory == null || kickScrewCategory.getBrand() == null) {
             log.error("queryCategory no result");
@@ -47,19 +49,20 @@ public class KickScrewService {
         }
         brandMapper.delete(new QueryWrapper<>());
         brandMapper.insert(brandDOList);
+        log.info("scratchAndSaveCategories end, cnt:{}, cost:{}", brandDOList.size(), System.currentTimeMillis() - startTime);
     }
 
     public void scratchAndSaveItems() {
-//        scratchAndSaveCategories();
-//        List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
-        BrandDO brandDO1 = new BrandDO();
-        brandDO1.setName("ANTA");
-        brandDO1.setCnt(30);
-        BrandDO brandDO2 = new BrandDO();
-        brandDO2.setName("NIKE");
-        brandDO2.setCnt(60);
-        List<BrandDO> brandDOList = List.of(brandDO1, brandDO2);
+        kickScrewItemMapper.delete(new QueryWrapper<>());
+
+        scratchAndSaveCategories();
+        List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
+
+        long allStartTime = System.currentTimeMillis();
+        log.info("scratchAndSaveItems start, brand count:{}", brandDOList.size());
         for (BrandDO brandDO : brandDOList) {
+            log.info("start brand:{}, size:{}", brandDO.getName(), brandDO.getCnt());
+            long brandStartTime = System.currentTimeMillis();
             Thread.ofVirtual().start(() -> {
                 String brand = brandDO.getName();
                 Integer cnt = brandDO.getCnt();
@@ -74,6 +77,8 @@ public class KickScrewService {
                     });
                 }
             });
+            log.info("end brand:{}, cost:{}", brandDO.getName(), System.currentTimeMillis() - brandStartTime);
         }
+        log.info("scratchAndSaveItems end, cost:{}", System.currentTimeMillis() - allStartTime);
     }
 }
