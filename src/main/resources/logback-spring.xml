@@ -55,6 +55,25 @@ packagingData	true|false	                                          每行日志�
         <appender-ref ref="SERVICE"/>
     </logger>
 
+    <!--文件日志， 按照每天生成日志文件 -->
+    <appender name="HTTP" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!--日志文件输出的文件名-->
+            <FileNamePattern>${LOG_HOME}/http.log.%d{yyyy-MM-dd}.%i</FileNamePattern>
+            <!--日志文件保留天数-->
+            <MaxHistory>10</MaxHistory>
+            <MaxFileSize>10MB</MaxFileSize>
+        </rollingPolicy>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符-->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <logger name="cn.ken.shoes.util.HttpUtil" additivity="false">
+        <level value="INFO"/>
+        <appender-ref ref="HTTP"/>
+    </logger>
+
     <!-- 日志输出级别 -->
     <root level="INFO">
         <appender-ref ref="FILE"/>

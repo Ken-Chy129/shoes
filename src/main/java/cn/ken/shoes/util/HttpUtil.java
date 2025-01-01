@@ -3,8 +3,6 @@ package cn.ken.shoes.util;
 import cn.hutool.core.util.StrUtil;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -13,10 +11,8 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
-//@Slf4j
+@Slf4j
 public class HttpUtil {
-
-    private static final Logger log = LoggerFactory. getLogger(HttpUtil.class);
 
     private static final OkHttpClient client = new OkHttpClient()
             .newBuilder()
@@ -32,12 +28,12 @@ public class HttpUtil {
     }
 
     public static String doGet(String url) {
+        log.info("doGet:{}", url);
         Request request = new Request.Builder()
                 .url(url)
                 .get()
                 .build();
         try (Response response = client.newCall(request).execute()) {
-            System.out.println(response);
             return response.body().string();
         } catch (IOException e) {
             log.error(e.getMessage());
@@ -50,6 +46,7 @@ public class HttpUtil {
     }
 
     public static String doPost(String url, String json, Headers headers) {
+        log.info("doPost:{}", url);
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
                 .url(url)

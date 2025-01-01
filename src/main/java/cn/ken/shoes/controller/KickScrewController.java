@@ -13,13 +13,13 @@ public class KickScrewController {
     @Resource
     private KickScrewService kickScrewService;
 
-    @GetMapping("refresh")
+    @GetMapping("refreshItems")
     public void refreshItems() {
         kickScrewService.scratchAndSaveItems();
     }
 
-    @GetMapping("refreshCategory")
-    public void refreshCategory() {
+    @GetMapping("refreshCategories")
+    public void refreshCategories() {
         kickScrewService.scratchAndSaveCategories();
     }
 }
