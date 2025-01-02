@@ -14,16 +14,22 @@ packagingData	true|false	                                          每行日志�
     <property name="LOG_HOME" value="log" />
 
     <!--控制台日志， 控制台输出 -->
-<!--    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">-->
-<!--        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">-->
-<!--            &lt;!&ndash;格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度,%msg：日志消息，%n是换行符&ndash;&gt;-->
-<!--            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>-->
-<!--        </encoder>-->
-<!--    </appender>-->
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度,%msg：日志消息，%n是换行符-->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
+        </encoder>
+    </appender>
 
     <!--文件日志， 按照每天生成日志文件 -->
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${LOG_HOME}/application.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!--日志文件输出的文件名-->
+            <FileNamePattern>${LOG_HOME}/application.log.%d{yyyy-MM-dd}.%i</FileNamePattern>
+            <!--日志文件保留天数-->
+            <MaxHistory>10</MaxHistory>
+            <MaxFileSize>10MB</MaxFileSize>
+        </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
             <!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符-->
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
@@ -50,8 +56,7 @@ packagingData	true|false	                                          每行日志�
         level: 用来设置打印级别，大小写无关：TRACE, DEBUG, INFO, WARN, ERROR, ALL和OFF，还有一个特殊值INHERITED或者同义词NULL，代表强制执行上级的级别。 如果未设置此属性，那么当前loger将会继承上级的级别。
         additivity: 是否向上级logger传递打印信息。默认是true。可以包含零个或多个<appender-ref>元素，标识这个appender将会添加到这个logger。
     -->
-    <logger name="cn.ken.shoes.service" additivity="false">
-        <level value="INFO"/>
+    <logger name="cn.ken.shoes.service" additivity="false" level="INFO">
         <appender-ref ref="SERVICE"/>
     </logger>
 
@@ -69,14 +74,17 @@ packagingData	true|false	                                          每行日志�
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n</pattern>
         </encoder>
     </appender>
-    <logger name="cn.ken.shoes.util.HttpUtil" additivity="false">
-        <level value="INFO"/>
+    <logger name="cn.ken.shoes.util.HttpUtil" additivity="false" level="INFO">
         <appender-ref ref="HTTP"/>
     </logger>
+
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="com.alibaba.druid" level="INFO"/>
 
     <!-- 日志输出级别 -->
     <root level="INFO">
         <appender-ref ref="FILE"/>
+        <appender-ref ref="STDOUT"/>
     </root>
 
 </configuration>
