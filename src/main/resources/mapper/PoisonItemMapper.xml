@@ -11,4 +11,9 @@
         select * from shoes.poison_item
         where article_number = #{articleNumber}
     </select>
+
+    <select id="selectModelNoByKcBrand" resultType="java.lang.String">
+        select article_number from shoes.poison_item
+        where kc_brand = #{brand}
+    </select>
 </mapper>
