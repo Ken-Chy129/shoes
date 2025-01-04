@@ -4,6 +4,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.model.poinson.PoisonItem;
+import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
@@ -21,6 +22,8 @@ public class ShoesController {
     private KickScrewClient kickScrewClient;
     @Resource
     private PoisonClient poisonClient;
+    @Resource
+    private PoisonService poisonService;
 
     @GetMapping("list")
     public String getShoes() {
@@ -37,6 +40,11 @@ public class ShoesController {
         return poisonClient.queryTokenBalance();
     }
 
+    @GetMapping("queryPoisonItems")
+    public String queryPoisonItems() {
+        return JSON.toJSONString(poisonService.scratchItems());
+    }
+
     @GetMapping("page")
     public Integer page(String brand) {
         return kickScrewClient.queryBrandItemPage(brand);
@@ -45,11 +53,6 @@ public class ShoesController {
     @GetMapping("prices")
     public Integer prices(Long skuId) {
         return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
-    }
-
-    @GetMapping("queryByModelNo")
-    public PoisonItem queryByModelNo(String modelNo) {
-        return poisonClient.queryItemByModelNumber(modelNo);
     }
 
     @GetMapping("queryByHandle")
