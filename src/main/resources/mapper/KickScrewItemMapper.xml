@@ -3,4 +3,15 @@
 <mapper namespace="cn.ken.shoes.mapper.KickScrewItemMapper">
 
 
+    <insert id="insertIgnore">
+        insert ignore into shoes.kick_screw_item value (
+               #{modelNo},
+               #{title},
+               #{brand},
+               #{productType},
+               #{image},
+               #{lowestPrice},
+               #{handle}
+        )
+    </insert>
 </mapper>

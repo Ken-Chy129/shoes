@@ -8,7 +8,6 @@ import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -17,11 +16,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("shoes")
 public class ShoesController {
 
-    private final String token = "902bee8bf35534400496b2519985cdf1";
+    private final String token = "a04b2bd3138555154fe3af1e645a2186";
 
     @Resource
     private KickScrewClient kickScrewClient;
-    @Autowired
+    @Resource
     private PoisonClient poisonClient;
 
     @GetMapping("list")
@@ -44,23 +43,14 @@ public class ShoesController {
         return HttpUtil.doPost( "http://47.100.28.62:8000/getFundsbytoken", jsonObject.toJSONString());
     }
 
-    @GetMapping("category")
-    public String category() {
-        return JSONObject.toJSONString(1);
-    }
-
     @GetMapping("prices")
     public Integer prices(Long skuId) {
-//        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
         return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
-//        return null;
     }
 
     @GetMapping("queryByModelNo")
     public PoisonItem queryByModelNo(String modelNo) {
-//        return kickScrewClient.queryItemSizePrice("anta-kai-1-jelly-112441113-13");
         return poisonClient.queryItemByModelNumber(modelNo);
-//        return null;
     }
 
     @GetMapping("queryByHandle")

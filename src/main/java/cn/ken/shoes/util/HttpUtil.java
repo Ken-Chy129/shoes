@@ -42,7 +42,7 @@ public class HttpUtil {
     }
 
     public static String doPost(String url, String json) {
-        return doPost(url, json, null);
+        return doPost(url, json, Headers.of());
     }
 
     public static String doPost(String url, String json, Headers headers) {

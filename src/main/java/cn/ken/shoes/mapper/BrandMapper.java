@@ -7,4 +7,5 @@ import org.apache.ibatis.annotations.Mapper;
 @Mapper
 public interface BrandMapper extends BaseMapper<BrandDO> {
 
+    void deleteAll();
 }

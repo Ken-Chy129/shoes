@@ -6,4 +6,6 @@ import org.apache.ibatis.annotations.Mapper;
 
 @Mapper
 public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
+
+    void insertIgnore(KickScrewItemDO kickScrewItemDO);
 }
