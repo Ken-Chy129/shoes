@@ -6,4 +6,8 @@
     <delete id="deleteAll">
         delete from shoes.brand;
     </delete>
+
+    <select id="selectBrandNames" resultType="java.lang.String">
+        select name from brand;
+    </select>
 </mapper>
