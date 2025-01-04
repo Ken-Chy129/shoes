@@ -67,7 +67,7 @@ public class KickScrewService {
     }
 
     public void scratchAndSaveItems() {
-        kickScrewItemMapper.delete(null);
+        kickScrewItemMapper.deleteAll();
 
         int itemCnt = scratchAndSaveCategories();
         List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
