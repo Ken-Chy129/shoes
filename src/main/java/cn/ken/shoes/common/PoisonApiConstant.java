@@ -1,6 +1,6 @@
 package cn.ken.shoes.common;
 
-public class PoiSonApiConstant {
+public class PoisonApiConstant {
 
     /**
      * 通过货号批量获取商品spu信息
@@ -22,5 +22,13 @@ public class PoiSonApiConstant {
      */
     public static final String NORMAL_LOWEST_PRICE = "/bidding/normal/normal_lowest_price";
 
+    /**
+     * 根据spu查询价格
+     */
+    public static final String PRICE_BY_SPU = "http://47.100.28.62:8000/getpricebyspuidv3/z";
 
+    /**
+     * 根据token余额
+     */
+    public static final String TOKEN_BALANCE = "http://47.100.28.62:8000/getFundsbytoken";
 }
