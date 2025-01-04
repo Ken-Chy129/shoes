@@ -78,7 +78,7 @@ public class KickScrewService {
         Map<String, Map<Integer, List<KickScrewItemDO>>> allItemsMap = new HashMap<>();
         AtomicInteger finishCnt = new AtomicInteger(0);
         for (BrandDO brandDO : brandDOList) {
-            Thread.ofVirtual().name(brandDO.getName()).start(() -> {
+//            Thread.ofVirtual().name(brandDO.getName()).start(() -> {
                 long brandStartTime = System.currentTimeMillis();
                 try {
                     Map<Integer, List<KickScrewItemDO>> brandItemsMap = new HashMap<>();
@@ -86,20 +86,22 @@ public class KickScrewService {
                     Integer cnt = brandDO.getCnt();
                     // 根据品牌的商品数量计算请求的分页次数
                     int page = (int) Math.ceil(cnt / (double) KickScrewConfig.PAGE_SIZE);
-//                    CountDownLatch pageLatch = new CountDownLatch(page);
                     // 查询品牌下所有商品
+                    CountDownLatch pageLatch = new CountDownLatch(page);
                     for (int i = 1; i <= page; i++) {
                         final int pageIndex = i;
-//                        Thread.ofVirtual().name("brandItems-" + brand).start(() -> {
-//                            try {
+                        Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
+                            try {
                                 List<KickScrewItemDO> brandItems = kickScrewClient.queryItemByBrand(brand, pageIndex);
                                 brandItemsMap.put(pageIndex, brandItems);
-//                            } finally {
-//                                pageLatch.countDown();
-//                            }
-//                        });
+                            } catch (Exception e) {
+                                log.error(e.getMessage(), e);
+                            } finally {
+                                pageLatch.countDown();
+                            }
+                        });
                     }
-//                    pageLatch.await();
+                    pageLatch.await();
                     allItemsMap.put(brand, brandItemsMap);
                 } catch (Exception e) {
                     log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brandDO.getName(), e.getMessage());
@@ -107,7 +109,7 @@ public class KickScrewService {
                     brandLatch.countDown();
                     log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brandDO.getName(), finishCnt.incrementAndGet(), brandDO.getCnt(), System.currentTimeMillis() - brandStartTime);
                 }
-            });
+//            });
         }
         try {
             brandLatch.await();

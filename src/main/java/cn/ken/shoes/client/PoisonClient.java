@@ -1,6 +1,6 @@
 package cn.ken.shoes.client;
 
-import cn.ken.shoes.common.PoiSonApiConstant;
+import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
@@ -15,17 +15,42 @@ import okhttp3.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Component
 public class PoisonClient {
 
+    /**
+     * 根据spu查询价格
+     * @param spuId 商品spuId，通过货号唯一对应一个spuId
+     * @return 商品价格，包括闪电价格，普通价格和极速价格
+     */
+    public String queryPriceBySpu(String spuId) {
+        String url = PoisonApiConstant.PRICE_BY_SPU;
+        Map<String, String> params = new HashMap<>();
+        params.put("spuId", spuId);
+        params.put("token", PoisonConfig.TOKEN);
+        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
+
+        return result;
+    }
+
+    /**
+     * 查询token余额
+     * @return token余额
+     */
+    public String queryTokenBalance() {
+        String url = PoisonApiConstant.TOKEN_BALANCE;
+        Map<String, String> params = new HashMap<>();
+        params.put("token", PoisonConfig.TOKEN);
+        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
+
+        return result;
+    }
+
     public PoisonItem queryItemByModelNumber(String modelNumber) {
-        String url = PoisonConfig.getUrlPrefix() + PoiSonApiConstant.BATCH_ARTICLE_NUMBER;
+        String url = PoisonConfig.getUrlPrefix() + PoisonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", Collections.singletonList(modelNumber));
         enhanceParams(params);
@@ -56,9 +81,9 @@ public class PoisonClient {
     private String getPriceApi(PriceEnum priceEnum) {
         String priceApi;
         switch (priceEnum) {
-            case LIGHTNING -> priceApi = PoiSonApiConstant.LOWEST_PRICE;
-            case FAST -> priceApi = PoiSonApiConstant.FAST_LOWEST_PRICE;
-            default -> priceApi = PoiSonApiConstant.NORMAL_LOWEST_PRICE;
+            case LIGHTNING -> priceApi = PoisonApiConstant.LOWEST_PRICE;
+            case FAST -> priceApi = PoisonApiConstant.FAST_LOWEST_PRICE;
+            default -> priceApi = PoisonApiConstant.NORMAL_LOWEST_PRICE;
         }
         return priceApi;
     }

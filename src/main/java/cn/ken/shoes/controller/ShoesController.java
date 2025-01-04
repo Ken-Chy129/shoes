@@ -28,19 +28,14 @@ public class ShoesController {
         return HttpUtil.doGet( "https://crewsupply-service-gi7me3n4rq-de.a.run.app/latest/products?offset=0&limit=18&filter=brand%3A1");
     }
 
-    @GetMapping("list2")
-    public String test2(String spuId) {
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("spuId", spuId);
-        jsonObject.put("token", token);
-        return HttpUtil.doPost( "http://47.100.28.62:8000/getpricebyspuidv3/z", jsonObject.toJSONString());
+    @GetMapping("queryPriceBySpu")
+    public String queryPriceBySpu(String spuId) {
+        return poisonClient.queryPriceBySpu(spuId);
     }
 
-    @GetMapping("list3")
-    public String test3() {
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("token", token);
-        return HttpUtil.doPost( "http://47.100.28.62:8000/getFundsbytoken", jsonObject.toJSONString());
+    @GetMapping("queryTokenBalance")
+    public String queryTokenBalance() {
+        return poisonClient.queryTokenBalance();
     }
 
     @GetMapping("prices")
