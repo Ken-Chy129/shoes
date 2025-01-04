@@ -6,7 +6,6 @@ import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -30,7 +29,7 @@ public class ShoesController {
 
     @GetMapping("queryPriceBySpu")
     public String queryPriceBySpu(String spuId) {
-        return poisonClient.queryPriceBySpu(spuId);
+        return JSON.toJSONString(poisonClient.queryPriceBySpu(spuId));
     }
 
     @GetMapping("queryTokenBalance")

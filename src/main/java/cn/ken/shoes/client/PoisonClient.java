@@ -4,11 +4,12 @@ import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
-import cn.ken.shoes.model.poinson.ItemPrice;
+import cn.ken.shoes.model.poinson.PoisonItemPrice;
 import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
@@ -26,14 +27,34 @@ public class PoisonClient {
      * @param spuId 商品spuId，通过货号唯一对应一个spuId
      * @return 商品价格，包括闪电价格，普通价格和极速价格
      */
-    public String queryPriceBySpu(String spuId) {
+    public Map<String, Map<PriceEnum, Integer>> queryPriceBySpu(String spuId) {
         String url = PoisonApiConstant.PRICE_BY_SPU;
         Map<String, String> params = new HashMap<>();
         params.put("spuId", spuId);
         params.put("token", PoisonConfig.TOKEN);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params));
-
-        return result;
+        log.info(result);
+        Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+        if (parseRes.getCode() != 200) {
+            log.error(parseRes.getMsg());
+            return null;
+        }
+        Map<String, Map<PriceEnum, Integer>> sizePriceMap = new HashMap<>();
+        Optional.ofNullable(parseRes.getData())
+                .map(json -> json.getJSONArray("price_detail"))
+                .map(jsonArray -> jsonArray.toJavaList(JSONObject.class))
+                .orElse(Collections.emptyList())
+                .forEach(json -> {
+                    String size = json.getString("size");
+                    JSONObject price = json.getJSONObject("price");
+                    Map<PriceEnum, Integer> typePriceMap = new HashMap<>();
+                    for (PriceEnum type : PriceEnum.values()) {
+                        Optional.ofNullable(price.getInteger(type.getDesc()))
+                                .ifPresent(typePrice -> typePriceMap.put(type, typePrice));
+                    }
+                    sizePriceMap.put(size, typePriceMap);
+                });
+        return sizePriceMap;
     }
 
     /**
@@ -49,6 +70,11 @@ public class PoisonClient {
         return result;
     }
 
+    /**
+     * 根据商品货号查询商品信息，主要为了拿到spuId用于查价
+     * @param modelNumber 商品货号
+     * @return 商品详细信息
+     */
     public PoisonItem queryItemByModelNumber(String modelNumber) {
         String url = PoisonConfig.getUrlPrefix() + PoisonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
@@ -64,17 +90,23 @@ public class PoisonClient {
         return parseRes.getData().getFirst();
     }
 
+    /**
+     * 根据sku
+     * @param skuId sku，商品的每个尺码对应不同的skuId
+     * @param priceEnum 查询得物价格的类型，目前对应自营卖家接入，只有查询普通发货价格的权限
+     * @return 商品指定尺码指定发货类型的最低价格
+     */
     public Integer queryLowestPriceBySkuId(Long skuId, PriceEnum priceEnum) {
         String url = PoisonConfig.getUrlPrefix() + getPriceApi(priceEnum);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("sku_id", skuId);
         enhanceParams(params);
         String result = HttpUtil.doGet(url, params);
-        Result<List<ItemPrice>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+        Result<List<PoisonItemPrice>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;
         }
-        ItemPrice first = parseRes.getData().getFirst();
+        PoisonItemPrice first = parseRes.getData().getFirst();
         return first.getItems().getFirst().getLowestPrice();
     }
 
