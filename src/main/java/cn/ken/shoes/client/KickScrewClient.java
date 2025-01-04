@@ -9,12 +9,14 @@ import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.util.*;
 
+@Slf4j
 @Component
 public class KickScrewClient {
 
@@ -55,6 +57,24 @@ public class KickScrewClient {
                 .map(jsonArray -> jsonArray.getJSONObject(0))
                 .map(json -> json.getJSONArray("hits"))
                 .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
+    }
+
+    public Integer queryBrandItemPage(String brand) {
+        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
+                .queryParam("brand", brand)
+                .queryParam("page", 1)
+                .toUriString();
+        String result = HttpUtil.doGet(url);
+        return Optional.ofNullable(result)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONObject("pageProps"))
+                .map(json -> json.getJSONObject("serverState"))
+                .map(json -> json.getJSONObject("initialResults"))
+                .map(json -> json.getJSONObject("prod_products"))
+                .map(json -> json.getJSONArray("results"))
+                .map(jsonArray -> jsonArray.getJSONObject(0))
+                .map(json -> json.getInteger("nbPages"))
+                .orElse(1);
     }
 
     public String queryItemByCategory(String brand, Integer page) {

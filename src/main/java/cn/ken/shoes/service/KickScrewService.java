@@ -7,7 +7,6 @@ import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -70,23 +69,20 @@ public class KickScrewService {
         kickScrewItemMapper.deleteAll();
 
         int itemCnt = scratchAndSaveCategories();
-        List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
+        List<String> brandList = brandMapper.selectBrandNames();
 
         long allStartTime = System.currentTimeMillis();
-        log.info("scratchAndSaveItems start, brandCnt:{}, itemCnt:{}", brandDOList.size(), itemCnt);
-        CountDownLatch brandLatch = new CountDownLatch(brandDOList.size());
+        log.info("scratchAndSaveItems start, brandCnt:{}, itemCnt:{}", brandList.size(), itemCnt);
+        CountDownLatch brandLatch = new CountDownLatch(brandList.size());
         Map<String, Map<Integer, List<KickScrewItemDO>>> allItemsMap = new HashMap<>();
         AtomicInteger finishCnt = new AtomicInteger(0);
-        for (BrandDO brandDO : brandDOList) {
+        for (String brand : brandList) {
 //            Thread.ofVirtual().name(brandDO.getName()).start(() -> {
                 long brandStartTime = System.currentTimeMillis();
                 try {
                     Map<Integer, List<KickScrewItemDO>> brandItemsMap = new HashMap<>();
-                    String brand = brandDO.getName();
-                    Integer cnt = brandDO.getCnt();
-                    // 根据品牌的商品数量计算请求的分页次数
-                    int page = (int) Math.ceil(cnt / (double) KickScrewConfig.PAGE_SIZE);
                     // 查询品牌下所有商品
+                    Integer page = kickScrewClient.queryBrandItemPage(brand);
                     CountDownLatch pageLatch = new CountDownLatch(page);
                     for (int i = 1; i <= page; i++) {
                         final int pageIndex = i;
@@ -104,10 +100,10 @@ public class KickScrewService {
                     pageLatch.await();
                     allItemsMap.put(brand, brandItemsMap);
                 } catch (Exception e) {
-                    log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brandDO.getName(), e.getMessage());
+                    log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
                 } finally {
                     brandLatch.countDown();
-                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brandDO.getName(), finishCnt.incrementAndGet(), brandDO.getCnt(), System.currentTimeMillis() - brandStartTime);
+                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brand, System.currentTimeMillis() - brandStartTime);
                 }
 //            });
         }

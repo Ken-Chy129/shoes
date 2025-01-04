@@ -37,6 +37,11 @@ public class ShoesController {
         return poisonClient.queryTokenBalance();
     }
 
+    @GetMapping("page")
+    public Integer page(String brand) {
+        return kickScrewClient.queryBrandItemPage(brand);
+    }
+
     @GetMapping("prices")
     public Integer prices(Long skuId) {
         return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
