@@ -19,7 +19,7 @@ public class KickScrewController {
     }
 
     @GetMapping("refreshCategories")
-    public void refreshCategories() {
-        kickScrewService.scratchAndSaveCategories();
+    public Integer refreshCategories() {
+        return kickScrewService.scratchAndSaveCategories();
     }
 }

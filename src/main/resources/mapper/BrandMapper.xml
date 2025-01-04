@@ -3,4 +3,7 @@
 <mapper namespace="cn.ken.shoes.mapper.BrandMapper">
 
 
+    <delete id="deleteAll">
+        delete from shoes.brand;
+    </delete>
 </mapper>
