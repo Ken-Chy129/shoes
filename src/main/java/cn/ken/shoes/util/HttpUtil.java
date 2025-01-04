@@ -16,7 +16,11 @@ public class HttpUtil {
 
     private static final OkHttpClient client = new OkHttpClient()
             .newBuilder()
-            .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("localhost", 7890)))
+            .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("222.219.133.164", 16790)))
+            .proxyAuthenticator((route, response) -> {
+                String credential = Credentials.basic("90113", "34674");
+                return response.request().newBuilder().header("Proxy-Authorization", credential).build();
+            })
             .build();
 
     public static String doGet(String url, Map<String, Object> params) {

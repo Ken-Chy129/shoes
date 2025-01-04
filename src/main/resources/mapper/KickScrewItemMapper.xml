@@ -14,4 +14,8 @@
                #{handle}
         )
     </insert>
+
+    <delete id="deleteAll">
+        delete from shoes.kick_screw_item;
+    </delete>
 </mapper>
