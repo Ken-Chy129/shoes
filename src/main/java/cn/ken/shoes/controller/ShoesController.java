@@ -3,7 +3,6 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
-import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
@@ -11,6 +10,8 @@ import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("shoes")
@@ -40,9 +41,14 @@ public class ShoesController {
         return poisonClient.queryTokenBalance();
     }
 
-    @GetMapping("queryPoisonItems")
-    public String queryPoisonItems() {
-        return JSON.toJSONString(poisonService.scratchItems());
+    @GetMapping("refreshPoisonItems")
+    public void refreshPoisonItems() {
+        poisonService.refreshPoisonItems();
+    }
+
+    @GetMapping("queryByModelNos")
+    public String queryByModelNos(String modelNos) {
+        return JSON.toJSONString(poisonClient.queryItemByModelNos(List.of(modelNos)));
     }
 
     @GetMapping("page")

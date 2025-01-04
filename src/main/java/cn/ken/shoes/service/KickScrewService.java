@@ -112,7 +112,7 @@ public class KickScrewService {
         } catch (InterruptedException e) {
             log.error("scratchAndSaveItems error, msg:{}", e.getMessage());
         }
-        log.info("scratchItems end, cost:{}", System.currentTimeMillis() - allStartTime);
+        log.info("refreshPoisonItems end, cost:{}", System.currentTimeMillis() - allStartTime);
         batchInsertItems(allItemsMap);
     }
 
