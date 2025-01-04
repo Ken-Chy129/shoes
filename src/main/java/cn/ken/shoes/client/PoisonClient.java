@@ -75,14 +75,14 @@ public class PoisonClient {
      * @param modelNumberList 商品货号
      * @return 商品详细信息
      */
-    public List<PoisonItemDO> queryItemByModelNumber(List<String> modelNumberList) {
+    public List<PoisonItemDO> queryItemByModelNos(List<String> modelNumberList) {
         String url = PoisonConfig.getUrlPrefix() + PoisonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", modelNumberList);
         enhanceParams(params);
-        log.info("queryItemByModelNumber-request:{}", params);
+        log.info("queryItemByModelNos-request:{}", params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
-        log.info("queryItemByModelNumber-response:{}", result);
+        log.info("queryItemByModelNos-response:{}", result);
         Result<List<PoisonItemDO>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;

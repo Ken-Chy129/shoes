@@ -70,7 +70,7 @@ public class PriceService {
 //                itemDO.setBrandName(kickScrewItemDO.getBrand());
 //                itemDO.setProductType(kickScrewItemDO.getProductType());
 //                String modelNumber = kickScrewItemDO.getModelNo();
-//                PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
+//                PoisonItem poisonItem = poisonClient.queryItemByModelNos(modelNumber);
 //                itemDO.setName(poisonItem.getTitle());
 //                itemMapper.insert(itemDO);
 //                // 查询商品不同尺码的价格
