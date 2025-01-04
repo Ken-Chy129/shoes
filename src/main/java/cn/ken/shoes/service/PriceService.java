@@ -62,50 +62,50 @@ public class PriceService {
                 brandItems.addAll(kickScrewClient.queryItemByBrand(brand, i));
             }
             // 3.保存商品+价格信息
-            for (KickScrewItemDO kickScrewItemDO : brandItems) {
-                // 创建ItemDO
-                ItemDO itemDO = new ItemDO();
-                itemDO.setModelNumber(kickScrewItemDO.getModelNo());
-                itemDO.setImage(kickScrewItemDO.getImage());
-                itemDO.setBrandName(kickScrewItemDO.getBrand());
-                itemDO.setProductType(kickScrewItemDO.getProductType());
-                String modelNumber = kickScrewItemDO.getModelNo();
-                PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
-                itemDO.setName(poisonItem.getTitle());
-                itemMapper.insert(itemDO);
-                // 查询商品不同尺码的价格
-                List<ItemSizePriceDO> itemSizePriceDOS = new ArrayList<>();
-                // 查询kc价格
-                String handle = kickScrewItemDO.getHandle();
-                List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
-                kickScrewSizePrices.stream()
-                        .map(this::toSizePrice)
-                        .forEach(itemSizePriceDO -> {
-                            itemSizePriceDO.setModelNumber(modelNumber);
-                            itemSizePriceDOS.add(itemSizePriceDO);
-                        });
-                // 查询得物价格
-                for (Sku sku : poisonItem.getSkus()) {
-                    Long skuId = sku.getSkuId();
-                    String size = JSON.parseObject(sku.getProperties()).getString("尺码");
-                    ItemSizePriceDO itemSizePriceDO = itemSizePriceDOS.stream().filter(itemSizePrice -> size.equals(itemSizePrice.getEuSize())).findFirst().orElse(null);
-                    if (itemSizePriceDO == null) {
-                        continue;
-                    }
-                    itemSizePriceDO.setModelNumber(modelNumber);
-                    itemSizePriceDO.setSkuId(skuId);
-                    itemSizePriceDO.setEuSize(size);
-                    Integer fastPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
-                    Integer normalPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
-                    Integer lightningPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.LIGHTNING);
-                    Optional.ofNullable(fastPrice).ifPresent(price -> itemSizePriceDO.setPoisonFastPrice(BigDecimal.valueOf(price)));
-                    Optional.ofNullable(normalPrice).ifPresent(price -> itemSizePriceDO.setPoisonNormalPrice(BigDecimal.valueOf(price)));
-                    Optional.ofNullable(lightningPrice).ifPresent(price -> itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(price)));
-                    itemSizePriceDOS.add(itemSizePriceDO);
-                }
-                System.out.println(JSON.toJSONString(itemSizePriceDOS));
-                itemSizePriceMapper.insert(itemSizePriceDOS);
-            }
+//            for (KickScrewItemDO kickScrewItemDO : brandItems) {
+//                // 创建ItemDO
+//                ItemDO itemDO = new ItemDO();
+//                itemDO.setModelNumber(kickScrewItemDO.getModelNo());
+//                itemDO.setImage(kickScrewItemDO.getImage());
+//                itemDO.setBrandName(kickScrewItemDO.getBrand());
+//                itemDO.setProductType(kickScrewItemDO.getProductType());
+//                String modelNumber = kickScrewItemDO.getModelNo();
+//                PoisonItem poisonItem = poisonClient.queryItemByModelNumber(modelNumber);
+//                itemDO.setName(poisonItem.getTitle());
+//                itemMapper.insert(itemDO);
+//                // 查询商品不同尺码的价格
+//                List<ItemSizePriceDO> itemSizePriceDOS = new ArrayList<>();
+//                // 查询kc价格
+//                String handle = kickScrewItemDO.getHandle();
+//                List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
+//                kickScrewSizePrices.stream()
+//                        .map(this::toSizePrice)
+//                        .forEach(itemSizePriceDO -> {
+//                            itemSizePriceDO.setModelNumber(modelNumber);
+//                            itemSizePriceDOS.add(itemSizePriceDO);
+//                        });
+//                // 查询得物价格
+//                for (Sku sku : poisonItem.getSkus()) {
+//                    Long skuId = sku.getSkuId();
+//                    String size = JSON.parseObject(sku.getProperties()).getString("尺码");
+//                    ItemSizePriceDO itemSizePriceDO = itemSizePriceDOS.stream().filter(itemSizePrice -> size.equals(itemSizePrice.getEuSize())).findFirst().orElse(null);
+//                    if (itemSizePriceDO == null) {
+//                        continue;
+//                    }
+//                    itemSizePriceDO.setModelNumber(modelNumber);
+//                    itemSizePriceDO.setSkuId(skuId);
+//                    itemSizePriceDO.setEuSize(size);
+//                    Integer fastPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
+//                    Integer normalPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
+//                    Integer lightningPrice = poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.LIGHTNING);
+//                    Optional.ofNullable(fastPrice).ifPresent(price -> itemSizePriceDO.setPoisonFastPrice(BigDecimal.valueOf(price)));
+//                    Optional.ofNullable(normalPrice).ifPresent(price -> itemSizePriceDO.setPoisonNormalPrice(BigDecimal.valueOf(price)));
+//                    Optional.ofNullable(lightningPrice).ifPresent(price -> itemSizePriceDO.setPoisonLightningPrice(BigDecimal.valueOf(price)));
+//                    itemSizePriceDOS.add(itemSizePriceDO);
+//                }
+//                System.out.println(JSON.toJSONString(itemSizePriceDOS));
+//                itemSizePriceMapper.insert(itemSizePriceDOS);
+//            }
         }
     }
 

@@ -4,8 +4,8 @@ import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
+import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
-import cn.ken.shoes.model.poinson.PoisonItem;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
@@ -72,22 +72,22 @@ public class PoisonClient {
 
     /**
      * 根据商品货号查询商品信息，主要为了拿到spuId用于查价
-     * @param modelNumber 商品货号
+     * @param modelNumberList 商品货号
      * @return 商品详细信息
      */
-    public PoisonItem queryItemByModelNumber(String modelNumber) {
+    public List<PoisonItemDO> queryItemByModelNumber(List<String> modelNumberList) {
         String url = PoisonConfig.getUrlPrefix() + PoisonApiConstant.BATCH_ARTICLE_NUMBER;
         Map<String, Object> params = new LinkedHashMap<>();
-        params.put("article_numbers", Collections.singletonList(modelNumber));
+        params.put("article_numbers", modelNumberList);
         enhanceParams(params);
         log.info("queryItemByModelNumber-request:{}", params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
         log.info("queryItemByModelNumber-response:{}", result);
-        Result<List<PoisonItem>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+        Result<List<PoisonItemDO>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;
         }
-        return parseRes.getData().getFirst();
+        return parseRes.getData();
     }
 
     /**
