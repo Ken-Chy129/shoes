@@ -13,4 +13,6 @@ public interface PoisonItemMapper extends BaseMapper<PoisonItemDO> {
     void deleteAll();
 
     PoisonItemDO selectByArticleNumber(@Param("articleNumber") String articleNumber);
+
+    List<String> selectModelNoByKcBrand(@Param("brand") String brand);
 }

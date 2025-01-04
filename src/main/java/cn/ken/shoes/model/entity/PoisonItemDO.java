@@ -21,4 +21,6 @@ public class PoisonItemDO {
     private String articleNumber;
 
     private String spuLogo;
+
+    private String kcBrand;
 }
