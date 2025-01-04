@@ -5,7 +5,7 @@ import lombok.Data;
 import java.util.List;
 
 @Data
-public class ItemPrice {
+public class PoisonItemPrice {
 
     private Long skuId;
 
