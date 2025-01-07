@@ -15,6 +15,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -33,7 +34,7 @@ public class PoisonService {
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
 
-    public void refreshPoisonItems() {
+    public void refreshPoisonItems() throws InterruptedException {
         List<String> brandList = brandMapper.selectBrandNames();
         RateLimiter rateLimiter = RateLimiter.create(15);
         int total = 0;
@@ -43,17 +44,26 @@ public class PoisonService {
             List<String> existBrandModelNoList = poisonItemMapper.selectModelNoByKcBrand(brand);
             brandModelNoList.removeAll(existBrandModelNoList);
             List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
-            for (List<String> fiveModelNoList : Lists.partition(brandModelNoList, 5)) {
+            List<List<String>> partition = Lists.partition(brandModelNoList, 5);
+            CountDownLatch latch = new CountDownLatch(partition.size());
+            for (List<String> fiveModelNoList : partition) {
                 double waitTime = rateLimiter.acquire();
                 log.info("waitTime:{}", waitTime);
                 Thread.ofVirtual().name("poison-api").start(() -> {
-                    List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
-                    if (CollectionUtils.isEmpty(poisonItemDOS)) {
-                        return;
+                    try {
+                        List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
+                        if (CollectionUtils.isEmpty(poisonItemDOS)) {
+                            return;
+                        }
+                        brandItems.addAll(poisonItemDOS);
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                    } finally {
+                        latch.countDown();
                     }
-                    brandItems.addAll(poisonItemDOS);
                 });
             }
+            latch.await();
             for (PoisonItemDO brandItem : brandItems) {
                 brandItem.setKcBrand(brand);
             }
