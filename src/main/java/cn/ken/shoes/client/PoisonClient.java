@@ -80,9 +80,7 @@ public class PoisonClient {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("article_numbers", modelNumberList);
         enhanceParams(params);
-        log.info("queryItemByModelNos-request:{}", params);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
-        log.info("queryItemByModelNos-response:{}", result);
         Result<List<PoisonItemDO>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
             return null;

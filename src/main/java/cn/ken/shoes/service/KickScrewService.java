@@ -1,12 +1,15 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.config.KickScrewConfig;
+import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.mapper.BrandMapper;
+import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.entity.BrandDO;
+import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -14,10 +17,9 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -33,10 +35,17 @@ public class KickScrewService {
 
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
+    
+    @Resource
+    private ItemSizePriceMapper itemSizePriceMapper;
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
 
+    /**
+     * 目录数据爬取并保存品牌类型和数量
+     * @return 返回商品总数
+     */
     public int scratchAndSaveCategories() {
         long startTime = System.currentTimeMillis();
         log.info("scratchAndSaveCategories start");
@@ -65,6 +74,9 @@ public class KickScrewService {
         return itemCnt;
     }
 
+    /**
+     * 爬取kc平台商品并保存（根据品牌进行爬取）
+     */
     public void scratchAndSaveItems() {
         kickScrewItemMapper.deleteAll();
 
@@ -134,4 +146,53 @@ public class KickScrewService {
         }
         log.info("batchInsertItems end, cost:{}", System.currentTimeMillis() - allStartTime);
     }
+
+    public void scratchItemPrices() {
+        List<String> brandList = brandMapper.selectBrandNames();
+        for (String brand : brandList) {
+            List<KickScrewItemDO> brandItems = kickScrewItemMapper.selectListByBrand(brand);
+            Map<String, List<ItemSizePriceDO>> itemSizePricesMap = new HashMap<>();
+
+            for (KickScrewItemDO brandItem : brandItems) {
+                Thread.ofVirtual().name("scratchItemPrices:" + brand).start(() -> {
+                    String modelNo = brandItem.getModelNo();
+                    String handle = brandItem.getHandle();
+                    List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
+                    kickScrewSizePrices.stream()
+                            .map(this::toSizePrice)
+                            .forEach(itemSizePriceDO -> {
+                                itemSizePriceDO.setModelNumber(modelNo);
+                                itemSizePriceDO.setCreateTime(new Date());
+                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                            });
+                });
+            }
+            Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePricesMap.values().stream().flatMap(List::stream).toList()));
+        }
+    }
+
+    private ItemSizePriceDO toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
+        ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
+        Map<String, String> price = kickScrewSizePrice.getPrice();
+        itemSizePriceDO.setKickScrewPrice(BigDecimal.valueOf(Double.parseDouble(price.get("amount"))));
+        String title = kickScrewSizePrice.getTitle();
+        List<String> sizeList = Arrays.stream(title.split("/")).map(String::trim).toList();
+        for (String size : sizeList) {
+            String[] split = size.split(" ");
+            if (split.length < 2) {
+                continue;
+            }
+            String sizeType = split[0];
+            String value = split.length > 2 ? split[2] : split[1];
+            switch (SizeEnum.from(sizeType)) {
+                case MEN_US -> itemSizePriceDO.setMenUSSize(value);
+                case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
+                case EU -> itemSizePriceDO.setEuSize(value);
+                case UK -> itemSizePriceDO.setUkSize(value);
+                case JP -> itemSizePriceDO.setJpSize(value);
+            }
+        }
+        return itemSizePriceDO;
+    }
+
 }

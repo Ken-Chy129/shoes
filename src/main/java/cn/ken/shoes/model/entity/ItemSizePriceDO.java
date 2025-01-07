@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 import java.math.BigDecimal;
+import java.util.Date;
 
 @Data
 @TableName("item_size_price")
@@ -16,6 +17,11 @@ public class ItemSizePriceDO extends BaseDO {
      * 货号
      */
     private String modelNumber;
+
+    /**
+     * 时间
+     */
+    private Date createTime;
 
     /**
      * sku
