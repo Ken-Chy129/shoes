@@ -42,7 +42,7 @@ public class ShoesController {
     }
 
     @GetMapping("refreshPoisonItems")
-    public void refreshPoisonItems() {
+    public void refreshPoisonItems() throws InterruptedException {
         poisonService.refreshPoisonItems();
     }
 

@@ -147,26 +147,34 @@ public class KickScrewService {
         log.info("batchInsertItems end, cost:{}", System.currentTimeMillis() - allStartTime);
     }
 
-    public void scratchItemPrices() {
-        List<String> brandList = brandMapper.selectBrandNames();
+    public void scratchItemPrices() throws InterruptedException {
+//        List<String> brandList = brandMapper.selectBrandNames();
+        List<String> brandList = List.of("MLB", "Burberry", "Valentino");
         for (String brand : brandList) {
             List<KickScrewItemDO> brandItems = kickScrewItemMapper.selectListByBrand(brand);
             Map<String, List<ItemSizePriceDO>> itemSizePricesMap = new HashMap<>();
-
+            CountDownLatch brandLatch = new CountDownLatch(brandList.size());
             for (KickScrewItemDO brandItem : brandItems) {
                 Thread.ofVirtual().name("scratchItemPrices:" + brand).start(() -> {
-                    String modelNo = brandItem.getModelNo();
-                    String handle = brandItem.getHandle();
-                    List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
-                    kickScrewSizePrices.stream()
-                            .map(this::toSizePrice)
-                            .forEach(itemSizePriceDO -> {
-                                itemSizePriceDO.setModelNumber(modelNo);
-                                itemSizePriceDO.setCreateTime(new Date());
-                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
-                            });
+                    try {
+                        String modelNo = brandItem.getModelNo();
+                        String handle = brandItem.getHandle();
+                        List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
+                        kickScrewSizePrices.stream()
+                                .map(this::toSizePrice)
+                                .forEach(itemSizePriceDO -> {
+                                    itemSizePriceDO.setModelNumber(modelNo);
+                                    itemSizePriceDO.setCreateTime(new Date());
+                                    itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                                });
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                    } finally {
+                        brandLatch.countDown();
+                    }
                 });
             }
+            brandLatch.await();
             Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePricesMap.values().stream().flatMap(List::stream).toList()));
         }
     }
