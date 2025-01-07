@@ -19,8 +19,8 @@
         delete from shoes.kick_screw_item;
     </delete>
 
-    <select id="selectModelNoByBrand" resultType="java.lang.String">
-        select model_no from shoes.kick_screw_item
+    <select id="selectListByBrand" resultType="cn.ken.shoes.model.entity.KickScrewItemDO">
+        select * from shoes.kick_screw_item
         where brand = #{brand}
     </select>
 
