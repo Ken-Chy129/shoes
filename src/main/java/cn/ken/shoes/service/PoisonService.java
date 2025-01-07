@@ -68,8 +68,8 @@ public class PoisonService {
                 brandItem.setKcBrand(brand);
             }
             Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
-            total += brandItems.size();
             log.info("refreshPoisonItems finish, brand:{}, cnt:{}", brand, brandItems.size());
+            total += brandItems.size();
         }
         log.info("refreshPoisonItems, total:{}", total);
         System.out.println("finish");

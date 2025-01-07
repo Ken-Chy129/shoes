@@ -10,6 +10,7 @@ import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -18,7 +19,6 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -147,15 +147,19 @@ public class KickScrewService {
         log.info("batchInsertItems end, cost:{}", System.currentTimeMillis() - allStartTime);
     }
 
-    public void scratchItemPrices() throws InterruptedException {
+    public void scratchAndSaveItemPrices() throws InterruptedException {
 //        List<String> brandList = brandMapper.selectBrandNames();
-        List<String> brandList = List.of("MLB", "Burberry", "Valentino");
+        // todo：版本查询
+        List<String> brandList = List.of("FILA");
+        RateLimiter rateLimiter = RateLimiter.create(20);
         for (String brand : brandList) {
+            long startTime = System.currentTimeMillis();
             List<KickScrewItemDO> brandItems = kickScrewItemMapper.selectListByBrand(brand);
             Map<String, List<ItemSizePriceDO>> itemSizePricesMap = new HashMap<>();
-            CountDownLatch brandLatch = new CountDownLatch(brandList.size());
+            CountDownLatch brandLatch = new CountDownLatch(brandItems.size());
             for (KickScrewItemDO brandItem : brandItems) {
-                Thread.ofVirtual().name("scratchItemPrices:" + brand).start(() -> {
+                log.info("waitTime:{}", rateLimiter.acquire());
+                Thread.ofVirtual().name("scratchAndSaveItemPrices:" + brand).start(() -> {
                     try {
                         String modelNo = brandItem.getModelNo();
                         String handle = brandItem.getHandle();
@@ -175,7 +179,9 @@ public class KickScrewService {
                 });
             }
             brandLatch.await();
-            Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePricesMap.values().stream().flatMap(List::stream).toList()));
+            List<ItemSizePriceDO> itemSizePriceDOS = itemSizePricesMap.values().stream().flatMap(List::stream).toList();
+            log.info("scratch finish, brand:{}, itemCnt:{}, sizeCnt:{}, cost:{}", brand, brandItems.size(), itemSizePriceDOS.size(), System.currentTimeMillis() - startTime);
+            Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePriceDOS));
         }
     }
 

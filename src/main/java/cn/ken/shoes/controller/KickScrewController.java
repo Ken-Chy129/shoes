@@ -22,4 +22,9 @@ public class KickScrewController {
     public Integer refreshCategories() {
         return kickScrewService.scratchAndSaveCategories();
     }
+
+    @GetMapping("refreshPrices")
+    public void refreshPrices() throws InterruptedException {
+        kickScrewService.scratchAndSaveItemPrices();
+    }
 }
