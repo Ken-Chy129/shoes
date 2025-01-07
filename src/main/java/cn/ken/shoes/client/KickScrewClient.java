@@ -98,6 +98,7 @@ public class KickScrewClient {
                 )),
                 Headers.of("x-shopify-storefront-access-token", "43a507be1a455a4018117e16f8969b7e")
         );
+        //availableForSale过滤，无鞋类尺码过滤
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
                 .map(json -> json.getJSONObject("data"))
