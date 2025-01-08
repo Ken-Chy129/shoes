@@ -8,7 +8,9 @@ import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
@@ -110,6 +112,30 @@ public class KickScrewClient {
                 .stream()
                 .map(json -> json.getObject("node", KickScrewSizePrice.class))
                 .toList();
+    }
+
+    public List<Map<String, String>> queryItemSizeChart(String brand, String modelNo) {
+        String url = KickScrewApiConstant.SEARCH_ITEM_SIZE
+                .replace("{brand}", brand)
+                .replace("{modelNo}", modelNo);
+        String result = HttpUtil.doGet(url);
+        JSONObject parsedResult = JSON.parseObject(result);
+        if (parsedResult == null || parsedResult.containsKey("error")) {
+            return Collections.emptyList();
+        }
+        List<String> sizeCodes = parsedResult.getObject("sizeCode", new TypeReference<List<String>>() {});
+        List<JSONObject> tables = parsedResult.getObject("tables", new TypeReference<List<JSONObject>>() {});
+        List<Map<String, String>> labelSizeMapList = new ArrayList<>();
+        for (String size : sizeCodes) {
+            Map<String, String> map = new HashMap<>();
+            for (JSONObject table : tables) {
+                String shortLabel = table.getString("shortLabel");
+                String labelSize = table.getJSONObject("sizes").getString(size);
+                map.put(shortLabel, labelSize);
+            }
+            labelSizeMapList.add(map);
+        }
+        return labelSizeMapList;
     }
 
     public void batchUploadItems(List<KickScrewUploadItem> items) {
