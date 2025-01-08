@@ -183,6 +183,7 @@ public class KickScrewService {
             log.info("scratch finish, brand:{}, itemCnt:{}, sizeCnt:{}, cost:{}", brand, brandItems.size(), itemSizePriceDOS.size(), System.currentTimeMillis() - startTime);
             Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePriceDOS));
         }
+        System.out.println("finish");
     }
 
     private ItemSizePriceDO toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
@@ -190,6 +191,8 @@ public class KickScrewService {
         Map<String, String> price = kickScrewSizePrice.getPrice();
         itemSizePriceDO.setKickScrewPrice(BigDecimal.valueOf(Double.parseDouble(price.get("amount"))));
         String title = kickScrewSizePrice.getTitle();
+
+        // todo:解析有问题，，，，，考虑表中是否加入handle
         List<String> sizeList = Arrays.stream(title.split("/")).map(String::trim).toList();
         for (String size : sizeList) {
             String[] split = size.split(" ");
