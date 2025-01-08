@@ -14,6 +14,11 @@ import java.util.Date;
 public class ItemSizePriceDO extends BaseDO {
 
     /**
+     * 品牌
+     */
+    private String brand;
+
+    /**
      * 货号
      */
     private String modelNumber;
@@ -34,6 +39,11 @@ public class ItemSizePriceDO extends BaseDO {
     private String euSize;
 
     /**
+     * 美码
+     */
+    private String usSize;
+
+    /**
      * 男美码
      */
     @TableField("men_us_size")
@@ -51,9 +61,9 @@ public class ItemSizePriceDO extends BaseDO {
     private String ukSize;
 
     /**
-     * jp（cm）
+     * CM
      */
-    private String jpSize;
+    private String cmSize;
 
     /**
      * kickScrew平台价格(USD)
@@ -79,4 +89,9 @@ public class ItemSizePriceDO extends BaseDO {
      * 利润
      */
     private BigDecimal profit;
+
+    /**
+     * 扩展属性
+     */
+    private String attributes;
 }

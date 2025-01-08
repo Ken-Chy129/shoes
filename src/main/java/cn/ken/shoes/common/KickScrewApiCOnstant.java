@@ -18,6 +18,11 @@ public class KickScrewApiConstant {
     public static final String SEARCH_ITEM_SIZE_PRICE = "https://kickscrewshop.myshopify.com/api/2024-04/graphql.json";
 
     /**
+     * 用于查询商品的尺码表
+     */
+    public static final String SEARCH_ITEM_SIZE = "https://api.size.storefront.kickscrew.com/v2/size-chart/{brand}/{modelNo}/json";
+
+    /**
      * B端批量上传商品api
      */
     public static final String BATCH_UPLOAD_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/batch-update";
