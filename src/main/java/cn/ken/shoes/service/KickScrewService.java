@@ -151,7 +151,7 @@ public class KickScrewService {
     public void scratchAndSaveItemPrices() throws InterruptedException {
 //        List<String> brandList = brandMapper.selectBrandNames();
         // todo：版本查询
-        List<String> brandList = List.of("FILA");
+        List<String> brandList = List.of("NIKE");
         RateLimiter rateLimiter = RateLimiter.create(20);
         for (String brand : brandList) {
             long startTime = System.currentTimeMillis();
