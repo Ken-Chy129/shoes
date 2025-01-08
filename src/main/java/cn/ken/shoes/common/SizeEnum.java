@@ -7,11 +7,12 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum SizeEnum {
 
-    MEN_US("Men's"),
-    WOMAN_US("Women's"),
+    MEN_US("US(M)"),
+    WOMAN_US("US(W)"),
+    US("US"),
     UK("UK"),
     EU("EU"),
-    JP("JP"),
+    CM("CM"),
     UNKNOWN("unknown"),;
 
     private final String code;

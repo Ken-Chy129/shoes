@@ -10,6 +10,7 @@ import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
+import com.alibaba.fastjson.JSONObject;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -163,14 +164,42 @@ public class KickScrewService {
                     try {
                         String modelNo = brandItem.getModelNo();
                         String handle = brandItem.getHandle();
+                        List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
                         List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
-                        kickScrewSizePrices.stream()
-                                .map(this::toSizePrice)
-                                .forEach(itemSizePriceDO -> {
-                                    itemSizePriceDO.setModelNumber(modelNo);
-                                    itemSizePriceDO.setCreateTime(new Date());
-                                    itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
-                                });
+                        if (sizeChart.size() != kickScrewSizePrices.size()) {
+                            log.error("尺码表与尺码价格表数量不匹配！");
+                            return;
+                        }
+                        for (int i = 0; i < sizeChart.size(); i++) {
+                            KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
+                            Map<String, String> price = kickScrewSizePrice.getPrice();
+                            BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(price.get("amount")));
+                            ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
+                            itemSizePriceDO.setCreateTime(new Date());
+                            itemSizePriceDO.setBrand(brand);
+                            itemSizePriceDO.setModelNumber(modelNo);
+                            itemSizePriceDO.setKickScrewPrice(amount);
+
+                            Map<String, String> labelSizeMap = sizeChart.get(i);
+                            itemSizePriceDO.setEuSize(labelSizeMap.get(SizeEnum.EU.getCode()));
+                            itemSizePriceDO.setMenUSSize(labelSizeMap.get(SizeEnum.MEN_US.getCode()));
+                            itemSizePriceDO.setWomenUSSize(labelSizeMap.get(SizeEnum.WOMAN_US.getCode()));
+                            itemSizePriceDO.setUsSize(Optional.ofNullable(labelSizeMap.get(SizeEnum.US.getCode()))
+                                    .orElse(Optional.ofNullable(itemSizePriceDO.getMenUSSize())
+                                                .orElse(itemSizePriceDO.getWomenUSSize())
+                                    )
+                            );
+                            itemSizePriceDO.setUkSize(labelSizeMap.get(SizeEnum.UK.getCode()));
+                            itemSizePriceDO.setCmSize(labelSizeMap.get(SizeEnum.CM.getCode()));
+
+                            Map<String, Object> attributes = new HashMap<>();
+                            attributes.put("labelSize", labelSizeMap);
+                            attributes.put("title", kickScrewSizePrice.getTitle());
+                            attributes.put("currencyCode", price.get("currencyCode"));
+                            attributes.put("handle", handle);
+                            itemSizePriceDO.setAttributes(JSONObject.toJSONString(attributes));
+                            itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                        }
                     } catch (Exception e) {
                         log.error(e.getMessage(), e);
                     } finally {
@@ -184,32 +213,6 @@ public class KickScrewService {
             Thread.ofVirtual().name("sql").start(() -> itemSizePriceMapper.insert(itemSizePriceDOS));
         }
         System.out.println("finish");
-    }
-
-    private ItemSizePriceDO toSizePrice(KickScrewSizePrice kickScrewSizePrice) {
-        ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
-        Map<String, String> price = kickScrewSizePrice.getPrice();
-        itemSizePriceDO.setKickScrewPrice(BigDecimal.valueOf(Double.parseDouble(price.get("amount"))));
-        String title = kickScrewSizePrice.getTitle();
-
-        // todo:解析有问题，，，，，考虑表中是否加入handle
-        List<String> sizeList = Arrays.stream(title.split("/")).map(String::trim).toList();
-        for (String size : sizeList) {
-            String[] split = size.split(" ");
-            if (split.length < 2) {
-                continue;
-            }
-            String sizeType = split[0];
-            String value = split.length > 2 ? split[2] : split[1];
-            switch (SizeEnum.from(sizeType)) {
-                case MEN_US -> itemSizePriceDO.setMenUSSize(value);
-                case WOMAN_US -> itemSizePriceDO.setWomenUSSize(value);
-                case EU -> itemSizePriceDO.setEuSize(value);
-                case UK -> itemSizePriceDO.setUkSize(value);
-                case JP -> itemSizePriceDO.setJpSize(value);
-            }
-        }
-        return itemSizePriceDO;
     }
 
 }
