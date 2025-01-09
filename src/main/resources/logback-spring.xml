@@ -27,7 +27,7 @@ packagingData	true|false	                                          每行日志�
             <!--日志文件输出的文件名-->
             <FileNamePattern>${LOG_HOME}/application.log.%d{yyyy-MM-dd}.%i</FileNamePattern>
             <!--日志文件保留天数-->
-            <MaxHistory>10</MaxHistory>
+            <MaxHistory>3</MaxHistory>
             <MaxFileSize>10MB</MaxFileSize>
         </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
@@ -42,7 +42,7 @@ packagingData	true|false	                                          每行日志�
             <!--日志文件输出的文件名-->
             <FileNamePattern>${LOG_HOME}/service.log.%d{yyyy-MM-dd}.%i</FileNamePattern>
             <!--日志文件保留天数-->
-            <MaxHistory>10</MaxHistory>
+            <MaxHistory>3</MaxHistory>
             <MaxFileSize>10MB</MaxFileSize>
         </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
@@ -66,7 +66,7 @@ packagingData	true|false	                                          每行日志�
             <!--日志文件输出的文件名-->
             <FileNamePattern>${LOG_HOME}/http.log.%d{yyyy-MM-dd}.%i</FileNamePattern>
             <!--日志文件保留天数-->
-            <MaxHistory>10</MaxHistory>
+            <MaxHistory>3</MaxHistory>
             <MaxFileSize>10MB</MaxFileSize>
         </rollingPolicy>
         <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
