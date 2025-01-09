@@ -7,6 +7,8 @@ import java.util.Map;
 @Data
 public class KickScrewSizePrice {
 
+    private boolean availableForSale;
+
     private String title;
 
     private Map<String, String> price;

@@ -214,7 +214,7 @@ public class KickScrewService {
 
     private ItemSizePriceDO buildItemSizePriceDO(String brand, String modelNo, String handle, KickScrewSizePrice kickScrewSizePrice, Map<String, String> labelSizeMap) {
         Map<String, String> price = kickScrewSizePrice.getPrice();
-        BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(price.get("amount")));
+        BigDecimal amount = kickScrewSizePrice.isAvailableForSale() ? BigDecimal.valueOf(Double.parseDouble(price.get("amount"))) : BigDecimal.valueOf(-1);
         ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
         itemSizePriceDO.setCreateTime(new Date());
         itemSizePriceDO.setBrand(brand);
