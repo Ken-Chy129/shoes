@@ -121,6 +121,7 @@ public class KickScrewClient {
         String result = HttpUtil.doGet(url);
         JSONObject parsedResult = JSON.parseObject(result);
         if (parsedResult == null || parsedResult.containsKey("error")) {
+            log.error("queryItemSizeChart error, brand:{}, modelNo:{}", brand, modelNo);
             return Collections.emptyList();
         }
         List<String> sizeCodes = parsedResult.getObject("sizeCode", new TypeReference<List<String>>() {});

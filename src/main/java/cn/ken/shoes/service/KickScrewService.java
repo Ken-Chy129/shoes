@@ -18,11 +18,14 @@ import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
@@ -42,6 +45,8 @@ public class KickScrewService {
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
+
+    private static final Pattern pattern = Pattern.compile("EU\\s*(\\d+\\.?\\d*)", Pattern.CASE_INSENSITIVE);
 
     /**
      * 目录数据爬取并保存品牌类型和数量
@@ -160,42 +165,41 @@ public class KickScrewService {
             CountDownLatch brandLatch = new CountDownLatch(brandItems.size());
             for (KickScrewItemDO brandItem : brandItems) {
                 log.info("waitTime:{}", rateLimiter.acquire());
-                Thread.ofVirtual().name("scratchAndSaveItemPrices:" + brand).start(() -> {
+                Thread.ofVirtual().name("scratchAndSaveItemPrices:" + brand + brandItem.getModelNo()).start(() -> {
                     try {
                         String modelNo = brandItem.getModelNo();
                         String handle = brandItem.getHandle();
                         List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
                         List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
-                        if (sizeChart.size() != kickScrewSizePrices.size()) {
-                            log.error("尺码表与尺码价格表数量不匹配！, brand:{}, modelNo:{}, handle:{}", brand, modelNo, handle);
+                        if (CollectionUtils.isEmpty(sizeChart) || CollectionUtils.isEmpty(kickScrewSizePrices)) {
+                            log.error("scratchAndSaveItemPrices error, model:{}, handle:{}", modelNo, handle);
+                        }
+//                        if (sizeChart.size() != kickScrewSizePrices.size()) {
+//                            log.error("尺码表与尺码价格表数量不匹配！, brand:{}, modelNo:{}, handle:{}", brand, modelNo, handle);
                             for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
                                 String title = kickScrewSizePrice.getTitle();
-                                String size = Arrays.stream(title.split("/"))
-                                        .filter(labelSize -> labelSize.contains(SizeEnum.EU.getCode()))
-                                        .findFirst()
-                                        .map(labelSize -> labelSize.replace(SizeEnum.EU.getCode(), ""))
-                                        .map(String::trim)
-                                        .orElse(null);
+                                String size = getEuSize(title);
                                 Map<String, String> labelSizeMap = sizeChart.stream()
                                         .filter(map -> map.get(SizeEnum.EU.getCode()).equals(size))
                                         .findFirst()
                                         .orElse(null);
                                 if (labelSizeMap == null) {
+                                    log.error("scratchAndSaveItemPrices labelSizeMap is null, model:{}, handle:{}", modelNo, handle);
                                     continue;
                                 }
                                 ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
                                 itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
                             }
-                        }  else {
-                            for (int i = 0; i < sizeChart.size(); i++) {
-                                KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
-                                Map<String, String> labelSizeMap = sizeChart.get(i);
-                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
-
-                                // todo：查询得物价格，注意考虑得物尺码 ⅔，在kc是.67, ⅓是.33
-                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
-                            }
-                        }
+//                        }  else {
+//                            for (int i = 0; i < sizeChart.size(); i++) {
+//                                KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
+//                                Map<String, String> labelSizeMap = sizeChart.get(i);
+//                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
+//
+//                                // todo：查询得物价格，注意考虑得物尺码 ⅔，在kc是.67, ⅓是.33
+//                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+//                            }
+//                        }
                     } catch (Exception e) {
                         log.error(e.getMessage(), e);
                     } finally {
@@ -211,6 +215,37 @@ public class KickScrewService {
         System.out.println("finish");
     }
 
+    private String getEuSize(String rawTitle) {
+        // 定义正则表达式以匹配 "EU" 后跟随的数字（包括小数）
+        Matcher matcher = pattern.matcher(rawTitle);
+        // 查找符合模式的子串，并返回捕获组的内容（即EU后的尺寸）
+        if (matcher.find()) {
+            return matcher.group(1); // 返回第一个捕获组，即EU后面的尺寸
+        } else {
+            return null; // 如果没有找到匹配项，则返回null
+        }
+    }
+
+    public static void main(String[] args) {
+        // 测试用例
+        String[] testStrings = {
+                "11C \\ UK10.5 \\ EU28 \\ 17CM",
+                "Men's US 5 / Women's US 6.5 / UK 4.5 / EU 37.5 / JP 23.5"
+        };
+
+        for (String test : testStrings) {
+            System.out.println("Original: " + test);
+            Matcher matcher = pattern.matcher(test);
+            String euSize;
+            // 查找符合模式的子串，并返回捕获组的内容（即EU后的尺寸）
+            if (matcher.find()) {
+                euSize = matcher.group(1); // 返回第一个捕获组，即EU后面的尺寸
+            } else {
+                euSize = null; // 如果没有找到匹配项，则返回null
+            }
+            System.out.println("Extracted EU Size: " + euSize);
+        }
+    }
 
     private ItemSizePriceDO buildItemSizePriceDO(String brand, String modelNo, String handle, KickScrewSizePrice kickScrewSizePrice, Map<String, String> labelSizeMap) {
         Map<String, String> price = kickScrewSizePrice.getPrice();
