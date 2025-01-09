@@ -167,38 +167,34 @@ public class KickScrewService {
                         List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
                         List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
                         if (sizeChart.size() != kickScrewSizePrices.size()) {
-                            log.error("尺码表与尺码价格表数量不匹配！");
-                            return;
-                        }
-                        for (int i = 0; i < sizeChart.size(); i++) {
-                            KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
-                            Map<String, String> price = kickScrewSizePrice.getPrice();
-                            BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(price.get("amount")));
-                            ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
-                            itemSizePriceDO.setCreateTime(new Date());
-                            itemSizePriceDO.setBrand(brand);
-                            itemSizePriceDO.setModelNumber(modelNo);
-                            itemSizePriceDO.setKickScrewPrice(amount);
+                            log.error("尺码表与尺码价格表数量不匹配！, brand:{}, modelNo:{}, handle:{}", brand, modelNo, handle);
+                            for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                                String title = kickScrewSizePrice.getTitle();
+                                String size = Arrays.stream(title.split("/"))
+                                        .filter(labelSize -> labelSize.contains(SizeEnum.EU.getCode()))
+                                        .findFirst()
+                                        .map(labelSize -> labelSize.replace(SizeEnum.EU.getCode(), ""))
+                                        .map(String::trim)
+                                        .orElse(null);
+                                Map<String, String> labelSizeMap = sizeChart.stream()
+                                        .filter(map -> map.get(SizeEnum.EU.getCode()).equals(size))
+                                        .findFirst()
+                                        .orElse(null);
+                                if (labelSizeMap == null) {
+                                    continue;
+                                }
+                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
+                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                            }
+                        }  else {
+                            for (int i = 0; i < sizeChart.size(); i++) {
+                                KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
+                                Map<String, String> labelSizeMap = sizeChart.get(i);
+                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
 
-                            Map<String, String> labelSizeMap = sizeChart.get(i);
-                            itemSizePriceDO.setEuSize(labelSizeMap.get(SizeEnum.EU.getCode()));
-                            itemSizePriceDO.setMenUSSize(labelSizeMap.get(SizeEnum.MEN_US.getCode()));
-                            itemSizePriceDO.setWomenUSSize(labelSizeMap.get(SizeEnum.WOMAN_US.getCode()));
-                            itemSizePriceDO.setUsSize(Optional.ofNullable(labelSizeMap.get(SizeEnum.US.getCode()))
-                                    .orElse(Optional.ofNullable(itemSizePriceDO.getMenUSSize())
-                                                .orElse(itemSizePriceDO.getWomenUSSize())
-                                    )
-                            );
-                            itemSizePriceDO.setUkSize(labelSizeMap.get(SizeEnum.UK.getCode()));
-                            itemSizePriceDO.setCmSize(labelSizeMap.get(SizeEnum.CM.getCode()));
-
-                            Map<String, Object> attributes = new HashMap<>();
-                            attributes.put("labelSize", labelSizeMap);
-                            attributes.put("title", kickScrewSizePrice.getTitle());
-                            attributes.put("currencyCode", price.get("currencyCode"));
-                            attributes.put("handle", handle);
-                            itemSizePriceDO.setAttributes(JSONObject.toJSONString(attributes));
-                            itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                                // todo：查询得物价格，注意考虑得物尺码 ⅔，在kc是.67, ⅓是.33
+                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                            }
                         }
                     } catch (Exception e) {
                         log.error(e.getMessage(), e);
@@ -215,4 +211,33 @@ public class KickScrewService {
         System.out.println("finish");
     }
 
+
+    private ItemSizePriceDO buildItemSizePriceDO(String brand, String modelNo, String handle, KickScrewSizePrice kickScrewSizePrice, Map<String, String> labelSizeMap) {
+        Map<String, String> price = kickScrewSizePrice.getPrice();
+        BigDecimal amount = BigDecimal.valueOf(Double.parseDouble(price.get("amount")));
+        ItemSizePriceDO itemSizePriceDO = new ItemSizePriceDO();
+        itemSizePriceDO.setCreateTime(new Date());
+        itemSizePriceDO.setBrand(brand);
+        itemSizePriceDO.setModelNumber(modelNo);
+        itemSizePriceDO.setKickScrewPrice(amount);
+
+        itemSizePriceDO.setEuSize(labelSizeMap.get(SizeEnum.EU.getCode()));
+        itemSizePriceDO.setMenUSSize(labelSizeMap.get(SizeEnum.MEN_US.getCode()));
+        itemSizePriceDO.setWomenUSSize(labelSizeMap.get(SizeEnum.WOMAN_US.getCode()));
+        itemSizePriceDO.setUsSize(Optional.ofNullable(labelSizeMap.get(SizeEnum.US.getCode()))
+                .orElse(Optional.ofNullable(itemSizePriceDO.getMenUSSize())
+                        .orElse(itemSizePriceDO.getWomenUSSize())
+                )
+        );
+        itemSizePriceDO.setUkSize(labelSizeMap.get(SizeEnum.UK.getCode()));
+        itemSizePriceDO.setCmSize(labelSizeMap.get(SizeEnum.CM.getCode()));
+
+        Map<String, Object> attributes = new HashMap<>();
+        attributes.put("labelSize", labelSizeMap);
+        attributes.put("title", kickScrewSizePrice.getTitle());
+        attributes.put("currencyCode", price.get("currencyCode"));
+        attributes.put("handle", handle);
+        itemSizePriceDO.setAttributes(JSONObject.toJSONString(attributes));
+        return itemSizePriceDO;
+    }
 }
