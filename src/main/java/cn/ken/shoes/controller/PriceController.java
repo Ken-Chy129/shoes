@@ -4,6 +4,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.ItemDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
+import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
@@ -36,5 +37,15 @@ public class PriceController {
     @GetMapping("test")
     public void scratch() {
         priceService.scratchAndSaveItems();
+    }
+
+    @GetMapping("queryBrand")
+    public KickScrewCategory queryBrand() {
+        return kickScrewClient.queryBrand();
+    }
+
+    @GetMapping("queryPage")
+    public Integer queryPage() {
+        return kickScrewClient.queryBrandItemPageV2("NIKE", 2024);
     }
 }
