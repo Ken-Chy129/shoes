@@ -23,14 +23,10 @@ public class KickScrewClient {
 
     private static final String AGENT = "Algolia for JavaScript (4.24.0); Browser; instantsearch.js (4.74.0); react (18.3.1); react-instantsearch (7.13.0); react-instantsearch-core (7.13.0); next.js (14.2.10); JS Helper (3.22.4)";
 
+    private static final Integer PAGE_SIZE = 30;
+
     public KickScrewCategory queryBrand() {
-        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
-                .queryParam("x-algolia-agent", AGENT)
-                .toUriString();
-        String result = HttpUtil.doPost(url, buildAlgoliaBodyForBrand(), Headers.of(
-                "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
-                "x-algolia-application-id", "7CCJSEVCO9"
-        ));
+        String result = queryAlgolia(buildAlgoliaBodyForBrand());
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
                 .map(json -> json.getJSONArray("results"))
@@ -40,13 +36,7 @@ public class KickScrewClient {
     }
 
     public List<KickScrewItemDO> queryItemByBrandV2(String brand, Integer releaseYear, Integer pageIndex) {
-        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
-                .queryParam("x-algolia-agent", AGENT)
-                .toUriString();
-        String result = HttpUtil.doPost(url, buildAlgoliaBodyForItem(brand, releaseYear, pageIndex, 30), Headers.of(
-                "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
-                "x-algolia-application-id", "7CCJSEVCO9"
-        ));
+        String result = queryAlgolia(buildAlgoliaBodyForItem(brand, releaseYear, pageIndex, PAGE_SIZE));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
                 .map(json -> json.getJSONArray("results"))
@@ -55,7 +45,26 @@ public class KickScrewClient {
                 .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
     }
 
-    // todo:替换接口
+    public Integer queryBrandItemPageV2(String brand, Integer releaseYear) {
+        String result = queryAlgolia(buildAlgoliaBodyForItem(brand, releaseYear, 0, PAGE_SIZE));
+        return Optional.ofNullable(result)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONArray("results"))
+                .map(jsonArray -> jsonArray.getJSONObject(0))
+                .map(json -> json.getInteger("nbPages")).orElse(1);
+    }
+
+    private String queryAlgolia(String bodyString) {
+        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
+                .queryParam("x-algolia-agent", AGENT)
+                .toUriString();
+        return HttpUtil.doPost(url, bodyString, Headers.of(
+                "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
+                "x-algolia-application-id", "7CCJSEVCO9"
+        ));
+    }
+
+    @Deprecated
     public List<KickScrewItemDO> queryItemByBrand(String brand, Integer page) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
                 .queryParam("brand", brand)
@@ -75,10 +84,11 @@ public class KickScrewClient {
                 .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
     }
 
+    @Deprecated
     public Integer queryBrandItemPage(String brand) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
                 .queryParam("brand", brand)
-                .queryParam("page", 1)
+                .queryParam("page", PAGE_SIZE)
                 .toUriString();
         String result = HttpUtil.doGet(url);
         return Optional.ofNullable(result)
@@ -177,7 +187,7 @@ public class KickScrewClient {
         request.put("indexName", "prod_products");
         Map<String, Object> params = new HashMap<>();
         params.put("attributesToSnippet", "[\"description:10\"]");
-        params.put("clickAnalytics", "true");
+        params.put("clickAnalytics", "false");
         List<List<String>> facetFilters = new ArrayList<>();
         facetFilters.add(List.of("brand:" + brand));
         facetFilters.add(List.of("product_type:Shoes", "product_type:Sneakers"));
