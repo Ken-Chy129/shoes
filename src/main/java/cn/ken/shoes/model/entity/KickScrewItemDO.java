@@ -17,7 +17,9 @@ public class KickScrewItemDO {
 
     private String image;
 
-    private Integer lowestPrice;
+    private String gender;
+
+    private String releaseYear;
 
     /**
      * 根据此值查询尺码价格

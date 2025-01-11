@@ -52,12 +52,12 @@ public class KickScrewService {
      * 目录数据爬取并保存品牌类型和数量
      * @return 返回商品总数
      */
-    public int scratchAndSaveCategories() {
+    public int scratchAndSaveBrand() {
         long startTime = System.currentTimeMillis();
-        log.info("scratchAndSaveCategories start");
-        KickScrewCategory kickScrewCategory = kickScrewClient.queryCategory();
+        log.info("scratchAndSaveBrand start");
+        KickScrewCategory kickScrewCategory = kickScrewClient.queryBrand();
         if (kickScrewCategory == null || kickScrewCategory.getBrand() == null) {
-            log.error("queryCategory no result");
+            log.error("queryBrand no result");
             return -1;
         }
         Map<String, Integer> brandCntMap = kickScrewCategory.getBrand();
@@ -73,7 +73,7 @@ public class KickScrewService {
         brandMapper.deleteAll();
         brandMapper.insert(brandDOList);
         int itemCnt = brandCntMap.values().stream().mapToInt(Integer::intValue).sum();
-        log.info("scratchAndSaveCategories end, categoryCnt:{}, itemCnt:{}, cost:{}",
+        log.info("scratchAndSaveBrand end, categoryCnt:{}, itemCnt:{}, cost:{}",
                 brandDOList.size(),
                 itemCnt,
                 System.currentTimeMillis() - startTime);
@@ -86,7 +86,7 @@ public class KickScrewService {
     public void scratchAndSaveItems() {
         kickScrewItemMapper.deleteAll();
 
-        int itemCnt = scratchAndSaveCategories();
+        int itemCnt = scratchAndSaveBrand();
         List<String> brandList = brandMapper.selectBrandNames();
 
         long allStartTime = System.currentTimeMillis();
@@ -169,37 +169,29 @@ public class KickScrewService {
                     try {
                         String modelNo = brandItem.getModelNo();
                         String handle = brandItem.getHandle();
+                        String gender = brandItem.getGender();
+                        String productType = brandItem.getProductType();
+                        // todo:加入缓存优化查询，根据品牌、productType，gender，都相同的查出来的表一定相同
                         List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
                         List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
                         if (CollectionUtils.isEmpty(sizeChart) || CollectionUtils.isEmpty(kickScrewSizePrices)) {
                             log.error("scratchAndSaveItemPrices error, model:{}, handle:{}", modelNo, handle);
                         }
-//                        if (sizeChart.size() != kickScrewSizePrices.size()) {
-//                            log.error("尺码表与尺码价格表数量不匹配！, brand:{}, modelNo:{}, handle:{}", brand, modelNo, handle);
-                            for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
-                                String title = kickScrewSizePrice.getTitle();
-                                String size = getEuSize(title);
-                                Map<String, String> labelSizeMap = sizeChart.stream()
-                                        .filter(map -> map.get(SizeEnum.EU.getCode()).equals(size))
-                                        .findFirst()
-                                        .orElse(null);
-                                if (labelSizeMap == null) {
-                                    log.error("scratchAndSaveItemPrices labelSizeMap is null, model:{}, handle:{}", modelNo, handle);
-                                    continue;
-                                }
-                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
-                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                        for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                            String title = kickScrewSizePrice.getTitle();
+                            String size = getEuSize(title);
+                            Map<String, String> labelSizeMap = sizeChart.stream()
+                                    .filter(map -> map.get(SizeEnum.EU.getCode()).equals(size))
+                                    .findFirst()
+                                    .orElse(null);
+                            if (labelSizeMap == null) {
+                                log.error("scratchAndSaveItemPrices labelSizeMap is null, model:{}, handle:{}", modelNo, handle);
+                                continue;
                             }
-//                        }  else {
-//                            for (int i = 0; i < sizeChart.size(); i++) {
-//                                KickScrewSizePrice kickScrewSizePrice = kickScrewSizePrices.get(i);
-//                                Map<String, String> labelSizeMap = sizeChart.get(i);
-//                                ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
-//
-//                                // todo：查询得物价格，注意考虑得物尺码 ⅔，在kc是.67, ⅓是.33
-//                                itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
-//                            }
-//                        }
+                            ItemSizePriceDO itemSizePriceDO = buildItemSizePriceDO(brand, modelNo, handle, kickScrewSizePrice, labelSizeMap);
+                            // todo：查询得物价格，注意考虑得物尺码 ⅔，在kc是.67, ⅓是.33
+                            itemSizePricesMap.computeIfAbsent(modelNo, k -> new ArrayList<>()).add(itemSizePriceDO);
+                        }
                     } catch (Exception e) {
                         log.error(e.getMessage(), e);
                     } finally {
