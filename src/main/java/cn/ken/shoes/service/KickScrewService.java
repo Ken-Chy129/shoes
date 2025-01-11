@@ -5,9 +5,12 @@ import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
+import cn.ken.shoes.mapper.SizeChartMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
+import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import com.alibaba.fastjson.JSONObject;
@@ -44,9 +47,52 @@ public class KickScrewService {
     private ItemSizePriceMapper itemSizePriceMapper;
 
     @Resource
+    private SizeChartMapper sizeChartMapper;
+
+    @Resource
     private SqlSessionFactory sqlSessionFactory;
 
     private static final Pattern pattern = Pattern.compile("EU\\s*(\\d+\\.?\\d*)", Pattern.CASE_INSENSITIVE);
+
+    /**
+     * 查询品牌性别尺码映射表
+     */
+    public void queryBrandGenderSizeMap() {
+        List<String> genderList = List.of("BABY", "KIDS", "MENS", "UNISEX", "WOMENS");
+        KickScrewCategory kickScrewCategory = kickScrewClient.queryBrand();
+        Map<String, Integer> brandCntMap = kickScrewCategory.getBrand();
+        for (String brand : brandCntMap.keySet()) {
+            for (String gender : genderList) {
+                KickScrewAlgoliaRequest kickScrewAlgoliaRequest = new KickScrewAlgoliaRequest();
+                kickScrewAlgoliaRequest.setBrands(List.of(brand));
+                kickScrewAlgoliaRequest.setPageIndex(0);
+                kickScrewAlgoliaRequest.setGenders(List.of(gender));
+                List<KickScrewItemDO> item = kickScrewClient.queryItemByBrandV2(kickScrewAlgoliaRequest);
+                KickScrewItemDO kickScrewItemDO = item.getFirst();
+                if (kickScrewItemDO == null) {
+                    continue;
+                }
+                String modelNo = kickScrewItemDO.getModelNo();
+                List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
+                List<SizeChartDO> sizeChartDOS = new ArrayList<>();
+                for (Map<String, String> sizeMap : sizeChart) {
+                    SizeChartDO sizeChartDO = new SizeChartDO();
+                    sizeChartDO.setEuSize(sizeMap.get(SizeEnum.EU.getCode()));
+                    sizeChartDO.setMenUSSize(sizeMap.get(SizeEnum.MEN_US.getCode()));
+                    sizeChartDO.setWomenUSSize(sizeMap.get(SizeEnum.WOMAN_US.getCode()));
+                    sizeChartDO.setUsSize(Optional.ofNullable(sizeMap.get(SizeEnum.US.getCode()))
+                            .orElse(Optional.ofNullable(sizeChartDO.getMenUSSize())
+                                    .orElse(sizeChartDO.getWomenUSSize())
+                            )
+                    );
+                    sizeChartDO.setUkSize(sizeMap.get(SizeEnum.UK.getCode()));
+                    sizeChartDO.setCmSize(sizeMap.get(SizeEnum.CM.getCode()));
+                    sizeChartDOS.add(sizeChartDO);
+                }
+                Thread.ofVirtual().start(() -> sizeChartMapper.insert(sizeChartDOS));
+            }
+        }
+    }
 
     /**
      * 目录数据爬取并保存品牌类型和数量
