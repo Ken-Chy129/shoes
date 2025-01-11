@@ -3,9 +3,9 @@ package cn.ken.shoes.common;
 public class KickScrewApiConstant {
 
     /**
-     * 查询分类相关的信息
+     * 全文索引搜索
      */
-    public static final String CATEGORY = "https://7ccjsevco9-dsn.algolia.net/1/indexes/*/queries";
+    public static final String ALGOLIA = "https://7ccjsevco9-dsn.algolia.net/1/indexes/*/queries";
 
     /**
      * 查询商品，可以通过品牌、类别进行查询（参数不同）

@@ -30,7 +30,7 @@ public class PriceController {
 
     @GetMapping("list2")
     public List<KickScrewItemDO> list2(String brand) {
-        return kickScrewClient.queryItemByBrand(brand, 1);
+        return kickScrewClient.queryItemByBrandV2(brand, 2024,1);
     }
 
     @GetMapping("test")
