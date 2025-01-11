@@ -27,7 +27,7 @@ public class KickScrewController {
 
     @GetMapping("refreshCategories")
     public Integer refreshCategories() {
-        return kickScrewService.scratchAndSaveCategories();
+        return kickScrewService.scratchAndSaveBrand();
     }
 
     @GetMapping("refreshPrices")

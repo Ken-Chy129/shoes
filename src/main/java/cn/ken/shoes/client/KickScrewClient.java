@@ -8,7 +8,6 @@ import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
@@ -24,13 +23,11 @@ public class KickScrewClient {
 
     private static final String AGENT = "Algolia for JavaScript (4.24.0); Browser; instantsearch.js (4.74.0); react (18.3.1); react-instantsearch (7.13.0); react-instantsearch-core (7.13.0); next.js (14.2.10); JS Helper (3.22.4)";
 
-    private static final String QUERY_CATEGORY_BODY = "{\"requests\":[{\"indexName\":\"prod_products\",\"params\":\"attributesToSnippet=%5B%22description%3A10%22%5D&clickAnalytics=true&facets=%5B%22brand%22%2C%22gender%22%2C%22lowest_price%22%2C%22main_color%22%2C%22product_type%22%2C%22release_year%22%2C%22sizes%22%5D&filters=NOT%20class%3A%200&highlightPostTag=__%2Fais-highlight__&highlightPreTag=__ais-highlight__&hitsPerPage=24&maxValuesPerFacet=10000&page=0&query=&removeWordsIfNoResults=allOptional&userToken=803310494-1734974059\"}]}";
-
-    public KickScrewCategory queryCategory() {
-        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.CATEGORY)
+    public KickScrewCategory queryBrand() {
+        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
                 .queryParam("x-algolia-agent", AGENT)
                 .toUriString();
-        String result = HttpUtil.doPost(url, QUERY_CATEGORY_BODY, Headers.of(
+        String result = HttpUtil.doPost(url, buildAlgoliaBodyForBrand(), Headers.of(
                 "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
                 "x-algolia-application-id", "7CCJSEVCO9"
         ));
@@ -42,13 +39,30 @@ public class KickScrewClient {
                 .orElse(null);
     }
 
+    public List<KickScrewItemDO> queryItemByBrandV2(String brand, Integer pageIndex) {
+        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
+                .queryParam("x-algolia-agent", AGENT)
+                .toUriString();
+        String result = HttpUtil.doPost(url, buildAlgoliaBodyForItem(brand, pageIndex, 30), Headers.of(
+                "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
+                "x-algolia-application-id", "7CCJSEVCO9"
+        ));
+        return Optional.ofNullable(result)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONArray("results"))
+                .map(jsonArray -> jsonArray.getJSONObject(0))
+                .map(json -> json.getJSONArray("hits"))
+                .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
+    }
 
+    // todo:替换接口
     public List<KickScrewItemDO> queryItemByBrand(String brand, Integer page) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.SEARCH_ITEMS)
                 .queryParam("brand", brand)
                 .queryParam("page", page)
                 .toUriString();
         String result = HttpUtil.doGet(url);
+        System.out.println(JSON.toJSONString(result));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
                 .map(json -> json.getJSONObject("pageProps"))
@@ -157,4 +171,52 @@ public class KickScrewClient {
                 .map(jsonArray -> jsonArray.getJSONObject(0))
                 .orElse(new JSONObject());
     }
+
+    private String buildAlgoliaBodyForItem(String brand, Integer pageIndex, Integer pageSize) {
+        JSONObject request = new JSONObject();
+        request.put("indexName", "prod_products");
+        Map<String, Object> params = new HashMap<>();
+        params.put("attributesToSnippet", "[\"description:10\"]");
+        params.put("clickAnalytics", "true");
+        params.put("facetFilters", "[[\"brand:{brand}\"],[\"product_type:Shoes\",\"product_type:Sneakers\"]]".replace("{brand}", brand));
+        params.put("filters", "NOT class: 0");
+        params.put("highlightPostTag", "__/ais-highlight__");
+        params.put("highlightPreTag", "__ais-highlight__");
+        params.put("hitsPerPage", String.valueOf(pageSize));
+        params.put("maxValuesPerFacet", "10000");
+        params.put("page", String.valueOf(pageIndex));
+        params.put("removeWordsIfNoResults", "allOptional");
+        params.put("userToken", "803310494-1734974059");
+        String paramString = HttpUtil.buildUrlParams(params);
+        request.put("params", paramString);
+
+        JSONObject body = new JSONObject();
+        body.put("requests", List.of(request));
+        return body.toJSONString();
+    }
+
+    private String buildAlgoliaBodyForBrand() {
+        JSONObject request = new JSONObject();
+        request.put("indexName", "prod_products");
+        Map<String, Object> params = new HashMap<>();
+        params.put("attributesToSnippet", "[\"description:10\"]");
+        params.put("clickAnalytics", "false");
+//        params.put("facets", "[\"brand\",\"gender\",\"lowest_price\",\"main_color\",\"product_type\",\"release_year\",\"sizes\"]");
+        params.put("facets", "[\"brand\"]");
+        params.put("filters", "NOT class: 0");
+        params.put("highlightPostTag", "__/ais-highlight__");
+        params.put("highlightPreTag", "__ais-highlight__");
+        params.put("hitsPerPage", "1");
+        params.put("maxValuesPerFacet", "10000");
+        params.put("page", "0");
+        params.put("removeWordsIfNoResults", "allOptional");
+        params.put("userToken", "803310494-1734974059");
+        String paramString = HttpUtil.buildUrlParams(params);
+        request.put("params", paramString);
+
+        JSONObject body = new JSONObject();
+        body.put("requests", List.of(request));
+        return body.toJSONString();
+    }
+
 }
