@@ -39,11 +39,11 @@ public class KickScrewClient {
                 .orElse(null);
     }
 
-    public List<KickScrewItemDO> queryItemByBrandV2(String brand, Integer pageIndex) {
+    public List<KickScrewItemDO> queryItemByBrandV2(String brand, Integer releaseYear, Integer pageIndex) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ALGOLIA)
                 .queryParam("x-algolia-agent", AGENT)
                 .toUriString();
-        String result = HttpUtil.doPost(url, buildAlgoliaBodyForItem(brand, pageIndex, 30), Headers.of(
+        String result = HttpUtil.doPost(url, buildAlgoliaBodyForItem(brand, releaseYear, pageIndex, 30), Headers.of(
                 "x-algolia-api-key", "173de9e561a4bc91ca6074d4dc6db17c",
                 "x-algolia-application-id", "7CCJSEVCO9"
         ));
@@ -172,13 +172,17 @@ public class KickScrewClient {
                 .orElse(new JSONObject());
     }
 
-    private String buildAlgoliaBodyForItem(String brand, Integer pageIndex, Integer pageSize) {
+    private String buildAlgoliaBodyForItem(String brand, Integer releaseYear, Integer pageIndex, Integer pageSize) {
         JSONObject request = new JSONObject();
         request.put("indexName", "prod_products");
         Map<String, Object> params = new HashMap<>();
         params.put("attributesToSnippet", "[\"description:10\"]");
         params.put("clickAnalytics", "true");
-        params.put("facetFilters", "[[\"brand:{brand}\"],[\"product_type:Shoes\",\"product_type:Sneakers\"]]".replace("{brand}", brand));
+        List<List<String>> facetFilters = new ArrayList<>();
+        facetFilters.add(List.of("brand:" + brand));
+        facetFilters.add(List.of("product_type:Shoes", "product_type:Sneakers"));
+        facetFilters.add(List.of("release_year:" + releaseYear));
+        params.put("facetFilters", JSON.toJSONString(facetFilters));
         params.put("filters", "NOT class: 0");
         params.put("highlightPostTag", "__/ais-highlight__");
         params.put("highlightPreTag", "__ais-highlight__");
