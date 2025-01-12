@@ -36,16 +36,4 @@ public class ExcelService {
         }
     }
 
-    private List<SizeChartExcel> data(String brand) {
-        List<SizeChartDO> allBrandSizeChartDOS = sizeChartMapper.selectList(new QueryWrapper<>());
-        Map<String, List<SizeChartDO>> brandSizeChartsMap = allBrandSizeChartDOS.stream().collect(Collectors.groupingBy(SizeChartDO::getBrand));
-        System.out.println(brandSizeChartsMap);
-        List<SizeChartExcel> data = new ArrayList<>();
-        List<SizeChartDO> brandSizeChartDOS = brandSizeChartsMap.get(brand);
-        for (SizeChartDO sizeChartDO : brandSizeChartDOS) {
-            SizeChartExcel sizeChartExcel = SizeChartExcel.from(sizeChartDO);
-            data.add(sizeChartExcel);
-        }
-        return data;
-    }
 }
