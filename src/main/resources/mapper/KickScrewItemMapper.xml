@@ -4,13 +4,14 @@
 
 
     <insert id="insertIgnore">
-        insert ignore into shoes.kick_screw_item value (
+        insert ignore into shoes.kick_screw_item(model_no, title, brand, product_type, gender, release_year, image, handle) value (
                #{modelNo},
                #{title},
                #{brand},
                #{productType},
+               #{gender},
+               #{releaseYear},
                #{image},
-               #{lowestPrice},
                #{handle}
         )
     </insert>
