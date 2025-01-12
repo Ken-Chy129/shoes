@@ -2,12 +2,14 @@ package cn.ken.shoes.service.impl;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.ItemDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.service.ItemService;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -22,8 +24,11 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
-@Service
+@Service("kickScrewItemService")
 public class KickScrewItemServiceImpl implements ItemService {
+
+    @Resource
+    private BrandMapper brandMapper;
 
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
@@ -39,11 +44,15 @@ public class KickScrewItemServiceImpl implements ItemService {
         return List.of();
     }
 
+    public List<BrandDO> selectBrands() {
+        return brandMapper.selectList(new QueryWrapper<>());
+    }
+
     @Override
     public void scratchItems() {
         kickScrewItemMapper.deleteAll();
 
-        List<BrandDO> brandList = scratchBrands();
+        List<BrandDO> brandList = selectBrands();
         
         AtomicInteger finishCnt = new AtomicInteger(0);
         for (BrandDO brandDO : brandList) {

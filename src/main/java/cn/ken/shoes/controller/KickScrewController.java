@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +21,9 @@ public class KickScrewController {
     @Resource
     private KickScrewClient kickScrewClient;
 
+    @Resource
+    private ItemService kickScrewItemService;
+
     @GetMapping("refreshItems")
     public void refreshItems() {
         kickScrewService.scratchAndSaveItems();
@@ -38,5 +42,10 @@ public class KickScrewController {
     @GetMapping("querySizeChart")
     public List<Map<String, String>> querySizeChart(String brand, String modelNo) {
         return kickScrewClient.queryItemSizeChart(brand, modelNo);
+    }
+
+    @GetMapping("item")
+    public void item() {
+        kickScrewItemService.scratchItems();
     }
 }
