@@ -65,18 +65,21 @@ public class KickScrewService {
             for (String gender : genderList) {
                 KickScrewAlgoliaRequest kickScrewAlgoliaRequest = new KickScrewAlgoliaRequest();
                 kickScrewAlgoliaRequest.setBrands(List.of(brand));
-                kickScrewAlgoliaRequest.setPageIndex(0);
                 kickScrewAlgoliaRequest.setGenders(List.of(gender));
-                List<KickScrewItemDO> item = kickScrewClient.queryItemByBrandV2(kickScrewAlgoliaRequest);
-                KickScrewItemDO kickScrewItemDO = item.getFirst();
-                if (kickScrewItemDO == null) {
+                kickScrewAlgoliaRequest.setPageIndex(0);
+                kickScrewAlgoliaRequest.setPageSize(1);
+                List<KickScrewItemDO> itemList = kickScrewClient.queryItemByBrandV2(kickScrewAlgoliaRequest);
+                if (CollectionUtils.isEmpty(itemList)) {
                     continue;
                 }
+                KickScrewItemDO kickScrewItemDO = itemList.getFirst();
                 String modelNo = kickScrewItemDO.getModelNo();
                 List<Map<String, String>> sizeChart = kickScrewClient.queryItemSizeChart(brand, modelNo);
                 List<SizeChartDO> sizeChartDOS = new ArrayList<>();
                 for (Map<String, String> sizeMap : sizeChart) {
                     SizeChartDO sizeChartDO = new SizeChartDO();
+                    sizeChartDO.setBrand(brand);
+                    sizeChartDO.setGender(gender);
                     sizeChartDO.setEuSize(sizeMap.get(SizeEnum.EU.getCode()));
                     sizeChartDO.setMenUSSize(sizeMap.get(SizeEnum.MEN_US.getCode()));
                     sizeChartDO.setWomenUSSize(sizeMap.get(SizeEnum.WOMAN_US.getCode()));
