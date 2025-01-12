@@ -7,9 +7,9 @@ import java.util.List;
 @Data
 public class KickScrewAlgoliaRequest {
 
-    private Integer pageIndex;
+    private Integer pageIndex = 0;
 
-    private Integer pageSize;
+    private Integer pageSize = 30;
 
     private List<Integer> releaseYears;
 
