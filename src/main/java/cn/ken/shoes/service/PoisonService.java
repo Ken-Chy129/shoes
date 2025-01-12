@@ -75,31 +75,31 @@ public class PoisonService {
         System.out.println("finish");
     }
 
-    public void queryAndSaveSpuIds(List<String> modelNumbers) throws InterruptedException {
-        RateLimiter rateLimiter = RateLimiter.create(15);
-        List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
-        List<List<String>> partition = Lists.partition(modelNumbers, 5);
-        CountDownLatch latch = new CountDownLatch(partition.size());
-        for (List<String> fiveModelNoList : partition) {
-            rateLimiter.acquire();
-            Thread.ofVirtual().name("poison-api").start(() -> {
-                try {
-                    List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
-                    if (CollectionUtils.isEmpty(poisonItemDOS)) {
-                        return;
-                    }
-                    brandItems.addAll(poisonItemDOS);
-                } catch (Exception e) {
-                    log.error(e.getMessage(), e);
-                } finally {
-                    latch.countDown();
-                }
-            });
-        }
-        latch.await();
-        Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
-        log.info("refreshPoisonItems finish, brand:{}, cnt:{}", brand, brandItems.size());
-        total += brandItems.size();
-    }
+//    public void queryAndSaveSpuIds(List<String> modelNumbers) throws InterruptedException {
+//        RateLimiter rateLimiter = RateLimiter.create(15);
+//        List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
+//        List<List<String>> partition = Lists.partition(modelNumbers, 5);
+//        CountDownLatch latch = new CountDownLatch(partition.size());
+//        for (List<String> fiveModelNoList : partition) {
+//            rateLimiter.acquire();
+//            Thread.ofVirtual().name("poison-api").start(() -> {
+//                try {
+//                    List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
+//                    if (CollectionUtils.isEmpty(poisonItemDOS)) {
+//                        return;
+//                    }
+//                    brandItems.addAll(poisonItemDOS);
+//                } catch (Exception e) {
+//                    log.error(e.getMessage(), e);
+//                } finally {
+//                    latch.countDown();
+//                }
+//            });
+//        }
+//        latch.await();
+//        Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
+//        log.info("refreshPoisonItems finish, brand:{}, cnt:{}", brand, brandItems.size());
+//        total += brandItems.size();
+//    }
 
 }
