@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
+import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
@@ -58,7 +59,7 @@ public class KickScrewService {
      * 查询品牌性别尺码映射表
      */
     public void queryBrandGenderSizeMap() {
-        List<String> genderList = List.of("BABY", "KIDS", "MENS", "UNISEX", "WOMENS");
+        List<String> genderList = ItemQueryConfig.ALL_GENDER;
         KickScrewCategory kickScrewCategory = kickScrewClient.queryBrand();
         Map<String, Integer> brandCntMap = kickScrewCategory.getBrand();
         for (String brand : brandCntMap.keySet()) {
@@ -141,31 +142,37 @@ public class KickScrewService {
         long allStartTime = System.currentTimeMillis();
         log.info("scratchAndSaveItems start, brandCnt:{}, itemCnt:{}", brandList.size(), itemCnt);
         CountDownLatch brandLatch = new CountDownLatch(brandList.size());
-        Map<String, Map<Integer, List<KickScrewItemDO>>> allItemsMap = new HashMap<>();
+        Map<String, Map<String, List<KickScrewItemDO>>> allItemsMap = new HashMap<>();
         AtomicInteger finishCnt = new AtomicInteger(0);
         for (String brand : brandList) {
 //            Thread.ofVirtual().name(brandDO.getName()).start(() -> {
                 long brandStartTime = System.currentTimeMillis();
                 try {
-                    Map<Integer, List<KickScrewItemDO>> brandItemsMap = new HashMap<>();
-                    // 查询品牌下所有商品
-                    Integer page = kickScrewClient.queryBrandItemPage(brand);
-                    CountDownLatch pageLatch = new CountDownLatch(page);
-                    for (int i = 1; i <= page; i++) {
-                        final int pageIndex = i;
-                        Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
-                            try {
-                                List<KickScrewItemDO> brandItems = kickScrewClient.queryItemByBrand(brand, pageIndex);
-                                brandItemsMap.put(pageIndex, brandItems);
-                            } catch (Exception e) {
-                                log.error(e.getMessage(), e);
-                            } finally {
-                                pageLatch.countDown();
-                            }
-                        });
+                    Map<String, List<KickScrewItemDO>> brandItemsMap = new HashMap<>();
+                    for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
+                        // 查询品牌下所有商品
+                        KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
+                        algoliaRequest.setBrands(List.of(brand));
+                        algoliaRequest.setReleaseYears(List.of(releaseYear));
+                        Integer page = kickScrewClient.queryBrandItemPageV2(algoliaRequest);
+                        CountDownLatch pageLatch = new CountDownLatch(page);
+                        for (int i = 1; i <= page; i++) {
+                            final int pageIndex = i;
+                            Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
+                                try {
+                                    algoliaRequest.setPageIndex(pageIndex);
+                                    List<KickScrewItemDO> brandItems = kickScrewClient.queryItemByBrandV2(algoliaRequest);
+                                    brandItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
+                                } catch (Exception e) {
+                                    log.error(e.getMessage(), e);
+                                } finally {
+                                    pageLatch.countDown();
+                                }
+                            });
+                        }
+                        pageLatch.await();
+                        allItemsMap.put(brand, brandItemsMap);
                     }
-                    pageLatch.await();
-                    allItemsMap.put(brand, brandItemsMap);
                 } catch (Exception e) {
                     log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
                 } finally {
@@ -183,13 +190,13 @@ public class KickScrewService {
         batchInsertItems(allItemsMap);
     }
 
-    private void batchInsertItems(Map<String, Map<Integer, List<KickScrewItemDO>>> allItemsMap) {
+    private void batchInsertItems(Map<String, Map<String, List<KickScrewItemDO>>> allItemsMap) {
         long allStartTime = System.currentTimeMillis();
         log.info("batchInsertItems start");
-        for (Map.Entry<String, Map<Integer, List<KickScrewItemDO>>> entry : allItemsMap.entrySet()) {
+        for (Map.Entry<String, Map<String, List<KickScrewItemDO>>> entry : allItemsMap.entrySet()) {
             String brand = entry.getKey();
             long startTime = System.currentTimeMillis();
-            Map<Integer, List<KickScrewItemDO>> brandItemsMap = entry.getValue();
+            Map<String, List<KickScrewItemDO>> brandItemsMap = entry.getValue();
             List<KickScrewItemDO> brandItems = brandItemsMap.values().stream().flatMap(List::stream).toList();
             try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false);) {
                 for (KickScrewItemDO brandItem : brandItems) {
