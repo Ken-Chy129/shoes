@@ -1,11 +1,15 @@
 package cn.ken.shoes.service;
 
+import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.PoisonItemMapper;
+import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
+import cn.ken.shoes.model.entity.PoisonPriceDO;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
@@ -13,7 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.util.List;
+import java.math.BigDecimal;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -30,6 +35,9 @@ public class PoisonService {
 
     @Resource
     private BrandMapper brandMapper;
+
+    @Resource
+    private PoisonPriceMapper poisonPriceMapper;
 
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
@@ -101,5 +109,28 @@ public class PoisonService {
 //        log.info("refreshPoisonItems finish, brand:{}, cnt:{}", brand, brandItems.size());
 //        total += brandItems.size();
 //    }
+
+    public void refreshPrice(List<Pair<String, String>> modelNoSpuIdList) {
+        for (Pair<String, String> pair : modelNoSpuIdList) {
+            String modelNo = pair.getKey();
+            String spuId = pair.getValue();
+            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
+            if (sizePriceMap == null) {
+                continue;
+            }
+            List<PoisonPriceDO> toInsert = new ArrayList<>();
+            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
+                Map<PriceEnum, Integer> map = entry.getValue();
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNumber(modelNo);
+                poisonPriceDO.setEuSize(entry.getKey());
+                poisonPriceDO.setNormalPrice(Optional.ofNullable(map.get(PriceEnum.NORMAL)).map(BigDecimal::valueOf).orElse(BigDecimal.ZERO));
+                poisonPriceDO.setNormalPrice(Optional.ofNullable(map.get(PriceEnum.LIGHTNING)).map(BigDecimal::valueOf).orElse(BigDecimal.ZERO));
+                toInsert.add(poisonPriceDO);
+            }
+            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
+        }
+
+    }
 
 }

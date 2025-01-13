@@ -7,9 +7,16 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum PriceEnum {
 
-    NORMAL(0, "普通发货"),
-    LIGHTNING(1, "闪电直发"),
-    FAST(2, "极速发货");
+    /**
+     * 普通发货
+     */
+    NORMAL(0, "NORMAL"),
+    /**
+     * 闪电直发
+     */
+    LIGHTNING(1, "LIGHTNING"),
+//    FAST(2, "极速发货")
+    ;
 
     private final Integer code;
     private final String desc;
