@@ -55,9 +55,11 @@ public class KickScrewItemServiceImpl implements ItemService {
         List<BrandDO> brandList = selectBrands();
         
         AtomicInteger finishCnt = new AtomicInteger(0);
+        Integer brandItemCnt;
         for (BrandDO brandDO : brandList) {
             String brand = brandDO.getName();
             long brandStartTime = System.currentTimeMillis();
+            brandItemCnt = 0;
             try {
                 Map<String, List<KickScrewItemDO>> releaseYearItemsMap = new HashMap<>();
                 for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
@@ -83,11 +85,12 @@ public class KickScrewItemServiceImpl implements ItemService {
                     }
                     pageLatch.await();
                 }
+                brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
                 Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap));
             } catch (Exception e) {
                 log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
             } finally {
-                log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brand, System.currentTimeMillis() - brandStartTime);
+                log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, System.currentTimeMillis() - brandStartTime);
             }
         }
     }
