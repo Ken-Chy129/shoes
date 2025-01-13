@@ -36,7 +36,10 @@ public class PoisonClient {
         log.info(result);
         Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes.getCode() != 200) {
-            log.error(parseRes.getMsg());
+            if (parseRes.getCode() == 205) {
+                throw new RuntimeException("余额不足");
+            }
+            log.error("queryPriceBySpu error, msg:{}", parseRes.getMsg());
             return null;
         }
         Map<String, Map<PriceEnum, Integer>> sizePriceMap = new HashMap<>();
@@ -45,8 +48,14 @@ public class PoisonClient {
                 .map(jsonArray -> jsonArray.toJavaList(JSONObject.class))
                 .orElse(Collections.emptyList())
                 .forEach(json -> {
-                    String size = json.getString("size");
+                    String size = json.getString("size").replace("⅓", ".33").replace("⅔", ".67");
                     JSONObject price = json.getJSONObject("price");
+                    HashSet<String> strings = new HashSet<>(price.keySet());
+                    strings.remove("NORMAL");
+                    strings.remove("LIGHTNING");
+                    if (!strings.isEmpty()) {
+                        log.info("!!!!!!!{}", JSONObject.toJSONString(strings));
+                    }
                     Map<PriceEnum, Integer> typePriceMap = new HashMap<>();
                     for (PriceEnum type : PriceEnum.values()) {
                         Optional.ofNullable(price.getInteger(type.getDesc()))
@@ -65,9 +74,7 @@ public class PoisonClient {
         String url = PoisonApiConstant.TOKEN_BALANCE;
         Map<String, String> params = new HashMap<>();
         params.put("token", PoisonConfig.TOKEN);
-        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
-
-        return result;
+        return HttpUtil.doPost(url, JSON.toJSONString(params));
     }
 
     /**
@@ -112,7 +119,7 @@ public class PoisonClient {
         String priceApi;
         switch (priceEnum) {
             case LIGHTNING -> priceApi = PoisonApiConstant.LOWEST_PRICE;
-            case FAST -> priceApi = PoisonApiConstant.FAST_LOWEST_PRICE;
+//            case FAST -> priceApi = PoisonApiConstant.FAST_LOWEST_PRICE;
             default -> priceApi = PoisonApiConstant.NORMAL_LOWEST_PRICE;
         }
         return priceApi;
