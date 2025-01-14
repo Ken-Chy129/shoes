@@ -15,17 +15,17 @@ public interface ItemService {
     /**
      * 爬取商品信息
      */
-    void scratchItems();
+    void refreshAllItems();
 
     /**
      * 条件查询商品
      */
-    List<ItemDO> selectItemsByCondition();
+    List<String> selectItemsByCondition();
 
     /**
      * 爬取价格
      */
-    void scratchPrices(List<ItemDO> items);
+    void refreshAllPrices();
 
     /**
      * 改价
