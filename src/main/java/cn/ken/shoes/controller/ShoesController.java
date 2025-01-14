@@ -58,7 +58,7 @@ public class ShoesController {
 
     @GetMapping("prices")
     public Integer prices(Long skuId) {
-        return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.FAST);
+        return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
     }
 
     @GetMapping("queryByHandle")

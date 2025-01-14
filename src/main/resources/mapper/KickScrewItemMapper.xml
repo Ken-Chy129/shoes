@@ -25,4 +25,77 @@
         where brand = #{brand}
     </select>
 
+    <select id="count" resultType="java.lang.Integer">
+        select count(*) from shoes.kick_screw_item
+        <where>
+            <if test="brands != null">
+                and brand in
+                <foreach collection="brands" item="brand" open="(" close=")" separator=",">
+                    #{brand}
+                </foreach>
+            </if>
+            <if test="releaseYears != null">
+                and release_year in
+                <foreach collection="releaseYears" item="releaseYear" open="(" close=")" separator=",">
+                    #{releaseYear}
+                </foreach>
+            </if>
+            <if test="genders != null">
+                and gender in
+                <foreach collection="genders" item="gender" open="(" close=")" separator=",">
+                    #{gender}
+                </foreach>
+            </if>
+            <if test="brands != null">
+                and product_type in
+                <foreach collection="productTypes" item="productType" open="(" close=")" separator=",">
+                    #{productType}
+                </foreach>
+            </if>
+            <if test="modelNumbers != null">
+                and model_no in
+                <foreach collection="modelNumbers" item="modelNumber" open="(" close=")" separator=",">
+                    #{modelNumber}
+                </foreach>
+            </if>
+        </where>
+    </select>
+
+    <select id="selectModelNoByCondition" resultType="cn.ken.shoes.model.entity.KickScrewItemDO">
+        select * from shoes.kick_screw_item
+        <where>
+            <if test="brands != null">
+                 and brand in
+                <foreach collection="brands" item="brand" open="(" close=")" separator=",">
+                    #{brand}
+                </foreach>
+            </if>
+            <if test="releaseYears != null">
+                and release_year in
+                <foreach collection="releaseYears" item="releaseYear" open="(" close=")" separator=",">
+                    #{releaseYear}
+                </foreach>
+            </if>
+            <if test="genders != null">
+                and gender in
+                <foreach collection="genders" item="gender" open="(" close=")" separator=",">
+                    #{gender}
+                </foreach>
+            </if>
+            <if test="productTypes != null">
+                and product_type in
+                <foreach collection="productTypes" item="productType" open="(" close=")" separator=",">
+                    #{productType}
+                </foreach>
+            </if>
+            <if test="modelNumbers != null">
+                and model_no in
+                <foreach collection="modelNumbers" item="modelNumber" open="(" close=")" separator=",">
+                    #{modelNumber}
+                </foreach>
+            </if>
+        </where>
+        limit #{startIndex}, #{pageSize}
+    </select>
+
 </mapper>
