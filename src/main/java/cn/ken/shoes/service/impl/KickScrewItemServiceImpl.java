@@ -1,15 +1,19 @@
 package cn.ken.shoes.service.impl;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
-import cn.ken.shoes.model.entity.BrandDO;
-import cn.ken.shoes.model.entity.ItemDO;
-import cn.ken.shoes.model.entity.KickScrewItemDO;
+import cn.ken.shoes.mapper.KickScrewPriceMapper;
+import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
+import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
+import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.service.ItemService;
+import cn.ken.shoes.util.ShoesUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -17,9 +21,12 @@ import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -32,7 +39,10 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
-    
+
+    @Resource
+    private KickScrewPriceMapper kickScrewPriceMapper;
+
     @Resource
     private KickScrewClient kickScrewClient;
 
@@ -49,13 +59,13 @@ public class KickScrewItemServiceImpl implements ItemService {
     }
 
     @Override
-    public void scratchItems() {
+    public void refreshAllItems() {
         kickScrewItemMapper.deleteAll();
 
         List<BrandDO> brandList = selectBrands();
         
         AtomicInteger finishCnt = new AtomicInteger(0);
-        Integer brandItemCnt;
+        int brandItemCnt;
         for (BrandDO brandDO : brandList) {
             String brand = brandDO.getName();
             long brandStartTime = System.currentTimeMillis();
@@ -106,13 +116,51 @@ public class KickScrewItemServiceImpl implements ItemService {
     }
 
     @Override
-    public List<ItemDO> selectItemsByCondition() {
-        return List.of();
+    public List<String> selectItemsByCondition() {
+        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectModelNoByCondition(new KickScrewItemRequest());
+        return null;
     }
 
     @Override
-    public void scratchPrices(List<ItemDO> items) {
-
+    public void refreshAllPrices() {
+        long currentTimeMillis = System.currentTimeMillis();
+        KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
+        kickScrewItemRequest.setBrands(List.of("New Balance"));
+        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
+        int page = (int) Math.ceil(count / 1000.0);
+        kickScrewItemRequest.setPageSize(1000);
+        for (int i = 1; i <= page; i++) {
+            kickScrewItemRequest.setPageIndex(i);
+            List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
+            CountDownLatch latch = new CountDownLatch(itemDOList.size());
+            List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
+            long pageStart = System.currentTimeMillis();
+            for (KickScrewItemDO itemDO : itemDOList) {
+                Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
+                    try {
+                        List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
+                        String modelNo = itemDO.getModelNo();
+                        for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                            String title = kickScrewSizePrice.getTitle();
+                            String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                            KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+                            kickScrewPriceDO.setModelNo(modelNo);
+                            kickScrewPriceDO.setEuSize(euSize);
+                            Map<String, String> price = kickScrewSizePrice.getPrice();
+                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? BigDecimal.valueOf(Double.parseDouble(price.get("amount"))) : BigDecimal.valueOf(-1));
+                            toInsert.add(kickScrewPriceDO);
+                        }
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
+            log.info("page refresh end, cost:{}, pageIndex:{}", System.currentTimeMillis() - pageStart, i);
+        }
+        log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
     }
 
     @Override

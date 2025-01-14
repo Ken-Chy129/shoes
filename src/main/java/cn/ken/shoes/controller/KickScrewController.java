@@ -46,6 +46,11 @@ public class KickScrewController {
 
     @GetMapping("item")
     public void item() {
-        kickScrewItemService.scratchItems();
+        kickScrewItemService.refreshAllItems();
+    }
+
+    @GetMapping("prices")
+    public void prices() {
+        kickScrewItemService.refreshAllPrices();
     }
 }
