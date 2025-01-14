@@ -123,18 +123,19 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshAllPrices() {
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
         long currentTimeMillis = System.currentTimeMillis();
+
         KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
-        kickScrewItemRequest.setBrands(List.of("New Balance"));
         Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
         int page = (int) Math.ceil(count / 1000.0);
         kickScrewItemRequest.setPageSize(1000);
         for (int i = 1; i <= page; i++) {
+            long pageStart = System.currentTimeMillis();
             kickScrewItemRequest.setPageIndex(i);
             List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
             CountDownLatch latch = new CountDownLatch(itemDOList.size());
             List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            long pageStart = System.currentTimeMillis();
             for (KickScrewItemDO itemDO : itemDOList) {
                 Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
                     try {
@@ -156,6 +157,11 @@ public class KickScrewItemServiceImpl implements ItemService {
                         latch.countDown();
                     }
                 });
+            }
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                log.error(e.getMessage(), e);
             }
             Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
             log.info("page refresh end, cost:{}, pageIndex:{}", System.currentTimeMillis() - pageStart, i);
