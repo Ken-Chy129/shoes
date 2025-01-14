@@ -16,4 +16,8 @@
         select article_number from shoes.poison_item
         where kc_brand = #{brand}
     </select>
+
+    <select id="selectAllModelNoAndSpuId" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
+        select article_number, spu_id from poison_item;
+    </select>
 </mapper>
