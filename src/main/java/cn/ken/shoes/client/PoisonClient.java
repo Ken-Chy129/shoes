@@ -54,16 +54,14 @@ public class PoisonClient {
                 .forEach(json -> {
                     String size = json.getString("size").replace("⅓", ".33").replace("⅔", ".67");
                     JSONObject price = json.getJSONObject("price");
-                    HashSet<String> strings = new HashSet<>(price.keySet());
-                    strings.remove("NORMAL");
-                    strings.remove("LIGHTNING");
-                    if (!strings.isEmpty()) {
-                        log.info("!!!!!!!{}", JSONObject.toJSONString(strings));
-                    }
                     Map<PriceEnum, Integer> typePriceMap = new HashMap<>();
-                    for (PriceEnum type : PriceEnum.values()) {
-                        Optional.ofNullable(price.getInteger(type.getDesc()))
-                                .ifPresent(typePrice -> typePriceMap.put(type, typePrice));
+                    for (String type : price.keySet()) {
+                        PriceEnum priceEnum = PriceEnum.from(type);
+                        if (priceEnum == null) {
+                            log.info("未知的价格类型, type:{}, spuId:{}", type, spuId);
+                            continue;
+                        }
+                        typePriceMap.put(priceEnum, price.getInteger(type));
                     }
                     sizePriceMap.put(size, typePriceMap);
                 });

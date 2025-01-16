@@ -118,7 +118,8 @@ public class PriceService {
     }
 
     public void refreshPoisonPrices() {
-        int count = poisonItemMapper.count();
+//        int count = poisonItemMapper.count();
+        int count = 1000;
         int page = (int) Math.ceil(count / 1000.0);
         for (int i = 1; i <= page; i++) {
             List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
@@ -139,8 +140,8 @@ public class PriceService {
                             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                             poisonPriceDO.setModelNumber(articleNumber);
                             poisonPriceDO.setEuSize(size);
-                            poisonPriceDO.setNormalPrice(BigDecimal.valueOf(priceMap.get(PriceEnum.NORMAL)));
-                            poisonPriceDO.setLightningPrice(BigDecimal.valueOf(priceMap.get(PriceEnum.LIGHTNING)));
+                            poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
+                            poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
                             toInsert.add(poisonPriceDO);
                         }
                     } catch (Exception e) {

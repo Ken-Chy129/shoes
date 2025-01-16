@@ -18,9 +18,9 @@ public class PoisonPriceDO {
 
     private String euSize;
 
-    private BigDecimal normalPrice;
+    private Integer normalPrice;
 
-    private BigDecimal lightningPrice;
+    private Integer lightningPrice;
 
 
 }
