@@ -32,7 +32,7 @@ public class ShoesController {
     }
 
     @GetMapping("queryPriceBySpu")
-    public String queryPriceBySpu(String spuId) {
+    public String queryPriceBySpu(Long spuId) {
         return JSON.toJSONString(poisonClient.queryPriceBySpu(spuId));
     }
 
