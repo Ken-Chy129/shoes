@@ -17,7 +17,12 @@
         where kc_brand = #{brand}
     </select>
 
-    <select id="selectAllModelNoAndSpuId" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
-        select article_number, spu_id from poison_item;
+    <select id="selectSpuId" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
+        select article_number, spu_id from poison_item
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <select id="count" resultType="java.lang.Integer">
+        select count(*) from poison_item;
     </select>
 </mapper>

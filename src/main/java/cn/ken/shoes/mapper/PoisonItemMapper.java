@@ -10,11 +10,13 @@ import java.util.List;
 @Mapper
 public interface PoisonItemMapper extends BaseMapper<PoisonItemDO> {
 
+    int count();
+
     void deleteAll();
 
     PoisonItemDO selectByArticleNumber(@Param("articleNumber") String articleNumber);
 
     List<String> selectModelNoByKcBrand(@Param("brand") String brand);
 
-    List<PoisonItemDO> selectAllModelNoAndSpuId();
+    List<PoisonItemDO> selectSpuId(@Param("startIndex") Integer startIndex, @Param("pageSize") Integer pageSize);
 }
