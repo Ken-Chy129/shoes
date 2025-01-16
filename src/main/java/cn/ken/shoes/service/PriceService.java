@@ -4,25 +4,27 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.mapper.ItemMapper;
 import cn.ken.shoes.mapper.ItemSizePriceMapper;
+import cn.ken.shoes.mapper.PoisonItemMapper;
+import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.ItemDO;
-import cn.ken.shoes.model.entity.ItemSizePriceDO;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
-import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
-import cn.ken.shoes.model.poinson.PoisonItem;
-import cn.ken.shoes.model.poinson.Sku;
+import cn.ken.shoes.model.entity.PoisonItemDO;
+import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.price.PriceRequest;
-import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 
+@Slf4j
 @Service
 public class PriceService {
 
@@ -31,6 +33,12 @@ public class PriceService {
 
     @Resource
     private KickScrewClient kickScrewClient;
+
+    @Resource
+    private PoisonItemMapper poisonItemMapper;
+
+    @Resource
+    private PoisonPriceMapper poisonPriceMapper;
 
     @Resource
     private ItemMapper itemMapper;
@@ -106,6 +114,43 @@ public class PriceService {
 //                System.out.println(JSON.toJSONString(itemSizePriceDOS));
 //                itemSizePriceMapper.insert(itemSizePriceDOS);
 //            }
+        }
+    }
+
+    public void refreshPoisonPrices() {
+        int count = poisonItemMapper.count();
+        int page = (int) Math.ceil(count / 1000.0);
+        for (int i = 1; i <= page; i++) {
+            List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
+            List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+            CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
+            for (PoisonItemDO poisonItemDO : poisonItemDOS) {
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        Long spuId = poisonItemDO.getSpuId();
+                        String articleNumber = poisonItemDO.getArticleNumber();
+                        Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
+                        if (sizePriceMap == null) {
+                            return;
+                        }
+                        for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
+                            String size = entry.getKey();
+                            Map<PriceEnum, Integer> priceMap = entry.getValue();
+                            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                            poisonPriceDO.setModelNumber(articleNumber);
+                            poisonPriceDO.setEuSize(size);
+                            poisonPriceDO.setNormalPrice(BigDecimal.valueOf(priceMap.get(PriceEnum.NORMAL)));
+                            poisonPriceDO.setLightningPrice(BigDecimal.valueOf(priceMap.get(PriceEnum.LIGHTNING)));
+                            toInsert.add(poisonPriceDO);
+                        }
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
         }
     }
 

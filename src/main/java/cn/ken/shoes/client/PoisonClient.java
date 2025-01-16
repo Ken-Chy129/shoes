@@ -27,16 +27,17 @@ public class PoisonClient {
      * @param spuId 商品spuId，通过货号唯一对应一个spuId
      * @return 商品价格，包括闪电价格，普通价格和极速价格
      */
-    public Map<String, Map<PriceEnum, Integer>> queryPriceBySpu(String spuId) {
+    public Map<String, Map<PriceEnum, Integer>> queryPriceBySpu(Long spuId) {
         String url = PoisonApiConstant.PRICE_BY_SPU;
         Map<String, String> params = new HashMap<>();
-        params.put("spuId", spuId);
+        params.put("spuId", String.valueOf(spuId));
         params.put("token", PoisonConfig.TOKEN);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params));
         log.info(result);
         Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes.getCode() != 200) {
             if (parseRes.getCode() == 205) {
+                log.error("余额不足. msg:{}", parseRes.getMsg());
                 throw new RuntimeException("余额不足");
             }
             log.error("queryPriceBySpu error, msg:{}", parseRes.getMsg());
