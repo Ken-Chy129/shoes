@@ -14,7 +14,7 @@ public class PoisonPriceDO {
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String modelNumber;
+    private String modelNo;
 
     private String euSize;
 
