@@ -14,6 +14,7 @@ import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.price.PriceRequest;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -121,11 +122,13 @@ public class PriceService {
 //        int count = poisonItemMapper.count();
         int count = 1000;
         int page = (int) Math.ceil(count / 1000.0);
+        RateLimiter limiter = RateLimiter.create(10);
         for (int i = 1; i <= page; i++) {
             List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
             List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
             CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
             for (PoisonItemDO poisonItemDO : poisonItemDOS) {
+                limiter.acquire();
                 Thread.ofVirtual().start(() -> {
                     try {
                         Long spuId = poisonItemDO.getSpuId();
@@ -138,7 +141,7 @@ public class PriceService {
                             String size = entry.getKey();
                             Map<PriceEnum, Integer> priceMap = entry.getValue();
                             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                            poisonPriceDO.setModelNumber(articleNumber);
+                            poisonPriceDO.setModelNo(articleNumber);
                             poisonPriceDO.setEuSize(size);
                             poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
                             poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));

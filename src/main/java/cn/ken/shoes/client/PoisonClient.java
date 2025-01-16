@@ -34,12 +34,12 @@ public class PoisonClient {
         params.put("token", PoisonConfig.TOKEN);
         String result = HttpUtil.doPost(url, JSON.toJSONString(params));
         Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
-        if (parseRes == null) {
-            log.error("JSON解析结果为空, result:{},", result);
+        if (parseRes == null || parseRes.getData() == null || parseRes.getCode() == null) {
+            log.error("JSON解析结果为空, spuId:{}, result:{}", spuId, result);
             return null;
         }
         if (parseRes.getCode() != 200) {
-            log.error("查询的得物价格失败, msg:{}", parseRes.getMsg());
+            log.error("查询的得物价格失败, spuId:{}, msg:{}", spuId, parseRes.getMsg());
             if (parseRes.getCode() == 205) {
                 log.error("余额不足, msg:{}", parseRes.getMsg());
                 throw new RuntimeException("余额不足");
