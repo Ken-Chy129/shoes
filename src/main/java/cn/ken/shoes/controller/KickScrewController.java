@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -20,6 +21,9 @@ public class KickScrewController {
 
     @Resource
     private KickScrewClient kickScrewClient;
+
+    @Resource
+    private PriceService priceService;
 
     @Resource
     private ItemService kickScrewItemService;
@@ -52,5 +56,10 @@ public class KickScrewController {
     @GetMapping("prices")
     public void prices() {
         kickScrewItemService.refreshAllPrices();
+    }
+
+    @GetMapping("poisonPrice")
+    public void poisonPrice() {
+        priceService.refreshPoisonPrices();
     }
 }
