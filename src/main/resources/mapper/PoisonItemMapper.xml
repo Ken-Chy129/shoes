@@ -1,6 +1,17 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.PoisonItemMapper">
+    <insert id="insertIgnore">
+        insert into shoes.poison_item(article_number, brand_name, category_name, spu_id, spu_logo, title, release_year) value (
+            #{articleNumber},
+            #{brandName},
+            #{categoryName},
+            #{spuId},
+            #{spuLogo},
+            #{title},
+            #{releaseYear}
+        )
+    </insert>
 
 
     <delete id="deleteAll">
@@ -10,11 +21,6 @@
     <select id="selectByArticleNumber" parameterType="String" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
         select * from shoes.poison_item
         where article_number = #{articleNumber}
-    </select>
-
-    <select id="selectModelNoByKcBrand" resultType="java.lang.String">
-        select article_number from shoes.poison_item
-        where kc_brand = #{brand}
     </select>
 
     <select id="selectSpuId" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
