@@ -42,24 +42,22 @@ public class PoisonService {
     private KickScrewItemMapper kickScrewItemMapper;
 
     public void refreshPoisonItems() throws InterruptedException {
-        RateLimiter rateLimiter = RateLimiter.create(15);
         int total = 0;
         for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
             final List<String> modelNoList = new ArrayList<>(), existModelNoList = new ArrayList<>();
-            AsyncUtil.awaitTasks(List.of(
+            AsyncUtil.runTasks(List.of(
                 () -> modelNoList.addAll(kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear)),
                 () -> existModelNoList.addAll(poisonItemMapper.selectModelNoByReleaseYear(releaseYear))
             ));
             modelNoList.removeAll(existModelNoList);
             List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
-            AsyncUtil.awaitTasks(Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Runnable) () -> {
-                rateLimiter.acquire();
+            AsyncUtil.runTasksWithLimit(Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Runnable) () -> {
                 List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
                 if (CollectionUtils.isEmpty(poisonItemDOS)) {
                     return;
                 }
                 brandItems.addAll(poisonItemDOS);
-            }).toList());
+            }).toList(), 15);
             Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
             log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, brandItems.size());
             total += brandItems.size();
