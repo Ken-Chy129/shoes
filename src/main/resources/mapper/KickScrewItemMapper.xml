@@ -98,4 +98,9 @@
         limit #{startIndex}, #{pageSize}
     </select>
 
+    <select id="selectModelNoByReleaseYear" resultType="java.lang.String">
+        select model_no from shoes.kick_screw_item
+        where release_year = #{releaseYear}
+    </select>
+
 </mapper>
