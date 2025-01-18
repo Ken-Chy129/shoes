@@ -16,9 +16,9 @@ public interface PoisonItemMapper extends BaseMapper<PoisonItemDO> {
 
     PoisonItemDO selectByArticleNumber(@Param("articleNumber") String articleNumber);
 
-    List<String> selectModelNoByKcBrand(@Param("brand") String brand);
-
     List<String> selectModelNoByReleaseYear(@Param("releaseYear") Integer releaseYear);
 
     List<PoisonItemDO> selectSpuId(@Param("startIndex") Integer startIndex, @Param("pageSize") Integer pageSize);
+
+    void insertIgnore(PoisonItemDO item);
 }

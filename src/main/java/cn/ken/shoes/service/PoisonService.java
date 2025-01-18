@@ -8,6 +8,7 @@ import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
+import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.util.AsyncUtil;
@@ -16,6 +17,9 @@ import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -42,10 +46,13 @@ public class PoisonService {
     @Resource
     private KickScrewItemMapper kickScrewItemMapper;
 
+    @Resource
+    private SqlSessionFactory sqlSessionFactory;
+
     public void refreshPoisonItems() throws InterruptedException {
         int total = 0;
 //        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-        for (Integer releaseYear : List.of(2025)) {
+        for (Integer releaseYear : List.of(2024)) {
             try {
                 List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
                         () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),
@@ -60,8 +67,8 @@ public class PoisonService {
                         .filter(CollectionUtils::isNotEmpty)
                         .flatMap(List::stream)
                         .toList();
-                items.forEach(item -> item.setRelease_year(releaseYear));
-                AsyncUtil.runTasks(List.of(() -> poisonItemMapper.insert(items)));
+                items.forEach(item -> item.setReleaseYear(releaseYear));
+                AsyncUtil.runTasks(List.of(() -> batchInsertItems(items)));
                 log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, items.size());
                 total += items.size();
             } catch (Exception e) {
@@ -69,6 +76,16 @@ public class PoisonService {
             }
         }
         log.info("refreshPoisonItems finish, cnt:{}", total);
+    }
+
+    private void batchInsertItems(List<PoisonItemDO> items) {
+        try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
+            for (PoisonItemDO item : items) {
+                poisonItemMapper.insertIgnore(item);
+            }
+            sqlSession.commit();
+        }
+        log.info("batchInsertItems success");
     }
 
     public List<Pair<String, Long>> queryAndSaveSpuIds(List<String> modelNumbers) throws InterruptedException {

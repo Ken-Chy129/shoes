@@ -174,7 +174,7 @@ public class KickScrewClient {
         if (!CollectionUtils.isEmpty(algoliaRequest.getProductTypes())) {
             facetFilters.add(algoliaRequest.getProductTypes().stream().map(type -> "product_type:" + type).toList());
         } else {
-            facetFilters.add(List.of("product_type:Shoes", "product_type:Sneakers"));
+            facetFilters.add(List.of("product_type:Shoes", "product_type:Sneakers", "product_type:Slippers"));
         }
         if (!CollectionUtils.isEmpty(algoliaRequest.getGenders())) {
             facetFilters.add(algoliaRequest.getGenders().stream().map(gender -> "gender:" + gender).toList());

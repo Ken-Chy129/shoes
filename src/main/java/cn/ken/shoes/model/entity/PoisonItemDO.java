@@ -25,5 +25,5 @@ public class PoisonItemDO {
 
     private String spuLogo;
 
-    private Integer release_year;
+    private Integer releaseYear;
 }

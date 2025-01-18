@@ -61,8 +61,6 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshAllItems() {
-        kickScrewItemMapper.deleteAll();
-
         List<BrandDO> brandList = selectBrands();
         
         AtomicInteger finishCnt = new AtomicInteger(0);
