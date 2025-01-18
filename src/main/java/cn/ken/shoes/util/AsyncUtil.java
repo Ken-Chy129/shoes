@@ -1,39 +1,89 @@
 package cn.ken.shoes.util;
 
 import com.google.common.util.concurrent.RateLimiter;
+import lombok.SneakyThrows;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.*;
 
 public class AsyncUtil {
 
     public static void runTasks(List<Runnable> tasks) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(tasks.size());
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         for (Runnable task : tasks) {
-            Thread.ofVirtual().start(() -> {
-                try {
-                    task.run();
-                } finally {
-                    latch.countDown();
-                }
-            });
+            executorService.execute(task);
         }
-        latch.await();
     }
 
-    public static void runTasksWithLimit(List<Runnable> tasks, int permitsPerSecond) throws InterruptedException {
-        CountDownLatch latch = new CountDownLatch(tasks.size());
-        RateLimiter rateLimiter = RateLimiter.create(permitsPerSecond);
+    @SneakyThrows
+    public static void runTasksUntilFinish(List<Runnable> tasks) throws InterruptedException {
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<?>> futures = new ArrayList<>();
         for (Runnable task : tasks) {
-            rateLimiter.acquire();
-            Thread.ofVirtual().start(() -> {
-                try {
-                    task.run();
-                } finally {
-                    latch.countDown();
-                }
-            });
+            futures.add(executorService.submit(task));
         }
-        latch.await();
+        for (Future<?> future : futures) {
+            future.get();
+        }
+    }
+
+    public static void runTasks(List<Runnable> tasks, int permitsPerSecond) throws InterruptedException {
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+        RateLimiter limiter = RateLimiter.create(permitsPerSecond);
+        for (Runnable task : tasks) {
+            limiter.acquire();
+            executorService.execute(task);
+        }
+    }
+
+    @SneakyThrows
+    public static void runTasksUntilFinish(List<Runnable> tasks, int permitsPerSecond) throws InterruptedException {
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<?>> futures = new ArrayList<>();
+        RateLimiter limiter = RateLimiter.create(permitsPerSecond);
+        for (Runnable task : tasks) {
+            limiter.acquire();
+            futures.add(executorService.submit(task));
+        }
+        for (Future<?> future : futures) {
+            future.get();
+        }
+    }
+
+    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables, int permitsPerSecond) throws InterruptedException {
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<T>> futures = new ArrayList<>();
+        RateLimiter limiter = RateLimiter.create(permitsPerSecond);
+        for (Callable<T> callable : callables) {
+            limiter.acquire();
+            futures.add(executorService.submit(callable));
+        }
+        List<T> results = new ArrayList<>();
+        for (Future<T> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return results;
+    }
+
+    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables) throws InterruptedException {
+        ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
+        List<Future<T>> futures = new ArrayList<>();
+        for (Callable<T> callable : callables) {
+            futures.add(executorService.submit(callable));
+        }
+        List<T> results = new ArrayList<>();
+        for (Future<T> future : futures) {
+            try {
+                results.add(future.get());
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
+            }
+        }
+        return results;
     }
 }

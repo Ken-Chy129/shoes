@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 
@@ -44,25 +45,23 @@ public class PoisonService {
     public void refreshPoisonItems() throws InterruptedException {
         int total = 0;
         for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-            final List<String> modelNoList = new ArrayList<>(), existModelNoList = new ArrayList<>();
-            AsyncUtil.runTasks(List.of(
-                () -> modelNoList.addAll(kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear)),
-                () -> existModelNoList.addAll(poisonItemMapper.selectModelNoByReleaseYear(releaseYear))
+            List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
+                    () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),
+                    () -> poisonItemMapper.selectModelNoByReleaseYear(releaseYear)
             ));
+            if (result.size() < 2) {
+                continue;
+            }
+            List<String> modelNoList = result.getFirst(), existModelNoList = result.get(1);
             modelNoList.removeAll(existModelNoList);
-            List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
-            AsyncUtil.runTasksWithLimit(Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Runnable) () -> {
-                List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
-                if (CollectionUtils.isEmpty(poisonItemDOS)) {
-                    return;
-                }
-                brandItems.addAll(poisonItemDOS);
-            }).toList(), 15);
-            Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
-            log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, brandItems.size());
-            total += brandItems.size();
+            List<PoisonItemDO> items = AsyncUtil.runTasksWithResult(
+                    Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Callable<List<PoisonItemDO>>) () -> poisonClient.queryItemByModelNos(fiveModelNoList)).toList(),
+                    15
+            ).stream().flatMap(List::stream).toList();
+            AsyncUtil.runTasks(List.of(() -> poisonItemMapper.insert(items)));
+            log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, items.size());
+            total += items.size();
         }
-        log.info("refreshPoisonItems, total:{}", total);
         System.out.println("finish");
     }
 
