@@ -10,6 +10,7 @@ import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.util.AsyncUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
@@ -44,31 +45,21 @@ public class PoisonService {
         RateLimiter rateLimiter = RateLimiter.create(15);
         int total = 0;
         for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-            List<String> brandModelNoList = kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear);
-            // 已存在的商品不需要再查询
-            List<String> existBrandModelNoList = poisonItemMapper.selectModelNoByReleaseYear(releaseYear);
-            brandModelNoList.removeAll(existBrandModelNoList);
+            final List<String> modelNoList = new ArrayList<>(), existModelNoList = new ArrayList<>();
+            AsyncUtil.awaitTasks(List.of(
+                () -> modelNoList.addAll(kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear)),
+                () -> existModelNoList.addAll(poisonItemMapper.selectModelNoByReleaseYear(releaseYear))
+            ));
+            modelNoList.removeAll(existModelNoList);
             List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
-            List<List<String>> partition = Lists.partition(brandModelNoList, 5);
-            CountDownLatch latch = new CountDownLatch(partition.size());
-            for (List<String> fiveModelNoList : partition) {
-                double waitTime = rateLimiter.acquire();
-                log.info("waitTime:{}", waitTime);
-                Thread.ofVirtual().name("poison-api").start(() -> {
-                    try {
-                        List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
-                        if (CollectionUtils.isEmpty(poisonItemDOS)) {
-                            return;
-                        }
-                        brandItems.addAll(poisonItemDOS);
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
-            }
-            latch.await();
+            AsyncUtil.awaitTasks(Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Runnable) () -> {
+                rateLimiter.acquire();
+                List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
+                if (CollectionUtils.isEmpty(poisonItemDOS)) {
+                    return;
+                }
+                brandItems.addAll(poisonItemDOS);
+            }).toList());
             Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
             log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, brandItems.size());
             total += brandItems.size();
