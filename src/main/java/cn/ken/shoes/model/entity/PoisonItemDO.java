@@ -1,10 +1,8 @@
 package cn.ken.shoes.model.entity;
 
-import cn.ken.shoes.model.poinson.Sku;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
-import java.util.List;
 
 @Data
 @TableName("poison_item")
@@ -22,5 +20,5 @@ public class PoisonItemDO {
 
     private String spuLogo;
 
-    private String kcBrand;
+    private Integer release_year;
 }

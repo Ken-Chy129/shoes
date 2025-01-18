@@ -25,4 +25,9 @@
     <select id="count" resultType="java.lang.Integer">
         select count(*) from poison_item;
     </select>
+
+    <select id="selectModelNoByReleaseYear" resultType="java.lang.String">
+        select article_number from shoes.poison_item
+        where release_year = #{releaseYear}
+    </select>
 </mapper>
