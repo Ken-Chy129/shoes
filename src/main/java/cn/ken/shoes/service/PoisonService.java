@@ -15,8 +15,8 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.Callable;
@@ -44,25 +44,31 @@ public class PoisonService {
 
     public void refreshPoisonItems() throws InterruptedException {
         int total = 0;
-        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-            List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
-                    () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),
-                    () -> poisonItemMapper.selectModelNoByReleaseYear(releaseYear)
-            ));
-            if (result.size() < 2) {
-                continue;
+//        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
+        for (Integer releaseYear : List.of(2025)) {
+            try {
+                List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
+                        () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),
+                        () -> poisonItemMapper.selectModelNoByReleaseYear(releaseYear)
+                ));
+                List<String> modelNoList = result.getFirst(), existModelNoList = result.get(1);
+                modelNoList.removeAll(existModelNoList);
+                List<Callable<List<PoisonItemDO>>> suppliers = Lists.partition(modelNoList, 5).stream()
+                        .map(fiveModelNoList -> (Callable<List<PoisonItemDO>>) () -> poisonClient.queryItemByModelNos(fiveModelNoList))
+                        .toList();
+                List<PoisonItemDO> items = AsyncUtil.runTasksWithResult(suppliers, 15).stream()
+                        .filter(CollectionUtils::isNotEmpty)
+                        .flatMap(List::stream)
+                        .toList();
+                items.forEach(item -> item.setRelease_year(releaseYear));
+                AsyncUtil.runTasks(List.of(() -> poisonItemMapper.insert(items)));
+                log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, items.size());
+                total += items.size();
+            } catch (Exception e) {
+                log.error("refreshPoisonItems error", e);
             }
-            List<String> modelNoList = result.getFirst(), existModelNoList = result.get(1);
-            modelNoList.removeAll(existModelNoList);
-            List<PoisonItemDO> items = AsyncUtil.runTasksWithResult(
-                    Lists.partition(modelNoList, 5).stream().map(fiveModelNoList -> (Callable<List<PoisonItemDO>>) () -> poisonClient.queryItemByModelNos(fiveModelNoList)).toList(),
-                    15
-            ).stream().flatMap(List::stream).toList();
-            AsyncUtil.runTasks(List.of(() -> poisonItemMapper.insert(items)));
-            log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, items.size());
-            total += items.size();
         }
-        System.out.println("finish");
+        log.info("refreshPoisonItems finish, cnt:{}", total);
     }
 
     public List<Pair<String, Long>> queryAndSaveSpuIds(List<String> modelNumbers) throws InterruptedException {

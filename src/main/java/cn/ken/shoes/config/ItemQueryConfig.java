@@ -13,7 +13,7 @@ public class ItemQueryConfig {
     static {
         ALL_RELEASE_YEARS = new ArrayList<>();
         int end = LocalDateTime.now().getYear();
-        for (int i = 2015; i < end; i++) {
+        for (int i = end; i >= 2015; i--) {
             ALL_RELEASE_YEARS.add(i);
         }
     }

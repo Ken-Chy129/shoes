@@ -1,6 +1,5 @@
 package cn.ken.shoes.service.impl;
 
-import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -11,24 +10,26 @@ import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.service.ItemService;
+import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
+import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 @Slf4j
 @Service("kickScrewItemService")
@@ -96,7 +97,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                     pageLatch.await();
                 }
                 brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
-                Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap));
+                Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList()));
             } catch (Exception e) {
                 log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
             } finally {
@@ -105,14 +106,34 @@ public class KickScrewItemServiceImpl implements ItemService {
         }
     }
 
-    private void batchInsertItems(Map<String, List<KickScrewItemDO>> itemMap) {
-        List<KickScrewItemDO> brandItems = itemMap.values().stream().flatMap(List::stream).toList();
+    @Override
+    public void refreshIncrementalItems() {
+        try {
+            Integer recentYear = ItemQueryConfig.ALL_RELEASE_YEARS.getFirst();
+            // 查询品牌下所有商品
+            KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
+            algoliaRequest.setReleaseYears(List.of(recentYear));
+            Integer page = kickScrewClient.queryBrandItemPageV2(algoliaRequest);
+            List<List<KickScrewItemDO>> result = AsyncUtil.runTasksWithResult(IntStream.range(0, page).mapToObj(index -> (Callable<List<KickScrewItemDO>>) () -> {
+                KickScrewAlgoliaRequest newRequest = new KickScrewAlgoliaRequest();
+                BeanUtils.copyProperties(algoliaRequest, newRequest);
+                newRequest.setPageIndex(index);
+                return kickScrewClient.queryItemByBrandV2(newRequest);
+            }).toList());
+            AsyncUtil.runTasks(List.of(() -> batchInsertItems(result.stream().flatMap(List::stream).toList())));
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+    }
+
+    private void batchInsertItems(List<KickScrewItemDO> items) {
         try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
-            for (KickScrewItemDO brandItem : brandItems) {
-                kickScrewItemMapper.insertIgnore(brandItem);
+            for (KickScrewItemDO item : items) {
+                kickScrewItemMapper.insertIgnore(item);
             }
             sqlSession.commit();
         }
+        log.info("batchInsertItems success");
     }
 
     @Override

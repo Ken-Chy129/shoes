@@ -18,6 +18,11 @@ public interface ItemService {
     void refreshAllItems();
 
     /**
+     * 增量爬取
+     */
+    void refreshIncrementalItems();
+
+    /**
      * 条件查询商品
      */
     List<String> selectItemsByCondition();

@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
@@ -25,6 +26,8 @@ public class ShoesController {
     private PoisonClient poisonClient;
     @Resource
     private PoisonService poisonService;
+    @Resource
+    private ItemService kickScrewItemService;
 
     @GetMapping("list")
     public String getShoes() {
@@ -64,5 +67,10 @@ public class ShoesController {
     @GetMapping("queryByHandle")
     public String queryByHandle(String handle) {
         return JSON.toJSONString(kickScrewClient.queryItemSizePrice(handle));
+    }
+
+    @GetMapping("incremental")
+    public void incremental() {
+        kickScrewItemService.refreshIncrementalItems();
     }
 }
