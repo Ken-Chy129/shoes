@@ -9,10 +9,12 @@ import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
+import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -22,6 +24,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -190,6 +193,28 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void changePrice() {
-        
+        // 1.查询kc商品价格
+        long count = kickScrewPriceMapper.count();
+        long startIndex = 0;
+        while (startIndex < count) {
+            try {
+                List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
+                // todo:查询这些货号&尺码在读物的价格
+                List<KickScrewUploadItem> toUpload = new ArrayList<>();
+                for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                    KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
+                    kickScrewUploadItem.setModel_no(kickScrewPriceDO.getModelNo());
+                    kickScrewUploadItem.setSize(kickScrewPriceDO.getEuSize());
+                    kickScrewUploadItem.setSize_system("EU");
+                    kickScrewUploadItem.setQty(1);
+                    kickScrewUploadItem.setPrice(ShoesUtil.getPrice(1, 2));
+                    toUpload.add(kickScrewUploadItem);
+                }
+                AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
+                startIndex += 1000;
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+            }
+        }
     }
 }
