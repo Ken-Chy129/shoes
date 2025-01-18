@@ -2,11 +2,13 @@ package cn.ken.shoes.util;
 
 import com.google.common.util.concurrent.RateLimiter;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 
+@Slf4j
 public class AsyncUtil {
 
     public static void runTasks(List<Runnable> tasks) throws InterruptedException {
@@ -17,7 +19,7 @@ public class AsyncUtil {
     }
 
     @SneakyThrows
-    public static void runTasksUntilFinish(List<Runnable> tasks) throws InterruptedException {
+    public static void runTasksUntilFinish(List<Runnable> tasks) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<?>> futures = new ArrayList<>();
         for (Runnable task : tasks) {
@@ -38,7 +40,7 @@ public class AsyncUtil {
     }
 
     @SneakyThrows
-    public static void runTasksUntilFinish(List<Runnable> tasks, int permitsPerSecond) throws InterruptedException {
+    public static void runTasksUntilFinish(List<Runnable> tasks, int permitsPerSecond) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<?>> futures = new ArrayList<>();
         RateLimiter limiter = RateLimiter.create(permitsPerSecond);

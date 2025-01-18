@@ -49,7 +49,7 @@ public class PoisonService {
     @Resource
     private SqlSessionFactory sqlSessionFactory;
 
-    public void refreshPoisonItems() throws InterruptedException {
+    public void refreshPoisonItems() {
         int total = 0;
 //        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
         for (Integer releaseYear : List.of(2024)) {

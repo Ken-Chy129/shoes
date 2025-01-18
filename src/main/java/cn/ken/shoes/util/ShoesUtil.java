@@ -18,4 +18,7 @@ public class ShoesUtil {
         }
     }
 
+    public static Integer getPrice(Integer poisonPrice, Integer otherPrice) {
+        return 1;
+    }
 }
