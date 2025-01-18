@@ -19,7 +19,7 @@ public class KickScrewItemDO {
 
     private String gender;
 
-    private String releaseYear;
+    private Integer releaseYear;
 
     /**
      * 根据此值查询尺码价格
