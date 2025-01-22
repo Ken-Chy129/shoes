@@ -4,6 +4,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
+import cn.ken.shoes.config.ShoeSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.KickScrewPriceMapper;
@@ -196,7 +197,6 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void changePrice() {
-        // 1.查询kc商品价格
         long count = kickScrewPriceMapper.count();
         long startIndex = 0;
         while (startIndex < count) {
@@ -208,7 +208,6 @@ public class KickScrewItemServiceImpl implements ItemService {
                                 poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
                                 poisonPrice -> PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE) == PriceEnum.LIGHTNING ? poisonPrice.getLightningPrice() : poisonPrice.getNormalPrice()
                         ));
-                // todo:查询这些货号&尺码在读物的价格
                 List<KickScrewUploadItem> toUpload = new ArrayList<>();
                 for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                     String modelNo = kickScrewPriceDO.getModelNo();
@@ -217,12 +216,16 @@ public class KickScrewItemServiceImpl implements ItemService {
                     if (poisonPrice == null) {
                         continue;
                     }
+                    Integer price = ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice());
+                    if (price == null) {
+                        continue;
+                    }
                     KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
                     kickScrewUploadItem.setModel_no(modelNo);
                     kickScrewUploadItem.setSize(euSize);
                     kickScrewUploadItem.setSize_system("EU");
                     kickScrewUploadItem.setQty(1);
-                    kickScrewUploadItem.setPrice(ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice()));
+                    kickScrewUploadItem.setPrice(price);
                     toUpload.add(kickScrewUploadItem);
                 }
                 AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
