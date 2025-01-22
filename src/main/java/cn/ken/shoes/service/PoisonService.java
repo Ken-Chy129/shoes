@@ -51,8 +51,7 @@ public class PoisonService {
 
     public void refreshPoisonItems() {
         int total = 0;
-//        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-        for (Integer releaseYear : List.of(2024)) {
+        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
             try {
                 List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
                         () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),

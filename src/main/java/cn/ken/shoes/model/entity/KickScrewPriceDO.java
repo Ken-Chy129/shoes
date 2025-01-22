@@ -18,5 +18,5 @@ public class KickScrewPriceDO {
 
     private String euSize;
 
-    private BigDecimal price;
+    private Integer price;
 }

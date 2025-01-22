@@ -1,10 +1,13 @@
 package cn.ken.shoes.service.impl;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.KickScrewPriceMapper;
+import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
@@ -14,7 +17,6 @@ import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -24,14 +26,12 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Slf4j
@@ -52,6 +52,9 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
+
+    @Resource
+    private PoisonPriceMapper poisonPriceMapper;
 
     @Override
     public List<BrandDO> scratchBrands() {
@@ -170,7 +173,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                             kickScrewPriceDO.setModelNo(modelNo);
                             kickScrewPriceDO.setEuSize(euSize);
                             Map<String, String> price = kickScrewSizePrice.getPrice();
-                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? BigDecimal.valueOf(Double.parseDouble(price.get("amount"))) : BigDecimal.valueOf(-1));
+                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? Integer.valueOf(price.get("amount")) : -1);
                             toInsert.add(kickScrewPriceDO);
                         }
                     } catch (Exception e) {
@@ -199,15 +202,27 @@ public class KickScrewItemServiceImpl implements ItemService {
         while (startIndex < count) {
             try {
                 List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
+                Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+                Map<String, Integer> poisonPriceMap = poisonPriceMapper.selectListByModelNos(modelNos).stream()
+                        .collect(Collectors.toMap(
+                                poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
+                                poisonPrice -> PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE) == PriceEnum.LIGHTNING ? poisonPrice.getLightningPrice() : poisonPrice.getNormalPrice()
+                        ));
                 // todo:查询这些货号&尺码在读物的价格
                 List<KickScrewUploadItem> toUpload = new ArrayList<>();
                 for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                    String modelNo = kickScrewPriceDO.getModelNo();
+                    String euSize = kickScrewPriceDO.getEuSize();
+                    Integer poisonPrice = poisonPriceMap.get(modelNo + ":" + euSize);
+                    if (poisonPrice == null) {
+                        continue;
+                    }
                     KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
-                    kickScrewUploadItem.setModel_no(kickScrewPriceDO.getModelNo());
-                    kickScrewUploadItem.setSize(kickScrewPriceDO.getEuSize());
+                    kickScrewUploadItem.setModel_no(modelNo);
+                    kickScrewUploadItem.setSize(euSize);
                     kickScrewUploadItem.setSize_system("EU");
                     kickScrewUploadItem.setQty(1);
-                    kickScrewUploadItem.setPrice(ShoesUtil.getPrice(1, 2));
+                    kickScrewUploadItem.setPrice(ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice()));
                     toUpload.add(kickScrewUploadItem);
                 }
                 AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));

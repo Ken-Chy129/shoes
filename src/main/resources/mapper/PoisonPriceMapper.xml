@@ -3,4 +3,13 @@
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
 
+    <select id="selectListByModelNos" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">
+        select * from poison_price
+        <where>
+            model_no in
+            <foreach collection="modelNos" separator="," open="(" close=")" item="modelNo">
+                 #{modelNo}
+            </foreach>
+        </where>
+    </select>
 </mapper>
