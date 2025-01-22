@@ -153,7 +153,8 @@ public class KickScrewItemServiceImpl implements ItemService {
         long currentTimeMillis = System.currentTimeMillis();
 
         KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
-        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
+//        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
+        Integer count = 2500;
         int page = (int) Math.ceil(count / 1000.0);
         kickScrewItemRequest.setPageSize(1000);
         for (int i = 1; i <= page; i++) {
@@ -174,7 +175,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                             kickScrewPriceDO.setModelNo(modelNo);
                             kickScrewPriceDO.setEuSize(euSize);
                             Map<String, String> price = kickScrewSizePrice.getPrice();
-                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? Integer.valueOf(price.get("amount")) : -1);
+                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
                             toInsert.add(kickScrewPriceDO);
                         }
                     } catch (Exception e) {
@@ -190,7 +191,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                 log.error(e.getMessage(), e);
             }
             Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
-            log.info("page refresh end, cost:{}, pageIndex:{}", System.currentTimeMillis() - pageStart, i);
+            log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
         }
         log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
     }
