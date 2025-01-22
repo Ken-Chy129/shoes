@@ -140,6 +140,9 @@ public class PriceService {
                         for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
                             String size = entry.getKey();
                             Map<PriceEnum, Integer> priceMap = entry.getValue();
+                            if (priceMap == null) {
+                                continue;
+                            }
                             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                             poisonPriceDO.setModelNo(articleNumber);
                             poisonPriceDO.setEuSize(size);
