@@ -1,5 +1,8 @@
 package cn.ken.shoes.util;
 
+import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.config.PriceSwitch;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -19,6 +22,17 @@ public class ShoesUtil {
     }
 
     public static Integer getPrice(Integer poisonPrice, Integer otherPrice) {
-        return 1;
+        // 成本=得物价格+运费
+        int cost = poisonPrice + PriceSwitch.FREIGHT;
+        // 目标盈利
+        double earn = Math.max(PriceSwitch.MIN_PROFIT, cost * PriceSwitch.MIN_PROFIT_RATE);
+        // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
+        int price = (int) Math.ceil(Math.ceil((cost + earn) / PriceSwitch.EXCHANGE_RATE) / (1 - PriceSwitch.PLATFORM_RATE));
+        // 三方平台没有该商品出售，直接设置为满足盈利的定价
+        if (otherPrice == -1) {
+            return price;
+        }
+        return price < otherPrice - 1 ? otherPrice - 1 : null;
     }
+
 }

@@ -53,7 +53,7 @@ public class AsyncUtil {
         }
     }
 
-    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables, int permitsPerSecond) throws InterruptedException {
+    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables, int permitsPerSecond) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<T>> futures = new ArrayList<>();
         RateLimiter limiter = RateLimiter.create(permitsPerSecond);
@@ -65,14 +65,14 @@ public class AsyncUtil {
         for (Future<T> future : futures) {
             try {
                 results.add(future.get());
-            } catch (ExecutionException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
         return results;
     }
 
-    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables) throws InterruptedException {
+    public static <T> List<T> runTasksWithResult(List<Callable<T>> callables) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<T>> futures = new ArrayList<>();
         for (Callable<T> callable : callables) {
@@ -82,7 +82,7 @@ public class AsyncUtil {
         for (Future<T> future : futures) {
             try {
                 results.add(future.get());
-            } catch (ExecutionException e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e);
             }
         }
