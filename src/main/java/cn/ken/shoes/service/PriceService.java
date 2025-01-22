@@ -119,11 +119,13 @@ public class PriceService {
     }
 
     public void refreshPoisonPrices() {
-//        int count = poisonItemMapper.count();
-        int count = 1000;
+        poisonPriceMapper.delete(null);
+        int count = poisonItemMapper.count();
+//        int count = 1000;
         int page = (int) Math.ceil(count / 1000.0);
         RateLimiter limiter = RateLimiter.create(10);
         for (int i = 1; i <= page; i++) {
+            long start = System.currentTimeMillis();
             List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
             List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
             CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
@@ -157,7 +159,13 @@ public class PriceService {
                     }
                 });
             }
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
+            log.info("refreshPoisonPrices finish, page:{}, cost:{}", page, System.currentTimeMillis() - start);
         }
     }
 

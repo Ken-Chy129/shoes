@@ -22,8 +22,9 @@ public class ShoesUtil {
     }
 
     public static Integer getPrice(Integer poisonPrice, Integer otherPrice) {
+        double poisonPriceYuan = poisonPrice / 100.0;
         // 成本=得物价格+运费
-        int cost = poisonPrice + PriceSwitch.FREIGHT;
+        double cost = poisonPriceYuan + PriceSwitch.FREIGHT;
         // 目标盈利
         double earn = Math.max(PriceSwitch.MIN_PROFIT, cost * PriceSwitch.MIN_PROFIT_RATE);
         // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
