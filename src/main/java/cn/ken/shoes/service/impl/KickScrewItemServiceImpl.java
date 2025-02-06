@@ -123,7 +123,9 @@ public class KickScrewItemServiceImpl implements ItemService {
                 newRequest.setPageIndex(index);
                 return kickScrewClient.queryItemPageV2(newRequest);
             }).toList());
-            AsyncUtil.runTasks(List.of(() -> batchInsertItems(result.stream().flatMap(List::stream).toList())));
+            List<KickScrewItemDO> incrementalItems = result.stream().flatMap(List::stream).toList();
+            AsyncUtil.runTasks(List.of(() -> batchInsertItems(incrementalItems)));
+            log.info("finish refreshIncrementalItems, incrementalItems cnt:{}", incrementalItems.size());
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
@@ -136,7 +138,6 @@ public class KickScrewItemServiceImpl implements ItemService {
             }
             sqlSession.commit();
         }
-        log.info("batchInsertItems success");
     }
 
     @Override
