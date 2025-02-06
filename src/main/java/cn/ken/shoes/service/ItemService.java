@@ -12,12 +12,12 @@ public interface ItemService {
     List<BrandDO> scratchBrands();
 
     /**
-     * 爬取商品信息
+     * 全量爬取商品信息，会清空数据重新获取
      */
     void refreshAllItems();
 
     /**
-     * 增量爬取
+     * 增量爬取商品
      */
     void refreshIncrementalItems();
 

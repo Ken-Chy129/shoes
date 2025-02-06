@@ -37,7 +37,10 @@ public class KickScrewClient {
                 .orElse(null);
     }
 
-    public List<KickScrewItemDO> queryItemByBrandV2(KickScrewAlgoliaRequest request) {
+    /**
+     * 根据条件（时间、品牌、性别、商品类型等）分页查询kc平台商品
+     */
+    public List<KickScrewItemDO> queryItemPageV2(KickScrewAlgoliaRequest request) {
         String result = queryAlgolia(buildAlgoliaBodyForItem(request));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
@@ -47,7 +50,10 @@ public class KickScrewClient {
                 .map(jsonArray -> jsonArray.toJavaList(KickScrewItemDO.class)).orElse(new ArrayList<>());
     }
 
-    public Integer queryBrandItemPageV2(KickScrewAlgoliaRequest request) {
+    /**
+     * 根据条件（时间、品牌、性别、商品类型等）查询kc平台商品页数
+     */
+    public Integer countItemPageV2(KickScrewAlgoliaRequest request) {
         String result = queryAlgolia(buildAlgoliaBodyForItem(request));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
