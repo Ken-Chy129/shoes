@@ -197,13 +197,15 @@ public class KickScrewItemServiceImpl implements ItemService {
     }
 
     @Override
-    public void changePrice() {
+    public void compareWithPoisonAndChangePrice() {
         long count = kickScrewPriceMapper.count();
         long startIndex = 0;
         while (startIndex < count) {
             try {
+                // 1.查询kc价格
                 List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
                 Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+                // 2.查询对应的货号在得物的价格
                 Map<String, Integer> poisonPriceMap = poisonPriceMapper.selectListByModelNos(modelNos).stream()
                         .collect(Collectors.toMap(
                                 poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
