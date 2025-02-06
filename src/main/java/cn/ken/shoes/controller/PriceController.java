@@ -10,7 +10,6 @@ import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -41,7 +40,7 @@ public class PriceController {
         kickScrewAlgoliaRequest.setBrands(List.of(brand));
         kickScrewAlgoliaRequest.setReleaseYears(List.of(2024));
         kickScrewAlgoliaRequest.setPageIndex(1);
-        return kickScrewClient.queryItemByBrandV2(kickScrewAlgoliaRequest);
+        return kickScrewClient.queryItemPageV2(kickScrewAlgoliaRequest);
     }
 
     @GetMapping("test")
@@ -59,7 +58,7 @@ public class PriceController {
         KickScrewAlgoliaRequest kickScrewAlgoliaRequest = new KickScrewAlgoliaRequest();
         kickScrewAlgoliaRequest.setBrands(List.of("NIKE"));
         kickScrewAlgoliaRequest.setReleaseYears(List.of(2024));
-        return kickScrewClient.queryBrandItemPageV2(kickScrewAlgoliaRequest);
+        return kickScrewClient.countItemPageV2(kickScrewAlgoliaRequest);
     }
 
     @GetMapping("size")

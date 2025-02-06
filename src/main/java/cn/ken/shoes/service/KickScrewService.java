@@ -69,7 +69,7 @@ public class KickScrewService {
                 kickScrewAlgoliaRequest.setGenders(List.of(gender));
                 kickScrewAlgoliaRequest.setPageIndex(0);
                 kickScrewAlgoliaRequest.setPageSize(1);
-                List<KickScrewItemDO> itemList = kickScrewClient.queryItemByBrandV2(kickScrewAlgoliaRequest);
+                List<KickScrewItemDO> itemList = kickScrewClient.queryItemPageV2(kickScrewAlgoliaRequest);
                 if (CollectionUtils.isEmpty(itemList)) {
                     continue;
                 }
@@ -154,14 +154,14 @@ public class KickScrewService {
                         KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
                         algoliaRequest.setBrands(List.of(brand));
                         algoliaRequest.setReleaseYears(List.of(releaseYear));
-                        Integer page = kickScrewClient.queryBrandItemPageV2(algoliaRequest);
+                        Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
                         CountDownLatch pageLatch = new CountDownLatch(page);
                         for (int i = 1; i <= page; i++) {
                             final int pageIndex = i;
                             Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
                                 try {
                                     algoliaRequest.setPageIndex(pageIndex);
-                                    List<KickScrewItemDO> brandItems = kickScrewClient.queryItemByBrandV2(algoliaRequest);
+                                    List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
                                     brandItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
                                 } catch (Exception e) {
                                     log.error(e.getMessage(), e);

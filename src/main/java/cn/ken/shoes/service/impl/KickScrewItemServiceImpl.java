@@ -4,7 +4,6 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
-import cn.ken.shoes.config.ShoeSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.KickScrewPriceMapper;
@@ -26,7 +25,6 @@ import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -83,14 +81,14 @@ public class KickScrewItemServiceImpl implements ItemService {
                     KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
                     algoliaRequest.setBrands(List.of(brand));
                     algoliaRequest.setReleaseYears(List.of(releaseYear));
-                    Integer page = kickScrewClient.queryBrandItemPageV2(algoliaRequest);
+                    Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
                     CountDownLatch pageLatch = new CountDownLatch(page);
                     for (int i = 0; i < page; i++) {
                         final int pageIndex = i;
                         Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
                             try {
                                 algoliaRequest.setPageIndex(pageIndex);
-                                List<KickScrewItemDO> brandItems = kickScrewClient.queryItemByBrandV2(algoliaRequest);
+                                List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
                                 releaseYearItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
                             } catch (Exception e) {
                                 log.error(e.getMessage(), e);
@@ -118,12 +116,12 @@ public class KickScrewItemServiceImpl implements ItemService {
             // 查询品牌下所有商品
             KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
             algoliaRequest.setReleaseYears(List.of(recentYear));
-            Integer page = kickScrewClient.queryBrandItemPageV2(algoliaRequest);
+            Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
             List<List<KickScrewItemDO>> result = AsyncUtil.runTasksWithResult(IntStream.range(0, page).mapToObj(index -> (Callable<List<KickScrewItemDO>>) () -> {
                 KickScrewAlgoliaRequest newRequest = new KickScrewAlgoliaRequest();
                 BeanUtils.copyProperties(algoliaRequest, newRequest);
                 newRequest.setPageIndex(index);
-                return kickScrewClient.queryItemByBrandV2(newRequest);
+                return kickScrewClient.queryItemPageV2(newRequest);
             }).toList());
             AsyncUtil.runTasks(List.of(() -> batchInsertItems(result.stream().flatMap(List::stream).toList())));
         } catch (Exception e) {
