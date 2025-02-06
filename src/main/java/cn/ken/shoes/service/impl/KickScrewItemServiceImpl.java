@@ -153,8 +153,7 @@ public class KickScrewItemServiceImpl implements ItemService {
         long currentTimeMillis = System.currentTimeMillis();
 
         KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
-//        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
-        Integer count = 2500;
+        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
         int page = (int) Math.ceil(count / 1000.0);
         kickScrewItemRequest.setPageSize(1000);
         for (int i = 1; i <= page; i++) {
