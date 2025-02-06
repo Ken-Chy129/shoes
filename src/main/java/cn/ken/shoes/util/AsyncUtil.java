@@ -1,6 +1,7 @@
 package cn.ken.shoes.util;
 
 import com.google.common.util.concurrent.RateLimiter;
+import lombok.NonNull;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 
@@ -72,6 +73,7 @@ public class AsyncUtil {
         return results;
     }
 
+    @NonNull
     public static <T> List<T> runTasksWithResult(List<Callable<T>> callables) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         List<Future<T>> futures = new ArrayList<>();
