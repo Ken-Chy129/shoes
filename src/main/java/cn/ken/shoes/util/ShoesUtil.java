@@ -21,11 +21,18 @@ public class ShoesUtil {
         }
     }
 
+    /**
+     * 比价，获取上架的价格
+     * @param poisonPrice 得物价格
+     * @param otherPrice 三方平台的价格
+     * @return 如果三方平台价格-1有盈利，则修改为三方平台价格-1，否则返回null
+     */
     public static Integer getPrice(Integer poisonPrice, Integer otherPrice) {
+        // 得物价格数据库中保存为分，转换为元
         double poisonPriceYuan = poisonPrice / 100.0;
         // 成本=得物价格+运费
         double cost = poisonPriceYuan + PriceSwitch.FREIGHT;
-        // 目标盈利
+        // 最低目标盈利
         double earn = Math.max(PriceSwitch.MIN_PROFIT, cost * PriceSwitch.MIN_PROFIT_RATE);
         // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
         int price = (int) Math.ceil(Math.ceil((cost + earn) / PriceSwitch.EXCHANGE_RATE) / (1 - PriceSwitch.PLATFORM_RATE));

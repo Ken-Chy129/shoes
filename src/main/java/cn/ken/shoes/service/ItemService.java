@@ -1,7 +1,6 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.model.entity.BrandDO;
-import cn.ken.shoes.model.entity.ItemDO;
 
 import java.util.List;
 
@@ -33,7 +32,7 @@ public interface ItemService {
     void refreshAllPrices();
 
     /**
-     * 改价
+     * 和得物价格进行比较并压价有盈利的商品
      */
-    void changePrice();
+    void compareWithPoisonAndChangePrice();
 }
