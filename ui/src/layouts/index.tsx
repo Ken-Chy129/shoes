@@ -1,7 +1,7 @@
 import { ProLayout } from '@ant-design/pro-components';
 import { Link, Outlet, useModel } from '@umijs/max';
 import { MenuDataItem } from '@ant-design/pro-components';
-import { SearchOutlined, EditOutlined } from '@ant-design/icons';
+import {SearchOutlined, EditOutlined, SettingOutlined} from '@ant-design/icons';
 
 // 定义菜单配置
 const menuData: MenuDataItem[] = [
@@ -14,6 +14,11 @@ const menuData: MenuDataItem[] = [
     path: '/price-update',
     name: '价格更新',
     icon: <EditOutlined />,
+  },
+  {
+    path: '/setting',
+    name: '配置',
+    icon: <SettingOutlined />,
   },
 ];
 
