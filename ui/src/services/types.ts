@@ -21,4 +21,12 @@ export interface PriceUpdateConfig {
   modelNumber?: string;
   minProfit: number;
   minProfitRate: number;
-} 
+}
+
+export interface PriceSetting {
+  exchangeRate: number;
+  freight: number;
+  platformRate: number;
+  minProfitRate: number;
+  minProfit: number;
+}

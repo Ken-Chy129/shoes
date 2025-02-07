@@ -1,25 +1,49 @@
 import {ProForm, ProFormDigit, ProFormSelect, ProFormText} from '@ant-design/pro-components';
-import {Card, message} from 'antd';
+import {Card, Form, message} from 'antd';
+import {queryPriceSetting, updatePriceSetting} from "@/services/setting";
+import {useEffect, useState} from "react";
+import {PriceSetting} from "@/services/types";
 
 const PriceSettingPage = () => {
+
+    const [priceSetting, setPriceSetting] = useState<PriceSetting>();
+
+    useEffect(() => {
+        queryPriceSetting().then(
+            res => setPriceSetting(res.data)
+        );
+    }, []);
+
     const handleSubmit = async (values: any) => {
         try {
-            // TODO: 调用更新价格接口
-            message.success('配置保存成功！');
+            updatePriceSetting(values).then(
+                res => {
+                    if (res.code == 200) {
+                        message.success('配置保存成功！');
+                    } else {
+                        message.error('配置保存失败！');
+                    }
+                }
+            )
         } catch (error) {
             message.error('配置保存失败！');
         }
     };
 
+    if (!priceSetting) {
+        return <div>加载中...</div>; // 或者其他的加载指示器
+    }
+
     return (
         <Card title="价格配置">
-            <ProForm onFinish={handleSubmit}>
+            <ProForm onFinish={handleSubmit} initialValues={priceSetting}>
                 <ProFormDigit
                     name="exchangeRate"
                     label="汇率"
                     min={0}
                     fieldProps={{precision: 2}}
                     rules={[{required: true}]}
+                    initialValue={priceSetting?.exchangeRate}
                 />
                 <ProFormDigit
                     name="freight"
