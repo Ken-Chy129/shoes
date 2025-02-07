@@ -33,7 +33,12 @@ export default defineConfig({
           path: '/price-update',
           name: '价格更新',
           component: 'price/update'
-        }
+        },
+        {
+          path: '/setting',
+          name: '配置',
+          component: './setting',
+        },
       ]
     }
   ],
