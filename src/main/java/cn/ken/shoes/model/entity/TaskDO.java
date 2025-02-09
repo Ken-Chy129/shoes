@@ -3,6 +3,8 @@ package cn.ken.shoes.model.entity;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.util.Date;
+
 @Data
 @TableName("task")
 public class TaskDO {
@@ -11,9 +13,9 @@ public class TaskDO {
 
     private String name;
 
-    private String startTime;
+    private Date startTime;
 
-    private String endTime;
+    private Date endTime;
 
     /**
      * 0:正在运行，1：运行成功，2：运行失败，3：运行终止
