@@ -4,8 +4,8 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 @Data
-@TableName("event")
-public class EventDO {
+@TableName("task")
+public class TaskDO {
 
     private Long id;
 
