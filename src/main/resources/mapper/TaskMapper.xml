@@ -2,4 +2,13 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.TaskMapper">
 
+    <select id="selectTask" resultType="cn.ken.shoes.model.entity.TaskDO">
+        select * from task
+        where name = #{name} and status = #{status}
+    </select>
+
+    <update id="finishTask">
+        update task set status = #{status} and end_time = now()
+        where id = #{id}
+    </update>
 </mapper>
