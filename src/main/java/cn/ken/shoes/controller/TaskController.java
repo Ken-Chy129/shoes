@@ -2,6 +2,7 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -18,7 +19,7 @@ public class TaskController {
     private TaskService taskService;
 
     @GetMapping
-    public Result<List<TaskDO>> queryTasks() {
-        return Result.buildSuccess(taskService.queryEvents());
+    public Result<List<TaskDO>> queryTasks(TaskRequest request) {
+        return Result.buildSuccess(taskService.queryTasksByCondition(request));
     }
 }

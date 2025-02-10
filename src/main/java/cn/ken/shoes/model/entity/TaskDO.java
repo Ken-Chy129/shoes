@@ -12,7 +12,7 @@ public class TaskDO {
 
     private Long id;
 
-    private String type;
+    private Integer type;
 
     private String platform;
 
@@ -32,16 +32,27 @@ public class TaskDO {
 
     @Getter
     public enum TaskTypeEnum {
-        REFRESH_ALL_ITEMS("全量刷新商品"),
-        REFRESH_INCREMENTAL_ITEMS("增量刷新商品"),
-        REFRESH_PRICES("刷新商品价格"),
-        CHANGE_PRICES("改价")
+        REFRESH_ALL_ITEMS("全量刷新商品", 1),
+        REFRESH_INCREMENTAL_ITEMS("增量刷新商品", 2),
+        REFRESH_PRICES("刷新商品价格", 3),
+        CHANGE_PRICES("改价", 4)
         ;
 
-        private final String type;
+        private final String name;
+        private final int code;
 
-        TaskTypeEnum(String type) {
-            this.type = type;
+        TaskTypeEnum(String name, int code) {
+            this.name = name;
+            this.code = code;
+        }
+
+        public static TaskTypeEnum from(int code) {
+            for (TaskTypeEnum value : TaskTypeEnum.values()) {
+                if (value.code == code) {
+                    return value;
+                }
+            }
+            return null;
         }
     }
 
