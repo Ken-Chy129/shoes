@@ -7,6 +7,27 @@
         where type = #{type} and platform = #{platform} and status = #{status}
     </select>
 
+    <select id="selectByCondition" resultType="cn.ken.shoes.model.entity.TaskDO">
+        select * from task
+        <where>
+            <if test="taskType != null">
+                and type = #{taskType}
+            </if>
+            <if test="platform != null and platform != ''">
+                and platform = #{platform}
+            </if>
+            <if test="startTime != null">
+                and start_time > #{startTime}
+            </if>
+            <if test="endTime != null">
+                and end_time &lt; #{endTime}
+            </if>
+            <if test="taskStatus != null">
+                and status = #{taskStatus}
+            </if>
+        </where>
+    </select>
+
     <update id="updateTaskStatus">
         update task set status = #{status} and end_time = now()
         where id = #{id}
