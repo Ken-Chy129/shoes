@@ -39,6 +39,11 @@ export default defineConfig({
           name: '配置',
           component: './setting',
         },
+        {
+          path: '/task',
+          name: '配置',
+          component: './task',
+        },
       ]
     }
   ],
