@@ -14,6 +14,7 @@ import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.service.ItemService;
+import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -55,6 +56,14 @@ public class KickScrewItemServiceImpl implements ItemService {
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
 
+    @Resource
+    private TaskService taskService;
+
+    @Override
+    public String getPlatformName() {
+        return "Kickscrew";
+    }
+
     @Override
     public List<BrandDO> scratchBrands() {
         return List.of();
@@ -66,6 +75,7 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshAllItems() {
+        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, null);
         List<BrandDO> brandList = selectBrands();
         
         AtomicInteger finishCnt = new AtomicInteger(0);
@@ -100,8 +110,12 @@ public class KickScrewItemServiceImpl implements ItemService {
                     pageLatch.await();
                 }
                 brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
-                Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList()));
+                Thread.ofVirtual().start(() -> {
+                    batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList());
+                    taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+                });
             } catch (Exception e) {
+                taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
                 log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
             } finally {
                 log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, System.currentTimeMillis() - brandStartTime);
@@ -111,6 +125,7 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshIncrementalItems() {
+        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_INCREMENTAL_ITEMS, null);
         try {
             Integer recentYear = ItemQueryConfig.ALL_RELEASE_YEARS.getFirst();
             // 查询品牌下所有商品
@@ -127,6 +142,7 @@ public class KickScrewItemServiceImpl implements ItemService {
             AsyncUtil.runTasks(List.of(() -> batchInsertItems(incrementalItems)));
             log.info("finish refreshIncrementalItems, incrementalItems cnt:{}", incrementalItems.size());
         } catch (Exception e) {
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
             log.error(e.getMessage(), e);
         }
     }
@@ -148,92 +164,108 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshAllPrices() {
-        kickScrewPriceMapper.delete(new QueryWrapper<>());
-        long currentTimeMillis = System.currentTimeMillis();
+        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
+        try {
+            kickScrewPriceMapper.delete(new QueryWrapper<>());
+            long currentTimeMillis = System.currentTimeMillis();
 
-        KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
-        Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
-        int page = (int) Math.ceil(count / 1000.0);
-        kickScrewItemRequest.setPageSize(1000);
-        for (int i = 1; i <= page; i++) {
-            long pageStart = System.currentTimeMillis();
-            kickScrewItemRequest.setPageIndex(i);
-            List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
-            CountDownLatch latch = new CountDownLatch(itemDOList.size());
-            List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            for (KickScrewItemDO itemDO : itemDOList) {
-                Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
-                    try {
-                        List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
-                        String modelNo = itemDO.getModelNo();
-                        for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
-                            String title = kickScrewSizePrice.getTitle();
-                            String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
-                            KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
-                            kickScrewPriceDO.setModelNo(modelNo);
-                            kickScrewPriceDO.setEuSize(euSize);
-                            Map<String, String> price = kickScrewSizePrice.getPrice();
-                            kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
-                            toInsert.add(kickScrewPriceDO);
+            KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
+            Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
+            int page = (int) Math.ceil(count / 1000.0);
+            kickScrewItemRequest.setPageSize(1000);
+            for (int i = 1; i <= page; i++) {
+                long pageStart = System.currentTimeMillis();
+                kickScrewItemRequest.setPageIndex(i);
+                List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
+                CountDownLatch latch = new CountDownLatch(itemDOList.size());
+                List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                for (KickScrewItemDO itemDO : itemDOList) {
+                    Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
+                        try {
+                            List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
+                            String modelNo = itemDO.getModelNo();
+                            for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                                String title = kickScrewSizePrice.getTitle();
+                                String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                                KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+                                kickScrewPriceDO.setModelNo(modelNo);
+                                kickScrewPriceDO.setEuSize(euSize);
+                                Map<String, String> price = kickScrewSizePrice.getPrice();
+                                kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
+                                toInsert.add(kickScrewPriceDO);
+                            }
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        } finally {
+                            latch.countDown();
                         }
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
+                    });
+                }
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    log.error(e.getMessage(), e);
+                }
+                Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
+                log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
             }
-            try {
-                latch.await();
-            } catch (InterruptedException e) {
-                log.error(e.getMessage(), e);
-            }
-            Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
-            log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
+            log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+        } catch (Exception e) {
+            log.error("refreshAllPrices error, msg:{}", e.getMessage());
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
-        log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
+
     }
 
     @Override
     public void compareWithPoisonAndChangePrice() {
-        long count = kickScrewPriceMapper.count();
-        long startIndex = 0;
-        while (startIndex < count) {
-            try {
-                // 1.查询kc价格
-                List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
-                Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
-                // 2.查询对应的货号在得物的价格
-                Map<String, Integer> poisonPriceMap = poisonPriceMapper.selectListByModelNos(modelNos).stream()
-                        .collect(Collectors.toMap(
-                                poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
-                                poisonPrice -> PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE) == PriceEnum.LIGHTNING ? poisonPrice.getLightningPrice() : poisonPrice.getNormalPrice()
-                        ));
-                List<KickScrewUploadItem> toUpload = new ArrayList<>();
-                for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
-                    String modelNo = kickScrewPriceDO.getModelNo();
-                    String euSize = kickScrewPriceDO.getEuSize();
-                    Integer poisonPrice = poisonPriceMap.get(modelNo + ":" + euSize);
-                    if (poisonPrice == null) {
-                        continue;
+        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
+        try {
+            long count = kickScrewPriceMapper.count();
+            long startIndex = 0;
+            while (startIndex < count) {
+                try {
+                    // 1.查询kc价格
+                    List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
+                    Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+                    // 2.查询对应的货号在得物的价格
+                    Map<String, Integer> poisonPriceMap = poisonPriceMapper.selectListByModelNos(modelNos).stream()
+                            .collect(Collectors.toMap(
+                                    poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
+                                    poisonPrice -> PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE) == PriceEnum.LIGHTNING ? poisonPrice.getLightningPrice() : poisonPrice.getNormalPrice()
+                            ));
+                    List<KickScrewUploadItem> toUpload = new ArrayList<>();
+                    for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                        String modelNo = kickScrewPriceDO.getModelNo();
+                        String euSize = kickScrewPriceDO.getEuSize();
+                        Integer poisonPrice = poisonPriceMap.get(modelNo + ":" + euSize);
+                        if (poisonPrice == null) {
+                            continue;
+                        }
+                        Integer price = ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice());
+                        if (price == null) {
+                            continue;
+                        }
+                        KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
+                        kickScrewUploadItem.setModel_no(modelNo);
+                        kickScrewUploadItem.setSize(euSize);
+                        kickScrewUploadItem.setSize_system("EU");
+                        kickScrewUploadItem.setQty(1);
+                        kickScrewUploadItem.setPrice(price);
+                        toUpload.add(kickScrewUploadItem);
                     }
-                    Integer price = ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice());
-                    if (price == null) {
-                        continue;
-                    }
-                    KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
-                    kickScrewUploadItem.setModel_no(modelNo);
-                    kickScrewUploadItem.setSize(euSize);
-                    kickScrewUploadItem.setSize_system("EU");
-                    kickScrewUploadItem.setQty(1);
-                    kickScrewUploadItem.setPrice(price);
-                    toUpload.add(kickScrewUploadItem);
+                    AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
+                    startIndex += 1000;
+                } catch (Exception e) {
+                    log.error(e.getMessage(), e);
                 }
-                AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
-                startIndex += 1000;
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
             }
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+        } catch (Exception e) {
+            log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
+
     }
 }

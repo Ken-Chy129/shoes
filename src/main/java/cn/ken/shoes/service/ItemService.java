@@ -6,6 +6,8 @@ import java.util.List;
 
 public interface ItemService {
 
+    String getPlatformName();
+
     /**
      * 爬取品牌信息
      */

@@ -4,10 +4,10 @@
 
     <select id="selectTask" resultType="cn.ken.shoes.model.entity.TaskDO">
         select * from task
-        where name = #{name} and status = #{status}
+        where type = #{type} and platform = #{platform} and status = #{status}
     </select>
 
-    <update id="finishTask">
+    <update id="updateTaskStatus">
         update task set status = #{status} and end_time = now()
         where id = #{id}
     </update>
