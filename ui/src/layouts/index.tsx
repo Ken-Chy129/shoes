@@ -20,6 +20,11 @@ const menuData: MenuDataItem[] = [
     name: '配置',
     icon: <SettingOutlined />,
   },
+  {
+    path: '/task',
+    name: '任务',
+    icon: <SettingOutlined />,
+  },
 ];
 
 export default function Layout() {
