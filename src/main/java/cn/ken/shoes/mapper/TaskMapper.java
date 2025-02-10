@@ -9,7 +9,7 @@ import java.util.Date;
 @Mapper
 public interface TaskMapper extends BaseMapper<TaskDO> {
 
-    TaskDO selectTask(String name, Integer status);
+    TaskDO selectTask(String type, String platform, Integer status);
 
-    void finishTask(Long id, Integer status);
+    void updateTaskStatus(Long id, Integer status);
 }

@@ -20,13 +20,13 @@ public class TaskService {
         return List.of();
     }
 
-    public Long startTask(TaskDO.TaskEnum task, Map<String, Object> attributeMap) {
-        TaskDO taskDO = taskMapper.selectTask(task.getName(), TaskDO.TaskStatusEnum.RUNNING.getCode());
+    public Long startTask(String platform, TaskDO.TaskTypeEnum taskTypeEnum, Map<String, Object> attributeMap) {
+        TaskDO taskDO = taskMapper.selectTask(taskTypeEnum.getType(),platform, TaskDO.TaskStatusEnum.RUNNING.getCode());
         if (taskDO != null) {
             throw new RuntimeException("存在运行中的任务");
         }
         TaskDO newTaskDO = new TaskDO();
-        newTaskDO.setName(task.getName());
+        newTaskDO.setType(taskTypeEnum.getType());
         newTaskDO.setStartTime(new Date());
         newTaskDO.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         newTaskDO.setAttributes(JSON.toJSONString(attributeMap));
@@ -34,7 +34,7 @@ public class TaskService {
         return newTaskDO.getId();
     }
 
-    public void finishTask(Long id, TaskDO.TaskStatusEnum status) {
-        taskMapper.finishTask(id, status.getCode());
+    public void updateTaskStatus(Long id, TaskDO.TaskStatusEnum status) {
+        taskMapper.updateTaskStatus(id, status.getCode());
     }
 }

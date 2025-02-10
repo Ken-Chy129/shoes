@@ -12,7 +12,9 @@ public class TaskDO {
 
     private Long id;
 
-    private String name;
+    private String type;
+
+    private String platform;
 
     private Date startTime;
 
@@ -29,13 +31,17 @@ public class TaskDO {
     private String attributes;
 
     @Getter
-    public enum TaskEnum {
+    public enum TaskTypeEnum {
+        REFRESH_ALL_ITEMS("全量刷新商品"),
+        REFRESH_INCREMENTAL_ITEMS("增量刷新商品"),
+        REFRESH_PRICES("刷新商品价格"),
+        CHANGE_PRICES("改价")
         ;
 
-        private final String name;
+        private final String type;
 
-        TaskEnum(String name) {
-            this.name = name;
+        TaskTypeEnum(String type) {
+            this.type = type;
         }
     }
 
