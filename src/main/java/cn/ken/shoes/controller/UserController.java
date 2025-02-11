@@ -9,6 +9,8 @@ import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("user")
 @Slf4j
@@ -21,16 +23,21 @@ public class UserController {
     public Result<String> login(@RequestBody LoginReq loginReq) {
         return userService.login(loginReq);
     }
-    
-    @CheckToken
+
+//    @CheckToken
+//    @GetMapping("current")
+//    public Result<UserResp> getCurrentUser(@RequestHeader("Authorization") String authorization) {
+//        try {
+//            String token = authorization.replace("Bearer ", "");
+//            return userService.getCurrentUser(token);
+//        } catch (Exception e) {
+//            log.error("Failed to get current user", e);
+//            return Result.buildError("获取用户信息失败: " + e.getMessage());
+//        }
+//    }
+
     @GetMapping("current")
-    public Result<UserResp> getCurrentUser(@RequestHeader("Authorization") String authorization) {
-        try {
-            String token = authorization.replace("Bearer ", "");
-            return userService.getCurrentUser(token);
-        } catch (Exception e) {
-            log.error("Failed to get current user", e);
-            return Result.buildError("获取用户信息失败: " + e.getMessage());
-        }
+    public Result<Map<String, String>> current() {
+        return Result.buildSuccess(Map.of("access", "", "name", "ken"));
     }
 }
