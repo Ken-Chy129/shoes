@@ -85,10 +85,7 @@ export const errorConfig: RequestConfig = {
   // 请求拦截器
   requestInterceptors: [
     (config: RequestOptions) => {
-      // 拦截请求配置，进行个性化处理。
-      const appId = localStorage.getItem("appId");
-      const url = config?.url?.concat('?appId=' + appId);
-      return { ...config, url };
+      return { ...config };
     },
   ],
 

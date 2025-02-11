@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("setting")
 public class SettingController {
 
-    @GetMapping("price")
+    @GetMapping("queryPriceSetting")
     public Result<PriceSetting> queryPriceSetting() {
         PriceSetting priceSetting = new PriceSetting();
         priceSetting.setExchangeRate(PriceSwitch.EXCHANGE_RATE);

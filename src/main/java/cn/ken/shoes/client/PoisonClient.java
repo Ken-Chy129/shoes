@@ -2,7 +2,6 @@ package cn.ken.shoes.client;
 
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
-import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonConfig;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
@@ -11,6 +10,7 @@ import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
@@ -139,5 +139,15 @@ public class PoisonClient {
         params.put("sign", sign);
         params.put("timestamp", timestamp);
         params.put("app_key", PoisonConfig.getAppKey());
+    }
+
+    @Data
+    private static class Result<T> {
+
+        private Integer code;
+
+        private String msg;
+
+        private T data;
     }
 }
