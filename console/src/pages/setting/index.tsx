@@ -21,13 +21,28 @@ const SettingPage = () => {
     const [settingForm] = Form.useForm();
 
     useEffect(() => {
-        doGetRequest(SETTING_API.PRICE, {}, {
+        doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
             onSuccess: res => {
                 console.log(res)
                 settingForm.setFieldsValue(res.data);
             }
         });
     }, []);
+
+    const updatePriceSetting = () => {
+        const exchangeRate = settingForm.getFieldValue("exchangeRate");
+        const freight = settingForm.getFieldValue("freight");
+        const platformRate = settingForm.getFieldValue("platformRate");
+        const minProfitRate = settingForm.getFieldValue("minProfitRate");
+        const minProfit = settingForm.getFieldValue("minProfit");
+        const priceType = settingForm.getFieldValue("priceType");
+        console.log(priceType)
+        doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, platformRate, minProfitRate, minProfit, priceType}, {
+            onSuccess: _ => {
+                message.success("修改成功").then(_ => {});
+            }
+        })
+    }
 
     return <>
         <Card >
@@ -52,6 +67,12 @@ const SettingPage = () => {
                 </Form.Item>
                 <Form.Item
                     name="minProfitRate"
+                    label="最小利润率"
+                >
+                    <Input/>
+                </Form.Item>
+                <Form.Item
+                    name="minProfit"
                     label="最小利润"
                 >
                     <Input/>
@@ -69,7 +90,7 @@ const SettingPage = () => {
                     />
                 </Form.Item>
                 <Form.Item>
-                    <Button type="primary" htmlType="submit" >
+                    <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
                         修改
                     </Button>
                 </Form.Item>

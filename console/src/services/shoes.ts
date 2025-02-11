@@ -7,7 +7,8 @@ enum PRICE_API {
 }
 
 enum SETTING_API {
-    PRICE = '/api/setting/queryPriceSetting',
+    QUERY_PRICE_SETTING = '/api/setting/queryPriceSetting',
+    UPDATE_PRICE_SETTING = '/api/setting/updatePriceSetting',
 }
 
 export {PRICE_API, SETTING_API}
