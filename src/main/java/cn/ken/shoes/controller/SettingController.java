@@ -23,7 +23,7 @@ public class SettingController {
         return Result.buildSuccess(priceSetting);
     }
 
-    @PostMapping("price")
+    @PostMapping("updatePriceSetting")
     public Result<Boolean> updatePriceSetting(PriceSetting priceSetting) {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
