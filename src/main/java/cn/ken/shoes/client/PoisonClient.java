@@ -35,7 +35,7 @@ public class PoisonClient {
         String result = HttpUtil.doPost(url, JSON.toJSONString(params));
         Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || parseRes.getData() == null || parseRes.getCode() == null) {
-            log.error("JSON解析结果为空, spuId:{}, result:{}", spuId, result);
+//            log.error("JSON解析结果为空, spuId:{}, result:{}", spuId, result);
             return null;
         }
         if (parseRes.getCode() != 200) {

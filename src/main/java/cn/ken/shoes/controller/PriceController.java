@@ -73,7 +73,7 @@ public class PriceController {
 
     @PostMapping("refreshPoison")
     public Result<Boolean> refreshPoison() {
-        Thread.ofVirtual().start(() -> poisonService.refreshPoisonPrices());
+        Thread.ofVirtual().name("refreshPoison|poison").start(() -> poisonService.refreshPoisonPrices());
         return Result.buildSuccess(true);
     }
 }

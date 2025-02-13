@@ -17,6 +17,7 @@ import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -118,7 +119,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                 taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
                 log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
             } finally {
-                log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, System.currentTimeMillis() - brandStartTime);
+                log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, TimeUtil.getCostMin(brandStartTime));
             }
         }
     }
@@ -167,7 +168,7 @@ public class KickScrewItemServiceImpl implements ItemService {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
         try {
             kickScrewPriceMapper.delete(new QueryWrapper<>());
-            long currentTimeMillis = System.currentTimeMillis();
+            long startTime = System.currentTimeMillis();
 
             KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
             Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
@@ -204,12 +205,12 @@ public class KickScrewItemServiceImpl implements ItemService {
                     }
                     latch.await();
                     Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
-                    log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
+                    log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", TimeUtil.getCostMin(pageStart), i, toInsert.size());
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }
             }
-            log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
+            log.info("refreshAllPrices end, cost:{}", TimeUtil.getCostMin(startTime));
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
         } catch (Exception e) {
             log.error("refreshAllPrices error, msg:{}", e.getMessage());
@@ -226,6 +227,7 @@ public class KickScrewItemServiceImpl implements ItemService {
             long startIndex = 0;
             while (startIndex < count) {
                 try {
+                    long startTime = System.currentTimeMillis();
                     // 1.查询kc价格
                     List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
                     Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
@@ -256,6 +258,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                         toUpload.add(kickScrewUploadItem);
                     }
                     AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
+                    log.info("compareWithPoisonAndChangePrice end, pageIndex:{}, cnt:{}, cost:{}", startIndex, count, TimeUtil.getCostMin(startTime));
                     startIndex += 1000;
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);

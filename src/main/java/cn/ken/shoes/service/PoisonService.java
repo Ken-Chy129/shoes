@@ -12,6 +12,7 @@ import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.AsyncUtil;
+import cn.ken.shoes.util.TimeUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
@@ -183,7 +184,7 @@ public class PoisonService {
                 }
                 latch.await();
                 Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
-                log.info("refreshPoisonPrices finish, page:{}, cost:{}", page, System.currentTimeMillis() - start);
+                log.info("refreshPoisonPrices finish, page:{}, cost:{}, cnt:{}", i, TimeUtil.getCostMin(start), toInsert.size());
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
