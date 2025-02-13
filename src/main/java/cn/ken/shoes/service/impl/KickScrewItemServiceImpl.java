@@ -174,40 +174,40 @@ public class KickScrewItemServiceImpl implements ItemService {
             int page = (int) Math.ceil(count / 1000.0);
             kickScrewItemRequest.setPageSize(1000);
             for (int i = 1; i <= page; i++) {
-                long pageStart = System.currentTimeMillis();
-                kickScrewItemRequest.setPageIndex(i);
-                List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
-                CountDownLatch latch = new CountDownLatch(itemDOList.size());
-                List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
-                for (KickScrewItemDO itemDO : itemDOList) {
-                    Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
-                        try {
-                            List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
-                            String modelNo = itemDO.getModelNo();
-                            for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
-                                String title = kickScrewSizePrice.getTitle();
-                                String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
-                                KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
-                                kickScrewPriceDO.setModelNo(modelNo);
-                                kickScrewPriceDO.setEuSize(euSize);
-                                Map<String, String> price = kickScrewSizePrice.getPrice();
-                                kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
-                                toInsert.add(kickScrewPriceDO);
-                            }
-                        } catch (Exception e) {
-                            log.error(e.getMessage(), e);
-                        } finally {
-                            latch.countDown();
-                        }
-                    });
-                }
                 try {
+                    long pageStart = System.currentTimeMillis();
+                    kickScrewItemRequest.setPageIndex(i);
+                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
+                    CountDownLatch latch = new CountDownLatch(itemDOList.size());
+                    List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                    for (KickScrewItemDO itemDO : itemDOList) {
+                        Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
+                            try {
+                                List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
+                                String modelNo = itemDO.getModelNo();
+                                for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                                    String title = kickScrewSizePrice.getTitle();
+                                    String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                                    KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+                                    kickScrewPriceDO.setModelNo(modelNo);
+                                    kickScrewPriceDO.setEuSize(euSize);
+                                    Map<String, String> price = kickScrewSizePrice.getPrice();
+                                    kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
+                                    toInsert.add(kickScrewPriceDO);
+                                }
+                            } catch (Exception e) {
+                                log.error(e.getMessage(), e);
+                            } finally {
+                                latch.countDown();
+                            }
+                        });
+                    }
                     latch.await();
-                } catch (InterruptedException e) {
+                    Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
+                    log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
+                } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }
-                Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
-                log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", System.currentTimeMillis() - pageStart, i, toInsert.size());
             }
             log.info("refreshAllPrices end, cost:{}", System.currentTimeMillis() - currentTimeMillis);
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
