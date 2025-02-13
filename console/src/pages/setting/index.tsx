@@ -47,40 +47,22 @@ const SettingPage = () => {
     return <>
         <Card >
             <Form form={settingForm} style={{maxWidth: 600}}>
-                <Form.Item
-                    name="exchangeRate"
-                    label="汇率"
-                >
+                <Form.Item name="exchangeRate" label="汇率">
                     <Input/>
                 </Form.Item>
-                <Form.Item
-                    name="freight"
-                    label="运费"
-                >
+                <Form.Item name="freight" label="运费">
                     <Input/>
                 </Form.Item>
-                <Form.Item
-                    name="platformRate"
-                    label="平台抽成费率"
-                >
+                <Form.Item name="platformRate" label="平台抽成费率">
                     <Input/>
                 </Form.Item>
-                <Form.Item
-                    name="minProfitRate"
-                    label="最小利润率"
-                >
+                <Form.Item name="minProfitRate" label="最小利润率">
                     <Input/>
                 </Form.Item>
-                <Form.Item
-                    name="minProfit"
-                    label="最小利润"
-                >
+                <Form.Item name="minProfit" label="最小利润">
                     <Input/>
                 </Form.Item>
-                <Form.Item
-                    name="priceType"
-                    label="价格类型"
-                >
+                <Form.Item name="priceType" label="价格类型">
                     <Select
                         options={[
                             {label: '普通价格', value: 'normal'},
