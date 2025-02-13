@@ -18,7 +18,7 @@ public class TaskController {
     @Resource
     private TaskService taskService;
 
-    @GetMapping
+    @GetMapping("page")
     public Result<List<TaskDO>> queryTasks(TaskRequest request) {
         return Result.buildSuccess(taskService.queryTasksByCondition(request));
     }
