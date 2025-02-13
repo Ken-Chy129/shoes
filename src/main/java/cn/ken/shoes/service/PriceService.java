@@ -9,18 +9,13 @@ import cn.ken.shoes.mapper.ItemMapper;
 import cn.ken.shoes.mapper.ItemSizePriceMapper;
 import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.model.entity.ItemDO;
-import cn.ken.shoes.model.entity.KickScrewItemDO;
-import cn.ken.shoes.model.entity.PoisonItemDO;
-import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceRequest;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -47,6 +42,9 @@ public class PriceService {
     @Resource
     private ItemSizePriceMapper itemSizePriceMapper;
 
+    @Resource
+    private TaskService taskService;
+
     public Result<List<ItemDO>> queryPriceByCondition(PriceRequest priceRequest) {
         List<ItemDO> result = new ArrayList<>();
         PriceEnum priceType = PriceEnum.from(priceRequest.getPriceType());
@@ -55,7 +53,6 @@ public class PriceService {
         return Result.buildSuccess(result);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public void scratchAndSaveItems() {
 //        Map<String, Integer> brandSizes = KickScrewContext.brandSizes;
         Map<String, Integer> brandSizes = Map.of("ANTA", 30);
@@ -119,54 +116,55 @@ public class PriceService {
     }
 
     public void refreshPoisonPrices() {
+        Long taskId = taskService.startTask("poison", TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
         poisonPriceMapper.delete(null);
         int count = poisonItemMapper.count();
-//        int count = 1000;
         int page = (int) Math.ceil(count / 1000.0);
         RateLimiter limiter = RateLimiter.create(10);
         for (int i = 1; i <= page; i++) {
-            long start = System.currentTimeMillis();
-            List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
-            List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
-            for (PoisonItemDO poisonItemDO : poisonItemDOS) {
-                limiter.acquire();
-                Thread.ofVirtual().start(() -> {
-                    try {
-                        Long spuId = poisonItemDO.getSpuId();
-                        String articleNumber = poisonItemDO.getArticleNumber();
-                        Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
-                        if (sizePriceMap == null) {
-                            return;
-                        }
-                        for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
-                            String size = entry.getKey();
-                            Map<PriceEnum, Integer> priceMap = entry.getValue();
-                            if (priceMap == null) {
-                                continue;
-                            }
-                            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                            poisonPriceDO.setModelNo(articleNumber);
-                            poisonPriceDO.setEuSize(size);
-                            poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
-                            poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
-                            toInsert.add(poisonPriceDO);
-                        }
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
-            }
             try {
+                long start = System.currentTimeMillis();
+                List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
+                List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
+                for (PoisonItemDO poisonItemDO : poisonItemDOS) {
+                    limiter.acquire();
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            Long spuId = poisonItemDO.getSpuId();
+                            String articleNumber = poisonItemDO.getArticleNumber();
+                            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
+                            if (sizePriceMap == null) {
+                                return;
+                            }
+                            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
+                                String size = entry.getKey();
+                                Map<PriceEnum, Integer> priceMap = entry.getValue();
+                                if (priceMap == null) {
+                                    continue;
+                                }
+                                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                                poisonPriceDO.setModelNo(articleNumber);
+                                poisonPriceDO.setEuSize(size);
+                                poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
+                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
+                                toInsert.add(poisonPriceDO);
+                            }
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                }
                 latch.await();
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
+                log.info("refreshPoisonPrices finish, page:{}, cost:{}", page, System.currentTimeMillis() - start);
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
             }
-            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
-            log.info("refreshPoisonPrices finish, page:{}, cost:{}", page, System.currentTimeMillis() - start);
         }
+        taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
 }
