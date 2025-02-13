@@ -8,9 +8,11 @@ import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -28,6 +30,9 @@ public class PriceController {
 
     @Resource
     private KickScrewService kickScrewService;
+
+    @Resource
+    private PoisonService poisonService;
 
     @GetMapping("list")
     public Result<List<ItemDO>> list(PriceRequest priceRequest) {
@@ -64,5 +69,11 @@ public class PriceController {
     @GetMapping("size")
     public void size() {
         kickScrewService.queryBrandGenderSizeMap();
+    }
+
+    @PostMapping("refreshPoison")
+    public Result<Boolean> refreshPoison() {
+        Thread.ofVirtual().start(() -> poisonService.refreshPoisonPrices());
+        return Result.buildSuccess(true);
     }
 }

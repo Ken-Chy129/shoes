@@ -8,9 +8,9 @@ import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.AsyncUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
@@ -48,6 +48,9 @@ public class PoisonService {
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
+
+    @Resource
+    private TaskService taskService;
 
     public void refreshPoisonItems() {
         int total = 0;
@@ -134,6 +137,58 @@ public class PoisonService {
             Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
         }
 
+    }
+
+    public void refreshPoisonPrices() {
+        Long taskId = taskService.startTask("poison", TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
+        poisonPriceMapper.delete(null);
+        int count = poisonItemMapper.count();
+        int page = (int) Math.ceil(count / 1000.0);
+        RateLimiter limiter = RateLimiter.create(10);
+        for (int i = 1; i <= page; i++) {
+            try {
+                long start = System.currentTimeMillis();
+                List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
+                List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
+                for (PoisonItemDO poisonItemDO : poisonItemDOS) {
+                    limiter.acquire();
+                    Thread.ofVirtual().start(() -> {
+                        try {
+                            Long spuId = poisonItemDO.getSpuId();
+                            String articleNumber = poisonItemDO.getArticleNumber();
+                            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
+                            if (sizePriceMap == null) {
+                                return;
+                            }
+                            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
+                                String size = entry.getKey();
+                                Map<PriceEnum, Integer> priceMap = entry.getValue();
+                                if (priceMap == null) {
+                                    continue;
+                                }
+                                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                                poisonPriceDO.setModelNo(articleNumber);
+                                poisonPriceDO.setEuSize(size);
+                                poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
+                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
+                                toInsert.add(poisonPriceDO);
+                            }
+                        } catch (Exception e) {
+                            log.error(e.getMessage(), e);
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                }
+                latch.await();
+                Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
+                log.info("refreshPoisonPrices finish, page:{}, cost:{}", page, System.currentTimeMillis() - start);
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
+            }
+        }
+        taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
 }
