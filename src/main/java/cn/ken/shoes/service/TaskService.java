@@ -27,6 +27,7 @@ public class TaskService {
             throw new RuntimeException("存在运行中的任务");
         }
         TaskDO newTaskDO = new TaskDO();
+        newTaskDO.setPlatform(platform);
         newTaskDO.setType(taskTypeEnum.getCode());
         newTaskDO.setStartTime(new Date());
         newTaskDO.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
