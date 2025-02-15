@@ -37,7 +37,7 @@ const TaskPage = () => {
         const startTime = conditionForm.getFieldValue("startTime");
         const endTime = conditionForm.getFieldValue("endTime");
         const status = conditionForm.getFieldValue("status");
-        doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status}, {
+        doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
             onSuccess: res => setTaskList(res.data)
         });
     }

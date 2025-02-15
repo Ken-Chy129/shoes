@@ -1,11 +1,12 @@
 package cn.ken.shoes.model.task;
 
+import cn.ken.shoes.common.PageRequest;
 import lombok.Data;
 
 import java.util.Date;
 
 @Data
-public class TaskRequest {
+public class TaskRequest extends PageRequest {
 
     private Integer taskType;
 
