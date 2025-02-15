@@ -19,6 +19,7 @@ import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.ibatis.session.ExecutorType;
@@ -32,6 +33,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -175,6 +177,8 @@ public class KickScrewItemServiceImpl implements ItemService {
             int page = (int) Math.ceil(count / 1000.0);
             log.info("refreshAllPrices start, count:{}, page:{}", count, page);
             kickScrewItemRequest.setPageSize(1000);
+            RateLimiter rateLimiter = RateLimiter.create(50);
+            ReentrantLock lock = new ReentrantLock();
             for (int i = 1; i <= page; i++) {
                 try {
                     long pageStart = System.currentTimeMillis();
@@ -185,6 +189,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                     for (KickScrewItemDO itemDO : itemDOList) {
                         Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
                             try {
+                                rateLimiter.acquire();
                                 List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
                                 String modelNo = itemDO.getModelNo();
                                 for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
@@ -205,7 +210,11 @@ public class KickScrewItemServiceImpl implements ItemService {
                         });
                     }
                     latch.await();
-                    Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(toInsert));
+                    Thread.ofVirtual().start(() -> {
+                        lock.lock();
+                        kickScrewPriceMapper.insert(toInsert);
+                        lock.unlock();
+                    });
                     log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", TimeUtil.getCostMin(pageStart), i, toInsert.size());
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
