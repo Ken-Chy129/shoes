@@ -35,8 +35,8 @@ public class ShoesController {
     @Resource
     private ShoesService shoesService;
 
-    @GetMapping("page")
-    public PageResult<List<ShoesVO>> page(ShoesRequest request) {
+    @GetMapping("shoesPage")
+    public PageResult<List<ShoesVO>> shoesPage(ShoesRequest request) {
         return shoesService.page(request);
     }
 
