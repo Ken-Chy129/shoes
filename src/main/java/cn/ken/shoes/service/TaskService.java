@@ -30,7 +30,7 @@ public class TaskService {
     }
 
     public Long startTask(String platform, TaskDO.TaskTypeEnum taskTypeEnum, Map<String, Object> attributeMap) {
-        TaskDO taskDO = taskMapper.selectTask(taskTypeEnum.getCode(),platform, TaskDO.TaskStatusEnum.RUNNING.getCode());
+        TaskDO taskDO = taskMapper.selectTask(taskTypeEnum.getCode(), platform, TaskDO.TaskStatusEnum.RUNNING.getCode());
         if (taskDO != null) {
             throw new RuntimeException("存在运行中的任务");
         }
