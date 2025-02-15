@@ -30,7 +30,7 @@
     </select>
 
     <update id="updateTaskStatus">
-        update task set status = #{status} and end_time = now()
+        update task set status = #{status}, end_time = now()
         where id = #{id}
     </update>
 
