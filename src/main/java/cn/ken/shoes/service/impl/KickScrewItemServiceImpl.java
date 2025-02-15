@@ -1,9 +1,9 @@
 package cn.ken.shoes.service.impl;
 
 import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
+import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -23,7 +23,6 @@ import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.BeanUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -59,7 +58,8 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Resource
     private TaskService taskService;
-    @Autowired
+
+    @Resource
     private PoisonItemMapper poisonItemMapper;
 
     @Override
@@ -291,29 +291,29 @@ public class KickScrewItemServiceImpl implements ItemService {
     public void compareWithPoisonAndChangePrice() {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
         try {
-            long count = kickScrewPriceMapper.count();
+            long count = poisonPriceMapper.count();
             long startIndex = 0;
             while (startIndex < count) {
                 try {
                     long startTime = System.currentTimeMillis();
                     // 1.查询kc价格
-                    List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewPriceMapper.selectPage(startIndex, 1000);
-                    Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, 1000);
+                    Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
                     // 2.查询对应的货号在得物的价格
-                    Map<String, Integer> poisonPriceMap = poisonPriceMapper.selectListByModelNos(modelNos).stream()
+                    Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
                             .collect(Collectors.toMap(
-                                    poisonPrice -> poisonPrice.getModelNo() + ":" + poisonPrice.getEuSize(),
-                                    poisonPrice -> PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE) == PriceEnum.LIGHTNING ? poisonPrice.getLightningPrice() : poisonPrice.getNormalPrice()
+                                    kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
+                                    KickScrewPriceDO::getPrice
                             ));
                     List<KickScrewUploadItem> toUpload = new ArrayList<>();
-                    for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
-                        String modelNo = kickScrewPriceDO.getModelNo();
-                        String euSize = kickScrewPriceDO.getEuSize();
-                        Integer poisonPrice = poisonPriceMap.get(modelNo + ":" + euSize);
-                        if (poisonPrice == null) {
+                    for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+                        String modelNo = poisonPriceDO.getModelNo();
+                        String euSize = poisonPriceDO.getEuSize();
+                        Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
+                        if (kcPrice == null) {
                             continue;
                         }
-                        Integer price = ShoesUtil.getPrice(poisonPrice, kickScrewPriceDO.getPrice());
+                        Integer price = ShoesUtil.getPrice(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
                         if (price == null) {
                             continue;
                         }

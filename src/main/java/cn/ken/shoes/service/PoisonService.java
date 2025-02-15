@@ -166,7 +166,7 @@ public class PoisonService {
                             for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
                                 String size = entry.getKey();
                                 Map<PriceEnum, Integer> priceMap = entry.getValue();
-                                if (priceMap == null) {
+                                if (priceMap == null || (priceMap.get(PriceEnum.NORMAL) == null && priceMap.get(PriceEnum.LIGHTNING) == null)) {
                                     continue;
                                 }
                                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
