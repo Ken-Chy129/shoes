@@ -103,4 +103,20 @@
         where release_year = #{releaseYear}
     </select>
 
+
+    <select id="selectItemsWithPoisonPrice" resultType="cn.ken.shoes.model.entity.KickScrewItemDO">
+        select pp.model_no as modelNo, ksi.handle as handle
+        from poison_price pp
+            inner join shoes.kick_screw_item ksi on pp.model_no = ksi.model_no
+        group by model_no
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <select id="countItemsWithPoisonPrice" resultType="java.lang.Long">
+        select count(*)
+        from poison_price pp
+            inner join shoes.kick_screw_item ksi on pp.model_no = ksi.model_no
+        group by model_no
+    </select>
+
 </mapper>

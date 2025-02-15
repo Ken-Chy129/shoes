@@ -4,10 +4,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
-import cn.ken.shoes.mapper.BrandMapper;
-import cn.ken.shoes.mapper.KickScrewItemMapper;
-import cn.ken.shoes.mapper.KickScrewPriceMapper;
-import cn.ken.shoes.mapper.PoisonPriceMapper;
+import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
@@ -26,6 +23,7 @@ import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -61,6 +59,8 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Resource
     private TaskService taskService;
+    @Autowired
+    private PoisonItemMapper poisonItemMapper;
 
     @Override
     public String getPlatformName() {
@@ -226,7 +226,65 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.error("refreshAllPrices error, msg:{}", e.getMessage());
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
+    }
 
+    public void refreshAllPricesV2() {
+        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
+        try {
+            kickScrewPriceMapper.delete(new QueryWrapper<>());
+            long startTime = System.currentTimeMillis();
+
+            Long count = kickScrewItemMapper.countItemsWithPoisonPrice();
+            int page = (int) Math.ceil(count / 1000.0);
+            log.info("refreshAllPrices start, count:{}, page:{}", count, page);
+            RateLimiter rateLimiter = RateLimiter.create(50);
+            ReentrantLock lock = new ReentrantLock();
+            for (int i = 1; i <= page; i++) {
+                try {
+                    long pageStart = System.currentTimeMillis();
+                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectItemsWithPoisonPrice((i - 1) * 1000, 1000);
+                    CountDownLatch latch = new CountDownLatch(itemDOList.size());
+                    List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                    for (KickScrewItemDO itemDO : itemDOList) {
+                        Thread.ofVirtual().name("refreshAllPrices:" + itemDO.getModelNo()).start(() -> {
+                            try {
+                                rateLimiter.acquire();
+                                List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
+                                String modelNo = itemDO.getModelNo();
+                                for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                                    String title = kickScrewSizePrice.getTitle();
+                                    String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                                    KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+                                    kickScrewPriceDO.setModelNo(modelNo);
+                                    kickScrewPriceDO.setEuSize(euSize);
+                                    Map<String, String> price = kickScrewSizePrice.getPrice();
+                                    kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
+                                    toInsert.add(kickScrewPriceDO);
+                                }
+                            } catch (Exception e) {
+                                log.error(e.getMessage(), e);
+                            } finally {
+                                latch.countDown();
+                            }
+                        });
+                    }
+                    latch.await();
+                    Thread.ofVirtual().start(() -> {
+                        lock.lock();
+                        kickScrewPriceMapper.insert(toInsert);
+                        lock.unlock();
+                    });
+                    log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", TimeUtil.getCostMin(pageStart), i, toInsert.size());
+                } catch (Exception e) {
+                    log.error(e.getMessage(), e);
+                }
+            }
+            log.info("refreshAllPrices end, cost:{}", TimeUtil.getCostMin(startTime));
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+        } catch (Exception e) {
+            log.error("refreshAllPrices error, msg:{}", e.getMessage());
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
+        }
     }
 
     @Override
