@@ -36,4 +36,59 @@
         select article_number from shoes.poison_item
         where release_year = #{releaseYear}
     </select>
+
+    <select id="shoesCount" resultType="long">
+        SELECT count(*)
+        FROM
+            poison_item pt
+                LEFT JOIN
+            poison_price pp ON pt.article_number = pp.model_no
+                LEFT JOIN
+            kick_screw_price kp ON pt.article_number = kp.model_no AND pp.eu_size = kp.eu_size
+        <where>
+            <if test="modelNumber != null and modelNumber != ''">
+                and pt.article_number = #{modelNumber}
+            </if>
+            <if test="name != null and name != ''">
+                and pt.title = concat("%", #{name}, "%")
+            </if>
+            <if test="brand != null and brand != ''">
+                and pt.brand = #{brand}
+            </if>
+            <if test="releaseYear != null and releaseYear != ''">
+                and pt.releaseYear = #{releaseYear}
+            </if>
+        </where>
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <select id="shoes" resultType="cn.ken.shoes.model.shoes.ShoesVO">
+        SELECT
+            pt.*,
+            pp.eu_size AS size,
+            pp.normal_price AS normalPrice,
+            pp.lightning_price AS lightningPrice,
+            kp.price AS kcPrice
+        FROM
+            poison_item pt
+                LEFT JOIN
+            poison_price pp ON pt.article_number = pp.model_no
+                LEFT JOIN
+            kick_screw_price kp ON pt.article_number = kp.model_no AND pp.eu_size = kp.eu_size
+        <where>
+            <if test="modelNumber != null and modelNumber != ''">
+                and pt.article_number = #{modelNumber}
+            </if>
+            <if test="name != null and name != ''">
+                and pt.title = concat("%", #{name}, "%")
+            </if>
+            <if test="brand != null and brand != ''">
+                and pt.brand = #{brand}
+            </if>
+            <if test="releaseYear != null and releaseYear != ''">
+                and pt.releaseYear = #{releaseYear}
+            </if>
+        </where>
+        limit #{startIndex}, #{pageSize}
+    </select>
 </mapper>
