@@ -2,10 +2,13 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.model.shoes.ShoesRequest;
+import cn.ken.shoes.model.shoes.ShoesVO;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.PoisonService;
-import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.service.ShoesService;
 import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Arrays;
+import java.util.List;
 
 @RestController
 @RequestMapping("shoes")
@@ -28,10 +32,12 @@ public class ShoesController {
     private PoisonService poisonService;
     @Resource
     private ItemService kickScrewItemService;
+    @Resource
+    private ShoesService shoesService;
 
-    @GetMapping("list")
-    public String getShoes() {
-        return HttpUtil.doGet( "https://crewsupply-service-gi7me3n4rq-de.a.run.app/latest/products?offset=0&limit=18&filter=brand%3A1");
+    @GetMapping("page")
+    public PageResult<List<ShoesVO>> page(ShoesRequest request) {
+        return shoesService.page(request);
     }
 
     @GetMapping("queryPriceBySpu")

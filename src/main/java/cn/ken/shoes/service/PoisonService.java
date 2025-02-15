@@ -145,6 +145,7 @@ public class PoisonService {
         poisonPriceMapper.delete(null);
         int count = poisonItemMapper.count();
         int page = (int) Math.ceil(count / 1000.0);
+        log.info("refreshPoisonPrices start, count:{}, page:{}", count, page);
         RateLimiter limiter = RateLimiter.create(10);
         for (int i = 1; i <= page; i++) {
             try {
