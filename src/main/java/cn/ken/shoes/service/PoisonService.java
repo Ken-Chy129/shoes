@@ -173,7 +173,7 @@ public class PoisonService {
                                 poisonPriceDO.setModelNo(articleNumber);
                                 poisonPriceDO.setEuSize(size);
                                 poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
-                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
+                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.LIGHTNING));
                                 toInsert.add(poisonPriceDO);
                             }
                         } catch (Exception e) {
