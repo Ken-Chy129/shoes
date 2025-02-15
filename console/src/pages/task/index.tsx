@@ -16,6 +16,7 @@ import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
 import {TEMPLATE_API} from "@/services/management";
 import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
 import {TASK_API} from "@/services/task";
+import moment from "moment";
 
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
@@ -31,10 +32,11 @@ const TaskPage = () => {
     }, []);
 
     const queryTaskList = () => {
-        console.log(conditionForm);
+        const startTime = moment((conditionForm.getFieldValue("startTime"))).format('YYYY-MM-DD HH:mm:ss');
+        console.log(conditionForm.getFieldValue("startTime"));
         const taskType = conditionForm.getFieldValue("taskType");
         const platform = conditionForm.getFieldValue("platform");
-        const startTime = conditionForm.getFieldValue("startTime");
+        // const startTime = conditionForm.getFieldValue("startTime");
         const endTime = conditionForm.getFieldValue("endTime");
         const status = conditionForm.getFieldValue("status");
         doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
@@ -140,22 +142,14 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item name="startTime" label="开始时间" style={{marginLeft: 20}}>
                     <DatePicker
-                        showTime={{ format: 'HH:mm' }}
-                        format="YYYY-MM-DD HH:mm"
-                        onChange={(value, dateString) => {
-                            console.log('Selected Time: ', value);
-                            console.log('Formatted Selected Time: ', dateString);
-                        }}
+                        showTime={{ format: 'HH:mm:ss' }}
+                        format="YYYY-MM-DD HH:mm:ss"
                     />
                 </Form.Item>
                 <Form.Item name="endTime" label="结束时间" style={{marginLeft: 20}}>
                     <DatePicker
                         showTime={{ format: 'HH:mm' }}
                         format="YYYY-MM-DD HH:mm"
-                        onChange={(value, dateString) => {
-                            console.log('Selected Time: ', value);
-                            console.log('Formatted Selected Time: ', dateString);
-                        }}
                     />
                 </Form.Item>
                 <Form.Item name="status" label="状态" style={{marginLeft: 20}}>
