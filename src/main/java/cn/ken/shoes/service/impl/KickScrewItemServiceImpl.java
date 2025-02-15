@@ -173,6 +173,7 @@ public class KickScrewItemServiceImpl implements ItemService {
             KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
             Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
             int page = (int) Math.ceil(count / 1000.0);
+            log.info("refreshAllPrices start, count:{}, page:{}", count, page);
             kickScrewItemRequest.setPageSize(1000);
             for (int i = 1; i <= page; i++) {
                 try {

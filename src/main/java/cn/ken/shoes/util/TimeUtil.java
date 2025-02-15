@@ -16,6 +16,7 @@ public class TimeUtil {
     }
 
     public static String milliSecondToMin(long time) {
+        time /= 1000;
         long minutes = time / 60; // 计算总共有多少分钟
         long remainingSeconds = time % 60; // 剩余的秒数
 
