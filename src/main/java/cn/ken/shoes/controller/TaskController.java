@@ -1,6 +1,6 @@
 package cn.ken.shoes.controller;
 
-import cn.ken.shoes.common.Result;
+import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
@@ -19,7 +19,7 @@ public class TaskController {
     private TaskService taskService;
 
     @GetMapping("page")
-    public Result<List<TaskDO>> queryTasks(TaskRequest request) {
-        return Result.buildSuccess(taskService.queryTasksByCondition(request));
+    public PageResult<List<TaskDO>> queryTasks(TaskRequest request) {
+        return taskService.queryTasksByCondition(request);
     }
 }
