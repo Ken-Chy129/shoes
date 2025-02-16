@@ -80,50 +80,67 @@ public class KickScrewItemServiceImpl implements ItemService {
     @Override
     public void refreshAllItems() {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, null);
-        List<BrandDO> brandList = selectBrands();
-        
-        AtomicInteger finishCnt = new AtomicInteger(0);
-        int brandItemCnt;
-        for (BrandDO brandDO : brandList) {
-            String brand = brandDO.getName();
-            long brandStartTime = System.currentTimeMillis();
-            brandItemCnt = 0;
-            try {
-                Map<String, List<KickScrewItemDO>> releaseYearItemsMap = new HashMap<>();
-                for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-                    // 查询品牌下所有商品
-                    KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
-                    algoliaRequest.setBrands(List.of(brand));
-                    algoliaRequest.setReleaseYears(List.of(releaseYear));
-                    Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
-                    CountDownLatch pageLatch = new CountDownLatch(page);
-                    for (int i = 0; i < page; i++) {
-                        final int pageIndex = i;
-                        Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
-                            try {
-                                algoliaRequest.setPageIndex(pageIndex);
-                                List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
-                                releaseYearItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
-                            } catch (Exception e) {
-                                log.error(e.getMessage(), e);
-                            } finally {
-                                pageLatch.countDown();
-                            }
-                        });
+        try {
+            List<BrandDO> brandList = selectBrands();
+            AtomicInteger finishCnt = new AtomicInteger(0);
+            int brandItemCnt;
+            for (BrandDO brandDO : brandList) {
+                String brand = brandDO.getName();
+                long brandStartTime = System.currentTimeMillis();
+                brandItemCnt = 0;
+                try {
+                    Map<String, List<KickScrewItemDO>> releaseYearItemsMap = new HashMap<>();
+                    for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
+                        for (int i = 0; i < 4; i++) {
+                            CountDownLatch priceLatch = new CountDownLatch(4);
+                            final int priceIndex = i;
+                            Thread.ofVirtual().start(() -> {
+                                try {
+                                    String startPrice = ItemQueryConfig.START_PRICES.get(priceIndex);
+                                    String endPrice = ItemQueryConfig.END_PRICES.get(priceIndex);
+                                    // 查询品牌下所有商品
+                                    KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
+                                    algoliaRequest.setBrands(List.of(brand));
+                                    algoliaRequest.setReleaseYears(List.of(releaseYear));
+                                    algoliaRequest.setStartPrice(startPrice);
+                                    algoliaRequest.setEndPrice(endPrice);
+                                    Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
+                                    CountDownLatch pageLatch = new CountDownLatch(page);
+                                    for (int j = 0; j < page; j++) {
+                                        final int pageIndex = j;
+                                        Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
+                                            try {
+                                                algoliaRequest.setPageIndex(pageIndex);
+                                                List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
+                                                releaseYearItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
+                                            } catch (Exception e) {
+                                                log.error(e.getMessage(), e);
+                                            } finally {
+                                                pageLatch.countDown();
+                                            }
+                                        });
+                                    }
+                                    pageLatch.await();
+                                    priceLatch.countDown();
+                                } catch (Exception e) {
+                                    log.error(e.getMessage(), e);
+                                }
+                            });
+                            priceLatch.await();
+                        }
                     }
-                    pageLatch.await();
+                    brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
+                    Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList()));
+                } catch (Exception e) {
+                    log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
+                } finally {
+                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, TimeUtil.getCostMin(brandStartTime));
                 }
-                brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
-                Thread.ofVirtual().start(() -> {
-                    batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList());
-                    taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
-                });
-            } catch (Exception e) {
-                taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
-                log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
-            } finally {
-                log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, TimeUtil.getCostMin(brandStartTime));
             }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        } finally {
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
         }
     }
 
@@ -132,22 +149,29 @@ public class KickScrewItemServiceImpl implements ItemService {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_INCREMENTAL_ITEMS, null);
         try {
             Integer recentYear = ItemQueryConfig.ALL_RELEASE_YEARS.getFirst();
-            // 查询品牌下所有商品
-            KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
-            algoliaRequest.setReleaseYears(List.of(recentYear));
-            Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
-            List<List<KickScrewItemDO>> result = AsyncUtil.runTasksWithResult(IntStream.range(0, page).mapToObj(index -> (Callable<List<KickScrewItemDO>>) () -> {
-                KickScrewAlgoliaRequest newRequest = new KickScrewAlgoliaRequest();
-                BeanUtils.copyProperties(algoliaRequest, newRequest);
-                newRequest.setPageIndex(index);
-                return kickScrewClient.queryItemPageV2(newRequest);
-            }).toList());
-            List<KickScrewItemDO> incrementalItems = result.stream().flatMap(List::stream).toList();
-            AsyncUtil.runTasks(List.of(() -> batchInsertItems(incrementalItems)));
-            log.info("finish refreshIncrementalItems, incrementalItems cnt:{}", incrementalItems.size());
+            for (int i = 0; i < 4; i++) {
+                String startPrice = ItemQueryConfig.START_PRICES.get(i);
+                String endPrice = ItemQueryConfig.END_PRICES.get(i);
+                // 查询品牌下所有商品
+                KickScrewAlgoliaRequest algoliaRequest = new KickScrewAlgoliaRequest();
+                algoliaRequest.setReleaseYears(List.of(recentYear));
+                algoliaRequest.setStartPrice(startPrice);
+                algoliaRequest.setEndPrice(endPrice);
+                Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
+                List<List<KickScrewItemDO>> result = AsyncUtil.runTasksWithResult(IntStream.range(0, page).mapToObj(index -> (Callable<List<KickScrewItemDO>>) () -> {
+                    KickScrewAlgoliaRequest newRequest = new KickScrewAlgoliaRequest();
+                    BeanUtils.copyProperties(algoliaRequest, newRequest);
+                    newRequest.setPageIndex(index);
+                    return kickScrewClient.queryItemPageV2(newRequest);
+                }).toList());
+                List<KickScrewItemDO> incrementalItems = result.stream().flatMap(List::stream).toList();
+                AsyncUtil.runTasks(List.of(() -> batchInsertItems(incrementalItems)));
+            }
         } catch (Exception e) {
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
             log.error(e.getMessage(), e);
+        } finally {
+            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
         }
     }
 
