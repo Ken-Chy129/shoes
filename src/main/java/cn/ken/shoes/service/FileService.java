@@ -70,10 +70,9 @@ public class FileService {
                 .head(PriceExcel.class)
                 .sheet() // 默认读取第一个工作表
                 .doReadSync();
-        List<String> modelNoFromFile = getModelNoFromFile("1.txt");
         List<PoisonPriceDO> toInsert = new ArrayList<>();
         for (PriceExcel priceExcel : priceExcels) {
-            if (!modelNoFromFile.contains(priceExcel.getModelNo()) || priceExcel.getPoisonPrice() == 0) {
+            if (priceExcel.getPoisonPrice() == 0) {
                 continue;
             }
             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
