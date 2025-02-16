@@ -65,8 +65,10 @@ public class PriceController {
     @GetMapping("queryPage")
     public Integer queryPage() {
         KickScrewAlgoliaRequest kickScrewAlgoliaRequest = new KickScrewAlgoliaRequest();
-        kickScrewAlgoliaRequest.setBrands(List.of("NIKE"));
+        kickScrewAlgoliaRequest.setBrands(List.of("Nike"));
         kickScrewAlgoliaRequest.setReleaseYears(List.of(2024));
+        kickScrewAlgoliaRequest.setStartPrice("30");
+        kickScrewAlgoliaRequest.setEndPrice("100");
         return kickScrewClient.countItemPageV2(kickScrewAlgoliaRequest);
     }
 
