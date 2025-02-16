@@ -161,10 +161,12 @@ public class KickScrewClient {
     }
 
     public void batchUploadItems(List<KickScrewUploadItem> items) {
-        HttpUtil.doPost(KickScrewApiConstant.BATCH_UPLOAD_ITEMS,
+        log.info("batchUploadItems start, cnt{}", items.size());
+        String result = HttpUtil.doPost(KickScrewApiConstant.BATCH_UPLOAD_ITEMS,
             JSON.toJSONString(Collections.singletonMap("items", items)),
             Headers.of("x-api-key", KickScrewConfig.API_KEY)
         );
+        log.info("batchUploadItems finish: result:{}", result);
     }
 
     private String buildAlgoliaBodyForItem(KickScrewAlgoliaRequest algoliaRequest) {

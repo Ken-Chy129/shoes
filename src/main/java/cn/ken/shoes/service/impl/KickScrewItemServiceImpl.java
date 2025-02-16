@@ -3,7 +3,6 @@ package cn.ken.shoes.service.impl;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
-import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -195,6 +194,10 @@ public class KickScrewItemServiceImpl implements ItemService {
                                 for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
                                     String title = kickScrewSizePrice.getTitle();
                                     String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                                    if (euSize == null) {
+                                        log.error("kcPrice error, modelNo:{}, title:{}", modelNo, title);
+                                        continue;
+                                    }
                                     KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
                                     kickScrewPriceDO.setModelNo(modelNo);
                                     kickScrewPriceDO.setEuSize(euSize);
@@ -254,6 +257,10 @@ public class KickScrewItemServiceImpl implements ItemService {
                                 for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
                                     String title = kickScrewSizePrice.getTitle();
                                     String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                                    if (euSize == null) {
+                                        log.error("kcPrice error, modelNo:{}, title:{}", modelNo, title);
+                                        continue;
+                                    }
                                     KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
                                     kickScrewPriceDO.setModelNo(modelNo);
                                     kickScrewPriceDO.setEuSize(euSize);
@@ -292,18 +299,20 @@ public class KickScrewItemServiceImpl implements ItemService {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
         try {
             long count = poisonPriceMapper.count();
+            log.info("compareWithPoisonAndChangePrice start, count:{}", count);
             long startIndex = 0;
             while (startIndex < count) {
                 try {
                     long startTime = System.currentTimeMillis();
                     // 1.查询kc价格
-                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, 1000);
+                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, 10000);
                     Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
                     // 2.查询对应的货号在得物的价格
                     Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
                             .collect(Collectors.toMap(
                                     kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
-                                    KickScrewPriceDO::getPrice
+                                    KickScrewPriceDO::getPrice,
+                                    (k1, k2) -> k1
                             ));
                     List<KickScrewUploadItem> toUpload = new ArrayList<>();
                     for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
@@ -313,8 +322,16 @@ public class KickScrewItemServiceImpl implements ItemService {
                         if (kcPrice == null) {
                             continue;
                         }
-                        Integer price = ShoesUtil.getPrice(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
-                        if (price == null) {
+                        if (PoisonSwitch.POISON_PRICE_TYPE == 0 && poisonPriceDO.getNormalPrice() == null) {
+                            continue;
+                        }
+                        if (PoisonSwitch.POISON_PRICE_TYPE == 1 && poisonPriceDO.getLightningPrice() == null) {
+                            continue;
+                        }
+                        boolean canEarn = ShoesUtil.canEarn(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
+                        log.info("compareWithKc, modelNumber:{}, size:{}, poisonPrice:{}, kcPrice:{}, canEarn:{}", modelNo, euSize,
+                                PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice, canEarn);
+                        if (!canEarn) {
                             continue;
                         }
                         KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
@@ -322,12 +339,12 @@ public class KickScrewItemServiceImpl implements ItemService {
                         kickScrewUploadItem.setSize(euSize);
                         kickScrewUploadItem.setSize_system("EU");
                         kickScrewUploadItem.setQty(1);
-                        kickScrewUploadItem.setPrice(price);
+                        kickScrewUploadItem.setPrice(kcPrice - 1);
                         toUpload.add(kickScrewUploadItem);
                     }
                     AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
                     log.info("compareWithPoisonAndChangePrice end, pageIndex:{}, cnt:{}, cost:{}", startIndex, count, TimeUtil.getCostMin(startTime));
-                    startIndex += 1000;
+                    startIndex += 10000;
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }
@@ -337,6 +354,5 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
-
     }
 }

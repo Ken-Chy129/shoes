@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
-    <select id="page" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">
+    <select id="selectPage" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">
         select *
-        from kick_screw_price
+        from poison_price
         limit #{startIndex}, #{pageSize};
     </select>
 
@@ -20,6 +20,6 @@
 
     <select id="count" resultType="java.lang.Long">
         select count(*)
-        from kick_screw_price;
+        from poison_price;
     </select>
 </mapper>

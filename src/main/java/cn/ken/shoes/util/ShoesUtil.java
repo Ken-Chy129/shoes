@@ -27,20 +27,27 @@ public class ShoesUtil {
      * @param otherPrice 三方平台的价格
      * @return 如果三方平台价格-1有盈利，则修改为三方平台价格-1，否则返回null
      */
-    public static Integer getPrice(Integer poisonPrice, Integer otherPrice) {
-        // 得物价格数据库中保存为分，转换为元
+    public static boolean canEarn(Integer poisonPrice, Integer otherPrice) {
         double poisonPriceYuan = poisonPrice / 100.0;
-        // 成本=得物价格+运费
-        double cost = poisonPriceYuan + PriceSwitch.FREIGHT;
-        // 最低目标盈利
-        double earn = Math.max(PriceSwitch.MIN_PROFIT, cost * PriceSwitch.MIN_PROFIT_RATE);
-        // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
-        int price = (int) Math.ceil(Math.ceil((cost + earn) / PriceSwitch.EXCHANGE_RATE) / (1 - PriceSwitch.PLATFORM_RATE));
-        // 三方平台没有该商品出售，直接设置为满足盈利的定价
-        if (otherPrice == -1) {
-            return price;
+        double getFromPlatform = (otherPrice - 1.0) * PriceSwitch.EXCHANGE_RATE * (1 - PriceSwitch.PLATFORM_RATE);
+        double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
+        if (earn < PriceSwitch.MIN_PROFIT) {
+            return false;
         }
-        return price < otherPrice - 1 ? otherPrice - 1 : null;
+        return earn / poisonPriceYuan > PriceSwitch.MIN_PROFIT_RATE;
+//        // 得物价格数据库中保存为分，转换为元
+//        double poisonPriceYuan = poisonPrice / 100.0;
+//        // 成本=得物价格+运费
+//        double cost = poisonPriceYuan + PriceSwitch.FREIGHT;
+//        // 最低目标盈利
+//        double earn = Math.max(PriceSwitch.MIN_PROFIT, cost * PriceSwitch.MIN_PROFIT_RATE);
+//        // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
+//        int price = (int) Math.ceil(Math.ceil((cost + earn) / PriceSwitch.EXCHANGE_RATE) / (1 - PriceSwitch.PLATFORM_RATE));
+//        // 三方平台没有该商品出售，直接设置为满足盈利的定价
+//        if (otherPrice == -1) {
+//            return price;
+//        }
+//        return price < otherPrice - 1 ? otherPrice - 1 : null;
     }
 
 }
