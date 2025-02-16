@@ -7,6 +7,7 @@ import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.price.PriceRequest;
+import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.service.PriceService;
@@ -33,6 +34,9 @@ public class PriceController {
 
     @Resource
     private PoisonService poisonService;
+
+    @Resource
+    private ItemService KickScrewItemServiceImpl;
 
     @GetMapping("list")
     public Result<List<ItemDO>> list(PriceRequest priceRequest) {
@@ -75,5 +79,10 @@ public class PriceController {
     public Result<Boolean> refreshPoison() {
         Thread.ofVirtual().name("refreshPoison|poison").start(() -> poisonService.refreshPoisonPrices());
         return Result.buildSuccess(true);
+    }
+
+    @GetMapping("compareKc")
+    public void compareKc() {
+        KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();
     }
 }
