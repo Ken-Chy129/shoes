@@ -18,4 +18,8 @@ public class KickScrewAlgoliaRequest {
     private List<String> genders;
 
     private List<String> productTypes;
+
+    private String startPrice;
+
+    private String endPrice;
 }

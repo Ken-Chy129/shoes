@@ -198,11 +198,19 @@ public class KickScrewClient {
             facetFilters.add(algoliaRequest.getReleaseYears().stream().map(year -> "release_year:" + year).toList());
         }
         params.put("facetFilters", JSON.toJSONString(facetFilters));
+        List<String> priceList = new ArrayList<>();
+        if (algoliaRequest.getStartPrice() != null) {
+            priceList.add("lowest_price>=" + algoliaRequest.getStartPrice());
+        }
+        if (algoliaRequest.getEndPrice() != null) {
+            priceList.add("lowest_price<=" + algoliaRequest.getEndPrice());
+        }
+        params.put("numericFilters", JSON.toJSONString(priceList));
         params.put("filters", "NOT class: 0");
         params.put("highlightPostTag", "__/ais-highlight__");
         params.put("highlightPreTag", "__ais-highlight__");
         params.put("hitsPerPage", String.valueOf(algoliaRequest.getPageSize()));
-        params.put("maxValuesPerFacet", "10000");
+        params.put("maxValuesPerFacet", "999");
         params.put("page", String.valueOf(algoliaRequest.getPageIndex()));
         params.put("removeWordsIfNoResults", "allOptional");
         params.put("userToken", "803310494-1734974059");
