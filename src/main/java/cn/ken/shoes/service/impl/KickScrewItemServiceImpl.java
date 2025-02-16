@@ -26,6 +26,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -82,17 +83,15 @@ public class KickScrewItemServiceImpl implements ItemService {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, null);
         try {
             List<BrandDO> brandList = selectBrands();
-            AtomicInteger finishCnt = new AtomicInteger(0);
-            int brandItemCnt;
+            int idx = 1;
             for (BrandDO brandDO : brandList) {
                 String brand = brandDO.getName();
                 long brandStartTime = System.currentTimeMillis();
-                brandItemCnt = 0;
+                AtomicInteger brandCnt = new AtomicInteger(0);
                 try {
-                    Map<String, List<KickScrewItemDO>> releaseYearItemsMap = new HashMap<>();
                     for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
+                        CountDownLatch priceLatch = new CountDownLatch(4);
                         for (int i = 0; i < 4; i++) {
-                            CountDownLatch priceLatch = new CountDownLatch(4);
                             final int priceIndex = i;
                             Thread.ofVirtual().start(() -> {
                                 try {
@@ -105,36 +104,31 @@ public class KickScrewItemServiceImpl implements ItemService {
                                     algoliaRequest.setStartPrice(startPrice);
                                     algoliaRequest.setEndPrice(endPrice);
                                     Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
-                                    CountDownLatch pageLatch = new CountDownLatch(page);
                                     for (int j = 0; j < page; j++) {
                                         final int pageIndex = j;
                                         Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
                                             try {
                                                 algoliaRequest.setPageIndex(pageIndex);
                                                 List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
-                                                releaseYearItemsMap.put(String.valueOf(releaseYear) + pageIndex, brandItems);
+                                                brandCnt.getAndAdd(brandItems.size());
+                                                Thread.ofVirtual().start(() -> batchInsertItems(brandItems));
                                             } catch (Exception e) {
                                                 log.error(e.getMessage(), e);
-                                            } finally {
-                                                pageLatch.countDown();
                                             }
                                         });
                                     }
-                                    pageLatch.await();
                                     priceLatch.countDown();
                                 } catch (Exception e) {
                                     log.error(e.getMessage(), e);
                                 }
                             });
-                            priceLatch.await();
                         }
+                        priceLatch.await();
                     }
-                    brandItemCnt = releaseYearItemsMap.values().stream().mapToInt(List::size).sum();
-                    Thread.ofVirtual().start(() -> batchInsertItems(releaseYearItemsMap.values().stream().flatMap(List::stream).toList()));
                 } catch (Exception e) {
                     log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
                 } finally {
-                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, finishCnt.incrementAndGet(), brandItemCnt, TimeUtil.getCostMin(brandStartTime));
+                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, idx++, brandCnt.get(), TimeUtil.getCostMin(brandStartTime));
                 }
             }
         } catch (Exception e) {
@@ -323,6 +317,7 @@ public class KickScrewItemServiceImpl implements ItemService {
     @Override
     public void compareWithPoisonAndChangePrice() {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
+        kickScrewClient.deleteAllItems();
         try {
             long count = poisonPriceMapper.count();
             log.info("compareWithPoisonAndChangePrice start, count:{}", count);
