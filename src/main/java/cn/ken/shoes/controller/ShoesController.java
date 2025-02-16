@@ -6,6 +6,7 @@ import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.model.shoes.ShoesRequest;
 import cn.ken.shoes.model.shoes.ShoesVO;
+import cn.ken.shoes.service.FileService;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.PoisonService;
 import cn.ken.shoes.service.ShoesService;
@@ -34,6 +35,8 @@ public class ShoesController {
     private ItemService kickScrewItemService;
     @Resource
     private ShoesService shoesService;
+    @Resource
+    private FileService fileService;
 
     @GetMapping("shoesPage")
     public PageResult<List<ShoesVO>> shoesPage(ShoesRequest request) {
@@ -88,5 +91,10 @@ public class ShoesController {
     @GetMapping("incremental")
     public void incremental() {
         kickScrewItemService.refreshIncrementalItems();
+    }
+
+    @GetMapping("file")
+    public void file() {
+        fileService.updatePoisonPriceByExcel("3.xlsx");
     }
 }
