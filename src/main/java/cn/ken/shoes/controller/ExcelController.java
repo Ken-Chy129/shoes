@@ -1,7 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.config.CommonConfig;
-import cn.ken.shoes.service.ExcelService;
+import cn.ken.shoes.service.FileService;
 import jakarta.annotation.Resource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
@@ -21,13 +21,13 @@ import java.nio.charset.StandardCharsets;
 public class ExcelController {
 
     @Resource
-    private ExcelService excelService;
+    private FileService fileService;
 
     @GetMapping("sizeChart")
     public ResponseEntity<InputStreamResource> downloadSizeChart() throws IOException {
         FileSystemResource file = new FileSystemResource(CommonConfig.DOWNLOAD_PATH + CommonConfig.SIZE_CHART_NAME);
         if (!file.exists()) {
-            excelService.doWriteSizeCharExcel();
+            fileService.doWriteSizeCharExcel();
             file = new FileSystemResource(CommonConfig.DOWNLOAD_PATH + CommonConfig.SIZE_CHART_NAME);
         }
         HttpHeaders headers = new HttpHeaders();
