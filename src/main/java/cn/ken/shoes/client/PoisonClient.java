@@ -22,6 +22,15 @@ import java.util.*;
 @Component
 public class PoisonClient {
 
+    public Result<JSONObject> queryOriginPriceBySpu(Long spuId) {
+        String url = PoisonApiConstant.PRICE_BY_SPU;
+        Map<String, String> params = new HashMap<>();
+        params.put("spuId", String.valueOf(spuId));
+        params.put("token", PoisonConfig.TOKEN);
+        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
+        return JSON.parseObject(result, new TypeReference<>() {});
+    }
+
     /**
      * 根据spu查询价格
      * @param spuId 商品spuId，通过货号唯一对应一个spuId
@@ -142,7 +151,7 @@ public class PoisonClient {
     }
 
     @Data
-    private static class Result<T> {
+    public static class Result<T> {
 
         private Integer code;
 

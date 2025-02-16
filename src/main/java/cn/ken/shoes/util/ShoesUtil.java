@@ -1,6 +1,5 @@
 package cn.ken.shoes.util;
 
-import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PriceSwitch;
 
 import java.util.regex.Matcher;
@@ -29,7 +28,7 @@ public class ShoesUtil {
      */
     public static boolean canEarn(Integer poisonPrice, Integer otherPrice) {
         double poisonPriceYuan = poisonPrice / 100.0;
-        double getFromPlatform = (otherPrice - 1.0) * PriceSwitch.EXCHANGE_RATE * (1 - PriceSwitch.PLATFORM_RATE);
+        double getFromPlatform = ((otherPrice - 1.0) * (1 - PriceSwitch.PLATFORM_RATE) - 15) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;
