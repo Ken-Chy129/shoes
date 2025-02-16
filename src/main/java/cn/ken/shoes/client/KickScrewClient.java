@@ -169,6 +169,13 @@ public class KickScrewClient {
         log.info("batchUploadItems finish: result:{}", result);
     }
 
+    public void deleteAllItems() {
+        HttpUtil.doDelete(KickScrewApiConstant.DELETE_ALL_ITEMS,
+                "",
+                Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
+    }
+
     private String buildAlgoliaBodyForItem(KickScrewAlgoliaRequest algoliaRequest) {
         JSONObject request = new JSONObject();
         request.put("indexName", "prod_products");
