@@ -26,4 +26,9 @@ public class KickScrewApiConstant {
      * B端批量上传商品api
      */
     public static final String BATCH_UPLOAD_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/batch-update";
+
+    /**
+     * B端清除商家商品
+     */
+    public static final String DELETE_ALL_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/all";
 }
