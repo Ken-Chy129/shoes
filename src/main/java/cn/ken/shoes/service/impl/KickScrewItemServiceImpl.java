@@ -37,6 +37,8 @@ import java.util.stream.IntStream;
 @Service("kickScrewItemService")
 public class KickScrewItemServiceImpl implements ItemService {
 
+    private static final Integer PAGE_SIZE = 10_000;
+
     @Resource
     private BrandMapper brandMapper;
 
@@ -173,9 +175,9 @@ public class KickScrewItemServiceImpl implements ItemService {
 
             KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
             Integer count = kickScrewItemMapper.count(new KickScrewItemRequest());
-            int page = (int) Math.ceil(count / 1000.0);
+            int page = (int) Math.ceil((double) count / PAGE_SIZE);
             log.info("refreshAllPrices start, count:{}, page:{}", count, page);
-            kickScrewItemRequest.setPageSize(1000);
+            kickScrewItemRequest.setPageSize(PAGE_SIZE);
             RateLimiter rateLimiter = RateLimiter.create(50);
             ReentrantLock lock = new ReentrantLock();
             for (int i = 1; i <= page; i++) {
@@ -238,14 +240,14 @@ public class KickScrewItemServiceImpl implements ItemService {
             long startTime = System.currentTimeMillis();
 
             Long count = kickScrewItemMapper.countItemsWithPoisonPrice();
-            int page = (int) Math.ceil(count / 1000.0);
+            int page = (int) Math.ceil((double) count / PAGE_SIZE);
             log.info("refreshAllPrices start, count:{}, page:{}", count, page);
             RateLimiter rateLimiter = RateLimiter.create(50);
             ReentrantLock lock = new ReentrantLock();
             for (int i = 1; i <= page; i++) {
                 try {
                     long pageStart = System.currentTimeMillis();
-                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectItemsWithPoisonPrice((i - 1) * 1000, 1000);
+                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectItemsWithPoisonPrice((i - 1) * PAGE_SIZE, PAGE_SIZE);
                     CountDownLatch latch = new CountDownLatch(itemDOList.size());
                     List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
                     for (KickScrewItemDO itemDO : itemDOList) {
@@ -305,7 +307,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                 try {
                     long startTime = System.currentTimeMillis();
                     // 1.查询kc价格
-                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, 10000);
+                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
                     Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
                     // 2.查询对应的货号在得物的价格
                     Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
@@ -344,7 +346,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                     }
                     AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
                     log.info("compareWithPoisonAndChangePrice end, pageIndex:{}, cnt:{}, cost:{}", startIndex, count, TimeUtil.getCostMin(startTime));
-                    startIndex += 10000;
+                    startIndex += PAGE_SIZE;
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }
