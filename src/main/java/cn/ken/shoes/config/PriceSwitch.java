@@ -25,5 +25,5 @@ public class PriceSwitch {
     /**
      * 最小利润
      */
-    public static Integer MIN_PROFIT = 50;
+    public static Integer MIN_PROFIT = -20;
 }

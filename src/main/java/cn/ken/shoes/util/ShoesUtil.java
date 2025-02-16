@@ -33,7 +33,8 @@ public class ShoesUtil {
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;
         }
-        return earn / poisonPriceYuan > PriceSwitch.MIN_PROFIT_RATE;
+        return true;
+//        return earn / poisonPriceYuan > PriceSwitch.MIN_PROFIT_RATE;
 //        // 得物价格数据库中保存为分，转换为元
 //        double poisonPriceYuan = poisonPrice / 100.0;
 //        // 成本=得物价格+运费
