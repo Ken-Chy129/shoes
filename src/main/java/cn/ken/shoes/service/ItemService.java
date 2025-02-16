@@ -37,4 +37,6 @@ public interface ItemService {
      * 和得物价格进行比较并压价有盈利的商品
      */
     void compareWithPoisonAndChangePrice();
+
+    void refreshAllPricesV2();
 }

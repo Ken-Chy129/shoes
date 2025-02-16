@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -11,6 +12,7 @@ import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
+import com.google.common.util.concurrent.RateLimiter;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
@@ -27,6 +29,8 @@ public class KickScrewClient {
 
     private static final Integer PAGE_SIZE = 30;
 
+    private static final RateLimiter ITEM_LIMITER = RateLimiter.create(20);
+
     public KickScrewCategory queryBrand() {
         String result = queryAlgolia(buildAlgoliaBodyForBrand());
         return Optional.ofNullable(result)
@@ -41,6 +45,7 @@ public class KickScrewClient {
      * 根据条件（时间、品牌、性别、商品类型等）分页查询kc平台商品
      */
     public List<KickScrewItemDO> queryItemPageV2(KickScrewAlgoliaRequest request) {
+        ITEM_LIMITER.acquire();
         String result = queryAlgolia(buildAlgoliaBodyForItem(request));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)

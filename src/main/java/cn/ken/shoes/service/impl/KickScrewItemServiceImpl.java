@@ -1,5 +1,6 @@
 package cn.ken.shoes.service.impl;
 
+import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
@@ -87,7 +88,6 @@ public class KickScrewItemServiceImpl implements ItemService {
             for (BrandDO brandDO : brandList) {
                 String brand = brandDO.getName();
                 long brandStartTime = System.currentTimeMillis();
-                AtomicInteger brandCnt = new AtomicInteger(0);
                 try {
                     for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
                         CountDownLatch priceLatch = new CountDownLatch(4);
@@ -103,14 +103,13 @@ public class KickScrewItemServiceImpl implements ItemService {
                                     algoliaRequest.setReleaseYears(List.of(releaseYear));
                                     algoliaRequest.setStartPrice(startPrice);
                                     algoliaRequest.setEndPrice(endPrice);
-                                    Integer page = kickScrewClient.countItemPageV2(algoliaRequest);
+                                    int page = kickScrewClient.countItemPageV2(algoliaRequest);
                                     for (int j = 0; j < page; j++) {
                                         final int pageIndex = j;
                                         Thread.ofVirtual().name(brand + ":" + pageIndex).start(() -> {
                                             try {
                                                 algoliaRequest.setPageIndex(pageIndex);
                                                 List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
-                                                brandCnt.getAndAdd(brandItems.size());
                                                 Thread.ofVirtual().start(() -> batchInsertItems(brandItems));
                                             } catch (Exception e) {
                                                 log.error(e.getMessage(), e);
@@ -128,7 +127,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                 } catch (Exception e) {
                     log.error("scratchAndSaveBrandItems error, brand:{}, msg:{}", brand, e.getMessage());
                 } finally {
-                    log.info("finishScratch brand:{}, idx:{}, cnt:{}, cost:{}", brand, idx++, brandCnt.get(), TimeUtil.getCostMin(brandStartTime));
+                    log.info("finishScratch brand:{}, idx:{}, cost:{}", brand, idx++, TimeUtil.getCostMin(brandStartTime));
                 }
             }
         } catch (Exception e) {
@@ -251,6 +250,7 @@ public class KickScrewItemServiceImpl implements ItemService {
         }
     }
 
+    @Override
     public void refreshAllPricesV2() {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
         try {
@@ -309,7 +309,7 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.info("refreshAllPrices end, cost:{}", TimeUtil.getCostMin(startTime));
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
         } catch (Exception e) {
-            log.error("refreshAllPrices error, msg:{}", e.getMessage());
+            log.error("refreshAllPrices error, msg:{}", e.getMessage(), e);
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
     }

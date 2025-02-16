@@ -97,4 +97,9 @@ public class ShoesController {
     public void file() {
         fileService.updatePoisonPriceByExcel("3.xlsx");
     }
+
+    @GetMapping("kcp2")
+    public void kcp2() {
+        kickScrewItemService.refreshAllPricesV2();
+    }
 }
