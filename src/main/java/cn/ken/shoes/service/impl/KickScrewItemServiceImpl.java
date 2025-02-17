@@ -2,6 +2,7 @@ package cn.ken.shoes.service.impl;
 
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.*;
@@ -16,9 +17,11 @@ import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
@@ -34,12 +37,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 @Slf4j
 @Service("kickScrewItemService")
 public class KickScrewItemServiceImpl implements ItemService {
 
-    private static final Integer PAGE_SIZE = 10_000;
+    private static final Integer PAGE_SIZE = 1_000;
 
     @Resource
     private BrandMapper brandMapper;
@@ -64,6 +68,9 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Resource
     private PoisonItemMapper poisonItemMapper;
+
+    @Resource
+    private PoisonClient poisonClient;
 
     @Override
     public String getPlatformName() {
@@ -110,7 +117,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                                             try {
                                                 algoliaRequest.setPageIndex(pageIndex);
                                                 List<KickScrewItemDO> brandItems = kickScrewClient.queryItemPageV2(algoliaRequest);
-                                                Thread.ofVirtual().start(() -> batchInsertItems(brandItems));
+                                                Thread.ofVirtual().start(() -> doAfterGetNewModelNo(brandItems));
                                             } catch (Exception e) {
                                                 log.error(e.getMessage(), e);
                                             }
@@ -134,6 +141,39 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.error(e.getMessage(), e);
         } finally {
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+        }
+    }
+
+    private void doAfterGetNewModelNo(List<KickScrewItemDO> itemDOList) {
+        try {
+            // 新增的kc商品入库
+            AsyncUtil.runTasks(List.of(() -> batchInsertItems(itemDOList)));
+            List<String> modelNoList = new ArrayList<>(itemDOList.size());
+            Map<String, Integer> model2YearMap = new HashMap<>();
+            for (KickScrewItemDO kickScrewItemDO : itemDOList) {
+                modelNoList.add(kickScrewItemDO.getModelNo());
+                model2YearMap.put(kickScrewItemDO.getModelNo(), kickScrewItemDO.getReleaseYear());
+            }
+            // 根据新增的货号查询得物
+            List<Callable<List<PoisonItemDO>>> suppliers = Lists.partition(modelNoList, 5).stream()
+                    .map(fiveModelNoList -> (Callable<List<PoisonItemDO>>) () -> poisonClient.queryItemByModelNos(fiveModelNoList))
+                    .toList();
+            List<PoisonItemDO> items = AsyncUtil.runTasksWithResult(suppliers, 15).stream()
+                    .filter(CollectionUtils::isNotEmpty)
+                    .flatMap(List::stream)
+                    .toList();
+            items.forEach(item -> item.setReleaseYear(model2YearMap.get(item.getArticleNumber())));
+            // 得物商品入库
+            AsyncUtil.runTasks(List.of(() -> {
+                try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
+                    for (PoisonItemDO item : items) {
+                        poisonItemMapper.insertIgnore(item);
+                    }
+                    sqlSession.commit();
+                }
+            }));
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
         }
     }
 
