@@ -30,7 +30,7 @@ public class KickScrewScratchScheduler {
         log.info("update items end");
     }
 
-    @Scheduled(fixedDelay = 80 * 60 * 1000)
+    @Scheduled(fixedDelay = 80 * 60 * 1000, initialDelay = 80 * 60 * 1000)
     public void updateKcPrices() {
         log.info("update kc prices start");
         kickScrewItemService.refreshAllPricesV2();
