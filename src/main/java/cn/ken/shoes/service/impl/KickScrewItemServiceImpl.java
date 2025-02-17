@@ -355,7 +355,8 @@ public class KickScrewItemServiceImpl implements ItemService {
     }
 
     @Override
-    public void compareWithPoisonAndChangePrice() {
+    public int compareWithPoisonAndChangePrice() {
+        int changeCnt = 0;
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
         kickScrewClient.deleteAllItems();
         try {
@@ -390,11 +391,10 @@ public class KickScrewItemServiceImpl implements ItemService {
                             continue;
                         }
                         boolean canEarn = ShoesUtil.canEarn(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
-                        log.info("compareWithKc, modelNumber:{}, size:{}, poisonPrice:{}, kcPrice:{}, canEarn:{}", modelNo, euSize,
-                                PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice, canEarn);
                         if (!canEarn) {
                             continue;
                         }
+                        changeCnt++;
                         KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
                         kickScrewUploadItem.setModel_no(modelNo);
                         kickScrewUploadItem.setSize(euSize);
@@ -415,5 +415,6 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
+        return changeCnt;
     }
 }

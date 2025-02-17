@@ -24,9 +24,17 @@ public class KickScrewScratchScheduler {
 
     @Scheduled(cron = "0 0 0 * * *")
     public void updateItems() {
-
+        log.info("update items start");
         kickScrewService.scratchAndSaveBrand();
         kickScrewItemService.refreshAllItems();
+        log.info("update items end");
+    }
+
+    @Scheduled(fixedDelay = 90 * 60 * 1000, initialDelay = 30 * 60 * 1000)
+    public void updateKcPrices() {
+        log.info("update kc prices start");
+        int cnt = kickScrewItemService.compareWithPoisonAndChangePrice();
+        log.info("update kc prices end, change cnt:{}", cnt);
     }
 
 }
