@@ -39,4 +39,6 @@ public interface ItemService {
     int compareWithPoisonAndChangePrice();
 
     void refreshAllPricesV2();
+
+    void refreshPrices(List<String> modelNos);
 }
