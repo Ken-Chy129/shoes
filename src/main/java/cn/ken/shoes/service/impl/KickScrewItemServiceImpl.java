@@ -290,6 +290,7 @@ public class KickScrewItemServiceImpl implements ItemService {
     public void refreshAllPricesV2() {
         Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
         try {
+            kickScrewClient.deleteAllItems();
             kickScrewPriceMapper.delete(new QueryWrapper<>());
             long startTime = System.currentTimeMillis();
 
@@ -311,6 +312,9 @@ public class KickScrewItemServiceImpl implements ItemService {
                                 List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(itemDO.getHandle());
                                 String modelNo = itemDO.getModelNo();
                                 for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                                    if (!kickScrewSizePrice.isAvailableForSale()) {
+                                        continue;
+                                    }
                                     String title = kickScrewSizePrice.getTitle();
                                     String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
                                     if (euSize == null) {
@@ -321,7 +325,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                                     kickScrewPriceDO.setModelNo(modelNo);
                                     kickScrewPriceDO.setEuSize(euSize);
                                     Map<String, String> price = kickScrewSizePrice.getPrice();
-                                    kickScrewPriceDO.setPrice(kickScrewSizePrice.isAvailableForSale() ? (int) Double.parseDouble(String.valueOf(price.get("amount"))) : -1);
+                                    kickScrewPriceDO.setPrice((int) Double.parseDouble(String.valueOf(price.get("amount"))));
                                     toInsert.add(kickScrewPriceDO);
                                 }
                             } catch (Exception e) {
