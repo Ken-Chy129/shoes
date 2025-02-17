@@ -332,10 +332,14 @@ public class KickScrewItemServiceImpl implements ItemService {
                         });
                     }
                     latch.await();
+                    final int curIdx = i;
                     Thread.ofVirtual().start(() -> {
                         lock.lock();
                         kickScrewPriceMapper.insert(toInsert);
                         lock.unlock();
+                        if (curIdx == page) {
+                            compareWithPoisonAndChangePrice();
+                        }
                     });
                     log.info("page refresh end, cost:{}, pageIndex:{}, cnt:{}", TimeUtil.getCostMin(pageStart), i, toInsert.size());
                 } catch (Exception e) {
@@ -352,6 +356,7 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public void refreshPrices(List<String> modelNoList) {
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
         try {
             RateLimiter limiter = RateLimiter.create(50);
             ReentrantLock lock = new ReentrantLock();
@@ -453,6 +458,7 @@ public class KickScrewItemServiceImpl implements ItemService {
             log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
+        log.info("compareWithPoisonAndChangePrice changeCnt:{}", changeCnt);
         return changeCnt;
     }
 }

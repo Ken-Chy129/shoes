@@ -30,11 +30,11 @@ public class KickScrewScratchScheduler {
         log.info("update items end");
     }
 
-    @Scheduled(fixedDelay = 90 * 60 * 1000, initialDelay = 30 * 60 * 1000)
+    @Scheduled(fixedDelay = 80 * 60 * 1000)
     public void updateKcPrices() {
         log.info("update kc prices start");
-        int cnt = kickScrewItemService.compareWithPoisonAndChangePrice();
-        log.info("update kc prices end, change cnt:{}", cnt);
+        kickScrewItemService.refreshAllPricesV2();
+        log.info("update kc prices end");
     }
 
 }
