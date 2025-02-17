@@ -1,11 +1,7 @@
-package cn.ken.shoes.task;
+package cn.ken.shoes.scheduler;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.mapper.PoisonItemMapper;
-import cn.ken.shoes.model.entity.BrandDO;
-import cn.ken.shoes.model.entity.PoisonItemDO;
-import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.PoisonService;
 import jakarta.annotation.Resource;
 import org.springframework.beans.BeansException;
@@ -13,10 +9,6 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
-
-import java.util.*;
-import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.stream.Collectors;
 
 @Component
 public class ModelNumberScratchEventListener implements ApplicationListener<ModelNumberScratchEvent>, ApplicationContextAware {
