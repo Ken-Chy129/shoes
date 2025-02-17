@@ -5,10 +5,7 @@ import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.KickScrewConfig;
-import cn.ken.shoes.mapper.ItemMapper;
-import cn.ken.shoes.mapper.ItemSizePriceMapper;
-import cn.ken.shoes.mapper.PoisonItemMapper;
-import cn.ken.shoes.mapper.PoisonPriceMapper;
+import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceRequest;
 import com.google.common.util.concurrent.RateLimiter;
@@ -44,6 +41,12 @@ public class PriceService {
 
     @Resource
     private TaskService taskService;
+
+    @Resource
+    private KickScrewItemMapper kickScrewItemMapper;
+
+    @Resource
+    private ItemService kickScrewItemService;
 
     public Result<List<ItemDO>> queryPriceByCondition(PriceRequest priceRequest) {
         List<ItemDO> result = new ArrayList<>();
@@ -167,4 +170,10 @@ public class PriceService {
         taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
+
+    public void refreshKcPrices() {
+        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectAllItemsWithPoisonPrice();
+        log.info("refreshKcPrices cnt:{}", kickScrewItemDOS.size());
+        kickScrewItemService.refreshPrices(kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).toList());
+    }
 }

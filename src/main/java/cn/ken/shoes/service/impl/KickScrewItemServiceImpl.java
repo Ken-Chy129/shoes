@@ -1,6 +1,5 @@
 package cn.ken.shoes.service.impl;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.ItemQueryConfig;
@@ -30,14 +29,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 @Slf4j
 @Service("kickScrewItemService")
@@ -351,6 +347,48 @@ public class KickScrewItemServiceImpl implements ItemService {
         } catch (Exception e) {
             log.error("refreshAllPrices error, msg:{}", e.getMessage(), e);
             taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
+        }
+    }
+
+    @Override
+    public void refreshPrices(List<String> modelNoList) {
+        try {
+            RateLimiter limiter = RateLimiter.create(50);
+            ReentrantLock lock = new ReentrantLock();
+            for (String modelNo : modelNoList) {
+                Thread.ofVirtual().name("refreshPrices").start(() -> {
+                    try {
+                        limiter.acquire();
+                        String handle = kickScrewItemMapper.selectHandleByModelNo(modelNo);
+                        List<KickScrewSizePrice> kickScrewSizePrices = kickScrewClient.queryItemSizePrice(handle);
+                        List<KickScrewPriceDO> toInsert = new ArrayList<>();
+                        for (KickScrewSizePrice kickScrewSizePrice : kickScrewSizePrices) {
+                            if (!kickScrewSizePrice.isAvailableForSale()) {
+                                continue;
+                            }
+                            String title = kickScrewSizePrice.getTitle();
+                            String euSize = ShoesUtil.getEuSizeFromKickScrew(title);
+                            if (euSize == null) {
+                                log.error("kcPrice error, modelNo:{}, title:{}", modelNo, title);
+                                continue;
+                            }
+                            KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+                            kickScrewPriceDO.setModelNo(modelNo);
+                            kickScrewPriceDO.setEuSize(euSize);
+                            Map<String, String> price = kickScrewSizePrice.getPrice();
+                            kickScrewPriceDO.setPrice((int) Double.parseDouble(String.valueOf(price.get("amount"))));
+                            toInsert.add(kickScrewPriceDO);
+                        }
+                        lock.lock();
+                        kickScrewPriceMapper.insert(toInsert);
+                        lock.unlock();
+                    } catch (Exception e) {
+                        log.error(e.getMessage(), e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
         }
     }
 

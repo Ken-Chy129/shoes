@@ -25,5 +25,9 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     List<KickScrewItemDO> selectItemsWithPoisonPrice(@Param("startIndex") Integer startIndex, @Param("pageSize") Integer pageSize);
 
+    List<KickScrewItemDO> selectAllItemsWithPoisonPrice();
+
     Long countItemsWithPoisonPrice();
+
+    String selectHandleByModelNo(@Param("modelNo") String modelNo);
 }

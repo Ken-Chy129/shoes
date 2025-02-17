@@ -87,4 +87,9 @@ public class PriceController {
     public void compareKc() {
         KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();
     }
+
+    @GetMapping("refreshKcPrices")
+    public void refreshKcPrices() {
+        priceService.refreshKcPrices();
+    }
 }
