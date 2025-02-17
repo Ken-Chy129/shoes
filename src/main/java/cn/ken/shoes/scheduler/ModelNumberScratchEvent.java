@@ -1,4 +1,4 @@
-package cn.ken.shoes.task;
+package cn.ken.shoes.scheduler;
 
 import cn.ken.shoes.model.item.ItemRequest;
 import org.springframework.context.ApplicationEvent;
