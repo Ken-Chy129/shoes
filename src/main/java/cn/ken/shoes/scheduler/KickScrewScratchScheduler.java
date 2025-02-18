@@ -33,6 +33,7 @@ public class KickScrewScratchScheduler {
     @Scheduled(fixedDelay = 80 * 60 * 1000, initialDelay = 80 * 60 * 1000)
     public void updateKcPrices() {
         log.info("update kc prices start");
+        // todo: 加锁执行，避免手动操作和定时操作同时进行
         kickScrewItemService.refreshAllPricesV2();
         log.info("update kc prices end");
     }

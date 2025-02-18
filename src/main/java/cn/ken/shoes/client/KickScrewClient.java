@@ -8,6 +8,8 @@ import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
+import cn.ken.shoes.model.order.Order;
+import cn.ken.shoes.model.order.OrderRequest;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -30,6 +32,24 @@ public class KickScrewClient {
     private static final Integer PAGE_SIZE = 30;
 
     private static final RateLimiter ITEM_LIMITER = RateLimiter.create(20);
+
+    public List<Order> queryOrders(OrderRequest request) {
+        String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ORDER_LIST)
+                .queryParam("page", request.getPage())
+                .queryParam("date_to", request.getDateTo())
+                .queryParam("date_from", request.getDateFrom())
+                .queryParam("status", request.getStatus())
+                .toUriString();
+        String result = HttpUtil.doGet(url, Headers.of(
+                "x-api-key", KickScrewConfig.API_KEY
+        ));
+        JSONObject jsonObject = JSON.parseObject(result);
+        if (jsonObject == null || !jsonObject.getString("message").equals("success") || !(jsonObject.get("data") == null)) {
+            log.error("queryOrders error, result:{}", jsonObject);
+            return Collections.emptyList();
+        }
+        return jsonObject.getJSONArray("data").toJavaList(Order.class);
+    }
 
     public KickScrewCategory queryBrand() {
         String result = queryAlgolia(buildAlgoliaBodyForBrand());

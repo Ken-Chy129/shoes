@@ -31,4 +31,9 @@ public class KickScrewApiConstant {
      * B端清除商家商品
      */
     public static final String DELETE_ALL_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/all";
+
+    /**
+     * B端查询订单
+     */
+    public static final String ORDER_LIST = "https://api.crewsupply.kickscrew.com/sapi/v2/orders";
 }
