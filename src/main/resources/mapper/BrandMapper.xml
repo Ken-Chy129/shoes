@@ -10,4 +10,29 @@
     <select id="selectBrandNames" resultType="java.lang.String">
         select name from brand;
     </select>
+
+    <select id="selectPage" resultType="cn.ken.shoes.model.entity.BrandDO">
+        select * from brand
+        <where>
+            <if test="name != null and name != ''">
+                and name like concat("%", #{name}, "%")
+            </if>
+            <if test="needCrawl != null">
+                name need_crawl = #{needCrawl}
+            </if>
+        </where>
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <select id="count" resultType="java.lang.Long">
+        select count(*) from brand
+        <where>
+            <if test="name != null and name != ''">
+                and name like concat("%", #{name}, "%")
+            </if>
+            <if test="needCrawl != null">
+                name need_crawl = #{needCrawl}
+            </if>
+        </where>
+    </select>
 </mapper>

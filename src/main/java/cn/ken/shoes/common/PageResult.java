@@ -15,7 +15,7 @@ public class PageResult<T> extends Result<T> {
 
     private Long pageCount;
 
-    private boolean hasMore;
+    private boolean hasMore = true;
 
     public PageResult(Boolean success) {
         super(success);
