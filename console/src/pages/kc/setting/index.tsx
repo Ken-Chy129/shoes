@@ -1,5 +1,5 @@
 import {
-    Button, Card,
+    Button, Card, DatePicker,
     Form,
     Input,
     message,
@@ -19,6 +19,12 @@ import {SETTING_API} from "@/services/shoes";
 
 const SettingPage = () => {
     const [settingForm] = Form.useForm();
+    const [conditionForm] = Form.useForm();
+
+    const [brandSettings, setBrandSettings] = useState<[]>([]);
+    const [pageIndex, setPageIndex] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    const [total, setTotal] = useState(0);
 
     useEffect(() => {
         doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
@@ -27,6 +33,7 @@ const SettingPage = () => {
                 settingForm.setFieldsValue(res.data);
             }
         });
+        queryBrandSetting();
     }, []);
 
     const updatePriceSetting = () => {
@@ -44,36 +51,146 @@ const SettingPage = () => {
         })
     }
 
+    const queryBrandSetting = () => {
+        const name = conditionForm.getFieldValue("name");
+        const needCrawl = conditionForm.getFieldValue("needCrawl");
+        console.log(name, needCrawl)
+        doGetRequest(SETTING_API.QUERY_BRAND_SETTING, {name, needCrawl, pageIndex, pageSize}, {
+            onSuccess: res => {
+                console.log(res)
+                setTotal(res.total);
+                res.data.forEach((brandSetting: any) => {
+                    brandSetting.needCrawl = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
+                })
+                setBrandSettings(res.data);
+            }
+        });
+    }
+
+    const columns = [
+        {
+            title: '名称',
+            dataIndex: 'name',
+            key: 'name',
+            width: '20%'
+        },
+        {
+            title: '商品总数',
+            dataIndex: 'total',
+            key: 'total',
+            width: '15%', // 设置列宽为30%
+        },
+        {
+            title: '爬取货号数量',
+            dataIndex: 'crawlCnt',
+            key: 'crawlCnt',
+            width: '15%', // 设置列宽为30%
+        },
+        {
+            title: '是否爬取',
+            dataIndex: 'needCrawl',
+            key: 'needCrawl',
+            width: '20%', // 设置列宽为30%
+        },
+        {
+            title: '操作',
+            key: 'action',
+            render: (text: string, brandSetting: { needCrawl: boolean }) => (
+                <span>
+                  <Button onClick={() => {}}>
+                    {brandSetting.needCrawl ? '关闭爬取' : '开启爬取'}
+                  </Button>
+                  <Button style={{marginLeft: 20}} onClick={() => {}}>
+                    修改爬取数量
+                  </Button>
+                  <Button style={{marginLeft: 20}} onClick={() => {}}>
+                    指定必爬货号
+                  </Button>
+                </span>
+            ),
+            width: '30%', // 设置列宽为30%
+        }
+    ];
+
     return <>
         <Card title={"基本配置"}>
-            <Form layout={"vertical"} form={settingForm} style={{maxWidth: 600}}>
-                <Form.Item name="exchangeRate" label="汇率">
-                    <Input/>
-                </Form.Item>
-                <Form.Item name="freight" label="运费">
-                    <Input/>
-                </Form.Item>
-                <Form.Item name="minProfit" label="最小利润">
-                    <Input/>
-                </Form.Item>
-                <Form.Item name="priceType" label="价格类型">
-                    <Select
-                        options={[
-                            {label: '普通价格', value: 'normal'},
-                            {label: '闪电价格', value: 'flash'},
-                            {label: '快速价格', value: 'fast'},
-                        ]}
-                    />
-                </Form.Item>
-                <Form.Item>
-                    <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
-                        修改
-                    </Button>
-                </Form.Item>
+            <Form form={settingForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="exchangeRate" label="汇率">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="freight" label="运费" style={{marginLeft: 20}}>
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item name="priceType" label="价格类型" style={{marginLeft: 20}}>
+                        <Select
+                            style={{width: 200}}
+                            options={[
+                                {label: '普通价格', value: 'normal'},
+                                {label: '闪电价格', value: 'lightning'},
+                            ]}
+                        />
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
+                            修改
+                        </Button>
+                    </Form.Item>
+                </div>
             </Form>
         </Card>
         <Card title={"商品爬取配置"} style={{marginTop: 10}}>
-
+            <Form form={conditionForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="name" label="品牌名称">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item name="needCrawl" label="是否爬取" style={{marginLeft: 20}}>
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择字段"
+                            allowClear
+                            optionFilterProp="label"
+                            options={
+                                [
+                                    {label: '是', value: true},
+                                    {label: '否', value: false},
+                                ]
+                            }
+                        />
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button type="primary" htmlType="submit" onClick={queryBrandSetting}>
+                            查询
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button type="primary" htmlType="reset" onClick={() => conditionForm.resetFields()}>
+                            重置
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+            <Table
+                columns={columns}
+                dataSource={brandSettings}
+                pagination={{
+                    current: pageIndex,
+                    pageSize: pageSize,
+                    total: total,
+                    showSizeChanger: true,
+                    onChange: (current, pageSize) => {
+                        setPageIndex(current);
+                        setPageSize(pageSize);
+                    }
+                }}
+                rowKey="id"
+            />
         </Card>
     </>
 }
