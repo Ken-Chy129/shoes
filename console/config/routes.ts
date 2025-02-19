@@ -25,12 +25,17 @@ export default [
   {
     path: '/',
     layout: true,
-    component: "./setting"
+    component: "./kc/setting"
   },
   {
-    path: '/setting',
+    path: '/kc/setting',
     layout: true,
-    component: "./setting"
+    component: "./kc/setting"
+  },
+  {
+    path: '/kc/item',
+    layout: true,
+    component: "./kc/item"
   },
   {
     path: '/task',

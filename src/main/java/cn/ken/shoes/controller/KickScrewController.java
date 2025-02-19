@@ -62,4 +62,6 @@ public class KickScrewController {
     public void poisonPrice() {
         priceService.refreshPoisonPrices();
     }
+
+    //todo:1.每天定时更新一次品牌，2.每天定时替换热门商品50页*24=1200，每次分页大小100（区分手动导入和自动获取，手动导入的不会清楚，除非手动清除） 3.支持查询和配置当前每个商家爬取的货号量 4.支持手动输入货号增量导入商品 5.
 }

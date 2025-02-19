@@ -17,8 +17,6 @@ public class SettingController {
         PriceSetting priceSetting = new PriceSetting();
         priceSetting.setExchangeRate(PriceSwitch.EXCHANGE_RATE);
         priceSetting.setFreight(PriceSwitch.FREIGHT);
-        priceSetting.setPlatformRate(PriceSwitch.PLATFORM_RATE);
-        priceSetting.setMinProfitRate(PriceSwitch.MIN_PROFIT_RATE);
         priceSetting.setMinProfit(PriceSwitch.MIN_PROFIT);
         return Result.buildSuccess(priceSetting);
     }
@@ -27,8 +25,6 @@ public class SettingController {
     public Result<Boolean> updatePriceSetting(PriceSetting priceSetting) {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
-        PriceSwitch.PLATFORM_RATE = priceSetting.getPlatformRate();
-        PriceSwitch.MIN_PROFIT_RATE = priceSetting.getMinProfitRate();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
         return Result.buildSuccess(true);
     }

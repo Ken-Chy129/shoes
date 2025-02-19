@@ -109,8 +109,21 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
     postMenuData: () => {
       const data = [
         {
-          "name": "配置",
-          "path": "/setting",
+          "name": "kickscrew",
+          "children": [
+            {
+              "name": "配置信息",
+              "path": "kc/setting"
+            },
+            {
+              "name": "商品信息",
+              "path": "kc/item"
+            },
+            {
+              "name": "任务信息",
+              "path": "kc/task"
+            }
+          ]
         },
         {
           "name": "任务",
