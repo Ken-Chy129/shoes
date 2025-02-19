@@ -8,10 +8,7 @@ import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.setting.PriceSetting;
 import jakarta.annotation.Resource;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -49,5 +46,12 @@ public class SettingController {
         PageResult<List<BrandDO>> result = PageResult.buildSuccess(brandDOList);
         result.setTotal(count);
         return result;
+    }
+
+    @PostMapping("updateBrandSetting")
+    public Result<Boolean> updateBrandSetting(@RequestBody BrandDO brandDO) {
+        System.out.println(brandDO);
+        brandMapper.updateByName(brandDO);
+        return Result.buildSuccess(Boolean.TRUE);
     }
 }
