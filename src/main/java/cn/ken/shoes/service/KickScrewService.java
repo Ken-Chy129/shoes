@@ -117,7 +117,7 @@ public class KickScrewService {
             Integer cnt = entry.getValue();
             BrandDO brandDO = new BrandDO();
             brandDO.setName(brandName);
-            brandDO.setCnt(cnt);
+            brandDO.setTotal(cnt);
             brandDOList.add(brandDO);
         }
         brandMapper.deleteAll();
