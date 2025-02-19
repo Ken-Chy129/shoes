@@ -13,16 +13,6 @@ public class PriceSwitch {
     public static Integer FREIGHT = 25;
 
     /**
-     * 平台抽成费率
-     */
-    public static Double PLATFORM_RATE = 0.12;
-
-    /**
-     * 最小利润率
-     */
-    public static Double MIN_PROFIT_RATE = 0.05;
-
-    /**
      * 最小利润
      */
     public static Integer MIN_PROFIT = -20;
