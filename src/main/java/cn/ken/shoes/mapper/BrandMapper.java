@@ -17,4 +17,6 @@ public interface BrandMapper extends BaseMapper<BrandDO> {
     List<BrandDO> selectPage(BrandRequest request);
 
     Long count(BrandRequest request);
+
+    void updateByName(BrandDO brand);
 }

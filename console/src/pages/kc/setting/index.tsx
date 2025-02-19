@@ -54,15 +54,21 @@ const SettingPage = () => {
     const queryBrandSetting = () => {
         const name = conditionForm.getFieldValue("name");
         const needCrawl = conditionForm.getFieldValue("needCrawl");
-        console.log(name, needCrawl)
         doGetRequest(SETTING_API.QUERY_BRAND_SETTING, {name, needCrawl, pageIndex, pageSize}, {
             onSuccess: res => {
-                console.log(res)
-                setTotal(res.total);
                 res.data.forEach((brandSetting: any) => {
-                    brandSetting.needCrawl = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
+                    brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
                 })
                 setBrandSettings(res.data);
+            }
+        });
+    }
+
+    const updateBrandSetting = (brandSetting: any) => {
+        doPostRequest(SETTING_API.UPDATE_BRAND_SETTING, brandSetting, {
+            onSuccess: _ => {
+                message.success("修改成功").then();
+                queryBrandSetting();
             }
         });
     }
@@ -88,23 +94,25 @@ const SettingPage = () => {
         },
         {
             title: '是否爬取',
-            dataIndex: 'needCrawl',
-            key: 'needCrawl',
+            dataIndex: 'needCrawlText',
+            key: 'needCrawlText',
             width: '20%', // 设置列宽为30%
         },
         {
             title: '操作',
             key: 'action',
-            render: (text: string, brandSetting: { needCrawl: boolean }) => (
+            render: (text: string, brandSetting: { name: string, needCrawl: boolean }) => (
                 <span>
-                  <Button onClick={() => {}}>
+                  <Button onClick={() => {updateBrandSetting(
+                      {
+                          name: brandSetting.name,
+                          needCrawl: !brandSetting.needCrawl
+                      }
+                  )}}>
                     {brandSetting.needCrawl ? '关闭爬取' : '开启爬取'}
                   </Button>
                   <Button style={{marginLeft: 20}} onClick={() => {}}>
                     修改爬取数量
-                  </Button>
-                  <Button style={{marginLeft: 20}} onClick={() => {}}>
-                    指定必爬货号
                   </Button>
                 </span>
             ),
@@ -172,6 +180,11 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 30}}>
                         <Button type="primary" htmlType="reset" onClick={() => conditionForm.resetFields()}>
                             重置
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button type="primary" htmlType="reset" onClick={() => conditionForm.resetFields()}>
+                            指定必爬货号
                         </Button>
                     </Form.Item>
                 </div>

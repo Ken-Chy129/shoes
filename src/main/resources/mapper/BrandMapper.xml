@@ -2,6 +2,16 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.BrandMapper">
 
+    <update id="updateByName">
+        update brand
+        <if test="needCrawl != null">
+            set need_crawl = #{needCrawl}
+        </if>
+        <if test="crawlCnt != null">
+            set crawl_cnt = #{crawlCnt}
+        </if>
+        where `name` = #{name}
+    </update>
 
     <delete id="deleteAll">
         delete from shoes.brand;
@@ -21,6 +31,7 @@
                 name need_crawl = #{needCrawl}
             </if>
         </where>
+        order by total desc
         limit #{startIndex}, #{pageSize}
     </select>
 

@@ -10,6 +10,7 @@ enum SETTING_API {
     QUERY_PRICE_SETTING = '/api/setting/queryPriceSetting',
     UPDATE_PRICE_SETTING = '/api/setting/updatePriceSetting',
     QUERY_BRAND_SETTING = '/api/setting/queryBrandSetting',
+    UPDATE_BRAND_SETTING = '/api/setting/updateBrandSetting',
 }
 
 export {PRICE_API, SETTING_API}
