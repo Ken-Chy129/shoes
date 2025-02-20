@@ -66,12 +66,18 @@ public class SettingController {
     }
 
     @PostMapping("updateMustCrawlModelNos")
-    public Result<Boolean> queryMustCrawlModelNos(String modelNos) {
+    public Result<Boolean> updateMustCrawlModelNos(String modelNos) {
         if (StrUtil.isBlank(modelNos)) {
             return Result.buildSuccess(Boolean.TRUE);
         }
         List<String> modelNoList = Arrays.stream(modelNos.split(",")).toList();
         kickScrewService.updateMustCrawlModelNos(modelNoList);
+        return Result.buildSuccess(true);
+    }
+
+    @PostMapping("updateMustCrawlModelNos")
+    public Result<Boolean> queryMustCrawlModelNos(Integer cnt) {
+        kickScrewService.updateDefaultCrawlCnt(cnt);
         return Result.buildSuccess(true);
     }
 }
