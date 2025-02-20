@@ -13,8 +13,10 @@ import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import com.alibaba.fastjson.JSONObject;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -322,5 +324,20 @@ public class KickScrewService {
         attributes.put("handle", handle);
         itemSizePriceDO.setAttributes(JSONObject.toJSONString(attributes));
         return itemSizePriceDO;
+    }
+
+    public List<String> queryMustCrawlModelNos() {
+        KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
+        kickScrewItemRequest.setMustCrawl(true);
+        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectListByCondition(kickScrewItemRequest);
+        return kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).toList();
+    }
+
+    public void updateMustCrawlModelNos(List<String> modelNoList) {
+        kickScrewItemMapper.batchUpdateMustCrawl(null, false);
+        kickScrewItemMapper.batchUpdateMustCrawl(modelNoList, true);
+        for (List<String> modelNos : Lists.partition(modelNoList, 20)) {
+
+        }
     }
 }

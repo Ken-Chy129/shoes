@@ -1,5 +1,6 @@
 package cn.ken.shoes.controller;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PriceSwitch;
@@ -7,14 +8,19 @@ import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.setting.PriceSetting;
+import cn.ken.shoes.service.KickScrewService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 
 @RestController
 @RequestMapping("setting")
 public class SettingController {
+
+    @Resource
+    private KickScrewService kickScrewService;
 
     @Resource
     private BrandMapper brandMapper;
@@ -50,8 +56,22 @@ public class SettingController {
 
     @PostMapping("updateBrandSetting")
     public Result<Boolean> updateBrandSetting(@RequestBody BrandDO brandDO) {
-        System.out.println(brandDO);
         brandMapper.updateByName(brandDO);
         return Result.buildSuccess(Boolean.TRUE);
+    }
+
+    @GetMapping("queryMustCrawlModelNos")
+    public Result<List<String>> queryMustCrawlModelNos() {
+        return Result.buildSuccess(kickScrewService.queryMustCrawlModelNos());
+    }
+
+    @PostMapping("updateMustCrawlModelNos")
+    public Result<Boolean> queryMustCrawlModelNos(String modelNos) {
+        if (StrUtil.isBlank(modelNos)) {
+            return Result.buildSuccess(Boolean.TRUE);
+        }
+        List<String> modelNoList = Arrays.stream(modelNos.split(",")).toList();
+        kickScrewService.updateMustCrawlModelNos(modelNoList);
+        return Result.buildSuccess(true);
     }
 }

@@ -13,7 +13,11 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     Integer count(KickScrewItemRequest request);
 
-    List<KickScrewItemDO> selectModelNoByCondition(KickScrewItemRequest request);
+    List<KickScrewItemDO> selectPageByCondition(KickScrewItemRequest request);
+
+    List<KickScrewItemDO> selectListByCondition(KickScrewItemRequest request);
+
+    void batchUpdateMustCrawl(@Param("modelNos") List<String> modelNos, @Param("mustCrawl") Boolean mustCrawl);
 
     void insertIgnore(KickScrewItemDO kickScrewItemDO);
 

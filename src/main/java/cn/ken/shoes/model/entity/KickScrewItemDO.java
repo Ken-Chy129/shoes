@@ -26,4 +26,6 @@ public class KickScrewItemDO {
      */
     private String handle;
 
+    private Boolean mustCrawl;
+
 }

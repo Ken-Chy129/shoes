@@ -22,20 +22,20 @@ public class KickScrewScratchScheduler {
     @Resource
     private PoisonService poisonService;
 
-    @Scheduled(cron = "0 0 0 * * *")
-    public void updateItems() {
-        log.info("update items start");
-        kickScrewService.scratchAndSaveBrand();
-        kickScrewItemService.refreshAllItems();
-        log.info("update items end");
-    }
-
-    @Scheduled(fixedDelay = 80 * 60 * 1000, initialDelay = 80 * 60 * 1000)
-    public void updateKcPrices() {
-        log.info("update kc prices start");
-        // todo: 加锁执行，避免手动操作和定时操作同时进行
-        kickScrewItemService.refreshAllPricesV2();
-        log.info("update kc prices end");
-    }
+//    @Scheduled(cron = "0 0 0 * * *")
+//    public void updateItems() {
+//        log.info("update items start");
+//        kickScrewService.scratchAndSaveBrand();
+//        kickScrewItemService.refreshAllItems();
+//        log.info("update items end");
+//    }
+//
+//    @Scheduled(fixedDelay = 80 * 60 * 1000, initialDelay = 80 * 60 * 1000)
+//    public void updateKcPrices() {
+//        log.info("update kc prices start");
+//        // todo: 加锁执行，避免手动操作和定时操作同时进行
+//        kickScrewItemService.refreshAllPricesV2();
+//        log.info("update kc prices end");
+//    }
 
 }
