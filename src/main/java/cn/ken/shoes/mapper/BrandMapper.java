@@ -19,4 +19,6 @@ public interface BrandMapper extends BaseMapper<BrandDO> {
     Long count(BrandRequest request);
 
     void updateByName(BrandDO brand);
+
+    void updateDefaultCrawlCnt(Integer cnt);
 }

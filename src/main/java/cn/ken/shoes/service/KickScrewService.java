@@ -345,4 +345,8 @@ public class KickScrewService {
             sqlSession.commit();
         }
     }
+
+    public void updateDefaultCrawlCnt(Integer cnt) {
+        brandMapper.updateDefaultCrawlCnt(cnt);
+    }
 }

@@ -13,6 +13,10 @@
         where `name` = #{name}
     </update>
 
+    <update id="updateDefaultCrawlCnt">
+        update shoes.brand set crawl_cnt = least(total, #{cnt});
+    </update>
+
     <delete id="deleteAll">
         delete from shoes.brand;
     </delete>
