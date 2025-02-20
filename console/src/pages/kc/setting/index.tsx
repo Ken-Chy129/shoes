@@ -20,11 +20,14 @@ import {SETTING_API} from "@/services/shoes";
 const SettingPage = () => {
     const [settingForm] = Form.useForm();
     const [conditionForm] = Form.useForm();
+    const [crawlCntForm] = Form.useForm();
 
     const [brandSettings, setBrandSettings] = useState<[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [total, setTotal] = useState(0);
+
+    const [showCrawlCntModifiedModal, setShowCrawlCntModifiedModal] = useState(false);
 
     useEffect(() => {
         doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
@@ -73,6 +76,11 @@ const SettingPage = () => {
         });
     }
 
+    const handleModalClose = () => {
+        setShowCrawlCntModifiedModal(false);
+        crawlCntForm.resetFields();
+    }
+
     const columns = [
         {
             title: '名称',
@@ -103,15 +111,18 @@ const SettingPage = () => {
             key: 'action',
             render: (text: string, brandSetting: { name: string, needCrawl: boolean }) => (
                 <span>
-                  <Button onClick={() => {updateBrandSetting(
+                  <Button onClick={() => updateBrandSetting(
                       {
                           name: brandSetting.name,
                           needCrawl: !brandSetting.needCrawl
                       }
-                  )}}>
-                    {brandSetting.needCrawl ? '关闭爬取' : '开启爬取'}
+                  )}>
+                    {brandSetting.needCrawl ? '暂停爬取' : '开启爬取'}
                   </Button>
-                  <Button style={{marginLeft: 20}} onClick={() => {}}>
+                  <Button style={{marginLeft: 20}} onClick={() => {
+                      setShowCrawlCntModifiedModal(true);
+                      crawlCntForm.setFieldValue("name", brandSetting.name);
+                  }}>
                     修改爬取数量
                   </Button>
                 </span>
@@ -156,7 +167,7 @@ const SettingPage = () => {
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
                     <Form.Item name="name" label="品牌名称">
-                        <Input />
+                        <Input/>
                     </Form.Item>
                     <Form.Item name="needCrawl" label="是否爬取" style={{marginLeft: 20}}>
                         <Select
@@ -182,9 +193,16 @@ const SettingPage = () => {
                             重置
                         </Button>
                     </Form.Item>
+                </div>
+                <div style={{display: "flex"}}>
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button type="primary" htmlType="reset" onClick={() => conditionForm.resetFields()}>
+                        <Button onClick={() => conditionForm.resetFields()}>
                             指定必爬货号
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button onClick={() => conditionForm.resetFields()}>
+                            指定默认爬取数量
                         </Button>
                     </Form.Item>
                 </div>
@@ -205,6 +223,36 @@ const SettingPage = () => {
                 rowKey="id"
             />
         </Card>
+
+        <Modal
+            title="修改爬取数量"
+            open={showCrawlCntModifiedModal}
+            onOk={handleModalClose}
+            onCancel={handleModalClose}
+            footer={[
+                <Space>
+                    <Button key="push" onClick={() => {
+                        updateBrandSetting({
+                            name: crawlCntForm.getFieldValue("name"),
+                            crawlCnt: crawlCntForm.getFieldValue("crawlCnt")
+                        });
+                        handleModalClose();
+                    }}>
+                        推送
+                    </Button>
+                    <Button key="close" onClick={handleModalClose}>
+                        关闭
+                    </Button>
+                </Space>
+            ]}
+            style={{maxWidth: 600}}
+        >
+            <Form form={crawlCntForm} style={{margin: 30}}>
+                <Form.Item name={"crawlCnt"} label={"爬取数量"}>
+                    <Input.TextArea/>
+                </Form.Item>
+            </Form>
+        </Modal>
     </>
 }
 
