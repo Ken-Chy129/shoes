@@ -215,7 +215,7 @@ public class KickScrewItemServiceImpl implements ItemService {
 
     @Override
     public List<String> selectItemsByCondition() {
-        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectModelNoByCondition(new KickScrewItemRequest());
+        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectPageByCondition(new KickScrewItemRequest());
         return null;
     }
 
@@ -237,7 +237,7 @@ public class KickScrewItemServiceImpl implements ItemService {
                 try {
                     long pageStart = System.currentTimeMillis();
                     kickScrewItemRequest.setPageIndex(i);
-                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectModelNoByCondition(kickScrewItemRequest);
+                    List<KickScrewItemDO> itemDOList = kickScrewItemMapper.selectPageByCondition(kickScrewItemRequest);
                     CountDownLatch latch = new CountDownLatch(itemDOList.size());
                     List<KickScrewPriceDO> toInsert = new CopyOnWriteArrayList<>();
                     for (KickScrewItemDO itemDO : itemDOList) {

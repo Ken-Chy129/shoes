@@ -19,5 +19,7 @@ public class KickScrewItemRequest extends PageRequest {
     private List<String> productTypes;
 
     private List<String> modelNumbers;
+
+    private Boolean mustCrawl;
 }
 
