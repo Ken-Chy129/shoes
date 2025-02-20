@@ -33,6 +33,23 @@ public class KickScrewClient {
 
     private static final RateLimiter ITEM_LIMITER = RateLimiter.create(20);
 
+    public KickScrewItemDO queryItemByModelNo(String modelNo) {
+        String url = KickScrewApiConstant.QUERY_ITEM_BY_MODEL_NO
+                .replace("{modelNo}", modelNo);
+        String result = HttpUtil.doGet(url, Headers.of(
+                "x-api-key", KickScrewConfig.API_KEY
+        ));
+        JSONObject data = JSON.parseObject(result).getJSONObject("data");
+        KickScrewItemDO kickScrewItemDO = new KickScrewItemDO();
+        kickScrewItemDO.setModelNo(modelNo);
+        kickScrewItemDO.setTitle(data.getString("title"));
+        kickScrewItemDO.setImage(data.getString("image"));
+        kickScrewItemDO.setBrand(data.getString("brand"));
+        kickScrewItemDO.setProductType(data.getString("category"));
+        kickScrewItemDO.setGender(data.getString("gender"));
+        return kickScrewItemDO;
+    }
+
     public List<Order> queryOrders(OrderRequest request) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ORDER_LIST)
                 .queryParam("page", request.getPage())

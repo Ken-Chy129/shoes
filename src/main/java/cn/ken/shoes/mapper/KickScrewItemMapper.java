@@ -15,10 +15,6 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     List<KickScrewItemDO> selectPageByCondition(KickScrewItemRequest request);
 
-    List<KickScrewItemDO> selectListByCondition(KickScrewItemRequest request);
-
-    void batchUpdateMustCrawl(@Param("modelNos") List<String> modelNos, @Param("mustCrawl") Boolean mustCrawl);
-
     void insertIgnore(KickScrewItemDO kickScrewItemDO);
 
     void deleteAll();
