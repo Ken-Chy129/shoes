@@ -16,16 +16,6 @@
         )
     </insert>
 
-    <update id="batchUpdateMustCrawl">
-        update kick_screw_item set must_crawl = #{mustCrawl}
-        <if test="modelNos != null">
-            model_no in
-            <foreach collection="modelNos" item="modelNo" open="(" close=")" separator=",">
-                #{modelNo}
-            </foreach>
-        </if>
-    </update>
-
     <delete id="deleteAll">
         delete from shoes.kick_screw_item;
     </delete>
@@ -103,19 +93,6 @@
                 <foreach collection="modelNumbers" item="modelNumber" open="(" close=")" separator=",">
                     #{modelNumber}
                 </foreach>
-            </if>
-            <if test="mustCrawl != null">
-                and must_crawl = #{mustCrawl}
-            </if>
-        </where>
-        limit #{startIndex}, #{pageSize}
-    </select>
-
-    <select id="selectListByCondition" resultType="cn.ken.shoes.model.entity.KickScrewItemDO">
-        select * from shoes.kick_screw_item
-        <where>
-            <if test="mustCrawl != null">
-                and must_crawl = #{mustCrawl}
             </if>
         </where>
         limit #{startIndex}, #{pageSize}

@@ -3,20 +3,12 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
-import cn.ken.shoes.mapper.BrandMapper;
-import cn.ken.shoes.mapper.ItemSizePriceMapper;
-import cn.ken.shoes.mapper.KickScrewItemMapper;
-import cn.ken.shoes.mapper.SizeChartMapper;
-import cn.ken.shoes.model.entity.BrandDO;
-import cn.ken.shoes.model.entity.ItemSizePriceDO;
-import cn.ken.shoes.model.entity.KickScrewItemDO;
-import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.mapper.*;
+import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
-import cn.ken.shoes.model.kickscrew.KickScrewItemRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import com.alibaba.fastjson.JSONObject;
-import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -51,6 +43,9 @@ public class KickScrewService {
 
     @Resource
     private SizeChartMapper sizeChartMapper;
+
+    @Resource
+    private MustCrawlMapper mustCrawlMapper;
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
@@ -327,17 +322,27 @@ public class KickScrewService {
     }
 
     public List<String> queryMustCrawlModelNos() {
-        KickScrewItemRequest kickScrewItemRequest = new KickScrewItemRequest();
-        kickScrewItemRequest.setMustCrawl(true);
-        List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectListByCondition(kickScrewItemRequest);
-        return kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).toList();
+        return mustCrawlMapper.queryByPlatformList("kc");
     }
 
     public void updateMustCrawlModelNos(List<String> modelNoList) {
-        kickScrewItemMapper.batchUpdateMustCrawl(null, false);
-        kickScrewItemMapper.batchUpdateMustCrawl(modelNoList, true);
-        for (List<String> modelNos : Lists.partition(modelNoList, 20)) {
-
+        mustCrawlMapper.deleteByPlatform("kc");
+        List<MustCrawlDO> mustCrawlDOList = new ArrayList<>();
+        List<KickScrewItemDO> kickScrewItemDOList = new ArrayList<>();
+        for (String modelNo : modelNoList) {
+            MustCrawlDO mustCrawlDO = new MustCrawlDO();
+            mustCrawlDO.setPlatform("kc");
+            mustCrawlDO.setModelNo(modelNo);
+            mustCrawlDOList.add(mustCrawlDO);
+            KickScrewItemDO kickScrewItemDO = kickScrewClient.queryItemByModelNo(modelNo);
+            kickScrewItemDOList.add(kickScrewItemDO);
+        }
+        mustCrawlMapper.insert(mustCrawlDOList);
+        try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
+            for (KickScrewItemDO item : kickScrewItemDOList) {
+                kickScrewItemMapper.insertIgnore(item);
+            }
+            sqlSession.commit();
         }
     }
 }
