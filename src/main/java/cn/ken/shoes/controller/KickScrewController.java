@@ -1,11 +1,14 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PriceService;
 import jakarta.annotation.Resource;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,6 +31,8 @@ public class KickScrewController {
 
     @Resource
     private ItemService kickScrewItemService;
+    @Autowired
+    private KickScrewItemMapper kickScrewItemMapper;
 
     @GetMapping("refreshItems")
     public void refreshItems() {
@@ -72,5 +77,17 @@ public class KickScrewController {
         List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of("GZ6322", "1002072-CHE", "VN0A4BV96Z6", "3236-CLMN", "ABTU003-4", "3024114-106", "172585C", "A02410C", "VN000W4NDI0", "167809C", "172586C"));
         System.out.println(System.currentTimeMillis() - l);
         return kickScrewPriceDOS;
+    }
+
+    @GetMapping("scratchHots")
+    public void scratchHots() {
+        kickScrewService.scratchHotModelNos();
+    }
+
+    @GetMapping("savePrices")
+    @Task
+    public void savePrices() {
+        List<String> modelNos = kickScrewItemMapper.selectAllModelNos();
+        kickScrewService.savePrices(modelNos);
     }
 }
