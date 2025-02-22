@@ -78,7 +78,7 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.UPDATE_BRAND_SETTING, brandSetting, {
             onSuccess: _ => {
                 message.success("修改成功").then();
-                setPageIndex(1);
+                queryBrandSetting();
             }
         });
     }
@@ -105,7 +105,7 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.UPDATE_DEFAULT_CRAWL_CNT, {defaultCnt}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
-                setPageIndex(1);
+                queryBrandSetting();
             }
         });
     }

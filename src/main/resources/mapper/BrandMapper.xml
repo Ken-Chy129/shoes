@@ -2,6 +2,21 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.BrandMapper">
 
+    <insert id="batchInsertOrUpdate">
+        insert into brand(name, total, crawl_cnt, need_crawl)
+        values
+        <foreach collection="brands" item="brand" separator=",">
+            (
+             #{brand.name},
+             #{brand.total},
+             #{brand.crawlCnt},
+             #{brand.needCrawl}
+            )
+        </foreach>
+        on duplicate key update
+        total = values(total)
+    </insert>
+
     <update id="updateByName">
         update brand
         <if test="needCrawl != null">

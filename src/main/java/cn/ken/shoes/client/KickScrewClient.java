@@ -290,7 +290,9 @@ public class KickScrewClient {
         Map<String, Object> params = new HashMap<>();
         params.put("attributesToSnippet", "[\"description:10\"]");
         params.put("clickAnalytics", "false");
-//        params.put("facets", "[\"brand\",\"gender\",\"lowest_price\",\"main_color\",\"product_type\",\"release_year\",\"sizes\"]");
+        List<List<String>> facetFilters = new ArrayList<>();
+        facetFilters.add(List.of("product_type:Shoes", "product_type:Sneakers", "product_type:Slippers"));
+        params.put("facetFilters", JSON.toJSONString(facetFilters));
         params.put("facets", "[\"brand\"]");
         params.put("filters", "NOT class: 0");
         params.put("highlightPostTag", "__/ais-highlight__");

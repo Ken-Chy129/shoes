@@ -41,4 +41,9 @@ public class KickScrewApiConstant {
      * B端查询商品
      */
     public static final String QUERY_ITEM_BY_MODEL_NO = "https://api.crewsupply.kickscrew.com/sapi/v2/product/{modelNo}";
+
+    /**
+     * B端查询平台最低价
+     */
+    public static final String QUERY_LOWEST_PRICE = "https://api.crewsupply.kickscrew.com/sapi/v2/bidding/platform-lowest";
 }

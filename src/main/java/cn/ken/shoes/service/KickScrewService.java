@@ -9,6 +9,7 @@ import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -115,10 +116,11 @@ public class KickScrewService {
             BrandDO brandDO = new BrandDO();
             brandDO.setName(brandName);
             brandDO.setTotal(cnt);
+            brandDO.setCrawlCnt(cnt);
+            brandDO.setNeedCrawl(true);
             brandDOList.add(brandDO);
         }
-        brandMapper.deleteAll();
-        brandMapper.insert(brandDOList);
+        brandMapper.batchInsertOrUpdate(brandDOList);
         int itemCnt = brandCntMap.values().stream().mapToInt(Integer::intValue).sum();
         log.info("scratchAndSaveBrand end, categoryCnt:{}, itemCnt:{}, cost:{}",
                 brandDOList.size(),
