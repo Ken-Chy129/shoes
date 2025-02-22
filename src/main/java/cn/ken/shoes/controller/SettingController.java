@@ -78,8 +78,12 @@ public class SettingController {
     }
 
     @PostMapping("updateDefaultCrawlCnt")
-    public Result<Boolean> updateDefaultCrawlCnt(Integer cnt) {
-        kickScrewService.updateDefaultCrawlCnt(cnt);
+    public Result<Boolean> updateDefaultCrawlCnt(@RequestBody JSONObject jsonObject) {
+        Integer defaultCnt = jsonObject.getInteger("defaultCnt");
+        if (defaultCnt == null) {
+            return Result.buildSuccess(Boolean.FALSE);
+        }
+        kickScrewService.updateDefaultCrawlCnt(defaultCnt);
         return Result.buildSuccess(true);
     }
 }

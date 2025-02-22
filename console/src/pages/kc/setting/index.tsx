@@ -22,6 +22,7 @@ const SettingPage = () => {
     const [conditionForm] = Form.useForm();
     const [crawlCntForm] = Form.useForm();
     const [mustCrawlForm] = Form.useForm();
+    const [defaultCntForm] = Form.useForm();
 
     const [brandSettings, setBrandSettings] = useState<[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
@@ -30,6 +31,7 @@ const SettingPage = () => {
 
     const [showCrawlCntModifiedModal, setShowCrawlCntModifiedModal] = useState(false);
     const [showCrawlModelNoModifiedModal, setShowCrawlModelNoModifiedModal] = useState(false);
+    const [showDefaultCntModifiedModal, setShowDefaultCntModifiedModal] = useState(false);
 
     useEffect(() => {
         doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
@@ -40,6 +42,10 @@ const SettingPage = () => {
         queryBrandSetting();
     }, []);
 
+    useEffect(() => {
+        queryBrandSetting();
+    }, [pageIndex, pageSize]);
+
     const updatePriceSetting = () => {
         const exchangeRate = settingForm.getFieldValue("exchangeRate");
         const freight = settingForm.getFieldValue("freight");
@@ -47,7 +53,6 @@ const SettingPage = () => {
         const minProfitRate = settingForm.getFieldValue("minProfitRate");
         const minProfit = settingForm.getFieldValue("minProfit");
         const priceType = settingForm.getFieldValue("priceType");
-        console.log(priceType)
         doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, platformRate, minProfitRate, minProfit, priceType}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
@@ -73,7 +78,7 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.UPDATE_BRAND_SETTING, brandSetting, {
             onSuccess: _ => {
                 message.success("修改成功").then();
-                queryBrandSetting();
+                setPageIndex(1);
             }
         });
     }
@@ -95,9 +100,20 @@ const SettingPage = () => {
         });
     }
 
+    const updateDefaultCrawlCntModelNos = () => {
+        const defaultCnt = defaultCntForm.getFieldValue("defaultCnt");
+        doPostRequest(SETTING_API.UPDATE_DEFAULT_CRAWL_CNT, {defaultCnt}, {
+            onSuccess: _ => {
+                message.success("修改成功").then();
+                setPageIndex(1);
+            }
+        });
+    }
+
     const handleModalClose = () => {
         setShowCrawlCntModifiedModal(false);
         setShowCrawlModelNoModifiedModal(false);
+        setShowDefaultCntModifiedModal(false);
         crawlCntForm.resetFields();
     }
 
@@ -224,7 +240,7 @@ const SettingPage = () => {
                         </Button>
                     </Form.Item>
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => conditionForm.resetFields()}>
+                        <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
                             指定默认爬取数量
                         </Button>
                     </Form.Item>
@@ -300,6 +316,33 @@ const SettingPage = () => {
             <Form form={mustCrawlForm} style={{margin: 30}}>
                 <Form.Item name={"mustCrawlModelNos"} label={"爬取货号"}>
                     <Input.TextArea rows={25}/>
+                </Form.Item>
+            </Form>
+        </Modal>
+
+        <Modal
+            title="指定默认爬取数量"
+            open={showDefaultCntModifiedModal}
+            onOk={handleModalClose}
+            onCancel={handleModalClose}
+            footer={[
+                <Space>
+                    <Button key="push" onClick={() => {
+                        updateDefaultCrawlCntModelNos();
+                        defaultCntForm.resetFields();
+                        handleModalClose();
+                    }}>
+                        修改
+                    </Button>
+                    <Button key="close" onClick={handleModalClose}>
+                        关闭
+                    </Button>
+                </Space>
+            ]}
+        >
+            <Form form={defaultCntForm} style={{margin: 30}}>
+                <Form.Item name={"defaultCnt"} label={"默认爬取数量"}>
+                    <Input/>
                 </Form.Item>
             </Form>
         </Modal>
