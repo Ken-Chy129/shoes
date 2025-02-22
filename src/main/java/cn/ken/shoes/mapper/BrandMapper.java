@@ -4,6 +4,7 @@ import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
@@ -20,5 +21,5 @@ public interface BrandMapper extends BaseMapper<BrandDO> {
 
     void updateByName(BrandDO brand);
 
-    void updateDefaultCrawlCnt(Integer cnt);
+    void updateDefaultCrawlCnt(@Param("cnt") Integer cnt);
 }
