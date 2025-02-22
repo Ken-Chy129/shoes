@@ -327,6 +327,7 @@ public class KickScrewService {
 
     public void updateMustCrawlModelNos(List<String> modelNoList) {
         mustCrawlMapper.deleteByPlatform("kc");
+        List<String> existModelNos = kickScrewItemMapper.selectExistModelNos(modelNoList);
         List<MustCrawlDO> mustCrawlDOList = new ArrayList<>();
         List<KickScrewItemDO> kickScrewItemDOList = new ArrayList<>();
         for (String modelNo : modelNoList) {
@@ -334,16 +335,13 @@ public class KickScrewService {
             mustCrawlDO.setPlatform("kc");
             mustCrawlDO.setModelNo(modelNo);
             mustCrawlDOList.add(mustCrawlDO);
-            KickScrewItemDO kickScrewItemDO = kickScrewClient.queryItemByModelNo(modelNo);
-            kickScrewItemDOList.add(kickScrewItemDO);
+            if (!existModelNos.contains(modelNo)) {
+                KickScrewItemDO kickScrewItemDO = kickScrewClient.queryItemByModelNo(modelNo);
+                kickScrewItemDOList.add(kickScrewItemDO);
+            }
         }
         mustCrawlMapper.insert(mustCrawlDOList);
-        try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
-            for (KickScrewItemDO item : kickScrewItemDOList) {
-                kickScrewItemMapper.insertIgnore(item);
-            }
-            sqlSession.commit();
-        }
+        kickScrewItemMapper.insert(kickScrewItemDOList.stream().filter(Objects::nonNull).toList());
     }
 
     public void updateDefaultCrawlCnt(Integer cnt) {

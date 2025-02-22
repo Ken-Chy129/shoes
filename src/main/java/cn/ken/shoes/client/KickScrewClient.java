@@ -40,6 +40,10 @@ public class KickScrewClient {
                 "x-api-key", KickScrewConfig.API_KEY
         ));
         JSONObject data = JSON.parseObject(result).getJSONObject("data");
+        if (data == null) {
+            log.error("queryItemByModelNo error, data is null, modelNo:{}", modelNo);
+            return null;
+        }
         KickScrewItemDO kickScrewItemDO = new KickScrewItemDO();
         kickScrewItemDO.setModelNo(modelNo);
         kickScrewItemDO.setTitle(data.getString("title"));

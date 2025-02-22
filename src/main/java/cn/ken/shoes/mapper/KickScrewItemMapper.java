@@ -19,6 +19,8 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     void deleteAll();
 
+    List<String> selectExistModelNos(@Param("modelNos") List<String> modelNos);
+
     List<KickScrewItemDO> selectListByBrand(@Param("brand") String brand);
 
     List<String> selectModelNoByReleaseYear(@Param("releaseYear") Integer releaseYear);
