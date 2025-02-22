@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PriceService;
@@ -64,4 +65,12 @@ public class KickScrewController {
     }
 
     //todo:1.每天定时更新一次品牌，2.每天定时替换热门商品50页*24=1200，每次分页大小100（区分手动导入和自动获取，手动导入的不会清楚，除非手动清除） 3.支持查询和配置当前每个商家爬取的货号量 4.支持手动输入货号增量导入商品 5.
+
+    @GetMapping("queryLowestPrices")
+    public List<KickScrewPriceDO> queryLowestPrices() {
+        long l = System.currentTimeMillis();
+        List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of("GZ6322", "1002072-CHE", "VN0A4BV96Z6", "3236-CLMN", "ABTU003-4", "3024114-106", "172585C", "A02410C", "VN000W4NDI0", "167809C", "172586C"));
+        System.out.println(System.currentTimeMillis() - l);
+        return kickScrewPriceDOS;
+    }
 }

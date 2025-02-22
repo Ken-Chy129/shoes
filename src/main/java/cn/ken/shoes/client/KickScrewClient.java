@@ -1,8 +1,8 @@
 package cn.ken.shoes.client;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.config.KickScrewConfig;
+import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
@@ -32,6 +32,23 @@ public class KickScrewClient {
     private static final Integer PAGE_SIZE = 30;
 
     private static final RateLimiter ITEM_LIMITER = RateLimiter.create(20);
+
+    public List<KickScrewPriceDO> queryLowestPrice(List<String> modelNos) {
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,
+                JSON.toJSONString(Map.of("model_nos", modelNos)),
+                Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
+        List<JSONObject> priceList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
+        List<KickScrewPriceDO> result = new ArrayList<>();
+        for (JSONObject jsonObject : priceList) {
+            KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+            kickScrewPriceDO.setModelNo(jsonObject.getString("model_no"));
+            kickScrewPriceDO.setPrice(jsonObject.getInteger("price"));
+            kickScrewPriceDO.setEuSize(jsonObject.getJSONObject("sizes").getString("eu"));
+            result.add(kickScrewPriceDO);
+        }
+        return result;
+    }
 
     public KickScrewItemDO queryItemByModelNo(String modelNo) {
         String url = KickScrewApiConstant.QUERY_ITEM_BY_MODEL_NO

@@ -73,11 +73,6 @@ public class ShoesController {
         return JSON.toJSONString(poisonClient.queryItemByModelNos(Arrays.stream(modelNos.split(",")).toList()));
     }
 
-    @GetMapping("page")
-    public Integer page(String brand) {
-        return kickScrewClient.queryBrandItemPage(brand);
-    }
-
     @GetMapping("prices")
     public Integer prices(Long skuId) {
         return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
