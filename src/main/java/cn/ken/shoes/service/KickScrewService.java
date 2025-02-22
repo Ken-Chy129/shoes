@@ -10,6 +10,7 @@ import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -47,6 +48,9 @@ public class KickScrewService {
 
     @Resource
     private MustCrawlMapper mustCrawlMapper;
+
+    @Resource
+    private KickScrewPriceMapper kickScrewPriceMapper;
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
@@ -329,24 +333,57 @@ public class KickScrewService {
 
     public void updateMustCrawlModelNos(List<String> modelNoList) {
         mustCrawlMapper.deleteByPlatform("kc");
-        List<String> existModelNos = kickScrewItemMapper.selectExistModelNos(modelNoList);
         List<MustCrawlDO> mustCrawlDOList = new ArrayList<>();
-        List<KickScrewItemDO> kickScrewItemDOList = new ArrayList<>();
         for (String modelNo : modelNoList) {
             MustCrawlDO mustCrawlDO = new MustCrawlDO();
             mustCrawlDO.setPlatform("kc");
             mustCrawlDO.setModelNo(modelNo);
             mustCrawlDOList.add(mustCrawlDO);
-            if (!existModelNos.contains(modelNo)) {
-                KickScrewItemDO kickScrewItemDO = kickScrewClient.queryItemByModelNo(modelNo);
-                kickScrewItemDOList.add(kickScrewItemDO);
-            }
         }
         mustCrawlMapper.insert(mustCrawlDOList);
-        kickScrewItemMapper.insert(kickScrewItemDOList.stream().filter(Objects::nonNull).toList());
     }
 
     public void updateDefaultCrawlCnt(Integer cnt) {
         brandMapper.updateDefaultCrawlCnt(cnt);
+    }
+
+    public void scratchHotModelNos() {
+        long currentTimeMillis = System.currentTimeMillis();
+        List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
+        kickScrewItemMapper.deleteAll();
+        for (BrandDO brandDO : brandDOList) {
+            Boolean needCrawl = brandDO.getNeedCrawl();
+            if (Boolean.FALSE.equals(needCrawl)) {
+                continue;
+            }
+            String brandName = brandDO.getName();
+            Integer crawlCnt = brandDO.getCrawlCnt();
+            int page = (int) Math.ceil(crawlCnt / 50.0);
+            for (int i = 0; i < page; i++) {
+                KickScrewAlgoliaRequest request = new KickScrewAlgoliaRequest();
+                request.setBrands(List.of(brandName));
+                request.setPageIndex(i);
+                request.setPageSize(50);
+                List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.queryItemPageV2(request);
+                Thread.ofVirtual().start(() -> kickScrewItemMapper.insert(kickScrewItemDOS));
+            }
+        }
+        System.out.println(System.currentTimeMillis() - currentTimeMillis);
+    }
+
+    public void savePrices(List<String> modelNoList) {
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
+        for (List<String> modelNos : Lists.partition(modelNoList, 100)) {
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
+            Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(kickScrewPriceDOS));
+        }
+    }
+
+    public void updateAllPrices() {
+        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        hotModelNos.addAll(mustCrawlModelNos);
+        List<String> modelNos = hotModelNos.stream().distinct().toList();
+        savePrices(modelNos);
     }
 }

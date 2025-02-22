@@ -140,4 +140,8 @@
         </foreach>
     </select>
 
+    <select id="selectAllModelNos" resultType="java.lang.String">
+        select model_no from kick_screw_item;
+    </select>
+
 </mapper>
