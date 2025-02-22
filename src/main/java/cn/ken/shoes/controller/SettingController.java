@@ -9,6 +9,7 @@ import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.setting.PriceSetting;
 import cn.ken.shoes.service.KickScrewService;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
@@ -66,17 +67,18 @@ public class SettingController {
     }
 
     @PostMapping("updateMustCrawlModelNos")
-    public Result<Boolean> updateMustCrawlModelNos(String modelNos) {
+    public Result<Boolean> updateMustCrawlModelNos(@RequestBody JSONObject jsonObject) {
+        String modelNos = jsonObject.getString("modelNos");
         if (StrUtil.isBlank(modelNos)) {
             return Result.buildSuccess(Boolean.TRUE);
         }
-        List<String> modelNoList = Arrays.stream(modelNos.split(",")).toList();
+        List<String> modelNoList = Arrays.stream(modelNos.split(",")).map(String::trim).toList();
         kickScrewService.updateMustCrawlModelNos(modelNoList);
         return Result.buildSuccess(true);
     }
 
-    @PostMapping("updateMustCrawlModelNos")
-    public Result<Boolean> queryMustCrawlModelNos(Integer cnt) {
+    @PostMapping("updateDefaultCrawlCnt")
+    public Result<Boolean> updateDefaultCrawlCnt(Integer cnt) {
         kickScrewService.updateDefaultCrawlCnt(cnt);
         return Result.buildSuccess(true);
     }

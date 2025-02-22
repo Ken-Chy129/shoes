@@ -21,6 +21,7 @@ const SettingPage = () => {
     const [settingForm] = Form.useForm();
     const [conditionForm] = Form.useForm();
     const [crawlCntForm] = Form.useForm();
+    const [mustCrawlForm] = Form.useForm();
 
     const [brandSettings, setBrandSettings] = useState<[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
@@ -28,11 +29,11 @@ const SettingPage = () => {
     const [total, setTotal] = useState(0);
 
     const [showCrawlCntModifiedModal, setShowCrawlCntModifiedModal] = useState(false);
+    const [showCrawlModelNoModifiedModal, setShowCrawlModelNoModifiedModal] = useState(false);
 
     useEffect(() => {
         doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
             onSuccess: res => {
-                console.log(res)
                 settingForm.setFieldsValue(res.data);
             }
         });
@@ -63,6 +64,7 @@ const SettingPage = () => {
                     brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
                 })
                 setBrandSettings(res.data);
+                setTotal(res.total)
             }
         });
     }
@@ -76,8 +78,26 @@ const SettingPage = () => {
         });
     }
 
+    const queryMustCrawlModelNos = () => {
+        doGetRequest(SETTING_API.QUERY_MUST_CRAWL_MODEL_NOS, {}, {
+            onSuccess: res => {
+                mustCrawlForm.setFieldValue("mustCrawlModelNos", res.data);
+            }
+        });
+    }
+
+    const updateMustCrawlModelNos = () => {
+        const modelNos = mustCrawlForm.getFieldValue("mustCrawlModelNos");
+        doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {modelNos}, {
+            onSuccess: _ => {
+                message.success("修改成功").then();
+            }
+        });
+    }
+
     const handleModalClose = () => {
         setShowCrawlCntModifiedModal(false);
+        setShowCrawlModelNoModifiedModal(false);
         crawlCntForm.resetFields();
     }
 
@@ -196,7 +216,10 @@ const SettingPage = () => {
                 </div>
                 <div style={{display: "flex"}}>
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => conditionForm.resetFields()}>
+                        <Button onClick={() => {
+                            queryMustCrawlModelNos();
+                            setShowCrawlModelNoModifiedModal(true);
+                        }}>
                             指定必爬货号
                         </Button>
                     </Form.Item>
@@ -238,7 +261,7 @@ const SettingPage = () => {
                         });
                         handleModalClose();
                     }}>
-                        推送
+                        修改
                     </Button>
                     <Button key="close" onClick={handleModalClose}>
                         关闭
@@ -250,6 +273,33 @@ const SettingPage = () => {
             <Form form={crawlCntForm} style={{margin: 30}}>
                 <Form.Item name={"crawlCnt"} label={"爬取数量"}>
                     <Input.TextArea/>
+                </Form.Item>
+            </Form>
+        </Modal>
+
+        <Modal
+            title="指定爬取货号"
+            open={showCrawlModelNoModifiedModal}
+            onOk={handleModalClose}
+            onCancel={handleModalClose}
+            footer={[
+                <Space>
+                    <Button key="push" onClick={() => {
+                        updateMustCrawlModelNos();
+                        handleModalClose();
+                    }}>
+                        修改
+                    </Button>
+                    <Button key="close" onClick={handleModalClose}>
+                        关闭
+                    </Button>
+                </Space>
+            ]}
+            width={1000}
+        >
+            <Form form={mustCrawlForm} style={{margin: 30}}>
+                <Form.Item name={"mustCrawlModelNos"} label={"爬取货号"}>
+                    <Input.TextArea rows={25}/>
                 </Form.Item>
             </Form>
         </Modal>

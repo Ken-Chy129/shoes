@@ -11,6 +11,8 @@ enum SETTING_API {
     UPDATE_PRICE_SETTING = '/api/setting/updatePriceSetting',
     QUERY_BRAND_SETTING = '/api/setting/queryBrandSetting',
     UPDATE_BRAND_SETTING = '/api/setting/updateBrandSetting',
+    QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',
+    UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
 }
 
 export {PRICE_API, SETTING_API}

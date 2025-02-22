@@ -132,4 +132,12 @@
         where model_no = #{modelNo}
     </select>
 
+    <select id="selectExistModelNos" resultType="java.lang.String">
+        select model_no from kick_screw_item
+        where model_no in
+        <foreach collection="modelNos" item="modelNo" open="(" close=")" separator=",">
+            #{modelNo}
+        </foreach>
+    </select>
+
 </mapper>
