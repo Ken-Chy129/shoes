@@ -48,6 +48,11 @@ public class ShoesController {
         return JSON.toJSONString(poisonClient.queryPriceBySpu(modelNo, spuId));
     }
 
+    @GetMapping("queryPriceBySpuV2")
+    public String queryPriceBySpuV2(String modelNo, Long spuId) {
+        return JSON.toJSONString(poisonClient.queryPriceBySpuV2(modelNo, spuId));
+    }
+
     @GetMapping("clearKcItems")
     public void clearKcItems() {
         kickScrewClient.deleteAllItems();
