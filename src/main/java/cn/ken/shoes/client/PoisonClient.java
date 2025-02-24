@@ -15,6 +15,7 @@ import com.alibaba.fastjson.TypeReference;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -24,8 +25,13 @@ import java.util.*;
 @Component
 public class PoisonClient {
 
+    @Value("${poison.token}")
+    private String token;
+
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
-        String url = PoisonApiConstant.PRICE_BY_SPU_V2.replace("{spuId}", String.valueOf(spuId));
+        String url = PoisonApiConstant.PRICE_BY_SPU_V2
+                .replace("{spuId}", String.valueOf(spuId))
+                .replace("{token}", token);
         String result = HttpUtil.doGet(url);
         if (result == null) {
             return null;
@@ -38,17 +44,25 @@ public class PoisonClient {
             Integer normalPrice = data.getInteger("普通发货");
             Integer lightningPrice = data.getInteger("闪电直发");
             Integer brandPrice = data.getInteger("品牌直发");
-            if (ObjUtil.isAllEmpty(fastPrice, normalPrice, lightningPrice, brandPrice)) {
+            if (fastPrice == 0 && normalPrice == 0 && lightningPrice == 0 && brandPrice == 0) {
                 continue;
             }
             String size = data.getString("size");
             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
             poisonPriceDO.setModelNo(modelNo);
             poisonPriceDO.setEuSize(size);
-            poisonPriceDO.setFastPrice(fastPrice);
-            poisonPriceDO.setNormalPrice(normalPrice);
-            poisonPriceDO.setLightningPrice(lightningPrice);
-            poisonPriceDO.setBrandPrice(brandPrice);
+            if (fastPrice > 0) {
+                poisonPriceDO.setFastPrice(fastPrice);
+            }
+            if (normalPrice > 0) {
+                poisonPriceDO.setNormalPrice(normalPrice);
+            }
+            if (lightningPrice > 0) {
+                poisonPriceDO.setLightningPrice(lightningPrice);
+            }
+            if (brandPrice > 0) {
+                poisonPriceDO.setBrandPrice(brandPrice);
+            }
             poisonPriceDOList.add(poisonPriceDO);
         }
         return poisonPriceDOList;
