@@ -18,9 +18,23 @@ public class PoisonPriceDO {
 
     private String euSize;
 
+    /**
+     * 普通发货
+     */
     private Integer normalPrice;
 
+    /**
+     * 闪电发货
+     */
     private Integer lightningPrice;
 
+    /**
+     * 极速发货
+     */
+    private Integer fastPrice;
 
+    /**
+     * 品牌直发
+     */
+    private Integer brandPrice;
 }

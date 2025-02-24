@@ -78,23 +78,11 @@ public class PriceService {
                         try {
                             Long spuId = poisonItemDO.getSpuId();
                             String articleNumber = poisonItemDO.getArticleNumber();
-                            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
-                            if (sizePriceMap == null) {
+                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpu(articleNumber, spuId);
+                            if (poisonPriceDOList.isEmpty()) {
                                 return;
                             }
-                            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
-                                String size = entry.getKey();
-                                Map<PriceEnum, Integer> priceMap = entry.getValue();
-                                if (priceMap == null) {
-                                    continue;
-                                }
-                                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                                poisonPriceDO.setModelNo(articleNumber);
-                                poisonPriceDO.setEuSize(size);
-                                poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
-                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.NORMAL));
-                                toInsert.add(poisonPriceDO);
-                            }
+                            toInsert.addAll(poisonPriceDOList);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         } finally {

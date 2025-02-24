@@ -17,7 +17,11 @@ public enum PriceEnum {
      * 闪电直发
      */
     LIGHTNING(1, List.of("LIGHTNING", "闪电直发")),
-//    FAST(2, "极速发货")
+
+    FAST(2, List.of("极速发货")),
+
+    BRAND(3, List.of("品牌直发")),
+
     ;
 
     private final Integer code;

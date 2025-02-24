@@ -44,13 +44,8 @@ public class ShoesController {
     }
 
     @GetMapping("queryPriceBySpu")
-    public String queryPriceBySpu(Long spuId) {
-        return JSON.toJSONString(poisonClient.queryPriceBySpu(spuId));
-    }
-
-    @GetMapping("queryPriceBySpuV2")
-    public String queryPriceBySpuV2(Long spuId) {
-        return JSON.toJSONString(poisonClient.queryOriginPriceBySpu(spuId));
+    public String queryPriceBySpu(String modelNo, Long spuId) {
+        return JSON.toJSONString(poisonClient.queryPriceBySpu(modelNo, spuId));
     }
 
     @GetMapping("clearKcItems")

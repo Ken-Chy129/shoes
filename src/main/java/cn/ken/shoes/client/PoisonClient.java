@@ -1,9 +1,11 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.util.ObjUtil;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PoisonConfig;
 import cn.ken.shoes.model.entity.PoisonItemDO;
+import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
@@ -22,13 +24,34 @@ import java.util.*;
 @Component
 public class PoisonClient {
 
-    public Result<JSONObject> queryOriginPriceBySpu(Long spuId) {
-        String url = PoisonApiConstant.PRICE_BY_SPU;
-        Map<String, String> params = new HashMap<>();
-        params.put("spuId", String.valueOf(spuId));
-        params.put("token", PoisonConfig.TOKEN);
-        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
-        return JSON.parseObject(result, new TypeReference<>() {});
+    public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
+        String url = PoisonApiConstant.PRICE_BY_SPU_V2.replace("{spuId}", String.valueOf(spuId));
+        String result = HttpUtil.doGet(url);
+        if (result == null) {
+            return null;
+        }
+        JSONObject jsonObject = JSON.parseObject(result);
+        List<JSONObject> dataList = jsonObject.getJSONArray("data").toJavaList(JSONObject.class);
+        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+        for (JSONObject data : dataList) {
+            Integer fastPrice = data.getInteger("极速发货");
+            Integer normalPrice = data.getInteger("普通发货");
+            Integer lightningPrice = data.getInteger("闪电直发");
+            Integer brandPrice = data.getInteger("品牌直发");
+            if (ObjUtil.isAllEmpty(fastPrice, normalPrice, lightningPrice, brandPrice)) {
+                continue;
+            }
+            String size = data.getString("size");
+            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+            poisonPriceDO.setModelNo(modelNo);
+            poisonPriceDO.setEuSize(size);
+            poisonPriceDO.setFastPrice(fastPrice);
+            poisonPriceDO.setNormalPrice(normalPrice);
+            poisonPriceDO.setLightningPrice(lightningPrice);
+            poisonPriceDO.setBrandPrice(brandPrice);
+            poisonPriceDOList.add(poisonPriceDO);
+        }
+        return poisonPriceDOList;
     }
 
     /**
@@ -36,7 +59,7 @@ public class PoisonClient {
      * @param spuId 商品spuId，通过货号唯一对应一个spuId
      * @return 商品价格，包括闪电价格，普通价格和极速价格
      */
-    public Map<String, Map<PriceEnum, Integer>> queryPriceBySpu(Long spuId) {
+    public List<PoisonPriceDO> queryPriceBySpu(String modelNo, Long spuId) {
         String url = PoisonApiConstant.PRICE_BY_SPU;
         Map<String, String> params = new HashMap<>();
         params.put("spuId", String.valueOf(spuId));
@@ -55,26 +78,36 @@ public class PoisonClient {
             }
             return null;
         }
-        Map<String, Map<PriceEnum, Integer>> sizePriceMap = new HashMap<>();
+        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
         Optional.ofNullable(parseRes.getData())
                 .map(json -> json.getJSONArray("price_detail"))
                 .map(jsonArray -> jsonArray.toJavaList(JSONObject.class))
                 .orElse(Collections.emptyList())
                 .forEach(json -> {
                     String size = json.getString("size").replace("⅓", ".33").replace("⅔", ".67");
+                    PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                    poisonPriceDO.setEuSize(size);
+                    poisonPriceDO.setModelNo(modelNo);
                     JSONObject price = json.getJSONObject("price");
-                    Map<PriceEnum, Integer> typePriceMap = new HashMap<>();
                     for (String type : price.keySet()) {
                         PriceEnum priceEnum = PriceEnum.from(type);
                         if (priceEnum == null) {
                             log.info("未知的价格类型, type:{}, spuId:{}", type, spuId);
                             continue;
                         }
-                        typePriceMap.put(priceEnum, price.getInteger(type));
+                        switch (priceEnum) {
+                            case FAST -> poisonPriceDO.setFastPrice(price.getInteger(type));
+                            case LIGHTNING -> poisonPriceDO.setLightningPrice(price.getInteger(type));
+                            case NORMAL -> poisonPriceDO.setNormalPrice(price.getInteger(type));
+                            case BRAND -> poisonPriceDO.setBrandPrice(price.getInteger(type));
+                        }
                     }
-                    sizePriceMap.put(size, typePriceMap);
+                    if (ObjUtil.isAllEmpty(poisonPriceDO.getBrandPrice(), poisonPriceDO.getFastPrice(), poisonPriceDO.getLightningPrice(), poisonPriceDO.getNormalPrice())) {
+                        return;
+                    }
+                    poisonPriceDOList.add(poisonPriceDO);
                 });
-        return sizePriceMap;
+        return poisonPriceDOList;
     }
 
     /**
