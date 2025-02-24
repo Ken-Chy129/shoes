@@ -2,7 +2,6 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.PoisonClient;
-import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
@@ -121,21 +120,11 @@ public class PoisonService {
         for (Pair<String, Long> pair : modelNoSpuIdList) {
             String modelNo = pair.getKey();
             Long spuId = pair.getValue();
-            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
-            if (sizePriceMap == null) {
+            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpu(modelNo, spuId);
+            if (poisonPriceDOList.isEmpty()) {
                 continue;
             }
-            List<PoisonPriceDO> toInsert = new ArrayList<>();
-            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
-                Map<PriceEnum, Integer> map = entry.getValue();
-                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                poisonPriceDO.setModelNo(modelNo);
-                poisonPriceDO.setEuSize(entry.getKey());
-                poisonPriceDO.setNormalPrice(map.get(PriceEnum.NORMAL));
-                poisonPriceDO.setNormalPrice(map.get(PriceEnum.LIGHTNING));
-                toInsert.add(poisonPriceDO);
-            }
-            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
+            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(poisonPriceDOList));
         }
 
     }
@@ -159,23 +148,11 @@ public class PoisonService {
                         try {
                             Long spuId = poisonItemDO.getSpuId();
                             String articleNumber = poisonItemDO.getArticleNumber();
-                            Map<String, Map<PriceEnum, Integer>> sizePriceMap = poisonClient.queryPriceBySpu(spuId);
-                            if (sizePriceMap == null) {
+                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpu(articleNumber, spuId);
+                            if (poisonPriceDOList.isEmpty()) {
                                 return;
                             }
-                            for (Map.Entry<String, Map<PriceEnum, Integer>> entry : sizePriceMap.entrySet()) {
-                                String size = entry.getKey();
-                                Map<PriceEnum, Integer> priceMap = entry.getValue();
-                                if (priceMap == null || (priceMap.get(PriceEnum.NORMAL) == null && priceMap.get(PriceEnum.LIGHTNING) == null)) {
-                                    continue;
-                                }
-                                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                                poisonPriceDO.setModelNo(articleNumber);
-                                poisonPriceDO.setEuSize(size);
-                                poisonPriceDO.setNormalPrice(priceMap.get(PriceEnum.NORMAL));
-                                poisonPriceDO.setLightningPrice(priceMap.get(PriceEnum.LIGHTNING));
-                                toInsert.add(poisonPriceDO);
-                            }
+                            toInsert.addAll(poisonPriceDOList);
                         } catch (Exception e) {
                             log.error(e.getMessage(), e);
                         } finally {
