@@ -2,17 +2,23 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.CommonConfig;
+import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
+import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.model.excel.ModelExcel;
 import cn.ken.shoes.model.excel.PriceExcel;
 import cn.ken.shoes.model.excel.SizeChartExcel;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -20,10 +26,9 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +36,12 @@ import java.util.stream.Collectors;
 public class FileService {
 
     public static final String FILE_DIR = "file/";
+
+    @Resource
+    private PoisonClient poisonClient;
+
+    @Resource
+    private PoisonItemMapper poisonItemMapper;
 
     @Resource
     private SizeChartMapper sizeChartMapper;
@@ -84,6 +95,36 @@ public class FileService {
             toInsert.add(poisonPriceDO);
         }
         poisonPriceMapper.insert(toInsert);
+    }
+
+    public void queryModelNoPriceByExcel(String filename) throws InterruptedException {
+        poisonPriceMapper.delete(new QueryWrapper<>());
+        List<ModelExcel> priceExcels = EasyExcel.read(FILE_DIR + "1.xlsx")
+                .head(ModelExcel.class)
+                .sheet() // 默认读取第一个工作表
+                .doReadSync();
+        List<String> modelNos = priceExcels.stream().map(ModelExcel::getModelNo).toList();
+        List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectByArticleNumberList(modelNos);
+        RateLimiter rateLimiter = RateLimiter.create(6);
+        for (List<PoisonItemDO> itemDOS : Lists.partition(poisonItemDOS, 20)) {
+            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+            CountDownLatch latch = new CountDownLatch(itemDOS.size());
+            for (PoisonItemDO itemDO : itemDOS) {
+                Thread.startVirtualThread(() -> {
+                    try {
+                        rateLimiter.acquire();
+                        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
+                        Optional.ofNullable(poisonPriceDOList).ifPresent(toInsert::addAll);
+                    } catch (Exception e) {
+                        log.error(e.getMessage());
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            latch.await();
+            Thread.startVirtualThread(() -> poisonPriceMapper.insert(toInsert));
+        }
     }
 
 }
