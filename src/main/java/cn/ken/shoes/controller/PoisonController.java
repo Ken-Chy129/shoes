@@ -17,4 +17,9 @@ public class PoisonController {
     public void test() throws InterruptedException {
         fileService.queryModelNoPriceByExcel("1");
     }
+
+    @GetMapping("excel")
+    public void testExcel() {
+        fileService.doWritePoisonPriceExcel();
+    }
 }

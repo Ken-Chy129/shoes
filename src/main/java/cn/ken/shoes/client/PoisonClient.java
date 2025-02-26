@@ -8,6 +8,7 @@ import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.*;
 import lombok.Data;
@@ -54,11 +55,8 @@ public class PoisonClient {
                 if (fastPrice == 0 && normalPrice == 0 && lightningPrice == 0 && brandPrice == 0) {
                     continue;
                 }
-                String size = data.getString("size");
-                if (size.contains(" ")) {
-                    size = size.substring(size.indexOf(" ") + 1);
-                }
-                if (sizeSet.contains(size)) {
+                String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
+                if (size == null || sizeSet.contains(size)) {
                     continue;
                 } else {
                     sizeSet.add(size);
