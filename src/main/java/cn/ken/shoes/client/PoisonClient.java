@@ -9,9 +9,7 @@ import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.SignUtil;
-import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONObject;
-import com.alibaba.fastjson.TypeReference;
+import com.alibaba.fastjson.*;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
@@ -36,36 +34,57 @@ public class PoisonClient {
         if (result == null) {
             return null;
         }
-        JSONObject jsonObject = JSON.parseObject(result);
-        List<JSONObject> dataList = jsonObject.getJSONArray("data").toJavaList(JSONObject.class);
-        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
-        for (JSONObject data : dataList) {
-            Integer fastPrice = data.getInteger("极速发货");
-            Integer normalPrice = data.getInteger("普通发货");
-            Integer lightningPrice = data.getInteger("闪电直发");
-            Integer brandPrice = data.getInteger("品牌直发");
-            if (fastPrice == 0 && normalPrice == 0 && lightningPrice == 0 && brandPrice == 0) {
-                continue;
+        try {
+            if (!JSONValidator.from(result).validate()) {
+                log.error("queryPriceBySpuV2 is not valid, result:{}", result);
+                return null;
             }
-            String size = data.getString("size");
-            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-            poisonPriceDO.setModelNo(modelNo);
-            poisonPriceDO.setEuSize(size);
-            if (fastPrice > 0) {
-                poisonPriceDO.setFastPrice(fastPrice);
+            JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
+            if (dataJson == null) {
+                return null;
             }
-            if (normalPrice > 0) {
-                poisonPriceDO.setNormalPrice(normalPrice);
+            List<JSONObject> dataList = dataJson.toJavaList(JSONObject.class);
+            List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+            Set<String> sizeSet = new HashSet<>();
+            for (JSONObject data : dataList) {
+                Integer fastPrice = data.getInteger("极速发货");
+                Integer normalPrice = data.getInteger("普通发货");
+                Integer lightningPrice = data.getInteger("闪电直发");
+                Integer brandPrice = data.getInteger("品牌直发");
+                if (fastPrice == 0 && normalPrice == 0 && lightningPrice == 0 && brandPrice == 0) {
+                    continue;
+                }
+                String size = data.getString("size");
+                if (size.contains(" ")) {
+                    size = size.substring(size.indexOf(" ") + 1);
+                }
+                if (sizeSet.contains(size)) {
+                    continue;
+                } else {
+                    sizeSet.add(size);
+                }
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(size);
+                if (fastPrice > 0) {
+                    poisonPriceDO.setFastPrice(fastPrice);
+                }
+                if (normalPrice > 0) {
+                    poisonPriceDO.setNormalPrice(normalPrice);
+                }
+                if (lightningPrice > 0) {
+                    poisonPriceDO.setLightningPrice(lightningPrice);
+                }
+                if (brandPrice > 0) {
+                    poisonPriceDO.setBrandPrice(brandPrice);
+                }
+                poisonPriceDOList.add(poisonPriceDO);
             }
-            if (lightningPrice > 0) {
-                poisonPriceDO.setLightningPrice(lightningPrice);
-            }
-            if (brandPrice > 0) {
-                poisonPriceDO.setBrandPrice(brandPrice);
-            }
-            poisonPriceDOList.add(poisonPriceDO);
+            return poisonPriceDOList;
+        } catch (Exception e) {
+            log.error("queryPriceBySpuV2 error, msg:{}, model:{}, spuId:{}", e.getMessage(), modelNo, spuId, e);
+            return null;
         }
-        return poisonPriceDOList;
     }
 
     /**
