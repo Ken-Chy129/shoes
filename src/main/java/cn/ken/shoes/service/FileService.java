@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.mapper.PoisonItemMapper;
@@ -13,8 +14,10 @@ import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.excel.ModelExcel;
 import cn.ken.shoes.model.excel.PriceExcel;
 import cn.ken.shoes.model.excel.SizeChartExcel;
+import cn.ken.shoes.util.ShoesUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.builder.ExcelWriterSheetBuilder;
 import com.alibaba.excel.write.metadata.WriteSheet;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
@@ -62,6 +65,34 @@ public class FileService {
         }
     }
 
+    public void doWritePoisonPriceExcel() {
+        Long count = poisonPriceMapper.count();
+        final int pageSize = 10000;
+        long startIndex = 0;
+        try (ExcelWriter excelWriter = EasyExcel.write(CommonConfig.DOWNLOAD_PATH + CommonConfig.POISON_PRICE_NAME).build()) {
+            ExcelWriterSheetBuilder sheetBuilder = EasyExcel.writerSheet(0, "得物价格").head(PoisonPriceDO.class);
+            while (startIndex < count) {
+                List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, pageSize);
+                List<PoisonPriceDO> toInsert = new ArrayList<>();
+                for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+                    String size = ShoesUtil.getEuSizeFromPoison(poisonPriceDO.getEuSize());
+                    if (size == null) {
+                        continue;
+                    }
+                    poisonPriceDO.setEuSize(size);
+                    toInsert.add(poisonPriceDO);
+                }
+                WriteSheet writeSheet = sheetBuilder.build();
+                excelWriter.write(toInsert, writeSheet);
+                startIndex += pageSize;
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        System.out.println(ShoesUtil.getEuSizeFromPoison("D宽"));
+    }
+
     public List<String> getModelNoFromFile(String filename) {
         List<String> result = new ArrayList<>();
         try {
@@ -97,6 +128,7 @@ public class FileService {
         poisonPriceMapper.insert(toInsert);
     }
 
+    @Task
     public void queryModelNoPriceByExcel(String filename) throws InterruptedException {
         poisonPriceMapper.delete(new QueryWrapper<>());
         List<ModelExcel> priceExcels = EasyExcel.read(FILE_DIR + "1.xlsx")
