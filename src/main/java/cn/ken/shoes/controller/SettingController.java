@@ -36,7 +36,7 @@ public class SettingController {
     }
 
     @PostMapping("updatePriceSetting")
-    public Result<Boolean> updatePriceSetting(PriceSetting priceSetting) {
+    public Result<Boolean> updatePriceSetting(@RequestBody PriceSetting priceSetting) {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();

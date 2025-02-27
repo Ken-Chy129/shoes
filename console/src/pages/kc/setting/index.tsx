@@ -49,11 +49,8 @@ const SettingPage = () => {
     const updatePriceSetting = () => {
         const exchangeRate = settingForm.getFieldValue("exchangeRate");
         const freight = settingForm.getFieldValue("freight");
-        const platformRate = settingForm.getFieldValue("platformRate");
-        const minProfitRate = settingForm.getFieldValue("minProfitRate");
         const minProfit = settingForm.getFieldValue("minProfit");
-        const priceType = settingForm.getFieldValue("priceType");
-        doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, platformRate, minProfitRate, minProfit, priceType}, {
+        doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, minProfit}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -180,15 +177,6 @@ const SettingPage = () => {
                     </Form.Item>
                     <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
                         <Input/>
-                    </Form.Item>
-                    <Form.Item name="priceType" label="价格类型" style={{marginLeft: 20}}>
-                        <Select
-                            style={{width: 200}}
-                            options={[
-                                {label: '普通价格', value: 'normal'},
-                                {label: '闪电价格', value: 'lightning'},
-                            ]}
-                        />
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
