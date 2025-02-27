@@ -25,7 +25,12 @@ export default [
   {
     path: '/',
     layout: true,
-    component: "./kc/setting"
+    component: "./poison/setting"
+  },
+  {
+    path: '/poison/setting',
+    layout: true,
+    component: "./poison/setting"
   },
   {
     path: '/kc/setting',
