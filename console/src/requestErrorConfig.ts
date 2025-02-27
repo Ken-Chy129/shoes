@@ -85,8 +85,15 @@ export const errorConfig: RequestConfig = {
   // 请求拦截器
   requestInterceptors: [
     (config: RequestOptions) => {
-      return { ...config };
-    },
+      // 从 localStorage 获取 token
+      const token = localStorage.getItem('token');
+
+      if (token && config.headers) {
+        // 添加token到请求头
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    }
   ],
 
   // 响应拦截器

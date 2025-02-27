@@ -38,6 +38,6 @@ public class UserController {
 
     @GetMapping("current")
     public Result<Map<String, String>> current() {
-        return Result.buildSuccess(Map.of("access", "", "name", "ken"));
+        return Result.buildSuccess(Map.of("access", "admin", "name", "ken"));
     }
 }

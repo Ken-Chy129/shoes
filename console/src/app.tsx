@@ -11,6 +11,7 @@ import React from 'react';
 import {message} from "antd";
 import {doGetRequest} from "@/util/http";
 import {USER_API} from "@/services/user";
+import { RequestConfig, RequestOptions } from '@umijs/max';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
@@ -35,12 +36,22 @@ export async function getInitialState(): Promise<{
   // 如果不是登录页面，执行
   const { location } = history;
   if (location.pathname !== loginPath) {
-    const currentUser = await fetchUserInfo();
-    return {
-      fetchUserInfo,
-      currentUser,
-      settings: defaultSettings as Partial<LayoutSettings>,
-    };
+    try {
+      // 获取当前用户信息
+      const currentUser = await fetchUserInfo();
+      return {
+        fetchUserInfo,
+        currentUser,
+        settings: defaultSettings as Partial<LayoutSettings>,
+      };
+    } catch (error) {
+      // 如果出错,不要直接返回空对象
+      // return {};
+      return {
+        fetchUserInfo,
+        currentUser: undefined, 
+      };
+    }
   }
   return {
     fetchUserInfo,
@@ -69,7 +80,9 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
     onPageChange: () => {
       const { location } = history;
       // 如果没有登录，重定向到 login
-      if (!initialState?.currentUser && location.pathname !== loginPath) {
+      // const token = localStorage.getItem('token');
+      const token = sessionStorage.getItem('token');
+      if (!token && location.pathname !== loginPath) {
         history.push(loginPath);
       }
     },
@@ -174,4 +187,21 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
 export const request = {
   ...errorConfig,
 };
+
+// // 路由权限控制
+// export function onRouteChange({ location, routes, action }) {
+//   const { currentUser } = getInitialState();
+//   const isLogin = !!currentUser;
+//   const isLoginPage = location.pathname === '/user/login';
+//
+//   // 如果未登录且不是登录页,重定向到登录页
+//   if (!isLogin && !isLoginPage) {
+//     history.push('/user/login');
+//   }
+//
+//   // 如果已登录且是登录页,重定向到首页
+//   if (isLogin && isLoginPage) {
+//     history.push('/');
+//   }
+// }
 
