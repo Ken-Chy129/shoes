@@ -47,4 +47,9 @@ export default [
     layout: true,
     component: "./task"
   },
+  {
+    path: '*',
+    layout: false,
+    component: './404',
+  },
 ];
