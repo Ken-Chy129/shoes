@@ -16,16 +16,6 @@ public class PriceSetting {
     private Integer freight;
 
     /**
-     * 平台抽成费率
-     */
-    private Double platformRate;
-
-    /**
-     * 最小利润率
-     */
-    private Double minProfitRate;
-
-    /**
      * 最小利润
      */
     private Integer minProfit;
