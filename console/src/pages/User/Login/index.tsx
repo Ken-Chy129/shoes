@@ -1,5 +1,5 @@
 import { Footer } from '@/components';
-import { login } from '@/services/common';
+import {currentUser, login} from '@/services/common';
 import { getFakeCaptcha } from '@/services/common';
 import {
   AlipayCircleOutlined,
@@ -21,6 +21,8 @@ import Settings from '../../../../config/defaultSettings';
 import React, { useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createStyles } from 'antd-style';
+import {doGetRequest, doPostRequest} from "@/util/http";
+import {USER_API} from "@/services/user";
 
 const useStyles = createStyles(({ token }) => {
   return {
@@ -115,38 +117,31 @@ const Login: React.FC = () => {
         }));
       });
     }
+    return userInfo;
   };
 
   const handleSubmit = async (values: API.LoginParams) => {
-    try {
-      // 登录
-      // const msg = await login({ ...values, type });
-      const msg = {
-        status: "ok",
-        type: "account"
-      }
-      if (msg.status === 'ok') {
-        const defaultLoginSuccessMessage = intl.formatMessage({
-          id: 'pages.login.success',
-          defaultMessage: '登录成功！',
-        });
-        message.success(defaultLoginSuccessMessage);
-        await fetchUserInfo();
-        const urlParams = new URL(window.location.href).searchParams;
-        history.push(urlParams.get('redirect') || '/');
-        return;
-      }
-      console.log(msg);
-      // 如果失败去设置用户错误信息
-      setUserLoginState(msg);
-    } catch (error) {
-      const defaultLoginFailureMessage = intl.formatMessage({
-        id: 'pages.login.failure',
-        defaultMessage: '登录失败，请重试！',
-      });
-      console.log(error);
-      message.error(defaultLoginFailureMessage);
-    }
+    doPostRequest(USER_API.LOGIN, values, {
+      onSuccess: res => {
+        // 保存 token 到 localStorage
+        // localStorage.setItem('token', res.data);
+        sessionStorage.setItem('token', res.data);
+        // 获取用户信息
+        doGetRequest(USER_API.CURRENT, {}, {
+          // 更新 initialState
+          onSuccess: res => {
+            setInitialState(state => ({
+              ...state,
+              currentUser: res.data
+            }));
+            console.log(initialState);
+            // 跳转
+            history.push('/');
+          }
+        })
+      },
+      onError: res => message.error(res.errorMsg)
+    });
   };
   const { status, type: loginType } = userLoginState;
 
