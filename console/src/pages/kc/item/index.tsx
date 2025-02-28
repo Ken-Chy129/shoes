@@ -16,12 +16,13 @@ import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
 import {TEMPLATE_API} from "@/services/management";
 import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
 import {SETTING_API} from "@/services/shoes";
+import {KC_API} from "@/services/kc";
 
 const SettingPage = () => {
     const [settingForm] = Form.useForm();
 
     useEffect(() => {
-        doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
+        doGetRequest(KC_API.KC, {}, {
             onSuccess: res => {
                 console.log(res)
                 settingForm.setFieldsValue(res.data);
@@ -29,20 +30,6 @@ const SettingPage = () => {
         });
     }, []);
 
-    const updatePriceSetting = () => {
-        const exchangeRate = settingForm.getFieldValue("exchangeRate");
-        const freight = settingForm.getFieldValue("freight");
-        const platformRate = settingForm.getFieldValue("platformRate");
-        const minProfitRate = settingForm.getFieldValue("minProfitRate");
-        const minProfit = settingForm.getFieldValue("minProfit");
-        const priceType = settingForm.getFieldValue("priceType");
-        console.log(priceType)
-        doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, platformRate, minProfitRate, minProfit, priceType}, {
-            onSuccess: _ => {
-                message.success("修改成功").then(_ => {});
-            }
-        })
-    }
 
     return <>
         <Card >
@@ -72,7 +59,7 @@ const SettingPage = () => {
                     />
                 </Form.Item>
                 <Form.Item>
-                    <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
+                    <Button type="primary" htmlType="submit" onClick={() => {}}>
                         修改
                     </Button>
                 </Form.Item>

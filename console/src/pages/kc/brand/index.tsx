@@ -17,8 +17,7 @@ import {TEMPLATE_API} from "@/services/management";
 import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
 import {SETTING_API} from "@/services/shoes";
 
-const SettingPage = () => {
-    const [settingForm] = Form.useForm();
+const BrandPage = () => {
     const [conditionForm] = Form.useForm();
     const [crawlCntForm] = Form.useForm();
     const [mustCrawlForm] = Form.useForm();
@@ -150,7 +149,7 @@ const SettingPage = () => {
     ];
 
     return <>
-        <Card title={"商品爬取配置"} style={{marginTop: 10}}>
+        <Card title={"品牌配置"} style={{marginTop: 10}}>
             <Form form={conditionForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
@@ -301,4 +300,4 @@ const SettingPage = () => {
     </>
 }
 
-export default SettingPage;
+export default BrandPage;

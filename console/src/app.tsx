@@ -129,18 +129,31 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           name: "kickscrew",
           children: [
             {
-              name: "商品信息",
-              path: "kc/item"
+              name: "品牌信息",
+              path: "kc/brand"
             },
             {
-              name: "任务信息",
-              path: "kc/task"
+              name: "商品信息",
+              path: "kc/item"
             }
           ]
         },
         {
           name: "任务",
           path: "/task",
+        },
+        {
+          name: "工具",
+          children: [
+            {
+              name: "查价",
+              path: "/1"
+            },
+            {
+              name: "尺码表",
+              path: "/1"
+            },
+          ]
         },
       ]
       return data;
