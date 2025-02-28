@@ -14,6 +14,7 @@ enum SETTING_API {
     QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',
     UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
+    POISON = '/api/setting/poison',
 }
 
 export {PRICE_API, SETTING_API}
