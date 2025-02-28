@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
@@ -25,6 +26,21 @@ public class SettingController {
 
     @Resource
     private BrandMapper brandMapper;
+
+    @GetMapping("poison")
+    public Result<JSONObject> queryPoisonSetting() {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("priceType", PoisonSwitch.POISON_PRICE_TYPE);
+        jsonObject.put("apiMode", PoisonSwitch.API_MODE);
+        return Result.buildSuccess(jsonObject);
+    }
+
+    @PostMapping("poison")
+    public Result<JSONObject> updatePoisonSetting(@RequestBody JSONObject jsonObject) {
+        PoisonSwitch.POISON_PRICE_TYPE = jsonObject.getInteger("priceType");
+        PoisonSwitch.API_MODE = jsonObject.getInteger("apiMode");
+        return Result.buildSuccess(jsonObject);
+    }
 
     @GetMapping("queryPriceSetting")
     public Result<PriceSetting> queryPriceSetting() {
