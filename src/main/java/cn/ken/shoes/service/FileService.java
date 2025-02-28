@@ -1,6 +1,5 @@
 package cn.ken.shoes.service;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
@@ -136,7 +135,7 @@ public class FileService {
                 .sheet() // 默认读取第一个工作表
                 .doReadSync();
         List<String> modelNos = priceExcels.stream().map(ModelExcel::getModelNo).toList();
-        List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectByArticleNumberList(modelNos);
+        List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
         RateLimiter rateLimiter = RateLimiter.create(6);
         for (List<PoisonItemDO> itemDOS : Lists.partition(poisonItemDOS, 20)) {
             CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();

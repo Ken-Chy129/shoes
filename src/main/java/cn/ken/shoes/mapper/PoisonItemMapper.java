@@ -28,5 +28,7 @@ public interface PoisonItemMapper extends BaseMapper<PoisonItemDO> {
 
     List<ShoesVO> shoes(ShoesRequest request);
 
-    List<PoisonItemDO> selectByArticleNumberList(@Param("articleNumberList") List<String> articleNumberList);
+    List<PoisonItemDO> selectSpuIdByModelNos(@Param("articleNumberList") List<String> articleNumberList);
+
+    List<String> selectExistModelNos(@Param("articleNumberList") List<String> articleNumberList);
 }
