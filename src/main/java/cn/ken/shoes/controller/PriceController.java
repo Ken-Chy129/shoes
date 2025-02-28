@@ -52,11 +52,6 @@ public class PriceController {
         return kickScrewClient.queryItemPageV2(kickScrewAlgoliaRequest);
     }
 
-    @GetMapping("test")
-    public void scratch() {
-        priceService.scratchAndSaveItems();
-    }
-
     @GetMapping("queryBrand")
     public KickScrewCategory queryBrand() {
         return kickScrewClient.queryBrand();

@@ -1,12 +1,8 @@
 package cn.ken.shoes.service;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.ItemQueryConfig;
-import cn.ken.shoes.mapper.BrandMapper;
-import cn.ken.shoes.mapper.KickScrewItemMapper;
-import cn.ken.shoes.mapper.PoisonItemMapper;
-import cn.ken.shoes.mapper.PoisonPriceMapper;
+import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -52,6 +48,9 @@ public class PoisonService {
     @Resource
     private TaskService taskService;
 
+    @Resource
+    private MustCrawlMapper mustCrawlMapper;
+
     public void refreshPoisonItems() {
         int total = 0;
         for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
@@ -90,11 +89,16 @@ public class PoisonService {
         log.info("batchInsertItems success");
     }
 
-    public List<Pair<String, Long>> queryAndSaveSpuIds(List<String> modelNumbers) throws InterruptedException {
-        RateLimiter rateLimiter = RateLimiter.create(15);
-        List<PoisonItemDO> brandItems = new CopyOnWriteArrayList<>();
+    /**
+     * 增量更新得物商品
+     */
+    public void updatePoisonItems(List<String> modelNumbers) {
+        List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
+        List<String> toInsert = new ArrayList<>();
+        Collections.copy(existItems, toInsert);
+        toInsert.removeAll(existItems);
+        RateLimiter rateLimiter = RateLimiter.create(10);
         List<List<String>> partition = Lists.partition(modelNumbers, 5);
-        CountDownLatch latch = new CountDownLatch(partition.size());
         for (List<String> fiveModelNoList : partition) {
             rateLimiter.acquire();
             Thread.ofVirtual().name("poison-api").start(() -> {
@@ -103,30 +107,12 @@ public class PoisonService {
                     if (CollectionUtils.isEmpty(poisonItemDOS)) {
                         return;
                     }
-                    brandItems.addAll(poisonItemDOS);
+                    poisonItemMapper.insert(poisonItemDOS);
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
-                } finally {
-                    latch.countDown();
                 }
             });
         }
-        latch.await();
-        Thread.ofVirtual().name("sql").start(() -> poisonItemMapper.insert(brandItems));
-        return null;
-    }
-
-    public void refreshPrice(List<Pair<String, Long>> modelNoSpuIdList) {
-        for (Pair<String, Long> pair : modelNoSpuIdList) {
-            String modelNo = pair.getKey();
-            Long spuId = pair.getValue();
-            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpu(modelNo, spuId);
-            if (poisonPriceDOList.isEmpty()) {
-                continue;
-            }
-            Thread.ofVirtual().start(() -> poisonPriceMapper.insert(poisonPriceDOList));
-        }
-
     }
 
     public void refreshPoisonPrices() {
@@ -135,7 +121,7 @@ public class PoisonService {
         int count = poisonItemMapper.count();
         int page = (int) Math.ceil(count / 1000.0);
         log.info("refreshPoisonPrices start, count:{}, page:{}", count, page);
-        RateLimiter limiter = RateLimiter.create(10);
+        RateLimiter limiter = RateLimiter.create(5);
         for (int i = 1; i <= page; i++) {
             try {
                 long start = System.currentTimeMillis();
@@ -170,4 +156,41 @@ public class PoisonService {
         taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
+
+    public void refreshPriceByModelNos(List<String> modelNos) {
+        List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
+        RateLimiter rateLimiter = RateLimiter.create(6);
+        for (List<PoisonItemDO> itemDOS : Lists.partition(poisonItemDOS, 20)) {
+            try {
+                CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+                CountDownLatch latch = new CountDownLatch(itemDOS.size());
+                for (PoisonItemDO itemDO : itemDOS) {
+                    Thread.startVirtualThread(() -> {
+                        try {
+                            rateLimiter.acquire();
+                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
+                            Optional.ofNullable(poisonPriceDOList).ifPresent(toInsert::addAll);
+                        } catch (Exception e) {
+                            log.error(e.getMessage());
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                }
+                latch.await();
+                Thread.startVirtualThread(() -> poisonPriceMapper.insert(toInsert));
+            } catch (Exception e) {
+                log.error("refreshPriceByModelNos error, msg:{}", e.getMessage(), e);
+            }
+        }
+    }
+
+    public List<String> getAllModelNos() {
+        List<String> modelNos = new ArrayList<>();
+        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        modelNos.addAll(hotModelNos);
+        modelNos.addAll(mustCrawlModelNos);
+        return modelNos;
+    }
 }

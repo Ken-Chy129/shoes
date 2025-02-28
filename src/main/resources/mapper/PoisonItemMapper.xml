@@ -93,8 +93,16 @@
     </select>
 
 
-    <select id="selectByArticleNumberList" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
+    <select id="selectSpuIdByModelNos" resultType="cn.ken.shoes.model.entity.PoisonItemDO">
         select poison_item.article_number, poison_item.spu_id from poison_item
+        where article_number in
+        <foreach collection="articleNumberList" item="articleNumber" open="(" close=")" separator=",">
+            #{articleNumber}
+        </foreach>
+    </select>
+
+    <select id="selectExistModelNos" resultType="java.lang.String">
+        select poison_item.article_number from poison_item
         where article_number in
         <foreach collection="articleNumberList" item="articleNumber" open="(" close=")" separator=",">
             #{articleNumber}

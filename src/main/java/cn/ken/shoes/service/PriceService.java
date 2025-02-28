@@ -8,6 +8,7 @@ import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceRequest;
+import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -54,10 +55,6 @@ public class PriceService {
         String brand = priceRequest.getBrand();
 
         return Result.buildSuccess(result);
-    }
-
-    public void scratchAndSaveItems() {
-
     }
 
     public void refreshPoisonPrices() {
