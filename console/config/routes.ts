@@ -33,9 +33,20 @@ export default [
     component: "./index"
   },
   {
-    path: '/kc/item',
+    path: '/kc',
     layout: true,
-    component: "./kc/item"
+    routes: [
+      {
+        path: '/kc/brand',
+        layout: true,
+        component: './kc/brand'
+      },
+      {
+        path: '/kc/item',
+        layout: true,
+        component: "./kc/item"
+      },
+    ]
   },
   {
     path: '/task',
