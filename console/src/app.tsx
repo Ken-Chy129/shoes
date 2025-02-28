@@ -6,12 +6,9 @@ import type { RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
 import defaultSettings from '../config/defaultSettings';
 import { errorConfig } from './requestErrorConfig';
-import { currentUser as queryCurrentUser } from '@/services/common';
 import React from 'react';
-import {message} from "antd";
 import {doGetRequest} from "@/util/http";
 import {USER_API} from "@/services/user";
-import { RequestConfig, RequestOptions } from '@umijs/max';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
@@ -135,7 +132,11 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
             {
               name: "商品信息",
               path: "kc/item"
-            }
+            },
+            {
+              name: "订单信息",
+              path: "kc/order"
+            },
           ]
         },
         {

@@ -46,6 +46,11 @@ export default [
         layout: true,
         component: "./kc/item"
       },
+      {
+        path: '/kc/order',
+        layout: true,
+        component: "./kc/order"
+      },
     ]
   },
   {
