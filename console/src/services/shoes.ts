@@ -7,8 +7,7 @@ enum PRICE_API {
 }
 
 enum SETTING_API {
-    QUERY_PRICE_SETTING = '/api/setting/queryPriceSetting',
-    UPDATE_PRICE_SETTING = '/api/setting/updatePriceSetting',
+    KC = '/api/setting/kc',
     QUERY_BRAND_SETTING = '/api/setting/queryBrandSetting',
     UPDATE_BRAND_SETTING = '/api/setting/updateBrandSetting',
     QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',

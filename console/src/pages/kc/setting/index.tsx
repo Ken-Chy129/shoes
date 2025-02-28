@@ -34,11 +34,6 @@ const SettingPage = () => {
     const [showDefaultCntModifiedModal, setShowDefaultCntModifiedModal] = useState(false);
 
     useEffect(() => {
-        doGetRequest(SETTING_API.QUERY_PRICE_SETTING, {}, {
-            onSuccess: res => {
-                settingForm.setFieldsValue(res.data);
-            }
-        });
         queryBrandSetting();
     }, []);
 
@@ -46,16 +41,6 @@ const SettingPage = () => {
         queryBrandSetting();
     }, [pageIndex, pageSize]);
 
-    const updatePriceSetting = () => {
-        const exchangeRate = settingForm.getFieldValue("exchangeRate");
-        const freight = settingForm.getFieldValue("freight");
-        const minProfit = settingForm.getFieldValue("minProfit");
-        doPostRequest(SETTING_API.UPDATE_PRICE_SETTING, {exchangeRate, freight, minProfit}, {
-            onSuccess: _ => {
-                message.success("修改成功").then(_ => {});
-            }
-        })
-    }
 
     const queryBrandSetting = () => {
         const name = conditionForm.getFieldValue("name");
@@ -165,27 +150,6 @@ const SettingPage = () => {
     ];
 
     return <>
-        <Card title={"基本配置"}>
-            <Form form={settingForm}
-                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div style={{display: "flex"}}>
-                    <Form.Item name="exchangeRate" label="汇率">
-                        <Input />
-                    </Form.Item>
-                    <Form.Item name="freight" label="运费" style={{marginLeft: 20}}>
-                        <Input/>
-                    </Form.Item>
-                    <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
-                        <Input/>
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 50}}>
-                        <Button type="primary" htmlType="submit" onClick={updatePriceSetting}>
-                            修改
-                        </Button>
-                    </Form.Item>
-                </div>
-            </Form>
-        </Card>
         <Card title={"商品爬取配置"} style={{marginTop: 10}}>
             <Form form={conditionForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>

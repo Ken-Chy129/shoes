@@ -42,8 +42,8 @@ public class SettingController {
         return Result.buildSuccess(jsonObject);
     }
 
-    @GetMapping("queryPriceSetting")
-    public Result<PriceSetting> queryPriceSetting() {
+    @GetMapping("kc")
+    public Result<PriceSetting> queryKcSetting() {
         PriceSetting priceSetting = new PriceSetting();
         priceSetting.setExchangeRate(PriceSwitch.EXCHANGE_RATE);
         priceSetting.setFreight(PriceSwitch.FREIGHT);
@@ -51,8 +51,8 @@ public class SettingController {
         return Result.buildSuccess(priceSetting);
     }
 
-    @PostMapping("updatePriceSetting")
-    public Result<Boolean> updatePriceSetting(@RequestBody PriceSetting priceSetting) {
+    @PostMapping("kc")
+    public Result<Boolean> updateKcSetting(@RequestBody PriceSetting priceSetting) {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
