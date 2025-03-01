@@ -15,6 +15,7 @@
         </foreach>
         on duplicate key update
         total = values(total)
+#         ,crawl_cnt = least(crawl_cnt, values(total))
     </insert>
 
     <update id="updateByName">

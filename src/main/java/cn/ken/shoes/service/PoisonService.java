@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.*;
@@ -92,13 +93,14 @@ public class PoisonService {
     /**
      * 增量更新得物商品
      */
+    @Task
     public void updatePoisonItems(List<String> modelNumbers) {
         List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
         List<String> toInsert = new ArrayList<>();
-        Collections.copy(existItems, toInsert);
+        Collections.copy(toInsert, existItems);
         toInsert.removeAll(existItems);
         RateLimiter rateLimiter = RateLimiter.create(10);
-        List<List<String>> partition = Lists.partition(modelNumbers, 5);
+        List<List<String>> partition = Lists.partition(toInsert, 5);
         for (List<String> fiveModelNoList : partition) {
             rateLimiter.acquire();
             Thread.ofVirtual().name("poison-api").start(() -> {
@@ -156,7 +158,7 @@ public class PoisonService {
         taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
-
+    @Task
     public void refreshPriceByModelNos(List<String> modelNos) {
         List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
         RateLimiter rateLimiter = RateLimiter.create(6);

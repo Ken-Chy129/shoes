@@ -163,6 +163,7 @@ public class KickScrewService {
         refreshPricesByModelNos(modelNos);
     }
 
+    @Task
     public void refreshItems() {
         // 1.爬取品牌和商品数量
         refreshBrand();
