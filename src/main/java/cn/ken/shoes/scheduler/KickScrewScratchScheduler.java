@@ -36,6 +36,7 @@ public class KickScrewScratchScheduler {
     @Task
     public void updatePrice() {
         kickScrewService.refreshPrices();
+        kickScrewService.compareWithPoisonAndChangePrice();
     }
 
 }

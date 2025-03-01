@@ -4,10 +4,15 @@ import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
+import cn.ken.shoes.util.AsyncUtil;
+import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
@@ -16,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -38,6 +44,11 @@ public class KickScrewService {
 
     @Resource
     private KickScrewPriceMapper kickScrewPriceMapper;
+
+    @Resource
+    private PoisonPriceMapper poisonPriceMapper;
+
+    private static final Integer PAGE_SIZE = 1_000;
 
     /**
      * 查询品牌性别尺码映射表
@@ -169,5 +180,69 @@ public class KickScrewService {
         refreshBrand();
         // 2.根据配置爬取指定品牌和数量的热门商品
         refreshHotItems();
+    }
+
+    public int compareWithPoisonAndChangePrice() {
+        int changeCnt = 0;
+//        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
+        kickScrewClient.deleteAllItems();
+        try {
+            long count = poisonPriceMapper.count();
+            log.info("compareWithPoisonAndChangePrice start, count:{}", count);
+            long startIndex = 0;
+            while (startIndex < count) {
+                try {
+                    long startTime = System.currentTimeMillis();
+                    // 1.查询kc价格
+                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
+                    Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
+                    // 2.查询对应的货号在得物的价格
+                    Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
+                            .collect(Collectors.toMap(
+                                    kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
+                                    KickScrewPriceDO::getPrice,
+                                    (k1, k2) -> k1
+                            ));
+                    List<KickScrewUploadItem> toUpload = new ArrayList<>();
+                    for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+                        String modelNo = poisonPriceDO.getModelNo();
+                        String euSize = poisonPriceDO.getEuSize();
+                        Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
+                        if (kcPrice == null) {
+                            continue;
+                        }
+                        if (PoisonSwitch.POISON_PRICE_TYPE == 0 && poisonPriceDO.getNormalPrice() == null) {
+                            continue;
+                        }
+                        if (PoisonSwitch.POISON_PRICE_TYPE == 1 && poisonPriceDO.getLightningPrice() == null) {
+                            continue;
+                        }
+                        boolean canEarn = ShoesUtil.canEarn(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
+                        if (!canEarn) {
+                            continue;
+                        }
+                        changeCnt++;
+                        KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
+                        kickScrewUploadItem.setModel_no(modelNo);
+                        kickScrewUploadItem.setSize(euSize);
+                        kickScrewUploadItem.setSize_system("EU");
+                        kickScrewUploadItem.setQty(1);
+                        kickScrewUploadItem.setPrice(kcPrice - 1);
+                        toUpload.add(kickScrewUploadItem);
+                    }
+                    AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
+                    log.info("compareWithPoisonAndChangePrice end, pageIndex:{}, cnt:{}, cost:{}", startIndex, count, TimeUtil.getCostMin(startTime));
+                    startIndex += PAGE_SIZE;
+                } catch (Exception e) {
+                    log.error(e.getMessage(), e);
+                }
+            }
+//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+        } catch (Exception e) {
+            log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
+//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
+        }
+        log.info("compareWithPoisonAndChangePrice changeCnt:{}", changeCnt);
+        return changeCnt;
     }
 }
