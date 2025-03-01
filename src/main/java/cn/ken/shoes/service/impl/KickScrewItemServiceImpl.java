@@ -404,7 +404,7 @@ public class KickScrewItemServiceImpl implements ItemService {
     @Override
     public int compareWithPoisonAndChangePrice() {
         int changeCnt = 0;
-        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
+//        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
         kickScrewClient.deleteAllItems();
         try {
             long count = poisonPriceMapper.count();
@@ -457,10 +457,10 @@ public class KickScrewItemServiceImpl implements ItemService {
                     log.error(e.getMessage(), e);
                 }
             }
-            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
+//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
         } catch (Exception e) {
             log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
-            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
+//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
         log.info("compareWithPoisonAndChangePrice changeCnt:{}", changeCnt);
         return changeCnt;
