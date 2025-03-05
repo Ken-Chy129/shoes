@@ -148,11 +148,11 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           children: [
             {
               name: "查价",
-              path: "/1"
+              path: "/tool/price"
             },
             {
               name: "尺码表",
-              path: "/1"
+              path: "/tool/1"
             },
           ]
         },

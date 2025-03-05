@@ -59,6 +59,17 @@ export default [
     component: "./task"
   },
   {
+    path: '/tool',
+    layout: true,
+    routes: [
+      {
+        path: '/tool/price',
+        layout: true,
+        component: './tool/price'
+      },
+    ]
+  },
+  {
     path: '*',
     layout: false,
     component: './404',

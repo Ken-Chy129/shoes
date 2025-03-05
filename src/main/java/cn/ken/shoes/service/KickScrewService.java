@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -159,19 +160,36 @@ public class KickScrewService {
      * 指定货号刷新价格
      */
     public void refreshPricesByModelNos(List<String> modelNoList) {
-        kickScrewPriceMapper.delete(new QueryWrapper<>());
-        for (List<String> modelNos : Lists.partition(modelNoList, 100)) {
-            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
-            Thread.ofVirtual().start(() -> kickScrewPriceMapper.insert(kickScrewPriceDOS));
+        try {
+            kickScrewPriceMapper.delete(new QueryWrapper<>());
+            List<List<String>> partition = Lists.partition(modelNoList, 100);
+            CountDownLatch latch = new CountDownLatch(partition.size());
+            for (List<String> modelNos : partition) {
+                List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
+                Thread.ofVirtual().start(() -> {
+                    try {
+                        kickScrewPriceMapper.insert(kickScrewPriceDOS);
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            latch.await();
+        } catch (Exception e) {
+            log.error("refreshPricesByModelNos error, msg:{}", e.getMessage(), e);
         }
     }
 
     public void refreshPrices() {
-        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
-        hotModelNos.addAll(mustCrawlModelNos);
-        List<String> modelNos = hotModelNos.stream().distinct().toList();
-        refreshPricesByModelNos(modelNos);
+        try {
+            List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+            List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+            hotModelNos.addAll(mustCrawlModelNos);
+            List<String> modelNos = hotModelNos.stream().distinct().toList();
+            refreshPricesByModelNos(modelNos);
+        } catch (Exception e) {
+            log.error("refreshPrices error, msg:{}", e.getMessage(), e);
+        }
     }
 
     @Task
@@ -193,10 +211,10 @@ public class KickScrewService {
             while (startIndex < count) {
                 try {
                     long startTime = System.currentTimeMillis();
-                    // 1.查询kc价格
+                    // 1.查询得物价格
                     List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
                     Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
-                    // 2.查询对应的货号在得物的价格
+                    // 2.查询对应的货号在kc的价格
                     Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
                             .collect(Collectors.toMap(
                                     kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
