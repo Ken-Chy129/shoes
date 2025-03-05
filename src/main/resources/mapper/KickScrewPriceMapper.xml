@@ -21,4 +21,9 @@
         </where>
     </select>
 
+    <select id="selectByModelNoAndSize" resultType="cn.ken.shoes.model.entity.KickScrewPriceDO">
+        select * from kick_screw_price
+        where model_no = #{modelNo} and eu_size = #{euSize}
+    </select>
+
 </mapper>

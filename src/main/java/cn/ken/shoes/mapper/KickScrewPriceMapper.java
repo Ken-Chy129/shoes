@@ -17,4 +17,6 @@ public interface KickScrewPriceMapper extends BaseMapper<KickScrewPriceDO> {
     List<KickScrewPriceDO> selectPage(@Param("startIndex") long startIndex, @Param("pageSize") int pageSize);
 
     List<KickScrewPriceDO> selectListByModelNos(Set<String> modelNos);
+
+    KickScrewPriceDO selectByModelNoAndSize(@Param("modelNo") String modelNo, @Param("euSize") String euSize);
 }

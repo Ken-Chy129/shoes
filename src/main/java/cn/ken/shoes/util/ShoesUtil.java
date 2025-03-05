@@ -1,7 +1,11 @@
 package cn.ken.shoes.util;
 
+import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
+import cn.ken.shoes.model.entity.PoisonPriceDO;
 
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -63,6 +67,13 @@ public class ShoesUtil {
 //            return price;
 //        }
 //        return price < otherPrice - 1 ? otherPrice - 1 : null;
+    }
+
+    public static double getKcEarn(PoisonPriceDO poisonPrice, Integer otherPrice) {
+        Integer price = PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE).getGetPriceFunction().apply(poisonPrice);
+        double poisonPriceYuan = price / 100.0;
+        double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
+        return getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
     }
 
 }

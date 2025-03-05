@@ -5,18 +5,24 @@ import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.KickScrewConfig;
+import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceRequest;
+import cn.ken.shoes.model.price.PriceVO;
+import cn.ken.shoes.util.ShoesUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -35,10 +41,7 @@ public class PriceService {
     private PoisonPriceMapper poisonPriceMapper;
 
     @Resource
-    private ItemMapper itemMapper;
-
-    @Resource
-    private ItemSizePriceMapper itemSizePriceMapper;
+    private KickScrewPriceMapper kickScrewPriceMapper;
 
     @Resource
     private TaskService taskService;
@@ -103,4 +106,69 @@ public class PriceService {
         log.info("refreshKcPrices cnt:{}", kickScrewItemDOS.size());
         kickScrewItemService.refreshPrices(kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).toList());
     }
+
+    public Result<List<PriceVO>> queryByModelNo(String modelNo) {
+        PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
+        // 商品不存在
+        if (poisonItemDO == null) {
+            // 1.查询商品
+            List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(List.of(modelNo));
+            if (CollectionUtils.isEmpty(poisonItemDOS)) {
+                return Result.buildError("得物不存在该商品");
+            }
+            // 2.保存商品信息
+            poisonItemDO = poisonItemDOS.getFirst();
+            poisonItemMapper.insert(poisonItemDO);
+            // 3.查询价格
+            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(modelNo, poisonItemDO.getSpuId());
+            if (CollectionUtils.isEmpty(poisonPriceDOList)) {
+                return Result.buildError("得物价格不存在");
+            }
+            // 4.保存价格
+            poisonPriceMapper.insert(poisonPriceDOList);
+        }
+        // 1.查询得物价格
+        List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(modelNo));
+        if (CollectionUtils.isEmpty(poisonPriceDOList)) {
+            poisonPriceDOList = poisonClient.queryPriceBySpuV2(modelNo, poisonItemDO.getSpuId());
+            if (CollectionUtils.isEmpty(poisonPriceDOList)) {
+                return Result.buildError("得物价格不存在");
+            }
+        }
+
+        // 2 查询kc价格
+        Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(Set.of(modelNo))
+                .stream()
+                .collect(Collectors.toMap(
+                        KickScrewPriceDO::getEuSize,
+                        KickScrewPriceDO::getPrice
+                ));
+        if (MapUtils.isEmpty(kcPriceMap)) {
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of(modelNo));
+            if (CollectionUtils.isNotEmpty(kickScrewPriceDOS)) {
+                kickScrewPriceMapper.insert(kickScrewPriceDOS);
+                kcPriceMap = kickScrewPriceDOS.stream()
+                        .collect(Collectors.toMap(
+                                KickScrewPriceDO::getEuSize,
+                                KickScrewPriceDO::getPrice
+                        ));
+            }
+        }
+
+        // 4.补全其他价格
+        List<PriceVO> result = new ArrayList<>();
+        for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+            PriceVO priceVO = PriceVO.build(poisonPriceDO);
+            String euSize = poisonPriceDO.getEuSize();
+            // 补全kc价格
+            Integer kcPrice = kcPriceMap.get(euSize);
+            priceVO.setKcPrice(kcPrice * PriceSwitch.EXCHANGE_RATE);
+            double kcEarn = ShoesUtil.getKcEarn(poisonPriceDO, kcPrice);
+            priceVO.setKcEarn(kcEarn);
+            // 补全绿叉价格
+            result.add(priceVO);
+        }
+        return Result.buildSuccess(result);
+    }
+
 }
