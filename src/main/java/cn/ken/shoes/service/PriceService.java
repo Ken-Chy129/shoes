@@ -4,14 +4,12 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceRequest;
 import cn.ken.shoes.model.price.PriceVO;
 import cn.ken.shoes.util.ShoesUtil;
-import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +17,8 @@ import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.collections4.MapUtils;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -164,7 +164,7 @@ public class PriceService {
             Integer kcPrice = kcPriceMap.get(euSize);
             priceVO.setKcPrice(kcPrice * PriceSwitch.EXCHANGE_RATE);
             double kcEarn = ShoesUtil.getKcEarn(poisonPriceDO, kcPrice);
-            priceVO.setKcEarn(kcEarn);
+            priceVO.setKcEarn(BigDecimal.valueOf(kcEarn).setScale(2, RoundingMode.DOWN).doubleValue());
             // 补全绿叉价格
             result.add(priceVO);
         }

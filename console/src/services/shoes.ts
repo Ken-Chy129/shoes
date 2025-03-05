@@ -4,6 +4,7 @@ import { request } from '@umijs/max';
 enum PRICE_API {
     SAVE = '/api/app/save',
     LIST = '/api/app/list',
+    QUERY_BY_MODEL = '/api/price/queryByModelNo',
 }
 
 enum SETTING_API {

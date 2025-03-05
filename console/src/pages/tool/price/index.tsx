@@ -15,42 +15,28 @@ import React, {useEffect, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
 import {TEMPLATE_API} from "@/services/management";
 import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
-import {SETTING_API} from "@/services/shoes";
+import {PRICE_API, SETTING_API} from "@/services/shoes";
 
 const PricePage = () => {
     const [conditionForm] = Form.useForm();
     const [crawlCntForm] = Form.useForm();
-    const [mustCrawlForm] = Form.useForm();
-    const [defaultCntForm] = Form.useForm();
 
-    const [brandSettings, setBrandSettings] = useState<[]>([]);
-    const [pageIndex, setPageIndex] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
-    const [total, setTotal] = useState(0);
+    const [priceList, setPriceList] = useState<[]>([]);
 
-    const [showCrawlCntModifiedModal, setShowCrawlCntModifiedModal] = useState(false);
-    const [showCrawlModelNoModifiedModal, setShowCrawlModelNoModifiedModal] = useState(false);
     const [showDefaultCntModifiedModal, setShowDefaultCntModifiedModal] = useState(false);
 
     useEffect(() => {
-        queryBrandSetting();
     }, []);
 
-    useEffect(() => {
-        queryBrandSetting();
-    }, [pageIndex, pageSize]);
 
-
-    const queryBrandSetting = () => {
-        const name = conditionForm.getFieldValue("name");
-        const needCrawl = conditionForm.getFieldValue("needCrawl");
-        doGetRequest(SETTING_API.QUERY_BRAND_SETTING, {name, needCrawl, pageIndex, pageSize}, {
+    const queryPriceByModel = () => {
+        const modelNo = conditionForm.getFieldValue("modelNo");
+        doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo}, {
             onSuccess: res => {
-                res.data.forEach((brandSetting: any) => {
-                    brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
-                })
-                setBrandSettings(res.data);
-                setTotal(res.total)
+                setPriceList(res.data);
+            },
+            onError: _ => {
+                setPriceList([]);
             }
         });
     }
@@ -59,7 +45,6 @@ const PricePage = () => {
         doPostRequest(SETTING_API.UPDATE_BRAND_SETTING, brandSetting, {
             onSuccess: _ => {
                 message.success("修改成功").then();
-                queryBrandSetting();
             }
         });
     }
@@ -103,9 +88,15 @@ const PricePage = () => {
             width: '10%', // 设置列宽为30%
         },
         {
-            title: '绿叉价格',
-            dataIndex: 'stockxPrice',
-            key: 'stockxPrice',
+            title: 'kc盈利(-1)',
+            dataIndex: 'kcEarn',
+            key: 'kcEarn',
+            width: '10%', // 设置列宽为30%
+        },
+        {
+            title: '绿叉盈利(-1)',
+            dataIndex: 'stockxEarn',
+            key: 'stockxEarn',
             width: '10%', // 设置列宽为30%
         },
         {
@@ -122,7 +113,6 @@ const PricePage = () => {
                     {brandSetting.needCrawl ? '暂停爬取' : '开启爬取'}
                   </Button>
                   <Button style={{marginLeft: 20}} onClick={() => {
-                      setShowCrawlCntModifiedModal(true);
                       crawlCntForm.setFieldValue("name", brandSetting.name);
                   }}>
                     修改爬取数量
@@ -141,22 +131,22 @@ const PricePage = () => {
                     <Form.Item name="modelNo" label="货号">
                         <Input/>
                     </Form.Item>
-                    <Form.Item name="needCrawl" label="是否爬取" style={{marginLeft: 20}}>
-                        <Select
-                            style={{width: 160}}
-                            placeholder="请选择字段"
-                            allowClear
-                            optionFilterProp="label"
-                            options={
-                                [
-                                    {label: '是', value: true},
-                                    {label: '否', value: false},
-                                ]
-                            }
-                        />
-                    </Form.Item>
+                    {/*<Form.Item name="needCrawl" label="是否爬取" style={{marginLeft: 20}}>*/}
+                    {/*    <Select*/}
+                    {/*        style={{width: 160}}*/}
+                    {/*        placeholder="请选择字段"*/}
+                    {/*        allowClear*/}
+                    {/*        optionFilterProp="label"*/}
+                    {/*        options={*/}
+                    {/*            [*/}
+                    {/*                {label: '是', value: true},*/}
+                    {/*                {label: '否', value: false},*/}
+                    {/*            ]*/}
+                    {/*        }*/}
+                    {/*    />*/}
+                    {/*</Form.Item>*/}
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button type="primary" htmlType="submit" onClick={queryBrandSetting}>
+                        <Button type="primary" htmlType="submit" onClick={queryPriceByModel}>
                             查询
                         </Button>
                     </Form.Item>
@@ -176,17 +166,7 @@ const PricePage = () => {
             </Form>
             <Table
                 columns={columns}
-                dataSource={brandSettings}
-                pagination={{
-                    current: pageIndex,
-                    pageSize: pageSize,
-                    total: total,
-                    showSizeChanger: true,
-                    onChange: (current, pageSize) => {
-                        setPageIndex(current);
-                        setPageSize(pageSize);
-                    }
-                }}
+                dataSource={priceList}
                 rowKey="id"
             />
         </Card>
