@@ -7,6 +7,7 @@ import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.price.PriceRequest;
+import cn.ken.shoes.model.price.PriceVO;
 import cn.ken.shoes.service.ItemService;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
@@ -86,5 +87,10 @@ public class PriceController {
     @GetMapping("refreshKcPrices")
     public void refreshKcPrices() {
         priceService.refreshKcPrices();
+    }
+
+    @GetMapping("queryByModelNo")
+    public Result<List<PriceVO>> queryByModelNo(String modelNo) {
+        return priceService.queryByModelNo(modelNo);
     }
 }
