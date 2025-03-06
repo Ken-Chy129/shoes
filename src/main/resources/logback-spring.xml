@@ -97,6 +97,19 @@ packagingData	true|false	                                          每行日志�
     </logger>
 
     <!--文件日志， 按照每天生成日志文件 -->
+    <appender name="MODEL_NO" class="ch.qos.logback.core.FileAppender">
+        <file>${LOG_HOME}/lackModel.log</file>
+        <append>true</append>
+        <encoder class="ch.qos.logback.classic.encoder.PatternLayoutEncoder">
+            <!--格式化输出：%d表示日期，%thread表示线程名，%-5level：级别从左显示5个字符宽度%msg：日志消息，%n是换行符-->
+            <pattern>%msg%n</pattern>
+        </encoder>
+    </appender>
+    <logger name="lackModelLogger" additivity="false" level="INFO">
+        <appender-ref ref="MODEL_NO"/>
+    </logger>
+
+    <!--文件日志， 按照每天生成日志文件 -->
     <appender name="SCHEDULER" class="ch.qos.logback.core.rolling.RollingFileAppender">
         <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
             <!--日志文件输出的文件名-->
