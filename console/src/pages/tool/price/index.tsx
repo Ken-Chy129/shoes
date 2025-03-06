@@ -111,12 +111,12 @@ const PricePage = () => {
                           needCrawl: !brandSetting.needCrawl
                       }
                   )}>
-                    {brandSetting.needCrawl ? '暂停爬取' : '开启爬取'}
+                    KC改价
                   </Button>
                   <Button style={{marginLeft: 20}} onClick={() => {
                       crawlCntForm.setFieldValue("name", brandSetting.name);
                   }}>
-                    修改爬取数量
+                    绿叉改价
                   </Button>
                 </span>
             ),
@@ -162,7 +162,12 @@ const PricePage = () => {
                 <div style={{display: "flex"}}>
                     <Form.Item style={{marginLeft: 30}}>
                         <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
-                            指定默认爬取数量
+                            一键改价（KC）
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
+                            一键改价（绿叉）
                         </Button>
                     </Form.Item>
                 </div>
@@ -175,7 +180,7 @@ const PricePage = () => {
         </Card>
 
         {/*<Modal*/}
-        {/*    title="指定默认爬取数量"*/}
+        {/*    title="设置上架利润条件"*/}
         {/*    open={showDefaultCntModifiedModal}*/}
         {/*    onOk={handleModalClose}*/}
         {/*    onCancel={handleModalClose}*/}
