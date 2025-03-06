@@ -18,11 +18,15 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
+import java.io.*;
 import java.util.*;
+import java.util.logging.Logger;
 
 @Slf4j
 @Component
 public class PoisonClient {
+
+    private static final Logger lackModelLogger = Logger.getLogger("lackModelLogger");
 
     @Value("${poison.token}")
     private String token;
@@ -38,6 +42,10 @@ public class PoisonClient {
         try {
             if (!JSONValidator.from(result).validate()) {
                 log.error("queryPriceBySpuV2 is not valid, result:{}", result);
+                return null;
+            }
+            if ("{}".equals(result)) {
+                lackModelLogger.info(modelNo);
                 return null;
             }
             JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
