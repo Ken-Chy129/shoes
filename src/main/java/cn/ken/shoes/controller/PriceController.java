@@ -90,7 +90,14 @@ public class PriceController {
     }
 
     @GetMapping("queryByModelNo")
-    public Result<List<PriceVO>> queryByModelNo(String modelNo) {
-        return priceService.queryByModelNo(modelNo);
+    public Result<List<PriceVO>> queryByModelNo(String modelNo, String mode) {
+        if (modelNo == null || mode == null) {
+            return Result.buildError("参数异常");
+        }
+        return switch (mode) {
+            case "db" -> priceService.queryByModelNoFromDB(modelNo);
+            case "realTime" -> priceService.queryByModelNoRealTime(modelNo);
+            default -> priceService.queryByModelNoDbFirst(modelNo);
+        };
     }
 }

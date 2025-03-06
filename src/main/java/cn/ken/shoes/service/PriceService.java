@@ -107,7 +107,53 @@ public class PriceService {
         kickScrewItemService.refreshPrices(kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).toList());
     }
 
-    public Result<List<PriceVO>> queryByModelNo(String modelNo) {
+    public Result<List<PriceVO>> queryByModelNoFromDB(String modelNo) {
+        PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
+        // 商品不存在
+        if (poisonItemDO == null) {
+            return Result.buildError("数据库中不存在该得物货号");
+        }
+        List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(modelNo));
+        if (CollectionUtils.isEmpty(poisonPriceDOList)) {
+            return Result.buildError("数据库中不存在该货号的得物价格");
+        }
+        // 2 查询kc价格
+        Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(Set.of(modelNo))
+                .stream()
+                .collect(Collectors.toMap(
+                        KickScrewPriceDO::getEuSize,
+                        KickScrewPriceDO::getPrice
+                ));
+        if (MapUtils.isEmpty(kcPriceMap)) {
+            return Result.buildError("数据库中不存在该货号的kc价格");
+        }
+        return fillResult(poisonPriceDOList, kcPriceMap);
+    }
+
+    public Result<List<PriceVO>> queryByModelNoRealTime(String modelNo) {
+        // 1.查询商品
+        List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(List.of(modelNo));
+        if (CollectionUtils.isEmpty(poisonItemDOS)) {
+            return Result.buildError("得物不存在该商品");
+        }
+        // 2.查询价格
+        PoisonItemDO poisonItemDO = poisonItemDOS.getFirst();
+        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(modelNo, poisonItemDO.getSpuId());
+        if (CollectionUtils.isEmpty(poisonPriceDOList)) {
+            return Result.buildError("得物价格不存在");
+        }
+        // 3.查询kc价格
+        List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of(modelNo));
+        Map<String, Integer> kcPriceMap = kickScrewPriceDOS.stream()
+                .collect(Collectors.toMap(
+                        KickScrewPriceDO::getEuSize,
+                        KickScrewPriceDO::getPrice
+                ));
+        // 4.补全其他价格
+        return fillResult(poisonPriceDOList, kcPriceMap);
+    }
+
+    public Result<List<PriceVO>> queryByModelNoDbFirst(String modelNo) {
         PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
         // 商品不存在
         if (poisonItemDO == null) {
@@ -136,7 +182,7 @@ public class PriceService {
             }
         }
 
-        // 2 查询kc价格
+        // 2.查询kc价格
         Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(Set.of(modelNo))
                 .stream()
                 .collect(Collectors.toMap(
@@ -156,6 +202,10 @@ public class PriceService {
         }
 
         // 4.补全其他价格
+        return fillResult(poisonPriceDOList, kcPriceMap);
+    }
+
+    private Result<List<PriceVO>> fillResult(List<PoisonPriceDO> poisonPriceDOList, Map<String, Integer> kcPriceMap) {
         List<PriceVO> result = new ArrayList<>();
         for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
             PriceVO priceVO = PriceVO.build(poisonPriceDO);

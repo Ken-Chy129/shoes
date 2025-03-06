@@ -31,7 +31,8 @@ const PricePage = () => {
 
     const queryPriceByModel = () => {
         const modelNo = conditionForm.getFieldValue("modelNo");
-        doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo}, {
+        const mode = conditionForm.getFieldValue("mode") ?? "dbFirst";
+        doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo, mode}, {
             onSuccess: res => {
                 setPriceList(res.data);
             },
@@ -131,20 +132,22 @@ const PricePage = () => {
                     <Form.Item name="modelNo" label="货号">
                         <Input/>
                     </Form.Item>
-                    {/*<Form.Item name="needCrawl" label="是否爬取" style={{marginLeft: 20}}>*/}
-                    {/*    <Select*/}
-                    {/*        style={{width: 160}}*/}
-                    {/*        placeholder="请选择字段"*/}
-                    {/*        allowClear*/}
-                    {/*        optionFilterProp="label"*/}
-                    {/*        options={*/}
-                    {/*            [*/}
-                    {/*                {label: '是', value: true},*/}
-                    {/*                {label: '否', value: false},*/}
-                    {/*            ]*/}
-                    {/*        }*/}
-                    {/*    />*/}
-                    {/*</Form.Item>*/}
+                    <Form.Item name="mode" label="查询模式" style={{marginLeft: 20}}>
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择字段"
+                            allowClear
+                            optionFilterProp="label"
+                            defaultValue={"dbFirst"}
+                            options={
+                                [
+                                    {label: '数据库查询', value: "db"},
+                                    {label: '实时查询', value: "realTime"},
+                                    {label: '数据库优先', value: "dbFirst"},
+                                ]
+                            }
+                        />
+                    </Form.Item>
                     <Form.Item style={{marginLeft: 30}}>
                         <Button type="primary" htmlType="submit" onClick={queryPriceByModel}>
                             查询
