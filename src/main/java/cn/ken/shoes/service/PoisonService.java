@@ -6,10 +6,8 @@ import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
-import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.SqlHelper;
-import cn.ken.shoes.util.TimeUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
@@ -34,9 +32,6 @@ public class PoisonService {
 
     @Resource
     private PoisonItemMapper poisonItemMapper;
-
-    @Resource
-    private BrandMapper brandMapper;
 
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
@@ -108,7 +103,7 @@ public class PoisonService {
                     if (CollectionUtils.isEmpty(poisonItemDOS)) {
                         return;
                     }
-                    poisonItemMapper.insert(poisonItemDOS);
+                    SqlHelper.batch(poisonItemDOS, item -> poisonItemMapper.insertIgnore(item));
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);
                 }
