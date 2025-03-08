@@ -21,4 +21,9 @@ enum KC_API {
     REFRESH_ITEM = '/api/kc/refreshItems',
 }
 
-export {PRICE_API, SETTING_API, KC_API}
+enum POISON_API {
+    REFRESH_ALL_PRICE = '/api/poison/refreshAllPrice',
+    REFRESH_INCREMENTAL_PRICE = '/api/poison/refreshAllPrice',
+}
+
+export {PRICE_API, SETTING_API, KC_API, POISON_API}

@@ -140,6 +140,10 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           ]
         },
         {
+          name: "得物",
+          path: "/poison",
+        },
+        {
           name: "任务",
           path: "/task",
         },

@@ -54,6 +54,11 @@ export default [
     ]
   },
   {
+    path: '/poison',
+    layout: true,
+    component: "./poison"
+  },
+  {
     path: '/task',
     layout: true,
     component: "./task"
