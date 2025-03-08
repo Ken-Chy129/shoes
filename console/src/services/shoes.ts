@@ -22,8 +22,7 @@ enum KC_API {
 }
 
 enum POISON_API {
-    REFRESH_ALL_PRICE = '/api/poison/refreshAllPrice',
-    REFRESH_INCREMENTAL_PRICE = '/api/poison/refreshAllPrice',
+    REFRESH_PRICE = '/api/poison/refreshPrice',
 }
 
 export {PRICE_API, SETTING_API, KC_API, POISON_API}
