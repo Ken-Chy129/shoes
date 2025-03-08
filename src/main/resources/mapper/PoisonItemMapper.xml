@@ -13,7 +13,6 @@
         )
     </insert>
 
-
     <delete id="deleteAll">
         delete from shoes.poison_item;
     </delete>

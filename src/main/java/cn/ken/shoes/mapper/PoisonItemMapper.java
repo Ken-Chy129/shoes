@@ -22,7 +22,7 @@ public interface PoisonItemMapper extends BaseMapper<PoisonItemDO> {
 
     List<PoisonItemDO> selectSpuId(@Param("startIndex") Integer startIndex, @Param("pageSize") Integer pageSize);
 
-    void insertIgnore(PoisonItemDO item);
+    int insertIgnore(PoisonItemDO item);
 
     Long shoesCount(ShoesRequest request);
 
