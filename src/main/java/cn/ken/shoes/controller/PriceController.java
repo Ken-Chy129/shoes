@@ -73,12 +73,6 @@ public class PriceController {
         kickScrewService.queryBrandGenderSizeMap();
     }
 
-    @PostMapping("refreshPoison")
-    public Result<Boolean> refreshPoison() {
-        Thread.ofVirtual().name("refreshPoison|poison").start(() -> poisonService.refreshPoisonPrices());
-        return Result.buildSuccess(true);
-    }
-
     @GetMapping("compareKc")
     public void compareKc() {
         KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();

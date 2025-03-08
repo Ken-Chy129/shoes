@@ -8,6 +8,7 @@ import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.AsyncUtil;
+import cn.ken.shoes.util.SqlHelper;
 import cn.ken.shoes.util.TimeUtil;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
@@ -96,9 +97,7 @@ public class PoisonService {
     @Task
     public void updatePoisonItems(List<String> modelNumbers) {
         List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
-        List<String> toInsert = new ArrayList<>();
-        Collections.copy(toInsert, existItems);
-        toInsert.removeAll(existItems);
+        List<String> toInsert = modelNumbers.stream().filter(modelNumber -> !existItems.contains(modelNumber)).toList();
         RateLimiter rateLimiter = RateLimiter.create(10);
         List<List<String>> partition = Lists.partition(toInsert, 5);
         for (List<String> fiveModelNoList : partition) {
@@ -117,51 +116,13 @@ public class PoisonService {
         }
     }
 
-    public void refreshPoisonPrices() {
-        Long taskId = taskService.startTask("poison", TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
-        poisonPriceMapper.delete(null);
-        int count = poisonItemMapper.count();
-        int page = (int) Math.ceil(count / 1000.0);
-        log.info("refreshPoisonPrices start, count:{}, page:{}", count, page);
-        RateLimiter limiter = RateLimiter.create(5);
-        for (int i = 1; i <= page; i++) {
-            try {
-                long start = System.currentTimeMillis();
-                List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuId((i - 1) * page, 1000);
-                List<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-                CountDownLatch latch = new CountDownLatch(poisonItemDOS.size());
-                for (PoisonItemDO poisonItemDO : poisonItemDOS) {
-                    limiter.acquire();
-                    Thread.ofVirtual().start(() -> {
-                        try {
-                            Long spuId = poisonItemDO.getSpuId();
-                            String articleNumber = poisonItemDO.getArticleNumber();
-                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpu(articleNumber, spuId);
-                            if (poisonPriceDOList.isEmpty()) {
-                                return;
-                            }
-                            toInsert.addAll(poisonPriceDOList);
-                        } catch (Exception e) {
-                            log.error(e.getMessage(), e);
-                        } finally {
-                            latch.countDown();
-                        }
-                    });
-                }
-                latch.await();
-                Thread.ofVirtual().start(() -> poisonPriceMapper.insert(toInsert));
-                log.info("refreshPoisonPrices finish, page:{}, cost:{}, cnt:{}", i, TimeUtil.getCostMin(start), toInsert.size());
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-            }
-        }
-        taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
-    }
-
     @Task
-    public void refreshPriceByModelNos(List<String> modelNos) {
+    public void refreshPriceByModelNos(List<String> modelNos, boolean clearOld) {
         List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
         RateLimiter rateLimiter = RateLimiter.create(6);
+        if (clearOld) {
+            poisonPriceMapper.delete(null);
+        }
         for (List<PoisonItemDO> itemDOS : Lists.partition(poisonItemDOS, 20)) {
             try {
                 CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
@@ -169,6 +130,12 @@ public class PoisonService {
                 for (PoisonItemDO itemDO : itemDOS) {
                     Thread.startVirtualThread(() -> {
                         try {
+                            if (!clearOld) {
+                                List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(itemDO.getTitle()));
+                                if (CollectionUtils.isNotEmpty(poisonPriceDOList)) {
+                                    return;
+                                }
+                            }
                             rateLimiter.acquire();
                             List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
                             Optional.ofNullable(poisonPriceDOList).ifPresent(toInsert::addAll);
@@ -180,7 +147,7 @@ public class PoisonService {
                     });
                 }
                 latch.await();
-                Thread.startVirtualThread(() -> poisonPriceMapper.insert(toInsert));
+                Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertIgnore(item)));
             } catch (Exception e) {
                 log.error("refreshPriceByModelNos error, msg:{}", e.getMessage(), e);
             }
@@ -195,4 +162,11 @@ public class PoisonService {
         modelNos.addAll(mustCrawlModelNos);
         return modelNos;
     }
+
+    public void refreshPrice(boolean clearOld) {
+        List<String> allModelNos = getAllModelNos();
+        updatePoisonItems(allModelNos);
+        refreshPriceByModelNos(allModelNos, clearOld);
+    }
+
 }
