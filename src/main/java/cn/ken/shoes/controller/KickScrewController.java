@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.common.Result;
 import cn.ken.shoes.service.KickScrewService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,8 +25,9 @@ public class KickScrewController {
      * 刷新商品，重新爬取品牌和热门商品
      */
     @GetMapping("refreshItems")
-    public void refreshItems() {
-        kickScrewService.refreshItems(false);
+    public Result<Void> refreshItems() {
+        Thread.startVirtualThread(() -> kickScrewService.refreshItems(false));
+        return Result.buildSuccess();
     }
 
     /**
@@ -33,7 +35,7 @@ public class KickScrewController {
      */
     @GetMapping("refreshBrands")
     public void refreshBrands() {
-        kickScrewService.refreshBrand();
+        Thread.startVirtualThread(() -> kickScrewService.refreshBrand());
     }
 
     /**
