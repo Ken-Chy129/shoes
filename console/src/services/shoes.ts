@@ -17,4 +17,8 @@ enum SETTING_API {
     POISON = '/api/setting/poison',
 }
 
-export {PRICE_API, SETTING_API}
+enum KC_API {
+    REFRESH_ITEM = '/api/kc/refreshItems',
+}
+
+export {PRICE_API, SETTING_API, KC_API}
