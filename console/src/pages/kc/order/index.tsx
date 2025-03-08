@@ -2,21 +2,9 @@ import {
     Button, Card,
     Form,
     Input,
-    message,
-    Modal,
-    Radio,
-    Select,
-    Space,
     Table,
-    Tabs,
-    Tooltip
 } from "antd";
 import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
-import {TEMPLATE_API} from "@/services/management";
-import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
-import {SETTING_API} from "@/services/shoes";
-import {KC_API} from "@/services/kc";
 
 const SettingPage = () => {
     const [conditionForm] = Form.useForm();
@@ -27,10 +15,7 @@ const SettingPage = () => {
     const [total, setTotal] = useState(0);
 
     useEffect(() => {
-        doGetRequest(KC_API.KC, {}, {
-            onSuccess: res => {
-            }
-        });
+
     }, []);
 
     const columns = [

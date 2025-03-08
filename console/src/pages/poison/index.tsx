@@ -25,16 +25,8 @@ const PoisonPage = () => {
 
     }, []);
 
-    const refreshAllPoisonPrice = () => {
-        doPostRequest(POISON_API.REFRESH_ALL_PRICE, {}, {
-            onSuccess: _ => {
-                message.success("修改成功").then(_ => {});
-            }
-        })
-    }
-
-    const refreshIncrementalPoisonPrice = () => {
-        doPostRequest(POISON_API.REFRESH_INCREMENTAL_PRICE, {}, {
+    const refreshPoisonPrice = (clearOld: boolean) => {
+        doGetRequest(POISON_API.REFRESH_PRICE, {clearOld}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -47,12 +39,12 @@ const PoisonPage = () => {
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
                     <Form.Item>
-                        <Button type="primary" htmlType="submit" onClick={refreshAllPoisonPrice}>
+                        <Button type="primary" htmlType="submit" onClick={() => refreshPoisonPrice(true)}>
                             全量刷新得物价格
                         </Button>
                     </Form.Item>
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button type="primary" htmlType="submit" onClick={refreshIncrementalPoisonPrice}>
+                        <Button type="primary" htmlType="submit" onClick={() => refreshPoisonPrice(false)}>
                             增量刷新得物价格
                         </Button>
                     </Form.Item>
