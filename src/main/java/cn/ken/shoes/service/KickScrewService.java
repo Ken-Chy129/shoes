@@ -12,6 +12,7 @@ import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SqlHelper;
 import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
@@ -134,9 +135,11 @@ public class KickScrewService {
     }
 
     @Task
-    public void refreshHotItems() {
+    public void refreshHotItems(boolean clearOld) {
         List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
-        kickScrewItemMapper.deleteAll();
+        if (clearOld) {
+            kickScrewItemMapper.deleteAll();
+        }
         for (BrandDO brandDO : brandDOList) {
             Boolean needCrawl = brandDO.getNeedCrawl();
             if (Boolean.FALSE.equals(needCrawl)) {
@@ -151,7 +154,7 @@ public class KickScrewService {
                 request.setPageIndex(i);
                 request.setPageSize(50);
                 List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.queryItemPageV2(request);
-                Thread.ofVirtual().start(() -> kickScrewItemMapper.insert(kickScrewItemDOS));
+                Thread.ofVirtual().start(() -> SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item)));
             }
         }
     }
@@ -193,11 +196,11 @@ public class KickScrewService {
     }
 
     @Task
-    public void refreshItems() {
+    public void refreshItems(boolean clearOld) {
         // 1.爬取品牌和商品数量
         refreshBrand();
         // 2.根据配置爬取指定品牌和数量的热门商品
-        refreshHotItems();
+        refreshHotItems(clearOld);
     }
 
     public int compareWithPoisonAndChangePrice() {

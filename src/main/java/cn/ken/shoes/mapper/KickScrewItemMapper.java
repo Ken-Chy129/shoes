@@ -15,7 +15,7 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     List<KickScrewItemDO> selectPageByCondition(KickScrewItemRequest request);
 
-    void insertIgnore(KickScrewItemDO kickScrewItemDO);
+    int insertIgnore(KickScrewItemDO kickScrewItemDO);
 
     void deleteAll();
 

@@ -25,7 +25,7 @@ public class KickScrewController {
      */
     @GetMapping("refreshItems")
     public void refreshItems() {
-        kickScrewService.refreshItems();
+        kickScrewService.refreshItems(false);
     }
 
     /**
@@ -50,14 +50,6 @@ public class KickScrewController {
     @GetMapping("querySizeChart")
     public List<Map<String, String>> querySizeChart(String brand, String modelNo) {
         return kickScrewClient.queryItemSizeChart(brand, modelNo);
-    }
-
-    /**
-     * 刷新热门商品
-     */
-    @GetMapping("refreshHotItems")
-    public void refreshHotItems() {
-        kickScrewService.refreshHotItems();
     }
 
     /**
