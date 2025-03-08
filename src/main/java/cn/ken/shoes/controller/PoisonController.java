@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
-import cn.ken.shoes.service.FileService;
+import cn.ken.shoes.common.Result;
+import cn.ken.shoes.service.PoisonService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,15 +12,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class PoisonController {
 
     @Resource
-    private FileService fileService;
+    private PoisonService poisonService;
 
-    @GetMapping("test")
-    public void test() throws InterruptedException {
-        fileService.queryModelNoPriceByExcel("1");
-    }
-
-    @GetMapping("excel")
-    public void testExcel() {
-        fileService.doWritePoisonPriceExcel();
+    @GetMapping("refreshAllPrice")
+    public Result<Void> refreshPrice(boolean clearOld) {
+        Thread.startVirtualThread(() -> poisonService.refreshPrice(clearOld));
+        return Result.buildSuccess();
     }
 }
