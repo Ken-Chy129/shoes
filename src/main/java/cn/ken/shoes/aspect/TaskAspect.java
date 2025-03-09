@@ -44,6 +44,7 @@ public class TaskAspect {
             update.setId(taskDO.getId());
             update.setStatus(TaskDO.TaskStatusEnum.FAILED.getCode());
             update.setCost(TimeUtil.getCostMin(startTime));
+            update.setEndTime(new Date());
             attributes.put("errorMsg", e.getMessage());
             update.setAttributes(JSON.toJSONString(attributes));
             taskMapper.updateById(update);
@@ -54,6 +55,7 @@ public class TaskAspect {
             TaskDO update = new TaskDO();
             update.setId(taskDO.getId());
             update.setStatus(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            update.setEndTime(new Date());
             update.setCost(cost);
             if (result != null) {
                 attributes.put("result", String.valueOf(result));

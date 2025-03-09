@@ -21,7 +21,7 @@ public class KickScrewScratchScheduler {
     @Resource
     private PoisonService poisonService;
 
-    @Scheduled(cron = "0 0 0 * * *")
+    @Scheduled(cron = "0 37 23 * * *")
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshKcItems() {
         LockHelper.lockKcItem();
@@ -30,20 +30,21 @@ public class KickScrewScratchScheduler {
         LockHelper.setKcItemStatus(true);
     }
 
-    @Scheduled(cron = "15 0 0 * * *")
+    @Scheduled(cron = "0 37 23 * * *")
     @Task(platform = TaskDO.PlatformEnum.POISON, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshPoisonPrice() {
         LockHelper.setKcItemStatus(false);
         poisonService.refreshPrice(true);
     }
 
-//    @Scheduled(fixedDelay = 100 * 60 * 1000, initialDelay = 80 * 60 * 1000)
+    @Scheduled(fixedDelay = 100 * 60 * 1000, initialDelay = 30 * 60 * 1000)
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    public void refreshKcPrice() {
+    public int refreshKcPrice() {
         LockHelper.lockKcItem();
         kickScrewService.refreshPrices();
         int changeCnt = kickScrewService.compareWithPoisonAndChangePrice();
         LockHelper.unlockKcItem();
+        return changeCnt;
     }
 
 }
