@@ -1,11 +1,7 @@
 package cn.ken.shoes.util;
 
-import cn.ken.shoes.common.PriceEnum;
-import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
-import cn.ken.shoes.model.entity.PoisonPriceDO;
 
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,9 +42,8 @@ public class ShoesUtil {
      * @return 如果三方平台价格-1有盈利，则修改为三方平台价格-1，否则返回null
      */
     public static boolean canEarn(Integer poisonPrice, Integer otherPrice) {
-        double poisonPriceYuan = poisonPrice / 100.0;
         double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
-        double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
+        double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;
         }
@@ -70,9 +65,8 @@ public class ShoesUtil {
     }
 
     public static double getKcEarn(Integer poisonPrice, Integer otherPrice) {
-        double poisonPriceYuan = poisonPrice / 100.0;
         double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
-        return getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
+        return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
 }

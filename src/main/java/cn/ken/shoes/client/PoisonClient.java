@@ -1,6 +1,5 @@
 package cn.ken.shoes.client;
 
-import cn.hutool.core.util.ObjUtil;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PoisonConfig;
@@ -36,32 +35,19 @@ public class PoisonClient {
                 .replace("{spuId}", String.valueOf(spuId))
                 .replace("{token}", token);
         String result = HttpUtil.doGet(url);
-        if (result == null) {
-            return null;
-        }
         try {
-            if (!JSONValidator.from(result).validate()) {
-                log.error("queryPriceBySpuV2 is not valid, result:{}", result);
-                return null;
-            }
             if ("{}".equals(result)) {
                 lackModelLogger.info(modelNo);
-                return null;
+                return Collections.emptyList();
             }
             JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
-            if (dataJson == null) {
-                return null;
-            }
             List<JSONObject> dataList = dataJson.toJavaList(JSONObject.class);
             List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
             Set<String> sizeSet = new HashSet<>();
             for (JSONObject data : dataList) {
-                Integer price = data.getInteger("minPrice");
-                if (price == null) {
-                    continue;
-                }
+                Integer price = data.getInteger("minprice");
                 String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
-                if (size == null || sizeSet.contains(size)) {
+                if (price == null || price == 0 || size == null || sizeSet.contains(size)) {
                     continue;
                 } else {
                     sizeSet.add(size);
@@ -69,7 +55,7 @@ public class PoisonClient {
                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                 poisonPriceDO.setModelNo(modelNo);
                 poisonPriceDO.setEuSize(size);
-                poisonPriceDO.setPrice(price);
+                poisonPriceDO.setPrice(price / 100);
                 poisonPriceDOList.add(poisonPriceDO);
             }
             return poisonPriceDOList;
@@ -121,9 +107,9 @@ public class PoisonClient {
                             continue;
                         }
                         if (poisonPriceDO.getPrice() == null) {
-                            poisonPriceDO.setPrice(price.getInteger(type));
+                            poisonPriceDO.setPrice(price.getInteger(type) / 100);
                         } else {
-                            poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type)));
+                            poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type) / 100));
                         }
                     }
                     if (poisonPriceDO.getPrice() != null) {
