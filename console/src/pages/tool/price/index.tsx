@@ -35,6 +35,7 @@ const PricePage = () => {
         doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo, mode}, {
             onSuccess: res => {
                 setPriceList(res.data);
+                message.success("查询成功").then();
             },
             onError: _ => {
                 setPriceList([]);

@@ -56,11 +56,8 @@ public class PoisonClient {
             List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
             Set<String> sizeSet = new HashSet<>();
             for (JSONObject data : dataList) {
-                Integer fastPrice = data.getInteger("极速发货");
-                Integer normalPrice = data.getInteger("普通发货");
-                Integer lightningPrice = data.getInteger("闪电直发");
-                Integer brandPrice = data.getInteger("品牌直发");
-                if (fastPrice == 0 && normalPrice == 0 && lightningPrice == 0 && brandPrice == 0) {
+                Integer price = data.getInteger("minPrice");
+                if (price == null) {
                     continue;
                 }
                 String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
@@ -72,18 +69,7 @@ public class PoisonClient {
                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                 poisonPriceDO.setModelNo(modelNo);
                 poisonPriceDO.setEuSize(size);
-                if (fastPrice > 0) {
-                    poisonPriceDO.setFastPrice(fastPrice);
-                }
-                if (normalPrice > 0) {
-                    poisonPriceDO.setNormalPrice(normalPrice);
-                }
-                if (lightningPrice > 0) {
-                    poisonPriceDO.setLightningPrice(lightningPrice);
-                }
-                if (brandPrice > 0) {
-                    poisonPriceDO.setBrandPrice(brandPrice);
-                }
+                poisonPriceDO.setPrice(price);
                 poisonPriceDOList.add(poisonPriceDO);
             }
             return poisonPriceDOList;
@@ -134,17 +120,15 @@ public class PoisonClient {
                             log.info("未知的价格类型, type:{}, spuId:{}", type, spuId);
                             continue;
                         }
-                        switch (priceEnum) {
-                            case FAST -> poisonPriceDO.setFastPrice(price.getInteger(type));
-                            case LIGHTNING -> poisonPriceDO.setLightningPrice(price.getInteger(type));
-                            case NORMAL -> poisonPriceDO.setNormalPrice(price.getInteger(type));
-                            case BRAND -> poisonPriceDO.setBrandPrice(price.getInteger(type));
+                        if (poisonPriceDO.getPrice() == null) {
+                            poisonPriceDO.setPrice(price.getInteger(type));
+                        } else {
+                            poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type)));
                         }
                     }
-                    if (ObjUtil.isAllEmpty(poisonPriceDO.getBrandPrice(), poisonPriceDO.getFastPrice(), poisonPriceDO.getLightningPrice(), poisonPriceDO.getNormalPrice())) {
-                        return;
+                    if (poisonPriceDO.getPrice() != null) {
+                        poisonPriceDOList.add(poisonPriceDO);
                     }
-                    poisonPriceDOList.add(poisonPriceDO);
                 });
         return poisonPriceDOList;
     }

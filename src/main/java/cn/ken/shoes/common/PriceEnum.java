@@ -1,11 +1,9 @@
 package cn.ken.shoes.common;
 
-import cn.ken.shoes.model.entity.PoisonPriceDO;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.util.List;
-import java.util.function.Function;
 
 @Getter
 @AllArgsConstructor
@@ -14,21 +12,20 @@ public enum PriceEnum {
     /**
      * 普通发货
      */
-    NORMAL(0, List.of("NORMAL", "普通发货"), PoisonPriceDO::getNormalPrice),
+    NORMAL(0, List.of("NORMAL", "普通发货")),
     /**
      * 闪电直发
      */
-    LIGHTNING(1, List.of("LIGHTNING", "闪电直发"), PoisonPriceDO::getLightningPrice),
+    LIGHTNING(1, List.of("LIGHTNING", "闪电直发")),
 
-    FAST(2, List.of("极速发货"), PoisonPriceDO::getFastPrice),
+    FAST(2, List.of("极速发货")),
 
-    BRAND(3, List.of("品牌直发"), PoisonPriceDO::getBrandPrice),
+    BRAND(3, List.of("品牌直发")),
 
     ;
 
     private final Integer code;
     private final List<String> desc;
-    private final Function<PoisonPriceDO, Integer> getPriceFunction;
 
     public static PriceEnum from(Integer code) {
         for (PriceEnum priceEnum : PriceEnum.values()) {

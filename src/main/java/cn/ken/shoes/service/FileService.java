@@ -120,8 +120,7 @@ public class FileService {
             poisonPriceDO.setEuSize(priceExcel.getEuSize());
             poisonPriceDO.setModelNo(priceExcel.getModelNo());
             int poisonPrice = priceExcel.getPoisonPrice() * 100;
-            poisonPriceDO.setNormalPrice(poisonPrice);
-            poisonPriceDO.setLightningPrice(poisonPrice);
+            poisonPriceDO.setPrice(poisonPrice);
             toInsert.add(poisonPriceDO);
         }
         poisonPriceMapper.insert(toInsert);

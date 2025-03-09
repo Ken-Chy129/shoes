@@ -69,9 +69,8 @@ public class ShoesUtil {
 //        return price < otherPrice - 1 ? otherPrice - 1 : null;
     }
 
-    public static double getKcEarn(PoisonPriceDO poisonPrice, Integer otherPrice) {
-        Integer price = PriceEnum.from(PoisonSwitch.POISON_PRICE_TYPE).getGetPriceFunction().apply(poisonPrice);
-        double poisonPriceYuan = price / 100.0;
+    public static double getKcEarn(Integer poisonPrice, Integer otherPrice) {
+        double poisonPriceYuan = poisonPrice / 100.0;
         double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPriceYuan;
     }

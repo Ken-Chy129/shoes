@@ -428,16 +428,10 @@ public class KickScrewItemServiceImpl implements ItemService {
                         String modelNo = poisonPriceDO.getModelNo();
                         String euSize = poisonPriceDO.getEuSize();
                         Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
-                        if (kcPrice == null) {
+                        if (kcPrice == null || poisonPriceDO.getPrice() == null) {
                             continue;
                         }
-                        if (PoisonSwitch.POISON_PRICE_TYPE == 0 && poisonPriceDO.getNormalPrice() == null) {
-                            continue;
-                        }
-                        if (PoisonSwitch.POISON_PRICE_TYPE == 1 && poisonPriceDO.getLightningPrice() == null) {
-                            continue;
-                        }
-                        boolean canEarn = ShoesUtil.canEarn(PoisonSwitch.POISON_PRICE_TYPE == 0 ? poisonPriceDO.getNormalPrice() : poisonPriceDO.getLightningPrice(), kcPrice);
+                        boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
                         if (!canEarn) {
                             continue;
                         }

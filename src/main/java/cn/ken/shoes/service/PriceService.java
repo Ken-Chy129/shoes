@@ -213,7 +213,7 @@ public class PriceService {
             // 补全kc价格
             Integer kcPrice = kcPriceMap.get(euSize);
             priceVO.setKcPrice(kcPrice * PriceSwitch.EXCHANGE_RATE);
-            double kcEarn = ShoesUtil.getKcEarn(poisonPriceDO, kcPrice);
+            double kcEarn = ShoesUtil.getKcEarn(poisonPriceDO.getPrice(), kcPrice);
             priceVO.setKcEarn(BigDecimal.valueOf(kcEarn).setScale(2, RoundingMode.DOWN).doubleValue());
             // 补全绿叉价格
             result.add(priceVO);

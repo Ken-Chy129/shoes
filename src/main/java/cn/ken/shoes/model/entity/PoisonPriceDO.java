@@ -19,27 +19,6 @@ public class PoisonPriceDO {
     @ExcelProperty("EU码")
     private String euSize;
 
-    /**
-     * 普通发货
-     */
-    @ExcelProperty("普通发货")
-    private Integer normalPrice;
-
-    /**
-     * 闪电发货
-     */
-    @ExcelProperty("闪电发货")
-    private Integer lightningPrice;
-
-    /**
-     * 极速发货
-     */
-    @ExcelProperty("极速发货")
-    private Integer fastPrice;
-
-    /**
-     * 品牌直发
-     */
-    @ExcelProperty("品牌直发")
-    private Integer brandPrice;
+    @ExcelProperty("价格")
+    private Integer price;
 }
