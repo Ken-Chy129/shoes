@@ -35,9 +35,8 @@ const SettingPage = () => {
     }, []);
 
     const updatePoisonSetting = () => {
-        const priceType = poisonForm.getFieldValue("priceType");
         const apiMode = poisonForm.getFieldValue("apiMode");
-        doPostRequest(SETTING_API.POISON, {priceType, apiMode}, {
+        doPostRequest(SETTING_API.POISON, {apiMode}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -60,23 +59,7 @@ const SettingPage = () => {
             <Form form={poisonForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
-                    <Form.Item name="priceType" label="价格类型">
-                        <Select
-                            style={{width: 160}}
-                            placeholder="请选择字段"
-                            allowClear
-                            optionFilterProp="label"
-                            options={
-                                [
-                                    {label: '普通发货', value: 0},
-                                    {label: '闪电发货', value: 1},
-                                    {label: '极速发货', value: 2},
-                                    {label: '品牌直发', value: 3}
-                                ]
-                            }
-                        />
-                    </Form.Item>
-                    <Form.Item name="apiMode" label="查价模式" style={{marginLeft: 20}}>
+                    <Form.Item name="apiMode" label="查价模式">
                         <Select
                             style={{width: 160}}
                             placeholder="请选择字段"
