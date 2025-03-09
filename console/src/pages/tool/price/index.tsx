@@ -60,27 +60,9 @@ const PricePage = () => {
             width: '10%'
         },
         {
-            title: '普通发货价',
-            dataIndex: 'normalPrice',
-            key: 'normalPrice',
-            width: '10%', // 设置列宽为30%
-        },
-        {
-            title: '闪电发货价',
-            dataIndex: 'lightningPrice',
-            key: 'lightningPrice',
-            width: '10%', // 设置列宽为30%
-        },
-        {
-            title: '极速发货价',
-            dataIndex: 'fastPrice',
-            key: 'fastPrice',
-            width: '10%', // 设置列宽为30%
-        },
-        {
-            title: '品牌直发',
-            dataIndex: 'brandPrice',
-            key: 'brandPrice',
+            title: '得物价格',
+            dataIndex: 'poisonPrice',
+            key: 'poisonPrice',
             width: '10%', // 设置列宽为30%
         },
         {

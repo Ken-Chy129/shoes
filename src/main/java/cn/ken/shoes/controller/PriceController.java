@@ -88,6 +88,7 @@ public class PriceController {
         if (modelNo == null || mode == null) {
             return Result.buildError("参数异常");
         }
+        modelNo = modelNo.strip();
         return switch (mode) {
             case "db" -> priceService.queryByModelNoFromDB(modelNo);
             case "realTime" -> priceService.queryByModelNoRealTime(modelNo);
