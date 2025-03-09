@@ -39,24 +39,24 @@ public class TaskDO {
 
     @Getter
     public enum TaskTypeEnum {
-        REFRESH_ALL_ITEMS("全量刷新商品", 1),
-        REFRESH_INCREMENTAL_ITEMS("增量刷新商品", 2),
-        REFRESH_ALL_PRICES("全量刷新价格", 3),
-        REFRESH_INCREMENTAL_PRICES("增量刷新价格", 4),
-        CHANGE_PRICES("改价", 0)
+        REFRESH_ALL_ITEMS("全量刷新商品", "refreshAllItems"),
+        REFRESH_INCREMENTAL_ITEMS("增量刷新商品", "refreshIncrementalItems"),
+        REFRESH_ALL_PRICES("全量刷新价格", "refreshAllPrices"),
+        REFRESH_INCREMENTAL_PRICES("增量刷新价格", "refreshIncrementalPrices"),
+        CHANGE_PRICES("改价", "changePrices"),
         ;
 
         private final String name;
-        private final int code;
+        private final String code;
 
-        TaskTypeEnum(String name, int code) {
+        TaskTypeEnum(String name, String code) {
             this.name = name;
             this.code = code;
         }
 
-        public static TaskTypeEnum from(int code) {
+        public static TaskTypeEnum from(String code) {
             for (TaskTypeEnum value : TaskTypeEnum.values()) {
-                if (value.code == code) {
+                if (value.code.equals(code)) {
                     return value;
                 }
             }
