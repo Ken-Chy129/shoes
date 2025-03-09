@@ -30,14 +30,12 @@ public class SettingController {
     @GetMapping("poison")
     public Result<JSONObject> queryPoisonSetting() {
         JSONObject jsonObject = new JSONObject();
-        jsonObject.put("priceType", PoisonSwitch.POISON_PRICE_TYPE);
         jsonObject.put("apiMode", PoisonSwitch.API_MODE);
         return Result.buildSuccess(jsonObject);
     }
 
     @PostMapping("poison")
     public Result<JSONObject> updatePoisonSetting(@RequestBody JSONObject jsonObject) {
-        PoisonSwitch.POISON_PRICE_TYPE = jsonObject.getInteger("priceType");
         PoisonSwitch.API_MODE = jsonObject.getInteger("apiMode");
         return Result.buildSuccess(jsonObject);
     }
