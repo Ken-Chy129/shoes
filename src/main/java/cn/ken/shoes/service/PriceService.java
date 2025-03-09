@@ -61,7 +61,6 @@ public class PriceService {
     }
 
     public void refreshPoisonPrices() {
-        Long taskId = taskService.startTask("poison", TaskDO.TaskTypeEnum.REFRESH_PRICES, null);
         poisonPriceMapper.delete(null);
         int count = poisonItemMapper.count();
         int page = (int) Math.ceil(count / 1000.0);
@@ -97,7 +96,6 @@ public class PriceService {
                 log.error(e.getMessage(), e);
             }
         }
-        taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
     }
 
 

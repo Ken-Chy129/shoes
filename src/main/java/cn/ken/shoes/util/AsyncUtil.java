@@ -12,7 +12,7 @@ import java.util.concurrent.*;
 @Slf4j
 public class AsyncUtil {
 
-    public static void runTasks(List<Runnable> tasks) throws InterruptedException {
+    public static void runTasks(List<Runnable> tasks) {
         ExecutorService executorService = Executors.newVirtualThreadPerTaskExecutor();
         for (Runnable task : tasks) {
             executorService.execute(task);

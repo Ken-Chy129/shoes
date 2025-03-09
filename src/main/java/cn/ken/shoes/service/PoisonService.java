@@ -89,7 +89,6 @@ public class PoisonService {
     /**
      * 增量更新得物商品
      */
-    @Task
     public void updatePoisonItems(List<String> modelNumbers) {
         List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
         List<String> toInsert = modelNumbers.stream().filter(modelNumber -> !existItems.contains(modelNumber)).toList();
@@ -111,7 +110,6 @@ public class PoisonService {
         }
     }
 
-    @Task
     public void refreshPriceByModelNos(List<String> modelNos, boolean clearOld) {
         List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
         RateLimiter rateLimiter = RateLimiter.create(6);
