@@ -1,8 +1,12 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.service.PoisonService;
+import cn.ken.shoes.util.LockHelper;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -21,12 +25,19 @@ public class KickScrewController {
     @Resource
     private KickScrewClient kickScrewClient;
 
+    @Resource
+    private PoisonService poisonService;
+
     /**
      * 刷新商品，重新爬取品牌和热门商品
      */
     @GetMapping("refreshItems")
+    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_INCREMENTAL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public Result<Void> refreshItems() {
-        Thread.startVirtualThread(() -> kickScrewService.refreshItems(false));
+        Thread.startVirtualThread(() -> {
+            kickScrewService.refreshItems(false);
+            poisonService.refreshPrice(false);
+        });
         return Result.buildSuccess();
     }
 

@@ -73,10 +73,10 @@ public class PriceController {
         kickScrewService.queryBrandGenderSizeMap();
     }
 
-    @GetMapping("compareKc")
-    public void compareKc() {
-        KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();
-    }
+//    @GetMapping("compareKc")
+//    public void compareKc() {
+//        KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();
+//    }
 
     @GetMapping("refreshKcPrices")
     public void refreshKcPrices() {

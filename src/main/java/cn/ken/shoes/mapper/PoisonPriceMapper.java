@@ -13,7 +13,7 @@ public interface PoisonPriceMapper extends BaseMapper<PoisonPriceDO> {
 
     Long count();
 
-    int insertIgnore(PoisonPriceDO poisonPrice);
+    int insertOverwrite(PoisonPriceDO poisonPrice);
 
     List<PoisonPriceDO> selectPage(@Param("startIndex") Long startIndex, @Param("pageSize") Integer pageSize);
 

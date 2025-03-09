@@ -1,22 +1,18 @@
 package cn.ken.shoes.service;
 
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
-import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
-import cn.ken.shoes.util.AsyncUtil;
-import cn.ken.shoes.util.ShoesUtil;
-import cn.ken.shoes.util.SqlHelper;
-import cn.ken.shoes.util.TimeUtil;
+import cn.ken.shoes.util.*;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
@@ -134,6 +130,7 @@ public class KickScrewService {
         brandMapper.updateDefaultCrawlCnt(cnt);
     }
 
+    @SneakyThrows
     public void refreshHotItems(boolean clearOld) {
         List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
         if (clearOld) {
@@ -147,39 +144,49 @@ public class KickScrewService {
             String brandName = brandDO.getName();
             Integer crawlCnt = brandDO.getCrawlCnt();
             int page = (int) Math.ceil(crawlCnt / 50.0);
+            CountDownLatch latch = new CountDownLatch(page);
             for (int i = 0; i < page; i++) {
-                KickScrewAlgoliaRequest request = new KickScrewAlgoliaRequest();
-                request.setBrands(List.of(brandName));
-                request.setPageIndex(i);
-                request.setPageSize(50);
-                List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.queryItemPageV2(request);
-                Thread.ofVirtual().start(() -> SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item)));
-            }
-        }
-    }
-
-    /**
-     * 指定货号刷新价格
-     */
-    public void refreshPricesByModelNos(List<String> modelNoList) {
-        try {
-            kickScrewPriceMapper.delete(new QueryWrapper<>());
-            List<List<String>> partition = Lists.partition(modelNoList, 100);
-            CountDownLatch latch = new CountDownLatch(partition.size());
-            for (List<String> modelNos : partition) {
-                List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
-                Thread.ofVirtual().start(() -> {
+                final int pageIndex = i;
+                Thread.ofVirtual().name("refreshHotItems-" + brandName).start(() -> {
                     try {
-                        kickScrewPriceMapper.insert(kickScrewPriceDOS);
+                        LimiterHelper.limitKcItem();
+                        KickScrewAlgoliaRequest request = new KickScrewAlgoliaRequest();
+                        request.setBrands(List.of(brandName));
+                        request.setPageIndex(pageIndex);
+                        request.setPageSize(50);
+                        List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.queryItemPageV2(request);
+                        SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+                    } catch (Exception e) {
+                        log.error("refreshHotItems error, msg:{}", e.getMessage());
                     } finally {
                         latch.countDown();
                     }
                 });
             }
             latch.await();
-        } catch (Exception e) {
-            log.error("refreshPricesByModelNos error, msg:{}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * 指定货号刷新价格
+     */
+    @SneakyThrows
+    public void refreshPricesByModelNos(List<String> modelNoList) {
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
+        List<List<String>> partition = Lists.partition(modelNoList, 100);
+        CountDownLatch latch = new CountDownLatch(partition.size());
+        for (List<String> modelNos : partition) {
+            Thread.ofVirtual().start(() -> {
+                try {
+                    LimiterHelper.limitKcItem();
+                    List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
+                    kickScrewPriceMapper.insert(kickScrewPriceDOS);
+                } finally {
+                    latch.countDown();
+                }
+            });
+        }
+        latch.await();
     }
 
     public void refreshPrices() {
@@ -202,60 +209,49 @@ public class KickScrewService {
     }
 
     public int compareWithPoisonAndChangePrice() {
-        int changeCnt = 0;
-//        Long taskId = taskService.startTask(getPlatformName(), TaskDO.TaskTypeEnum.CHANGE_PRICES, null);
+        int uploadCnt = 0;
         kickScrewClient.deleteAllItems();
-        try {
-            long count = poisonPriceMapper.count();
-            log.info("compareWithPoisonAndChangePrice start, count:{}", count);
-            long startIndex = 0;
-            while (startIndex < count) {
-                try {
-                    long startTime = System.currentTimeMillis();
-                    // 1.查询得物价格
-                    List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
-                    Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
-                    // 2.查询对应的货号在kc的价格
-                    Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
-                            .collect(Collectors.toMap(
-                                    kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
-                                    KickScrewPriceDO::getPrice,
-                                    (k1, k2) -> k1
-                            ));
-                    List<KickScrewUploadItem> toUpload = new ArrayList<>();
-                    for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
-                        String modelNo = poisonPriceDO.getModelNo();
-                        String euSize = poisonPriceDO.getEuSize();
-                        Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
-                        if (kcPrice == null || poisonPriceDO.getPrice() == null) {
-                            continue;
-                        }
-                        boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
-                        if (!canEarn) {
-                            continue;
-                        }
-                        changeCnt++;
-                        KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
-                        kickScrewUploadItem.setModel_no(modelNo);
-                        kickScrewUploadItem.setSize(euSize);
-                        kickScrewUploadItem.setSize_system("EU");
-                        kickScrewUploadItem.setQty(1);
-                        kickScrewUploadItem.setPrice(kcPrice - 1);
-                        toUpload.add(kickScrewUploadItem);
+        long count = poisonPriceMapper.count();
+        long startIndex = 0;
+        while (startIndex < count) {
+            try {
+                // 1.查询得物价格
+                List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
+                Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
+                // 2.查询对应的货号在kc的价格
+                Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
+                        .collect(Collectors.toMap(
+                                kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
+                                KickScrewPriceDO::getPrice,
+                                (k1, k2) -> k1
+                        ));
+                List<KickScrewUploadItem> toUpload = new ArrayList<>();
+                for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+                    String modelNo = poisonPriceDO.getModelNo();
+                    String euSize = poisonPriceDO.getEuSize();
+                    Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
+                    if (kcPrice == null || poisonPriceDO.getPrice() == null) {
+                        continue;
                     }
-                    AsyncUtil.runTasks(List.of(() -> kickScrewClient.batchUploadItems(toUpload)));
-                    log.info("compareWithPoisonAndChangePrice end, pageIndex:{}, cnt:{}, cost:{}", startIndex, count, TimeUtil.getCostMin(startTime));
-                    startIndex += PAGE_SIZE;
-                } catch (Exception e) {
-                    log.error(e.getMessage(), e);
+                    boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
+                    if (!canEarn) {
+                        continue;
+                    }
+                    KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
+                    kickScrewUploadItem.setModel_no(modelNo);
+                    kickScrewUploadItem.setSize(euSize);
+                    kickScrewUploadItem.setSize_system("EU");
+                    kickScrewUploadItem.setQty(1);
+                    kickScrewUploadItem.setPrice(kcPrice - 1);
+                    toUpload.add(kickScrewUploadItem);
                 }
+                uploadCnt += toUpload.size();
+                kickScrewClient.batchUploadItems(toUpload);
+                startIndex += PAGE_SIZE;
+            } catch (Exception e) {
+                log.error(e.getMessage(), e);
             }
-//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS);
-        } catch (Exception e) {
-            log.error("compareWithPoisonAndChangePrice error, msg:{}", e.getMessage());
-//            taskService.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED);
         }
-        log.info("compareWithPoisonAndChangePrice changeCnt:{}", changeCnt);
-        return changeCnt;
+        return uploadCnt;
     }
 }
