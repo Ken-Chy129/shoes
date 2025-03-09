@@ -20,7 +20,6 @@ public class KickScrewScratchScheduler {
     private PoisonService poisonService;
 
     @Scheduled(cron = "0 0 0 * * *")
-    @Task
     public void updateItems() {
         log.info("update items start");
         kickScrewService.refreshItems(true);
@@ -29,7 +28,6 @@ public class KickScrewScratchScheduler {
     }
 
     @Scheduled(fixedDelay = 100 * 60 * 1000, initialDelay = 80 * 60 * 1000)
-    @Task
     public void updatePrice() {
 //        kickScrewService.refreshPrices();
 //        kickScrewService.compareWithPoisonAndChangePrice();

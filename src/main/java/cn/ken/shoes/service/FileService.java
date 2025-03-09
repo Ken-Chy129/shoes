@@ -126,7 +126,6 @@ public class FileService {
         poisonPriceMapper.insert(toInsert);
     }
 
-    @Task
     public void queryModelNoPriceByExcel(String filename) throws InterruptedException {
         poisonPriceMapper.delete(new QueryWrapper<>());
         List<ModelExcel> priceExcels = EasyExcel.read(FILE_DIR + "1.xlsx")

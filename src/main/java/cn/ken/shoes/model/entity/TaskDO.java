@@ -13,9 +13,11 @@ public class TaskDO {
 
     private Long id;
 
-    private Integer type;
-
     private String platform;
+
+    private String taskType;
+
+    private String operateType;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date startTime;
@@ -23,10 +25,12 @@ public class TaskDO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date endTime;
 
+    private String cost;
+
     /**
-     * 0:正在运行，1：运行成功，2：运行失败，3：运行终止
+     * 任务执行状态
      */
-    private Integer status;
+    private String status;
 
     /**
      * 扩展属性，json
@@ -37,8 +41,9 @@ public class TaskDO {
     public enum TaskTypeEnum {
         REFRESH_ALL_ITEMS("全量刷新商品", 1),
         REFRESH_INCREMENTAL_ITEMS("增量刷新商品", 2),
-        REFRESH_PRICES("刷新商品价格", 3),
-        CHANGE_PRICES("改价", 4)
+        REFRESH_ALL_PRICES("全量刷新价格", 3),
+        REFRESH_INCREMENTAL_PRICES("增量刷新价格", 4),
+        CHANGE_PRICES("改价", 0)
         ;
 
         private final String name;
@@ -62,15 +67,48 @@ public class TaskDO {
 
     @Getter
     public enum TaskStatusEnum {
-        RUNNING(1),
-        SUCCESS(2),
-        FAILED(3),
-        TERMINATED(4),
+        RUNNING("运行中", "running"),
+        SUCCESS("执行成功", "success"),
+        FAILED("执行失败", "failed"),
+        TERMINATED("执行终止", "terminated"),
         ;
 
-        private final int code;
+        private final String name;
+        private final String code;
 
-        TaskStatusEnum(int code) {
+        TaskStatusEnum(String name, String code) {
+            this.name = name;
+            this.code = code;
+        }
+    }
+
+    @Getter
+    public enum OperateStatusEnum {
+        MANUALLY("人工执行", "manually"),
+        SYSTEM("系统触发", "system"),
+        ;
+
+        private final String name;
+        private final String code;
+
+        OperateStatusEnum(String name, String code) {
+            this.name = name;
+            this.code = code;
+        }
+    }
+
+    @Getter
+    public enum PlatformEnum {
+        POISON("得物", "poison"),
+        KC("KickScrew", "kickscrew"),
+        STOCKX("绿叉", "stockx"),
+        ;
+
+        private final String name;
+        private final String code;
+
+        PlatformEnum(String name, String code) {
+            this.name = name;
             this.code = code;
         }
     }

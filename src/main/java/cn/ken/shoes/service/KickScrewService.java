@@ -134,7 +134,6 @@ public class KickScrewService {
         brandMapper.updateDefaultCrawlCnt(cnt);
     }
 
-    @Task
     public void refreshHotItems(boolean clearOld) {
         List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
         if (clearOld) {
@@ -195,7 +194,6 @@ public class KickScrewService {
         }
     }
 
-    @Task
     public void refreshItems(boolean clearOld) {
         // 1.爬取品牌和商品数量
         refreshBrand();
