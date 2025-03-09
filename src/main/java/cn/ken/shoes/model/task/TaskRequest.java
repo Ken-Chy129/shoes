@@ -4,15 +4,16 @@ import cn.ken.shoes.common.PageRequest;
 import lombok.Data;
 import org.springframework.format.annotation.DateTimeFormat;
 
-import java.time.LocalDateTime;
 import java.util.Date;
 
 @Data
 public class TaskRequest extends PageRequest {
 
-    private Integer taskType;
-
     private String platform;
+
+    private String taskType;
+
+    private String operateType;
 
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date startTime;
@@ -20,6 +21,6 @@ public class TaskRequest extends PageRequest {
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date endTime;
 
-    private Integer taskStatus;
+    private Integer status;
 
 }

@@ -68,9 +68,9 @@ public class TaskAspect {
 
     private TaskDO build(Task task) {
         TaskDO taskDO = new TaskDO();
-        taskDO.setPlatform(task.platform().getName());
-        taskDO.setTaskType(task.taskType().getName());
-        taskDO.setOperateType(task.operateStatus().getName());
+        taskDO.setPlatform(task.platform().getCode());
+        taskDO.setTaskType(task.taskType().getCode());
+        taskDO.setOperateType(task.operateStatus().getCode());
         taskDO.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         taskDO.setStartTime(new Date());
         return taskDO;

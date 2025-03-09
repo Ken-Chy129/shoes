@@ -4,17 +4,20 @@
 
     <select id="selectTask" resultType="cn.ken.shoes.model.entity.TaskDO">
         select * from task
-        where type = #{type} and platform = #{platform} and status = #{status}
+        where platform = #{platform} and task_type = #{type} and operate_type = #{operateType} and status = #{status}
     </select>
 
     <select id="selectByCondition" resultType="cn.ken.shoes.model.entity.TaskDO">
         select * from task
         <where>
-            <if test="taskType != null">
-                and type = #{taskType}
-            </if>
             <if test="platform != null and platform != ''">
                 and platform = #{platform}
+            </if>
+            <if test="taskType != null and taskType != ''">
+                and task_type = #{taskType}
+            </if>
+            <if test="operateType != null and operateType != ''">
+                and operate_type = #{operateType}
             </if>
             <if test="startTime != null">
                 and start_time > #{startTime}
@@ -22,8 +25,8 @@
             <if test="endTime != null">
                 and end_time &lt; #{endTime}
             </if>
-            <if test="taskStatus != null">
-                and status = #{taskStatus}
+            <if test="status != null">
+                and status = #{status}
             </if>
         </where>
         limit #{startIndex}, #{pageSize}
@@ -37,11 +40,14 @@
     <select id="count" resultType="java.lang.Long">
         select count(*) from task
         <where>
-            <if test="taskType != null">
-                and type = #{taskType}
-            </if>
             <if test="platform != null and platform != ''">
                 and platform = #{platform}
+            </if>
+            <if test="taskType != null and taskType != ''">
+                and task_type = #{taskType}
+            </if>
+            <if test="operateType != null and operateType != ''">
+                and operate_type = #{operateType}
             </if>
             <if test="startTime != null">
                 and start_time > #{startTime}
@@ -49,8 +55,8 @@
             <if test="endTime != null">
                 and end_time &lt; #{endTime}
             </if>
-            <if test="taskStatus != null">
-                and status = #{taskStatus}
+            <if test="status != null">
+                and status = #{status}
             </if>
         </where>
     </select>
