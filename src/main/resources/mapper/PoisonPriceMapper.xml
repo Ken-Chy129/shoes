@@ -3,13 +3,10 @@
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
     <insert id="insertIgnore">
-        insert ignore into poison_price(model_no, eu_size, normal_price, lightning_price, fast_price, brand_price) value (
+        insert ignore into poison_price(model_no, eu_size, price) value (
             #{modelNo},
             #{euSize},
-            #{normalPrice},
-            #{lightningPrice},
-            #{fastPrice},
-            #{brandPrice}
+            #{price}
         )
     </insert>
 
