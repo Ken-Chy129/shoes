@@ -4,7 +4,7 @@ import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.TimeUtil;
-import com.alibaba.excel.util.StringUtils;
+import com.alibaba.fastjson.JSON;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -13,6 +13,8 @@ import org.aspectj.lang.annotation.Aspect;
 import org.springframework.stereotype.Component;
 
 import java.util.Date;
+import java.util.HashMap;
+import java.util.Map;
 
 @Aspect
 @Component
@@ -24,22 +26,26 @@ public class TaskAspect {
 
     @Around("@annotation(cn.ken.shoes.annotation.Task) && @annotation(task)")
     public Object recordTask(ProceedingJoinPoint point, Task task) throws Throwable {
-        String methodName = point.getSignature().getName();
-        String className = point.getTarget().getClass().getName();
-        String taskName = StringUtils.isBlank(task.name()) ? className + "." + methodName : task.name();
-        log.info("task-{} execute start", taskName);
+        String taskName = point.getTarget().getClass().getName() + "." + point.getSignature().getName();
+        Map<String, String> attributes = new HashMap<>();
+        attributes.put("taskName", taskName);
+
         TaskDO taskDO = build(task);
+        taskDO.setAttributes(JSON.toJSONString(attributes));
         taskMapper.insert(taskDO);
+
         long startTime = System.currentTimeMillis();
+        Object result = null;
         try {
-            // 继续执行原方法
-            return point.proceed();
+            result = point.proceed();
+            return result;
         } catch (Exception e) {
             TaskDO update = new TaskDO();
             update.setId(taskDO.getId());
             update.setStatus(TaskDO.TaskStatusEnum.FAILED.getCode());
             update.setCost(TimeUtil.getCostMin(startTime));
-            update.setAttributes(e.getMessage());
+            attributes.put("errorMsg", e.getMessage());
+            update.setAttributes(JSON.toJSONString(attributes));
             taskMapper.updateById(update);
             log.error("task-{} execute error, msg:{}", taskName, e.getMessage());
             return null;
@@ -49,6 +55,10 @@ public class TaskAspect {
             update.setId(taskDO.getId());
             update.setStatus(TaskDO.TaskStatusEnum.SUCCESS.getCode());
             update.setCost(cost);
+            if (result != null) {
+                attributes.put("result", String.valueOf(result));
+                update.setAttributes(JSON.toJSONString(attributes));
+            }
             taskMapper.updateById(update);
             log.info("task-{} execute finish, cost:{}", taskName, cost);
         }

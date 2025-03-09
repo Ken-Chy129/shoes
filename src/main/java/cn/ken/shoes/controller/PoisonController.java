@@ -15,8 +15,8 @@ public class PoisonController {
     private PoisonService poisonService;
 
     @GetMapping("refreshPrice")
-    public Result<Void> refreshPrice(boolean clearOld) {
-        Thread.startVirtualThread(() -> poisonService.refreshPrice(clearOld));
+    public Result<Void> refreshPrice(boolean overwriteOld) {
+        Thread.startVirtualThread(() -> poisonService.refreshPrice(overwriteOld));
         return Result.buildSuccess();
     }
 }

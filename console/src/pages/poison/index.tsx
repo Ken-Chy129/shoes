@@ -25,8 +25,8 @@ const PoisonPage = () => {
 
     }, []);
 
-    const refreshPoisonPrice = (clearOld: boolean) => {
-        doGetRequest(POISON_API.REFRESH_PRICE, {clearOld}, {
+    const refreshPoisonPrice = (overwriteOld: boolean) => {
+        doGetRequest(POISON_API.REFRESH_PRICE, {overwriteOld}, {
             onSuccess: _ => {
                 message.success("开始执行异步刷新").then(_ => {});
             }

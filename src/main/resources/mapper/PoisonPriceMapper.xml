@@ -2,12 +2,13 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
-    <insert id="insertIgnore">
-        insert ignore into poison_price(model_no, eu_size, price) value (
+    <insert id="insertOverwrite">
+        insert into poison_price(model_no, eu_size, price) value (
             #{modelNo},
             #{euSize},
             #{price}
-        )
+        ) on duplicate key update
+            price = values(price)
     </insert>
 
     <select id="selectPage" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">
