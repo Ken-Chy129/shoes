@@ -38,7 +38,7 @@ public class KickScrewScratchScheduler {
     }
 
     @Scheduled(fixedDelay = 100 * 60 * 1000, initialDelay = 30 * 60 * 1000)
-    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
+    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.CHANGE_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshKcPrice() {
         LockHelper.lockKcItem();
         kickScrewService.refreshPrices();

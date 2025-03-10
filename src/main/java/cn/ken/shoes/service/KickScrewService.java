@@ -176,7 +176,7 @@ public class KickScrewService {
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         for (List<String> modelNos : partition) {
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
-            SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insert(price));
+            SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price));
         }
     }
 
