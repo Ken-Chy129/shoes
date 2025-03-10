@@ -173,10 +173,10 @@ public class KickScrewService {
     @SneakyThrows
     public void refreshPricesByModelNos(List<String> modelNoList) {
         kickScrewPriceMapper.delete(new QueryWrapper<>());
-        List<List<String>> partition = Lists.partition(modelNoList, 100);
+        List<List<String>> partition = Lists.partition(modelNoList, 60);
         for (List<String> modelNos : partition) {
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
-            kickScrewPriceMapper.insert(kickScrewPriceDOS);
+            SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insert(price));
         }
     }
 
