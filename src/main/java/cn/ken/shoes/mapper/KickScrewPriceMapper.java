@@ -12,6 +12,8 @@ import java.util.Set;
 @Mapper
 public interface KickScrewPriceMapper extends BaseMapper<KickScrewPriceDO> {
 
+    int insertIgnore(KickScrewPriceDO kickScrewPriceDO);
+
     long count();
 
     List<KickScrewPriceDO> selectPage(@Param("startIndex") long startIndex, @Param("pageSize") int pageSize);
