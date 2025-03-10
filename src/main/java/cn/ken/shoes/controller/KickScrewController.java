@@ -6,7 +6,6 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
-import cn.ken.shoes.util.LockHelper;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,6 +52,7 @@ public class KickScrewController {
      * 刷新当前kc商品表所有商品的价格
      */
     @GetMapping("refreshPrices")
+    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public void refreshPrices() {
         kickScrewService.refreshPrices();
     }

@@ -174,31 +174,18 @@ public class KickScrewService {
     public void refreshPricesByModelNos(List<String> modelNoList) {
         kickScrewPriceMapper.delete(new QueryWrapper<>());
         List<List<String>> partition = Lists.partition(modelNoList, 100);
-        CountDownLatch latch = new CountDownLatch(partition.size());
         for (List<String> modelNos : partition) {
-            Thread.ofVirtual().start(() -> {
-                try {
-                    LimiterHelper.limitKcItem();
-                    List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
-                    kickScrewPriceMapper.insert(kickScrewPriceDOS);
-                } finally {
-                    latch.countDown();
-                }
-            });
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
+            kickScrewPriceMapper.insert(kickScrewPriceDOS);
         }
-        latch.await();
     }
 
     public void refreshPrices() {
-        try {
-            List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-            List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
-            hotModelNos.addAll(mustCrawlModelNos);
-            List<String> modelNos = hotModelNos.stream().distinct().toList();
-            refreshPricesByModelNos(modelNos);
-        } catch (Exception e) {
-            log.error("refreshPrices error, msg:{}", e.getMessage(), e);
-        }
+        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        hotModelNos.addAll(mustCrawlModelNos);
+        List<String> modelNos = hotModelNos.stream().distinct().toList();
+        refreshPricesByModelNos(modelNos);
     }
 
     public void refreshItems(boolean clearOld) {

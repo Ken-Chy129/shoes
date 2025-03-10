@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
@@ -31,13 +32,15 @@ public class KickScrewClient {
 
     private static final Integer PAGE_SIZE = 30;
 
-    private static final RateLimiter ITEM_LIMITER = RateLimiter.create(20);
-
     public List<KickScrewPriceDO> queryLowestPrice(List<String> modelNos) {
         String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,
                 JSON.toJSONString(Map.of("model_nos", modelNos)),
                 Headers.of("x-api-key", KickScrewConfig.API_KEY)
         );
+        if (StrUtil.isBlank(rawResult)) {
+            log.info("queryLowestPrice result is empty");
+            return Collections.emptyList();
+        }
         List<JSONObject> priceList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
         List<KickScrewPriceDO> result = new ArrayList<>();
         for (JSONObject jsonObject : priceList) {
@@ -103,7 +106,6 @@ public class KickScrewClient {
      * 根据条件（时间、品牌、性别、商品类型等）分页查询kc平台商品
      */
     public List<KickScrewItemDO> queryItemPageV2(KickScrewAlgoliaRequest request) {
-        ITEM_LIMITER.acquire();
         String result = queryAlgolia(buildAlgoliaBodyForItem(request));
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
