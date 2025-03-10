@@ -15,7 +15,6 @@ import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
-import com.google.common.util.concurrent.RateLimiter;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.stereotype.Component;
@@ -47,7 +46,13 @@ public class KickScrewClient {
             KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
             kickScrewPriceDO.setModelNo(jsonObject.getString("model_no"));
             kickScrewPriceDO.setPrice(jsonObject.getInteger("price"));
-            kickScrewPriceDO.setEuSize(jsonObject.getJSONObject("sizes").getString("eu"));
+            String euSize = jsonObject.getJSONObject("sizes").getString("eu");
+            if (euSize.endsWith(".33")) {
+                euSize = euSize.replace(".33", "");
+            } else if (euSize.endsWith(".67")) {
+                euSize = euSize.replace(".67", ".5");
+            }
+            kickScrewPriceDO.setEuSize(euSize);
             result.add(kickScrewPriceDO);
         }
         return result;
