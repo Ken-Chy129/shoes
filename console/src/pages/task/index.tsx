@@ -78,22 +78,28 @@ const TaskPage = () => {
             width: '12%', // 设置列宽为30%
         },
         {
+            title: '耗时',
+            dataIndex: 'cost',
+            key: 'cost',
+            width: '10%', // 设置列宽为30%
+        },
+        {
             title: '状态',
             dataIndex: 'status',
             key: 'status',
-            width: '10%', // 设置列宽为30%
+            width: '8%', // 设置列宽为30%
         },
         {
             title: '操作类型',
             dataIndex: 'operateType',
             key: 'operateType',
-            width: '10%', // 设置列宽为30%
+            width: '8%', // 设置列宽为30%
         },
         {
             title: '扩展属性',
             dataIndex: 'attributes',
             key: 'attributes',
-            width: '20%', // 设置列宽为30%
+            width: '30%', // 设置列宽为30%
         },
         // {
         //     title: '操作',
