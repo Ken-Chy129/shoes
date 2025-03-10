@@ -80,6 +80,15 @@ public class TaskDO {
             this.name = name;
             this.code = code;
         }
+
+        public static TaskStatusEnum from(String code) {
+            for (TaskStatusEnum value : TaskStatusEnum.values()) {
+                if (value.code.equals(code)) {
+                    return value;
+                }
+            }
+            return null;
+        }
     }
 
     @Getter
@@ -94,6 +103,15 @@ public class TaskDO {
         OperateStatusEnum(String name, String code) {
             this.name = name;
             this.code = code;
+        }
+
+        public static OperateStatusEnum from(String code) {
+            for (OperateStatusEnum value : OperateStatusEnum.values()) {
+                if (value.code.equals(code)) {
+                    return value;
+                }
+            }
+            return null;
         }
     }
 
@@ -110,6 +128,15 @@ public class TaskDO {
         PlatformEnum(String name, String code) {
             this.name = name;
             this.code = code;
+        }
+
+        public static PlatformEnum from(String code) {
+            for (PlatformEnum value : PlatformEnum.values()) {
+                if (value.code.equals(code)) {
+                    return value;
+                }
+            }
+            return null;
         }
     }
 }

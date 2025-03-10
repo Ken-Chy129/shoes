@@ -21,6 +21,6 @@ public class TaskRequest extends PageRequest {
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date endTime;
 
-    private Integer status;
+    private String status;
 
 }

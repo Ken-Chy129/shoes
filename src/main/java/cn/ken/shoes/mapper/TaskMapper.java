@@ -10,9 +10,9 @@ import java.util.List;
 @Mapper
 public interface TaskMapper extends BaseMapper<TaskDO> {
 
-    TaskDO selectTask(Integer type, String platform, Integer status);
+    TaskDO selectTask(Integer type, String platform, String status);
 
-    void updateTaskStatus(Long id, Integer status);
+    void updateTaskStatus(Long id, String status);
 
     Long count(TaskRequest request);
 

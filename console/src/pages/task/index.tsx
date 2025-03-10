@@ -32,54 +32,68 @@ const TaskPage = () => {
     }, []);
 
     const queryTaskList = () => {
-        const startTime = moment((conditionForm.getFieldValue("startTime"))).format('YYYY-MM-DD HH:mm:ss');
-        console.log(conditionForm.getFieldValue("startTime"));
+        let startTime = conditionForm.getFieldValue("startTime");
+        if (startTime != null && startTime !== '') {
+            startTime = moment(startTime).format('YYYY-MM-DD HH:mm:ss');
+        }
+        let endTime = conditionForm.getFieldValue("endTime");
+        if (endTime != null && endTime !== '') {
+            endTime = moment(endTime).format('YYYY-MM-DD HH:mm:ss');
+        }
         const taskType = conditionForm.getFieldValue("taskType");
         const platform = conditionForm.getFieldValue("platform");
-        // const startTime = conditionForm.getFieldValue("startTime");
-        const endTime = conditionForm.getFieldValue("endTime");
         const status = conditionForm.getFieldValue("status");
-        doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
-            onSuccess: res => setTaskList(res.data)
+        const operateType = conditionForm.getFieldValue("operateType");
+        doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, operateType, pageIndex, pageSize}, {
+            onSuccess: res => {
+                setTaskList(res.data);
+                message.success("查询成功").then();
+            }
         });
     }
 
     const columns = [
         {
-            title: '任务类型',
-            dataIndex: 'type',
-            key: 'type',
-            width: '22%'
-        },
-        {
             title: '平台',
             dataIndex: 'platform',
             key: 'platform',
-            width: '18%', // 设置列宽为30%
+            width: '10%', // 设置列宽为30%
+        },
+        {
+            title: '任务类型',
+            dataIndex: 'taskType',
+            key: 'type',
+            width: '10%'
         },
         {
             title: '开始时间',
             dataIndex: 'startTime',
             key: 'startTime',
-            width: '23%', // 设置列宽为30%
+            width: '12%', // 设置列宽为30%
         },
         {
             title: '结束时间',
             dataIndex: 'endTime',
             key: 'endTime',
-            width: '15%', // 设置列宽为30%
+            width: '12%', // 设置列宽为30%
         },
         {
             title: '状态',
             dataIndex: 'status',
             key: 'status',
-            width: '15%', // 设置列宽为30%
+            width: '10%', // 设置列宽为30%
+        },
+        {
+            title: '操作类型',
+            dataIndex: 'operateType',
+            key: 'operateType',
+            width: '10%', // 设置列宽为30%
         },
         {
             title: '扩展属性',
             dataIndex: 'attributes',
             key: 'attributes',
-            width: '15%', // 设置列宽为30%
+            width: '20%', // 设置列宽为30%
         },
         // {
         //     title: '操作',
@@ -105,25 +119,7 @@ const TaskPage = () => {
         <Form form={conditionForm}
               style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
             <div style={{display: "flex"}}>
-                <Form.Item name="taskType" label="任务类型">
-                    <Select
-                        style={{width: 160}}
-                        placeholder="请选择字段"
-                        allowClear
-                        showSearch={true}
-                        optionFilterProp="label"
-                        options={
-                            [
-                                {label: '全量刷新商品', value: 1},
-                                {label: '增量刷新商品', value: 2},
-                                {label: '刷新商品价格', value: 3},
-                                {label: '改价', value: 4},
-                            ]
-                        }
-                        notFoundContent={"该命名空间下暂无字段"}
-                    />
-                </Form.Item>
-                <Form.Item name="platform" label="平台" style={{marginLeft: 20}}>
+                <Form.Item name="platform" label="平台">
                     <Select
                         style={{width: 160}}
                         placeholder="请选择字段"
@@ -133,8 +129,27 @@ const TaskPage = () => {
                         options={
                             [
                                 {label: '得物', value: 'poison'},
-                                {label: 'KickScrew', value: 'kc'},
-                                // {label: '快速价格', value: 'fast'},
+                                {label: 'KickScrew', value: 'kickscrew'},
+                                {label: '绿叉', value: 'stockx'},
+                            ]
+                        }
+                        notFoundContent={"该命名空间下暂无字段"}
+                    />
+                </Form.Item>
+                <Form.Item name="taskType" label="任务类型" style={{marginLeft: 20}}>
+                    <Select
+                        style={{width: 160}}
+                        placeholder="请选择字段"
+                        allowClear
+                        showSearch={true}
+                        optionFilterProp="label"
+                        options={
+                            [
+                                {label: '全量刷新商品', value: "refreshAllItems"},
+                                {label: '增量刷新商品', value: "refreshIncrementalItems"},
+                                {label: '全量刷新价格', value: "refreshAllPrices"},
+                                {label: '增量商品价格', value: "refreshIncrementalPrices"},
+                                {label: '改价', value: "changePrices"},
                             ]
                         }
                         notFoundContent={"该命名空间下暂无字段"}
@@ -161,10 +176,26 @@ const TaskPage = () => {
                         optionFilterProp="label"
                         options={
                             [
-                                {label: '运行中', value: 1},
-                                {label: '成功', value: 2},
-                                {label: '失败', value: 3},
-                                {label: '暂停', value: 4},
+                                {label: '运行中', value: "running"},
+                                {label: '执行完成', value: "success"},
+                                {label: '执行失败', value: "failed"},
+                                {label: '执行中止', value: "terminated"},
+                            ]
+                        }
+                        notFoundContent={"该命名空间下暂无字段"}
+                    />
+                </Form.Item>
+                <Form.Item name="operateType" label="操作类型" style={{marginLeft: 20}}>
+                    <Select
+                        style={{width: 160}}
+                        placeholder="请选择字段"
+                        allowClear
+                        showSearch={true}
+                        optionFilterProp="label"
+                        options={
+                            [
+                                {label: '人工执行', value: "manually"},
+                                {label: '系统触发', value: "system"}
                             ]
                         }
                         notFoundContent={"该命名空间下暂无字段"}
