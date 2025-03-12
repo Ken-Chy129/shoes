@@ -36,7 +36,8 @@ const SettingPage = () => {
 
     const updatePoisonSetting = () => {
         const apiMode = poisonForm.getFieldValue("apiMode");
-        doPostRequest(SETTING_API.POISON, {apiMode}, {
+        const maxPrice = poisonForm.getFieldValue("maxPrice");
+        doPostRequest(SETTING_API.POISON, {apiMode, maxPrice}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -73,6 +74,9 @@ const SettingPage = () => {
                                 ]
                             }
                         />
+                    </Form.Item>
+                    <Form.Item name="maxPrice" label="最大价格限制" style={{marginLeft: 20}}>
+                        <Input/>
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={updatePoisonSetting}>
