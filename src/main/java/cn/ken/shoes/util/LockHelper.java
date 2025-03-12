@@ -9,6 +9,8 @@ public class LockHelper {
 
     private static final AtomicBoolean KC_ITEM_INITIALIZED = new AtomicBoolean(false);
 
+    public static Boolean CLEAN_OLD = true;
+
     public static void setKcItemStatus(boolean status) {
         while (!KC_ITEM_INITIALIZED.compareAndSet(!status, status)) {
             try {
