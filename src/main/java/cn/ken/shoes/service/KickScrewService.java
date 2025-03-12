@@ -241,4 +241,66 @@ public class KickScrewService {
         }
         return uploadCnt;
     }
+
+    public int refreshPriceV2() {
+        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        hotModelNos.addAll(mustCrawlModelNos);
+        List<String> modelNoList = hotModelNos.stream().distinct().toList();
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
+        List<List<String>> partition = Lists.partition(modelNoList, 60);
+        int uploadCnt = 0;
+        if (LockHelper.CLEAN_OLD) {
+            // todo:只下架不赢利的商品
+            kickScrewClient.deleteAllItems();
+        }
+        LockHelper.CLEAN_OLD = false;
+        for (List<String> modelNos : partition) {
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
+            Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
+            uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS);
+        }
+        return uploadCnt;
+    }
+
+    public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
+        int uploadCnt = 0;
+        try {
+            // 1.查询得物价格
+            Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+            List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(modelNos);
+            // 2.查询对应的货号在kc的价格
+            Map<String, Integer> kcPriceMap = kickScrewPriceDOS.stream()
+                    .collect(Collectors.toMap(
+                            kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
+                            KickScrewPriceDO::getPrice,
+                            (k1, k2) -> k1
+                    ));
+            List<KickScrewUploadItem> toUpload = new ArrayList<>();
+            for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+                String modelNo = poisonPriceDO.getModelNo();
+                String euSize = poisonPriceDO.getEuSize();
+                Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
+                if (kcPrice == null || poisonPriceDO.getPrice() == null) {
+                    continue;
+                }
+                boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
+                if (!canEarn) {
+                    continue;
+                }
+                KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
+                kickScrewUploadItem.setModel_no(modelNo);
+                kickScrewUploadItem.setSize(euSize);
+                kickScrewUploadItem.setSize_system("EU");
+                kickScrewUploadItem.setQty(1);
+                kickScrewUploadItem.setPrice(kcPrice - 1);
+                toUpload.add(kickScrewUploadItem);
+            }
+            uploadCnt += toUpload.size();
+            kickScrewClient.batchUploadItems(toUpload);
+        } catch (Exception e) {
+            log.error(e.getMessage(), e);
+        }
+        return uploadCnt;
+    }
 }
