@@ -25,7 +25,7 @@ public class TaskAspect {
     private TaskMapper taskMapper;
 
     @Around("@annotation(cn.ken.shoes.annotation.Task) && @annotation(task)")
-    public Object recordTask(ProceedingJoinPoint point, Task task) throws Throwable {
+    public Object recordTask(ProceedingJoinPoint point, Task task) {
         String taskName = point.getTarget().getClass().getName() + "." + point.getSignature().getName();
         Map<String, String> attributes = new HashMap<>();
         attributes.put("taskName", taskName);
@@ -39,7 +39,7 @@ public class TaskAspect {
         try {
             result = point.proceed();
             return result;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             TaskDO update = new TaskDO();
             update.setId(taskDO.getId());
             update.setStatus(TaskDO.TaskStatusEnum.FAILED.getCode());

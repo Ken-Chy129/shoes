@@ -31,12 +31,14 @@ public class SettingController {
     public Result<JSONObject> queryPoisonSetting() {
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("apiMode", PoisonSwitch.API_MODE);
+        jsonObject.put("maxPrice", PoisonSwitch.MAX_PRICE);
         return Result.buildSuccess(jsonObject);
     }
 
     @PostMapping("poison")
     public Result<JSONObject> updatePoisonSetting(@RequestBody JSONObject jsonObject) {
         PoisonSwitch.API_MODE = jsonObject.getInteger("apiMode");
+        PoisonSwitch.MAX_PRICE = jsonObject.getInteger("maxPrice");
         return Result.buildSuccess(jsonObject);
     }
 

@@ -3,6 +3,7 @@ package cn.ken.shoes.client;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PoisonConfig;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
@@ -46,7 +47,7 @@ public class PoisonClient {
             for (JSONObject data : dataList) {
                 Integer price = data.getInteger("minprice");
                 String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
-                if (price == null || price == 0 || size == null || sizeSet.contains(size)) {
+                if (price == null || price == 0 || size == null || sizeSet.contains(size) || price > 100 * PoisonSwitch.MAX_PRICE) {
                     continue;
                 } else {
                     sizeSet.add(size);
@@ -111,7 +112,7 @@ public class PoisonClient {
                             poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type) / 100));
                         }
                     }
-                    if (poisonPriceDO.getPrice() != null) {
+                    if (poisonPriceDO.getPrice() != null && poisonPriceDO.getPrice() <= PoisonSwitch.MAX_PRICE) {
                         poisonPriceDOList.add(poisonPriceDO);
                     }
                 });
