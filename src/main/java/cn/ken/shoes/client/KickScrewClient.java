@@ -13,6 +13,7 @@ import cn.ken.shoes.model.order.Order;
 import cn.ken.shoes.model.order.OrderRequest;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,58 @@ public class KickScrewClient {
     private static final String AGENT = "Algolia for JavaScript (4.24.0); Browser; instantsearch.js (4.74.0); react (18.3.1); react-instantsearch (7.13.0); react-instantsearch-core (7.13.0); next.js (14.2.10); JS Helper (3.22.4)";
 
     private static final Integer PAGE_SIZE = 30;
+
+    public List<KickScrewPriceDO> queryStockList(Integer pageNo, Integer pageSize) {
+        JSONObject json = new JSONObject();
+        json.put("page_no", pageNo);
+        json.put("page_size", pageSize);
+        json.put("min_qty", 1);
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK,
+                json.toJSONString(),
+                Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
+        if (StrUtil.isBlank(rawResult)) {
+            return Collections.emptyList();
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        List<JSONObject> javaList = result.getJSONArray("data").toJavaList(JSONObject.class);
+        List<KickScrewPriceDO> priceList = new ArrayList<>();
+        for (JSONObject jsonObject : javaList) {
+            String euSize = null;
+            List<JSONObject> sizeList = jsonObject.getJSONArray("size_values").toJavaList(JSONObject.class);
+            for (JSONObject size : sizeList) {
+                String sizeSystem = size.getString("size_system");
+                if (sizeSystem.equals("EU")) {
+                    euSize = size.getString("size");
+                }
+            }
+            if (StrUtil.isBlank(euSize)) {
+                continue;
+            }
+            KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
+            kickScrewPriceDO.setModelNo(jsonObject.getString("model_no"));
+            kickScrewPriceDO.setPrice(jsonObject.getInteger("price"));
+            kickScrewPriceDO.setEuSize(euSize);
+            priceList.add(kickScrewPriceDO);
+        }
+        return priceList;
+    }
+
+    public int queryStockCnt() {
+        JSONObject json = new JSONObject();
+        json.put("page_no", 0);
+        json.put("page_size", 1);
+        json.put("min_qty", 1);
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,
+                json.toJSONString(),
+                Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
+        if (StrUtil.isBlank(rawResult)) {
+            return 20000;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        return result.getInteger("total");
+    }
 
     public List<KickScrewPriceDO> queryLowestPrice(List<String> modelNos) {
         String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,

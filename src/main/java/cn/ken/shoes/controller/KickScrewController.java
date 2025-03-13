@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
@@ -71,5 +72,10 @@ public class KickScrewController {
     @GetMapping("refreshPricesByModelNos")
     public void refreshPricesByModelNos(List<String> modelNos) {
         kickScrewService.refreshPricesByModelNos(modelNos);
+    }
+
+    @GetMapping("stock")
+    public Result<List<KickScrewPriceDO>> queryStockList() {
+        return Result.buildSuccess(kickScrewClient.queryStockList(0, 10));
     }
 }

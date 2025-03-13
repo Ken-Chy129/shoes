@@ -268,6 +268,9 @@ public class KickScrewService {
         try {
             // 1.查询得物价格
             Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+            if (CollectionUtils.isEmpty(modelNos)) {
+                return 0;
+            }
             List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(modelNos);
             // 2.查询对应的货号在kc的价格
             Map<String, Integer> kcPriceMap = kickScrewPriceDOS.stream()
