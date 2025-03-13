@@ -306,4 +306,33 @@ public class KickScrewService {
         }
         return uploadCnt;
     }
+
+
+    public void clearNoBenefitItem() {
+        int cnt = kickScrewClient.queryStockCnt();
+        for (int i = 0; i < cnt; i++) {
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryStockList(i, 100);
+            Set<String> collect = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
+            Map<String, Integer> map = poisonPriceMapper.selectListByModelNos(collect).stream().collect(Collectors.toMap(
+                    price -> price.getModelNo() + ":" + price.getEuSize(),
+                    PoisonPriceDO::getPrice
+            ));
+            List<KickScrewPriceDO> toDelete = new ArrayList<>();
+            for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                String modelNo = kickScrewPriceDO.getModelNo();
+                String euSize = kickScrewPriceDO.getEuSize();
+                Integer price = kickScrewPriceDO.getPrice();
+                Integer poisonPrice = map.get(modelNo + ":" + euSize);
+                // 得物无价，下架该商品
+                if (poisonPrice == null) {
+                    toDelete.add(kickScrewPriceDO);
+                }
+                if (!ShoesUtil.canEarn(poisonPrice, price + 1)) {
+                    // 无盈利，下架
+                    toDelete.add(kickScrewPriceDO);
+                }
+            }
+            kickScrewClient.deleteList(toDelete);
+        }
+    }
 }
