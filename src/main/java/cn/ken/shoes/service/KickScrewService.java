@@ -251,8 +251,7 @@ public class KickScrewService {
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         int uploadCnt = 0;
         if (LockHelper.CLEAN_OLD) {
-            // todo:只下架不赢利的商品
-            kickScrewClient.deleteAllItems();
+            clearNoBenefitItem();
         }
         LockHelper.CLEAN_OLD = false;
         for (List<String> modelNos : partition) {

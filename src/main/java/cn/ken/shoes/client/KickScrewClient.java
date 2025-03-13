@@ -73,7 +73,7 @@ public class KickScrewClient {
         json.put("page_no", 0);
         json.put("page_size", 1);
         json.put("min_qty", 1);
-        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK,
                 json.toJSONString(),
                 Headers.of("x-api-key", KickScrewConfig.API_KEY)
         );
