@@ -78,10 +78,10 @@ public class KickScrewClient {
                 Headers.of("x-api-key", KickScrewConfig.API_KEY)
         );
         if (StrUtil.isBlank(rawResult)) {
-            return 20000;
+            return 200;
         }
         JSONObject result = JSON.parseObject(rawResult);
-        return result.getInteger("total");
+        return Optional.ofNullable(result.getInteger("total")).map(total -> (int) Math.ceil(total / 100.0)).orElse(200);
     }
 
     public List<KickScrewPriceDO> queryLowestPrice(List<String> modelNos) {
@@ -293,6 +293,23 @@ public class KickScrewClient {
     public void deleteAllItems() {
         HttpUtil.doDelete(KickScrewApiConstant.DELETE_ALL_ITEMS,
                 "",
+                Headers.of("x-api-key", KickScrewConfig.API_KEY)
+        );
+    }
+
+    public void deleteList(List<KickScrewPriceDO> toDeleteList) {
+        JSONObject json = new JSONObject();
+        List<JSONObject> items = new ArrayList<>();
+        for (KickScrewPriceDO kickScrewPriceDO : toDeleteList) {
+            JSONObject item = new JSONObject();
+            item.put("model_no", kickScrewPriceDO.getModelNo());
+            item.put("size_system", "EU");
+            item.put("size", kickScrewPriceDO.getEuSize());
+            items.add(item);
+        }
+        json.put("items", items);
+        HttpUtil.doDelete(KickScrewApiConstant.DELETE_LIST,
+                json.toJSONString(),
                 Headers.of("x-api-key", KickScrewConfig.API_KEY)
         );
     }

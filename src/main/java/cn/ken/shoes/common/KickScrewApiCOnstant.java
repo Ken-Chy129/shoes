@@ -28,9 +28,14 @@ public class KickScrewApiConstant {
     public static final String BATCH_UPLOAD_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/batch-update";
 
     /**
-     * B端清除商家商品
+     * B端清除上架商品
      */
     public static final String DELETE_ALL_ITEMS = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/all";
+
+    /**
+     * B端清除指定商品
+     */
+    public static final String DELETE_LIST = "https://api.crewsupply.kickscrew.com/sapi/v2/stock";
 
     /**
      * B端查询订单
@@ -46,4 +51,9 @@ public class KickScrewApiConstant {
      * B端查询平台最低价
      */
     public static final String QUERY_LOWEST_PRICE = "https://api.crewsupply.kickscrew.com/sapi/v2/bidding/platform-lowest";
+
+    /**
+     * B端查询上架商品
+     */
+    public static final String QUERY_STOCK = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/list";
 }
