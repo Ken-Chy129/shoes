@@ -78,4 +78,10 @@ public class KickScrewController {
     public Result<List<KickScrewPriceDO>> queryStockList() {
         return Result.buildSuccess(kickScrewClient.queryStockList(0, 10));
     }
+
+    @GetMapping("deleteList")
+    public Result<Void> deleteList() {
+        kickScrewService.clearNoBenefitItem();
+        return Result.buildSuccess();
+    }
 }
