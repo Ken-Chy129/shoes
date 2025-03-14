@@ -126,7 +126,8 @@ public class PoisonService {
                                 }
                             }
                             LimiterHelper.limitPoisonPrice();
-                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
+//                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
+                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceV3(itemDO.getSpuId());
                             Optional.ofNullable(poisonPriceDOList).ifPresent(toInsert::addAll);
                         } catch (Exception e) {
                             log.error(e.getMessage());
