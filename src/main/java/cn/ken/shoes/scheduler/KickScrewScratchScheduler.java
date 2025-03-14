@@ -21,7 +21,7 @@ public class KickScrewScratchScheduler {
     @Resource
     private PoisonService poisonService;
 
-    @Scheduled(cron = "0 9 1 * * *")
+    @Scheduled(cron = "0 9 0 * * *")
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshKcItems() {
         LockHelper.lockKcItem();
@@ -30,7 +30,7 @@ public class KickScrewScratchScheduler {
         LockHelper.setKcItemStatus(true);
     }
 
-    @Scheduled(cron = "0 10 1 * * *")
+    @Scheduled(cron = "0 10 0 * * *")
     @Task(platform = TaskDO.PlatformEnum.POISON, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshPoisonPrice() {
         LockHelper.setKcItemStatus(false);
