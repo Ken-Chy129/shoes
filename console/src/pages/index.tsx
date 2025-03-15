@@ -1,20 +1,6 @@
-import {
-    Button, Card, DatePicker,
-    Form,
-    Input,
-    message,
-    Modal,
-    Radio,
-    Select,
-    Space,
-    Table,
-    Tabs,
-    Tooltip
-} from "antd";
-import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
-import {TEMPLATE_API} from "@/services/management";
-import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
+import {Button, Card, Form, Input, message, Select} from "antd";
+import React, {useEffect} from "react";
+import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
 const SettingPage = () => {
@@ -51,6 +37,14 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.KC, {exchangeRate, freight, minProfit}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
+            }
+        })
+    }
+
+    const authorize = () => {
+        doGetRequest(SETTING_API.AUTHORIZE_URL, {}, {
+            onSuccess: res => {
+                window.open(res.data, '_blank');
             }
         })
     }
@@ -103,6 +97,19 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={updateKcSetting}>
                             修改
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+        </Card>
+        <br/>
+        <Card title={"stockx配置"}>
+            <Form form={kcForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item>
+                        <Button type="primary" htmlType="submit" onClick={authorize}>
+                            初始化认证Code
                         </Button>
                     </Form.Item>
                 </div>

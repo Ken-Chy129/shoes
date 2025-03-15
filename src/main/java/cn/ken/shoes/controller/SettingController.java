@@ -1,10 +1,12 @@
 package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
+import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
+import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
@@ -26,6 +28,9 @@ public class SettingController {
 
     @Resource
     private BrandMapper brandMapper;
+
+    @Resource
+    private StockXClient stockXClient;
 
     @GetMapping("poison")
     public Result<JSONObject> queryPoisonSetting() {
@@ -57,6 +62,25 @@ public class SettingController {
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
         return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx/getAuthorizeUrl")
+    public Result<String> getAuthorizeUrl() {
+        return Result.buildSuccess(stockXClient.getAuthorizeUrl());
+    }
+
+    @PostMapping("stockx/initToken")
+    public Result<Boolean> initToken() {
+        if (stockXClient.initToken()) {
+            return Result.buildSuccess(true);
+        } else {
+            return Result.buildError("初始化失败");
+        }
+    }
+
+    @GetMapping("stockx")
+    public Result<StockXConfig.OAuth2Config> queryStockxSetting() {
+        return Result.buildSuccess(StockXConfig.CONFIG);
     }
 
     @GetMapping("queryBrandSetting")
