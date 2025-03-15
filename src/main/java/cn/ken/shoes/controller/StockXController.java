@@ -3,7 +3,8 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.model.stockx.StockXItem;
+import cn.ken.shoes.model.entity.StockXItemDO;
+import cn.ken.shoes.service.StockXService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -19,14 +20,18 @@ public class StockXController {
     @Resource
     private StockXClient stockXClient;
 
+    @Resource
+    private StockXService stockXService;
+
     @GetMapping("queryItems")
     public String queryItems(String brand) {
         return stockXClient.queryItemByBrand(brand);
     }
 
     @GetMapping("test")
-    public Result<List<StockXItem>> test(String query) {
-        return Result.buildSuccess(stockXClient.searchItems(query, 1));
+    public Result<List<StockXItemDO>> test(String query) {
+        stockXService.searchItems();
+        return Result.buildSuccess();
     }
 
     @GetMapping("create")
