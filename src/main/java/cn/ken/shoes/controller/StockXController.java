@@ -24,7 +24,7 @@ public class StockXController {
 
     @GetMapping("test")
     public Result<List<StockXItem>> test(String query) {
-        return Result.buildSuccess(stockXClient.searchItems(query, 1, 10));
+        return Result.buildSuccess(stockXClient.searchItems(query, 1));
     }
 
 }
