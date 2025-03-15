@@ -9,13 +9,15 @@ enum PRICE_API {
 
 enum SETTING_API {
     KC = '/api/setting/kc',
+    POISON = '/api/setting/poison',
+    STOCKX = '/api/setting/stockx',
     QUERY_BRAND_SETTING = '/api/setting/queryBrandSetting',
     UPDATE_BRAND_SETTING = '/api/setting/updateBrandSetting',
     QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',
     UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
-    POISON = '/api/setting/poison',
     AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',
+    INIT_TOKEN = '/api/setting/stockx/initToken',
 }
 
 enum KC_API {
