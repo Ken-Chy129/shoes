@@ -39,6 +39,20 @@ public class StockXClient {
     @Value("${stockx.apiKey}")
     private String apiKey;
 
+    public boolean queryListing(String batchId) {
+        String rawResult = HttpUtil.doGet(StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId), buildHeaders());
+        if (rawResult == null) {
+            return false;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        String status = result.getString("status");
+        JSONObject itemStatuses = result.getJSONObject("itemStatuses");
+        if ("COMPLETED".equals(status)) {
+            return true;
+        }
+        return false;
+    }
+
     public String createListing(List<Pair<String, String>> items) {
         List<Map<String, Object>> toCreate = new ArrayList<>();
         for (Pair<String, String> item : items) {
@@ -59,11 +73,6 @@ public class StockXClient {
         JSONObject result = JSON.parseObject(rawResult);
         String batchId = result.getString("batchId");
         String totalItems = result.getString("totalItems");
-        String statusResult = HttpUtil.doGet(StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId), buildHeaders());
-        if (statusResult == null) {
-            return null;
-        }
-        System.out.println(JSON.parseObject(statusResult));
         return batchId;
     }
 
