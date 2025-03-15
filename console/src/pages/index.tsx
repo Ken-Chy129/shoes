@@ -6,6 +6,7 @@ import {SETTING_API} from "@/services/shoes";
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
     const [kcForm] = Form.useForm();
+    const [stockxForm] = Form.useForm();
 
     useEffect(() => {
         doGetRequest(SETTING_API.POISON, {}, {
@@ -16,6 +17,11 @@ const SettingPage = () => {
         doGetRequest(SETTING_API.KC, {}, {
             onSuccess: res => {
                 kcForm.setFieldsValue(res.data);
+            }
+        });
+        doGetRequest(SETTING_API.STOCKX, {}, {
+            onSuccess: res => {
+                stockxForm.setFieldsValue(res.data);
             }
         });
     }, []);
@@ -45,6 +51,19 @@ const SettingPage = () => {
         doGetRequest(SETTING_API.AUTHORIZE_URL, {}, {
             onSuccess: res => {
                 window.open(res.data, '_blank');
+            }
+        })
+    }
+
+    const initToken = () => {
+        doPostRequest(SETTING_API.INIT_TOKEN, {}, {
+            onSuccess: _ => {
+                message.success("初始化成功").then(_ => {});
+                doGetRequest(SETTING_API.STOCKX, {}, {
+                    onSuccess: res => {
+                        stockxForm.setFieldsValue(res.data);
+                    }
+                });
             }
         })
     }
@@ -104,12 +123,20 @@ const SettingPage = () => {
         </Card>
         <br/>
         <Card title={"stockx配置"}>
-            <Form form={kcForm}
+            <Form form={stockxForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
-                    <Form.Item>
+                    <Form.Item label="令牌有效期">
+                        {stockxForm.getFieldValue("expireTime")}
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={authorize}>
-                            初始化认证Code
+                            认证
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={initToken}>
+                            初始化令牌
                         </Button>
                     </Form.Item>
                 </div>
