@@ -64,6 +64,7 @@ public class StockXClient {
             return null;
         }
         System.out.println(JSON.parseObject(statusResult));
+        return batchId;
     }
 
     public List<StockXPrice> searchPrice(String productId) {
