@@ -24,6 +24,8 @@ public class StockXConfig {
 
     public static final String SEARCH_SIZE = "https://api.stockx.com/v2/catalog/products/{productId}/variants";
 
+    public static final String SEARCH_PRICE = "https://api.stockx.com/v2/catalog/products/{productId}/market-data";
+
     @Data
     public static class OAuth2Config {
         private String accessToken;
