@@ -64,6 +64,11 @@ public class SettingController {
         return Result.buildSuccess(true);
     }
 
+    @GetMapping("stockx")
+    public Result<StockXConfig.OAuth2Config> queryStockxSetting() {
+        return Result.buildSuccess(StockXConfig.CONFIG);
+    }
+
     @GetMapping("stockx/getAuthorizeUrl")
     public Result<String> getAuthorizeUrl() {
         return Result.buildSuccess(stockXClient.getAuthorizeUrl());
@@ -74,13 +79,17 @@ public class SettingController {
         if (stockXClient.initToken()) {
             return Result.buildSuccess(true);
         } else {
-            return Result.buildError("初始化失败");
+            return Result.buildError("初始化令牌失败");
         }
     }
 
-    @GetMapping("stockx")
-    public Result<StockXConfig.OAuth2Config> queryStockxSetting() {
-        return Result.buildSuccess(StockXConfig.CONFIG);
+    @PostMapping("stockx/refreshToken")
+    public Result<Boolean> refreshToken() {
+        if (stockXClient.refreshToken()) {
+            return Result.buildSuccess(true);
+        } else {
+            return Result.buildError("刷新令牌失败");
+        }
     }
 
     @GetMapping("queryBrandSetting")

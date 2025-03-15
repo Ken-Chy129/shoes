@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.TimeUtil;
@@ -11,8 +12,12 @@ import okhttp3.Headers;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -32,6 +37,29 @@ public class StockXClient {
     @Value("${stockx.clientSecret}")
     private String clientSecret;
 
+    public boolean refreshToken() {
+        JSONObject params = new JSONObject();
+        params.put("grant_type", "refresh_token");
+        params.put("client_id", clientId);
+        params.put("client_secret", clientSecret);
+        params.put("audience", "gateway.stockx.com");
+        params.put("refresh_token", StockXConfig.CONFIG.getRefreshToken());
+        String rawResult = HttpUtil.doPost(StockXConfig.TOKEN, params.toJSONString(), Headers.of("content-type", "application/x-www-form-urlencoded"));
+        if (rawResult == null) {
+            return false;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        if (result.containsKey("error")) {
+            log.error("initToken error, msg:{}, description:{}", result.getString("error"), result.getString("error_description"));
+            return false;
+        }
+        Integer expiresIn = result.getInteger("expires_in");
+        LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
+        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.getFormatter()));
+        StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
+        return true;
+    }
+
     public boolean initToken() {
         JSONObject params = new JSONObject();
         params.put("grant_type", "authorization_code");
@@ -44,6 +72,10 @@ public class StockXClient {
             return false;
         }
         JSONObject result = JSON.parseObject(rawResult);
+        if (result.containsKey("error")) {
+            log.error("initToken error, msg:{}, description:{}", result.getString("error"), result.getString("error_description"));
+            return false;
+        }
         StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
         StockXConfig.CONFIG.setRefreshToken(result.getString("refresh_token"));
         StockXConfig.CONFIG.setIdToken(result.getString("id_token"));

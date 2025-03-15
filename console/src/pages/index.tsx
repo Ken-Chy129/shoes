@@ -68,6 +68,19 @@ const SettingPage = () => {
         })
     }
 
+    const refreshToken = () => {
+        doPostRequest(SETTING_API.REFRESH_TOKEN, {}, {
+            onSuccess: _ => {
+                message.success("刷新成功").then(_ => {});
+                doGetRequest(SETTING_API.STOCKX, {}, {
+                    onSuccess: res => {
+                        stockxForm.setFieldsValue(res.data);
+                    }
+                });
+            }
+        })
+    }
+
     return <>
         <Card title={"得物配置"}>
             <Form form={poisonForm}
@@ -137,6 +150,11 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={initToken}>
                             初始化令牌
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={refreshToken}>
+                            刷新令牌
                         </Button>
                     </Form.Item>
                 </div>
