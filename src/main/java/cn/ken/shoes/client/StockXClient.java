@@ -1,6 +1,7 @@
 package cn.ken.shoes.client;
 
 import cn.hutool.core.lang.Pair;
+import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.model.entity.StockXItemDO;
@@ -128,6 +129,10 @@ public class StockXClient {
         List<JSONObject> itemList = jsonObject.getJSONArray("products").toJavaList(JSONObject.class);
         List<StockXItemDO> stockXItems = new ArrayList<>();
         for (JSONObject item : itemList) {
+            if (StrUtil.isBlank(item.getString("styleId"))) {
+                log.info("no styleId, urlKey:{}", item.getString("urlKey"));
+                continue;
+            }
             StockXItemDO stockXItemDO = new StockXItemDO();
             stockXItemDO.setProductId(item.getString("productId"));
             stockXItemDO.setBrand(item.getString("brand"));
