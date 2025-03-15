@@ -15,6 +15,7 @@ enum SETTING_API {
     UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
     POISON = '/api/setting/poison',
+    AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',
 }
 
 enum KC_API {

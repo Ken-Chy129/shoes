@@ -27,5 +27,7 @@ public class StockXConfig {
         private String refreshToken;
 
         private String idToken;
+
+        private String expireTime;
     }
 }

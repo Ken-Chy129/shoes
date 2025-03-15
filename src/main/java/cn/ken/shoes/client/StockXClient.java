@@ -2,6 +2,7 @@ package cn.ken.shoes.client;
 
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
@@ -10,6 +11,7 @@ import okhttp3.Headers;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +32,7 @@ public class StockXClient {
     @Value("${stockx.clientSecret}")
     private String clientSecret;
 
-    public JSONObject getToken() {
+    public boolean initToken() {
         JSONObject params = new JSONObject();
         params.put("grant_type", "authorization_code");
         params.put("client_id", clientId);
@@ -39,12 +41,16 @@ public class StockXClient {
         params.put("redirect_uri", redirectUri);
         String rawResult = HttpUtil.doPost(StockXConfig.TOKEN, params.toJSONString(), Headers.of("content-type", "application/x-www-form-urlencoded"));
         if (rawResult == null) {
-            return null;
+            return false;
         }
         JSONObject result = JSON.parseObject(rawResult);
         StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
         StockXConfig.CONFIG.setRefreshToken(result.getString("refresh_token"));
-        return result;
+        StockXConfig.CONFIG.setIdToken(result.getString("id_token"));
+        Integer expiresIn = result.getInteger("expires_in");
+        LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
+        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.getFormatter()));
+        return true;
     }
 
     public String getCode() {
