@@ -26,6 +26,10 @@ public class StockXConfig {
 
     public static final String SEARCH_PRICE = "https://api.stockx.com/v2/catalog/products/{productId}/market-data";
 
+    public static final String CREATE_LISTING = "https://api.stockx.com/v2/selling/batch/create-listing";
+
+    public static final String GET_LISTING_STATUS = "https://api.stockx.com/v2/selling/batch/create-listing/{batchId}";
+
     @Data
     public static class OAuth2Config {
         private String accessToken;
