@@ -3,7 +3,7 @@ package cn.ken.shoes.client;
 import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
-import cn.ken.shoes.model.stockx.StockXItem;
+import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.stockx.StockXPrice;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.ShoesUtil;
@@ -111,7 +111,7 @@ public class StockXClient {
         return result;
     }
 
-    public List<StockXItem> searchItems(String query, Integer pageNumber) {
+    public List<StockXItemDO> searchItems(String query, Integer pageNumber) {
         String rawResult = HttpUtil.doGet(STR."\{StockXConfig.SEARCH_ITEMS}?\{URLUtil.buildQuery(Map.of(
                 "query", query,
                 "pageNumber", pageNumber,
@@ -126,17 +126,17 @@ public class StockXClient {
             return Collections.emptyList();
         }
         List<JSONObject> itemList = jsonObject.getJSONArray("products").toJavaList(JSONObject.class);
-        List<StockXItem> stockXItems = new ArrayList<>();
+        List<StockXItemDO> stockXItems = new ArrayList<>();
         for (JSONObject item : itemList) {
-            StockXItem stockXItem = new StockXItem();
-            stockXItem.setProductId(item.getString("productId"));
-            stockXItem.setBrand(item.getString("brand"));
-            stockXItem.setProductType(item.getString("productType"));
-            stockXItem.setTitle(item.getString("title"));
-            stockXItem.setUrlKey(item.getString("urlKey"));
-            stockXItem.setModelNo(item.getString("styleId"));
-            stockXItem.setReleaseDate(item.getJSONObject("productAttributes").getString("releaseDate"));
-            stockXItems.add(stockXItem);
+            StockXItemDO stockXItemDO = new StockXItemDO();
+            stockXItemDO.setProductId(item.getString("productId"));
+            stockXItemDO.setBrand(item.getString("brand"));
+            stockXItemDO.setProductType(item.getString("productType"));
+            stockXItemDO.setTitle(item.getString("title"));
+            stockXItemDO.setUrlKey(item.getString("urlKey"));
+            stockXItemDO.setModelNo(item.getString("styleId"));
+            stockXItemDO.setReleaseDate(item.getJSONObject("productAttributes").getString("releaseDate"));
+            stockXItems.add(stockXItemDO);
         }
         return stockXItems;
     }
