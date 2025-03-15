@@ -41,13 +41,21 @@ public class StockXClient {
     @Value("${stockx.apiKey}")
     private String apiKey;
 
+    public List<StockXPrice> searchPrice(String productId) {
+        String rawResult = HttpUtil.doGet(StockXConfig.SEARCH_PRICE.replace("{productId}", productId), buildHeaders());
+        if (rawResult == null) {
+            return Collections.emptyList();
+        }
+        return JSON.parseArray(rawResult).toJavaList(StockXPrice.class);
+    }
+
     public List<StockXPrice> searchSize(String productId) {
         String rawResult = HttpUtil.doGet(StockXConfig.SEARCH_SIZE.replace("{productId}", productId), buildHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
         }
         List<JSONObject> sizeList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
-        List<StockXPrice> priceList = new ArrayList<>();
+        List<StockXPrice> result = new ArrayList<>();
         for (JSONObject jsonObject : sizeList) {
             StockXPrice stockXPrice = new StockXPrice();
             String variantId = jsonObject.getString("variantId");
@@ -63,9 +71,9 @@ public class StockXClient {
             stockXPrice.setProductId(productId);
             stockXPrice.setVariantId(variantId);
             stockXPrice.setEuSize(euSize);
-            priceList.add(stockXPrice);
+            result.add(stockXPrice);
         }
-        return priceList;
+        return result;
     }
 
     public List<StockXItem> searchItems(String query, Integer pageNumber) {

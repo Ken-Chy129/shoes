@@ -11,5 +11,7 @@ public class StockXPrice {
 
     private String euSize;
 
-    private String price;
+    private String sellFasterAmount;
+
+    private String earnMoreAmount;
 }
