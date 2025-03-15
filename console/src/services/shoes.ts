@@ -18,6 +18,7 @@ enum SETTING_API {
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
     AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',
     INIT_TOKEN = '/api/setting/stockx/initToken',
+    REFRESH_TOKEN = '/api/setting/stockx/refreshToken',
 }
 
 enum KC_API {
