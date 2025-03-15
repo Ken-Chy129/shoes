@@ -139,8 +139,8 @@ const SettingPage = () => {
             <Form form={stockxForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
-                    <Form.Item label="令牌有效期">
-                        {stockxForm.getFieldValue("expireTime")}
+                    <Form.Item name="expireTime" label="令牌有效期">
+                        <Input disabled={true} />
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={authorize}>

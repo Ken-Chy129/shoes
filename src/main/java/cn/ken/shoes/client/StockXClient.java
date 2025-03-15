@@ -2,6 +2,7 @@ package cn.ken.shoes.client;
 
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.model.stockx.StockXItem;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
@@ -12,12 +13,10 @@ import okhttp3.Headers;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.net.URLEncoder;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -36,6 +35,39 @@ public class StockXClient {
 
     @Value("${stockx.clientSecret}")
     private String clientSecret;
+
+    @Value("${stockx.apiKey}")
+    private String apiKey;
+
+    public List<StockXItem> searchItems(String query, Integer pageNumber, Integer pageSize) {
+        String rawResult = HttpUtil.doGet(STR."\{StockXConfig.SEARCH_ITEMS}?\{URLUtil.buildQuery(Map.of(
+                "query", query,
+                "pageNumber", pageNumber,
+                "pageSize", pageSize
+        ), Charset.defaultCharset())}", buildHeaders());
+        if (rawResult == null) {
+            return Collections.emptyList();
+        }
+        JSONObject jsonObject = JSON.parseObject(rawResult, JSONObject.class);
+        if (!jsonObject.containsKey("products")) {
+            log.error("searchItems error, result:{}", rawResult);
+            return Collections.emptyList();
+        }
+        List<JSONObject> itemList = jsonObject.getJSONArray("products").toJavaList(JSONObject.class);
+        List<StockXItem> stockXItems = new ArrayList<>();
+        for (JSONObject item : itemList) {
+            StockXItem stockXItem = new StockXItem();
+            stockXItem.setProductId(item.getString("productId"));
+            stockXItem.setBrand(item.getString("brand"));
+            stockXItem.setProductType(item.getString("productType"));
+            stockXItem.setTitle(item.getString("title"));
+            stockXItem.setUrlKey(item.getString("urlKey"));
+            stockXItem.setStyleId(item.getString("styleId"));
+            stockXItem.setReleaseDate(item.getJSONObject("productAttributes").getString("releaseDate"));
+            stockXItems.add(stockXItem);
+        }
+        return stockXItems;
+    }
 
     public boolean refreshToken() {
         JSONObject params = new JSONObject();
@@ -91,6 +123,14 @@ public class StockXClient {
 
     public String getAuthorizeUrl() {
         return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
+    }
+
+    private Headers buildHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+                "x-api-key", apiKey
+        );
     }
 
     public String queryItemByBrand(String brand) {
