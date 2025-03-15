@@ -2,10 +2,12 @@ package cn.ken.shoes.client;
 
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.util.HttpUtil;
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -15,6 +17,43 @@ import java.util.Map;
 @Slf4j
 @Component
 public class StockXClient {
+
+    @Value("${stockx.clientId}")
+    private String clientId;
+
+    @Value("${stockx.redirectUri}")
+    private String redirectUri;
+
+    @Value("${stockx.state}")
+    private String state;
+
+    @Value("${stockx.clientSecret}")
+    private String clientSecret;
+
+    public JSONObject getToken() {
+        JSONObject params = new JSONObject();
+        params.put("grant_type", "authorization_code");
+        params.put("client_id", clientId);
+        params.put("client_secret", clientSecret);
+        params.put("code", getCode());
+        params.put("redirect_uri", redirectUri);
+        String rawResult = HttpUtil.doPost(StockXConfig.TOKEN, params.toJSONString(), Headers.of("content-type", "application/x-www-form-urlencoded"));
+        if (rawResult == null) {
+            return null;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
+        StockXConfig.CONFIG.setRefreshToken(result.getString("refresh_token"));
+        return result;
+    }
+
+    public String getCode() {
+        return HttpUtil.doGet(StockXConfig.CALLBACK);
+    }
+
+    public String getAuthorizeUrl() {
+        return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
+    }
 
     public String queryItemByBrand(String brand) {
         String result = HttpUtil.doPost(StockXConfig.ITEM_LIST, buildItemQueryRequest(brand, 1, 40), Headers.of(

@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.StockXClient;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,4 +18,16 @@ public class StockXController {
     public String queryItems(String brand) {
         return stockXClient.queryItemByBrand(brand);
     }
+
+    @GetMapping("config")
+    public JSONObject config() {
+        return stockXClient.getToken();
+    }
+
+    @GetMapping("authorize")
+    public String authorize() {
+        return stockXClient.getAuthorizeUrl();
+    }
+
+
 }
