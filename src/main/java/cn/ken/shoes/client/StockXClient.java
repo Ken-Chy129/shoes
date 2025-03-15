@@ -3,7 +3,9 @@ package cn.ken.shoes.client;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.model.stockx.StockXItem;
+import cn.ken.shoes.model.stockx.StockXPrice;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -39,11 +41,38 @@ public class StockXClient {
     @Value("${stockx.apiKey}")
     private String apiKey;
 
-    public List<StockXItem> searchItems(String query, Integer pageNumber, Integer pageSize) {
+    public List<StockXPrice> searchSize(String productId) {
+        String rawResult = HttpUtil.doGet(StockXConfig.SEARCH_SIZE.replace("{productId}", productId), buildHeaders());
+        if (rawResult == null) {
+            return Collections.emptyList();
+        }
+        List<JSONObject> sizeList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
+        List<StockXPrice> priceList = new ArrayList<>();
+        for (JSONObject jsonObject : sizeList) {
+            StockXPrice stockXPrice = new StockXPrice();
+            String variantId = jsonObject.getString("variantId");
+            String euSize = null;
+            for (JSONObject json : jsonObject.getJSONObject("sizeChart").getJSONArray("availableConversions").toJavaList(JSONObject.class)) {
+                String type = json.getString("type");
+                if (!type.equals("eu")) {
+                    continue;
+                }
+                euSize = ShoesUtil.getEuSizeFromPoison(json.getString("size"));
+                break;
+            }
+            stockXPrice.setProductId(productId);
+            stockXPrice.setVariantId(variantId);
+            stockXPrice.setEuSize(euSize);
+            priceList.add(stockXPrice);
+        }
+        return priceList;
+    }
+
+    public List<StockXItem> searchItems(String query, Integer pageNumber) {
         String rawResult = HttpUtil.doGet(STR."\{StockXConfig.SEARCH_ITEMS}?\{URLUtil.buildQuery(Map.of(
                 "query", query,
                 "pageNumber", pageNumber,
-                "pageSize", pageSize
+                "pageSize", 50
         ), Charset.defaultCharset())}", buildHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
@@ -62,7 +91,7 @@ public class StockXClient {
             stockXItem.setProductType(item.getString("productType"));
             stockXItem.setTitle(item.getString("title"));
             stockXItem.setUrlKey(item.getString("urlKey"));
-            stockXItem.setStyleId(item.getString("styleId"));
+            stockXItem.setModelNo(item.getString("styleId"));
             stockXItem.setReleaseDate(item.getJSONObject("productAttributes").getString("releaseDate"));
             stockXItems.add(stockXItem);
         }

@@ -11,7 +11,7 @@ public class StockXItem {
 
     private String productType;
 
-    private String styleId;
+    private String modelNo;
 
     private String urlKey;
 
