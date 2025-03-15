@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.model.stockx.StockXItem;
@@ -17,10 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.nio.charset.Charset;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Component
@@ -40,6 +38,33 @@ public class StockXClient {
 
     @Value("${stockx.apiKey}")
     private String apiKey;
+
+    public String createListing(List<Pair<String, String>> items) {
+        List<Map<String, Object>> toCreate = new ArrayList<>();
+        for (Pair<String, String> item : items) {
+            String variantId = item.getKey();
+            String price = item.getValue();
+            Map<String, Object> map = new HashMap<>();
+            map.put("variantId", variantId);
+            map.put("amount", price);
+            map.put("quantity", 1);
+            toCreate.add(map);
+        }
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("items", toCreate);
+        String rawResult = HttpUtil.doPost(StockXConfig.CREATE_LISTING, jsonObject.toJSONString(), buildHeaders());
+        if (rawResult == null) {
+            return null;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        String batchId = result.getString("batchId");
+        String totalItems = result.getString("totalItems");
+        String statusResult = HttpUtil.doGet(StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId), buildHeaders());
+        if (statusResult == null) {
+            return null;
+        }
+        System.out.println(JSON.parseObject(statusResult));
+    }
 
     public List<StockXPrice> searchPrice(String productId) {
         String rawResult = HttpUtil.doGet(StockXConfig.SEARCH_PRICE.replace("{productId}", productId), buildHeaders());
