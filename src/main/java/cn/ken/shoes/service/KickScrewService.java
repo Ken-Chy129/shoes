@@ -325,6 +325,7 @@ public class KickScrewService {
                 // 得物无价，下架该商品
                 if (poisonPrice == null) {
                     toDelete.add(kickScrewPriceDO);
+                    continue;
                 }
                 if (!ShoesUtil.canEarn(poisonPrice, price + 1)) {
                     // 无盈利，下架
