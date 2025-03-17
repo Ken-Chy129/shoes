@@ -205,8 +205,7 @@ public class StockXClient {
     private Headers buildHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
-                "Authorization", "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ik5USkNNVVEyUmpBd1JUQXdORFk0TURRelF6SkZRelV4TWpneU5qSTNNRFJGTkRZME0wSTNSQSJ9.eyJodHRwczovL3N0b2NreC5jb20vY3VzdG9tZXJfdXVpZCI6IjBlMmMxZmMwLTI5MzAtMTFlZS04YTA2LTEyZjEyYmUwZWI1MSIsImh0dHBzOi8vc3RvY2t4LmNvbS9nYV9ldmVudCI6IkxvZ2dlZCBJbiIsImh0dHBzOi8vc3RvY2t4LmNvbS9lbWFpbF92ZXJpZmllZCI6ZmFsc2UsImlzcyI6Imh0dHBzOi8vYWNjb3VudHMuc3RvY2t4LmNvbS8iLCJzdWIiOiJhdXRoMHw2NGJjZGZlMjUxZDE5OWQyNWY5ZmVkYjMiLCJhdWQiOlsiZ2F0ZXdheS5zdG9ja3guY29tIiwiaHR0cHM6Ly9zdG9ja3gtcHJvZC5zdG9ja3gtcHJvZC5hdXRoMGFwcC5jb20vdXNlcmluZm8iXSwiaWF0IjoxNzQyMDUzMzIzLCJleHAiOjE3NDIwOTY1MjMsInNjb3BlIjoib3BlbmlkIG9mZmxpbmVfYWNjZXNzIiwiYXpwIjoiUXptbXdmV2h5Ym43azM0MXA0aWJrcEYzcWtvRER4RW0ifQ.VS8lbz-zDq4EgTn5QicNB-xYFl9mcTgdtrVml5pPkBLsoT9iW3b2vkD-FZf9PE0Tu0g-zyaSKLtbjEF2nAMYbKhSHshpQPIL4CNmsbB9ZaPXXqF_qe8KM_kB8dGIuOLqwmRwULd9f-gmGz0UqYxodopQidq1RRguGKcIve-TwmEOcqWBgClSO8WhlCM2idF2eIF9Pb9WhqCVh1vPR2DO_fuL_vIVcgra1M5qWnSd1qLnMqxqfRMljcom4YbGSqg_OcPpf_7KvjqIEcoFAmCPDgNb5c_TFCPhMCoXK9S6t9nafd8pyH541RlNwWVtyJHp0fYWd5sqiqIfQqKXXbLqVw",
+                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
                 "x-api-key", apiKey
         );
     }
