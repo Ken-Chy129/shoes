@@ -30,7 +30,7 @@ public class StockXService {
     public List<StockXPriceDO> searchPrices(List<String> productIds) {
         List<StockXPriceDO> result = new ArrayList<>();
         for (String productId : productIds) {
-            result.add(stockXClient.searchPrice(productId);
+            result.addAll(stockXClient.searchPrice(productId));
         }
         return result;
     }
