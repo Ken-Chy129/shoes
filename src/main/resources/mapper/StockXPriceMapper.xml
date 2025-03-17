@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.ken.shoes.mapper.StockXPriceMapper">
+
+    <insert id="insertIgnore">
+        insert ignore into stockx_price(variant_id, product_id, eu_size, sell_faster_amount, earn_more_amount) VALUE (
+            #{variantId},
+            #{productId},
+            #{euSize},
+            #{sellFasterAmount},
+            #{earnMoreAmount}
+        )
+    </insert>
+
+</mapper>
