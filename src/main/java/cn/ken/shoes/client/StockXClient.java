@@ -62,7 +62,7 @@ public class StockXClient {
             }
             stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
             JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
-            Optional.ofNullable(highestBid).ifPresent(bid -> stockXPriceDO.setSellNowAmount(bid.getInteger("amount")));
+            stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
             JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
             stockXPriceDO.setEarnMoreAmount(guidance.getInteger("earnMore"));
             stockXPriceDO.setSellFasterAmount(guidance.getInteger("sellFaster"));
