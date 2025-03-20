@@ -26,7 +26,7 @@ public class StockXController {
     private StockXService stockXService;
 
     @GetMapping("queryItems")
-    public String queryItems(String brand) {
+    public JSONObject queryItems(String brand) {
         return stockXClient.queryItemByBrand(brand);
     }
 
