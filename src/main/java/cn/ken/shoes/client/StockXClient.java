@@ -40,6 +40,37 @@ public class StockXClient {
     @Value("${stockx.apiKey}")
     private String apiKey;
 
+    @Value("${stockx.authorization}")
+    private String authorization;
+
+    public List<StockXPriceDO> queryPrice(String id) {
+        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(id), buildProHeaders());
+        if (StrUtil.isBlank(rawResult)) {
+            return null;
+        }
+        JSONObject jsonObject = JSON.parseObject(rawResult);
+        List<JSONObject> variants = jsonObject.getJSONObject("data").getJSONObject("product").getJSONArray("variants").toJavaList(JSONObject.class);
+        List<StockXPriceDO> result = new ArrayList<>();
+        for (JSONObject variant : variants) {
+            StockXPriceDO stockXPriceDO = new StockXPriceDO();
+            stockXPriceDO.setProductId(id);
+            stockXPriceDO.setVariantId(variant.getString("id"));
+            JSONObject euOption = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().filter(option -> option.getString("type").equals("eu")).findFirst().orElse(null);
+            if (euOption == null) {
+                log.error("queryPrice.euOption is null, variant:{}", variant);
+                continue;
+            }
+            stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+            JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
+            Optional.ofNullable(highestBid).ifPresent(bid -> stockXPriceDO.setSellNowAmount(bid.getInteger("amount")));
+            JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
+            stockXPriceDO.setEarnMoreAmount(guidance.getInteger("earnMore"));
+            stockXPriceDO.setSellFasterAmount(guidance.getInteger("sellFaster"));
+            result.add(stockXPriceDO);
+        }
+        return result;
+    }
+
     public boolean queryListing(String batchId) {
         String rawResult = HttpUtil.doGet(StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId), buildHeaders());
         if (rawResult == null) {
@@ -202,6 +233,14 @@ public class StockXClient {
         return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
     }
 
+    private Headers buildProHeaders() {
+        return Headers.of(
+                "authorization", authorization,
+                "Content-Type", "application/json",
+                "User-Agent", "Apifox/1.0.0 (https://apifox.com)"
+        );
+    }
+
     private Headers buildHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
@@ -237,6 +276,21 @@ public class StockXClient {
         variables.put("market", "US");
         variables.put("page", Map.of("index", index, "limit", limit));
         variables.put("sort", Map.of("id", "most-active"));
+        requestJson.put("variables", variables);
+        return requestJson.toJSONString();
+    }
+
+    private String buildPriceQueryRequest(String id) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "ProductVariants");
+        requestJson.put("query", "query ProductVariants($id: String!, $currency: CurrencyCode!, $country: String!, $market: String!, $skipFlexEligible: Boolean!, $skipGuidance: Boolean!) {\n  product(id: $id) {\n    id\n    productCategory\n    primaryCategory\n    title\n    model\n    name\n    media {\n      thumbUrl\n      __typename\n    }\n    variants {\n      id\n      hidden\n      isFlexEligible @skip(if: $skipFlexEligible)\n      sortOrder\n      traits {\n        size\n        sizeDescriptor\n        __typename\n      }\n      sizeChart {\n        displayOptions {\n          size\n          type\n          __typename\n        }\n        baseType\n        __typename\n      }\n      market(currencyCode: $currency) {\n        state(country: $country, market: $market) {\n          highestBid {\n            amount\n            chainId\n            __typename\n          }\n          askServiceLevels {\n            standard {\n              lowest {\n                amount\n                __typename\n              }\n              __typename\n            }\n            expressStandard {\n              lowest {\n                amount\n                __typename\n              }\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      pricingGuidance(country: $country, market: $market, currencyCode: $currency) @skip(if: $skipGuidance) {\n        sellingGuidance {\n          earnMore\n          sellFaster\n          __typename\n        }\n        marketConsensusGuidance {\n          standardSellerGuidance {\n            sellFaster\n            earnMore\n            beatUSPrice\n            marketRange {\n              idealMinPrice\n              idealMaxPrice\n              fairMinPrice\n              fairMaxPrice\n              __typename\n            }\n            __typename\n          }\n          flexSellerGuidance {\n            sellFaster\n            earnMore\n            beatUSPrice\n            marketRange {\n              idealMinPrice\n              idealMaxPrice\n              fairMinPrice\n              fairMaxPrice\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}");
+        JSONObject variables = new JSONObject();
+        variables.put("id", id);
+        variables.put("currency", "USD");
+        variables.put("country", "HK");
+        variables.put("market", "HK");
+        variables.put("skipFlexEligible", true);
+        variables.put("skipGuidance", false);
         requestJson.put("variables", variables);
         return requestJson.toJSONString();
     }
