@@ -5,12 +5,15 @@ import cn.ken.shoes.mapper.StockXItemMapper;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.util.SqlHelper;
+import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
 
+@Slf4j
 @Service
 public class StockXService {
 
@@ -27,11 +30,21 @@ public class StockXService {
         }
     }
 
-    public List<StockXPriceDO> searchPrices(List<String> productIds) {
-        List<StockXPriceDO> result = new ArrayList<>();
-        for (String productId : productIds) {
-            result.addAll(stockXClient.searchPrice(productId));
+    public void searchPrices(String productId) {
+        long startTime = System.currentTimeMillis();
+        RateLimiter limiter = RateLimiter.create(3);
+        for (int i = 0; i <= 120000; i++) {
+            int finalI = i;
+            Thread.startVirtualThread(() -> {
+                limiter.acquire();
+                stockXClient.searchPrice(productId);
+                if (finalI % 1000 == 0) {
+                    long endTime = System.currentTimeMillis();
+                    log.info("i:{}, cost:{}", finalI, endTime - startTime);
+                }
+            });
+
         }
-        return result;
+        log.info("finish, cost:{}", System.currentTimeMillis() - startTime);
     }
 }

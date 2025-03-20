@@ -31,7 +31,8 @@ public class StockXController {
 
     @GetMapping("queryPrices")
     public Result<List<StockXPriceDO>> queryPrices(String productId) {
-        return Result.buildSuccess(stockXService.searchPrices(List.of(productId)));
+        stockXService.searchPrices(productId);
+        return Result.buildSuccess();
     }
 
     @GetMapping("test")
