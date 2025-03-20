@@ -30,6 +30,8 @@ public class StockXConfig {
 
     public static final String GET_LISTING_STATUS = "https://api.stockx.com/v2/selling/batch/create-listing/{batchId}";
 
+    public static final String GRAPHQL = "https://pro.stockx.com/api/graphql";
+
     @Data
     public static class OAuth2Config {
         private String accessToken;
