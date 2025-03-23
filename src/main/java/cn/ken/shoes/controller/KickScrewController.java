@@ -36,7 +36,7 @@ public class KickScrewController {
     public Result<Void> refreshItems() {
         Thread.startVirtualThread(() -> {
             kickScrewService.refreshItems(false);
-            poisonService.refreshPrice(false);
+            poisonService.refreshPrice();
         });
         return Result.buildSuccess();
     }

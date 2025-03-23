@@ -3,13 +3,18 @@
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
     <insert id="insertOverwrite">
-        insert into poison_price(model_no, eu_size, price) value (
+        insert into poison_price(model_no, eu_size, price, version) value (
             #{modelNo},
             #{euSize},
-            #{price}
+            #{price},
+            #{version}
         ) on duplicate key update
             price = values(price)
     </insert>
+
+    <delete id="deleteOldVersion">
+        delete from poison_price where version = #{oldVersion}
+    </delete>
 
     <select id="selectPage" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">
         select *
@@ -30,5 +35,9 @@
     <select id="count" resultType="java.lang.Long">
         select count(*)
         from poison_price;
+    </select>
+
+    <select id="getMaxVersion" resultType="java.lang.Integer">
+        select max(version) from poison_price;
     </select>
 </mapper>

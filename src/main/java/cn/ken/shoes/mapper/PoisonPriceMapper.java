@@ -18,4 +18,8 @@ public interface PoisonPriceMapper extends BaseMapper<PoisonPriceDO> {
     List<PoisonPriceDO> selectPage(@Param("startIndex") Long startIndex, @Param("pageSize") Integer pageSize);
 
     List<PoisonPriceDO> selectListByModelNos(Set<String> modelNos);
+
+    Integer getMaxVersion();
+
+    void deleteOldVersion(int oldVersion);
 }

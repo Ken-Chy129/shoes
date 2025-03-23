@@ -96,7 +96,7 @@ public class PoisonClient {
             return poisonPriceDOList;
         } catch (Exception e) {
             log.error("queryPriceBySpuV2 error, msg:{}, model:{}, spuId:{}", e.getMessage(), modelNo, spuId);
-            return null;
+            return Collections.emptyList();
         }
     }
 
