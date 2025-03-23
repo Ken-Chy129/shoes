@@ -33,24 +33,9 @@ public class PriceController {
     @Resource
     private KickScrewService kickScrewService;
 
-    @Resource
-    private PoisonService poisonService;
-
-    @Resource
-    private ItemService KickScrewItemServiceImpl;
-
     @GetMapping("list")
     public Result<List<ItemDO>> list(PriceRequest priceRequest) {
         return priceService.queryPriceByCondition(priceRequest);
-    }
-
-    @GetMapping("list2")
-    public List<KickScrewItemDO> list2(String brand) {
-        KickScrewAlgoliaRequest kickScrewAlgoliaRequest = new KickScrewAlgoliaRequest();
-        kickScrewAlgoliaRequest.setBrands(List.of(brand));
-        kickScrewAlgoliaRequest.setReleaseYears(List.of(2024));
-        kickScrewAlgoliaRequest.setPageIndex(1);
-        return kickScrewClient.queryItemPageV2(kickScrewAlgoliaRequest);
     }
 
     @GetMapping("queryBrand")
@@ -72,11 +57,6 @@ public class PriceController {
     public void size() {
         kickScrewService.queryBrandGenderSizeMap();
     }
-
-//    @GetMapping("compareKc")
-//    public void compareKc() {
-//        KickScrewItemServiceImpl.compareWithPoisonAndChangePrice();
-//    }
 
     @GetMapping("refreshKcPrices")
     public void refreshKcPrices() {
