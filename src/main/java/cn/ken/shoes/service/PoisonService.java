@@ -44,48 +44,7 @@ public class PoisonService {
     private KickScrewItemMapper kickScrewItemMapper;
 
     @Resource
-    private SqlSessionFactory sqlSessionFactory;
-
-    @Resource
     private MustCrawlMapper mustCrawlMapper;
-
-    public void refreshPoisonItems() {
-        int total = 0;
-        for (Integer releaseYear : ItemQueryConfig.ALL_RELEASE_YEARS) {
-            try {
-                List<List<String>> result = AsyncUtil.runTasksWithResult(List.of(
-                        () -> kickScrewItemMapper.selectModelNoByReleaseYear(releaseYear),
-                        () -> poisonItemMapper.selectModelNoByReleaseYear(releaseYear)
-                ));
-                List<String> modelNoList = result.getFirst(), existModelNoList = result.get(1);
-                modelNoList.removeAll(existModelNoList);
-                List<Callable<List<PoisonItemDO>>> suppliers = Lists.partition(modelNoList, 5).stream()
-                        .map(fiveModelNoList -> (Callable<List<PoisonItemDO>>) () -> poisonClient.queryItemByModelNos(fiveModelNoList))
-                        .toList();
-                List<PoisonItemDO> items = AsyncUtil.runTasksWithResult(suppliers, 15).stream()
-                        .filter(CollectionUtils::isNotEmpty)
-                        .flatMap(List::stream)
-                        .toList();
-                items.forEach(item -> item.setReleaseYear(releaseYear));
-                AsyncUtil.runTasks(List.of(() -> batchInsertItems(items)));
-                log.info("refreshPoisonItems finish, releaseYear:{}, cnt:{}", releaseYear, items.size());
-                total += items.size();
-            } catch (Exception e) {
-                log.error("refreshPoisonItems error", e);
-            }
-        }
-        log.info("refreshPoisonItems finish, cnt:{}", total);
-    }
-
-    private void batchInsertItems(List<PoisonItemDO> items) {
-        try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
-            for (PoisonItemDO item : items) {
-                poisonItemMapper.insertIgnore(item);
-            }
-            sqlSession.commit();
-        }
-        log.info("batchInsertItems success");
-    }
 
     /**
      * 增量更新得物商品
@@ -99,9 +58,6 @@ public class PoisonService {
             Thread.ofVirtual().name("poison-api").start(() -> {
                 try {
                     List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
-                    if (CollectionUtils.isEmpty(poisonItemDOS)) {
-                        return;
-                    }
                     SqlHelper.batch(poisonItemDOS, item -> poisonItemMapper.insertIgnore(item));
                 } catch (Exception e) {
                     log.error(e.getMessage(), e);

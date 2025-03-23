@@ -63,11 +63,6 @@ public class ShoesController {
         return poisonClient.queryTokenBalance();
     }
 
-    @GetMapping("refreshPoisonItems")
-    public void refreshPoisonItems() throws InterruptedException {
-        poisonService.refreshPoisonItems();
-    }
-
     @GetMapping("queryByModelNos")
     public String queryByModelNos(String modelNos) {
         return JSON.toJSONString(poisonClient.queryItemByModelNos(Arrays.stream(modelNos.split(",")).toList()));
