@@ -1,11 +1,9 @@
 package cn.ken.shoes.client;
 
-import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PoisonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
-import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.poinson.PoisonItemPrice;
@@ -22,7 +20,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.logging.Logger;
-import java.util.stream.Stream;
 
 @Slf4j
 @Component
@@ -32,38 +29,6 @@ public class PoisonClient {
 
     @Value("${poison.token}")
     private String token;
-
-
-    public List<PoisonPriceDO> queryPriceV3(Long spuId) {
-        String url = PoisonApiConstant.PRICE_BY_SPU_V3
-                .replace("{spuId}", String.valueOf(spuId));
-        String rawResult = HttpUtil.doGet(url, Headers.of(
-                "Authorization", token
-        ));
-        JSONObject json;
-        if (StrUtil.isBlank(rawResult) || (json = JSONObject.parseObject(rawResult)) == null || json.getInteger("code") != 200) {
-            return Collections.emptyList();
-        }
-        List<PoisonPriceDO> result = new ArrayList<>();
-        JSONObject data = json.getJSONObject("data");
-        String modelNo = data.getString("article_number");
-        for (JSONObject jsonObject : data.getJSONArray("skus").toJavaList(JSONObject.class)) {
-            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-            poisonPriceDO.setModelNo(modelNo);
-            Integer brandPrice = jsonObject.getInteger("brand_supply_price");
-            Integer fastPrice = jsonObject.getInteger("fast_price");
-            Integer normalPrice = jsonObject.getInteger("normal_price");
-            Integer storagePrice = jsonObject.getInteger("storage_price");
-            Integer minPrice = Stream.of(brandPrice, fastPrice, normalPrice, storagePrice).filter(price -> price != 0).sorted().findFirst().orElse(null);
-            if (minPrice == null || minPrice > 100 * PoisonSwitch.MAX_PRICE) {
-                continue;
-            }
-            poisonPriceDO.setPrice(minPrice / 100);
-            poisonPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(jsonObject.getString("size")));
-            result.add(poisonPriceDO);
-        }
-        return result;
-    }
 
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
         String url = PoisonApiConstant.PRICE_BY_SPU_V2
