@@ -9,6 +9,8 @@ public class LockHelper {
 
     private static final AtomicBoolean KC_ITEM_INITIALIZED = new AtomicBoolean(false);
 
+    private static final ReentrantLock POISON_PRICE_LOCK = new ReentrantLock();
+
     public static Boolean CLEAN_OLD = true;
 
     public static void setKcItemStatus(boolean status) {
@@ -33,7 +35,15 @@ public class LockHelper {
         KC_ITEM_LOCK.unlock();
     }
 
-    public static void lockPoisonPrice() {
+    public static boolean isPoisonPriceLock() {
+        return POISON_PRICE_LOCK.isLocked();
+    }
 
+    public static void lockPoisonPrice() {
+        POISON_PRICE_LOCK.lock();
+    }
+
+    public static void unlockPoisonPrice() {
+        POISON_PRICE_LOCK.unlock();
     }
 }

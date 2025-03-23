@@ -1,16 +1,20 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.AsyncUtil;
 import cn.ken.shoes.util.LimiterHelper;
+import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
 import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.ibatis.session.ExecutorType;
@@ -41,9 +45,6 @@ public class PoisonService {
 
     @Resource
     private SqlSessionFactory sqlSessionFactory;
-
-    @Resource
-    private TaskService taskService;
 
     @Resource
     private MustCrawlMapper mustCrawlMapper;
@@ -92,10 +93,9 @@ public class PoisonService {
     public void updatePoisonItems(List<String> modelNumbers) {
         List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
         List<String> toInsert = modelNumbers.stream().filter(modelNumber -> !existItems.contains(modelNumber)).toList();
-        RateLimiter rateLimiter = RateLimiter.create(10);
         List<List<String>> partition = Lists.partition(toInsert, 5);
         for (List<String> fiveModelNoList : partition) {
-            rateLimiter.acquire();
+            LimiterHelper.limitPoisonItem();
             Thread.ofVirtual().name("poison-api").start(() -> {
                 try {
                     List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(fiveModelNoList);
@@ -110,41 +110,61 @@ public class PoisonService {
         }
     }
 
-    public void refreshPriceByModelNos(List<String> modelNos, boolean overwriteOld) {
+    @SneakyThrows
+    @Task(platform = TaskDO.PlatformEnum.POISON, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
+    public void refreshAllPrice() {
+        // 互斥操作，一次只能进行一次全量价格更新
+        LockHelper.lockPoisonPrice();
+        // 拿到所有要查询的货号
+        List<String> modelNos = getAllModelNos();
+        // 将得物没有的商品先进行增量更新
+        updatePoisonItems(modelNos);
+        // 查询上一个价格版本号
+        int oldVersion = Optional.ofNullable(poisonPriceMapper.getMaxVersion()).orElse(-1);
+        int newVersion = oldVersion + 1;
         List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
-        for (List<PoisonItemDO> itemDOS : Lists.partition(poisonItemDOS, 20)) {
-            try {
-                CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-                CountDownLatch latch = new CountDownLatch(itemDOS.size());
-                for (PoisonItemDO itemDO : itemDOS) {
-                    Thread.startVirtualThread(() -> {
-                        try {
-                            if (!overwriteOld) {
-                                List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(itemDO.getTitle()));
-                                if (CollectionUtils.isNotEmpty(poisonPriceDOList)) {
-                                    return;
-                                }
-                            }
-                            LimiterHelper.limitPoisonPrice();
-                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
-//                            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceV3(itemDO.getSpuId());
-                            Optional.ofNullable(poisonPriceDOList).ifPresent(toInsert::addAll);
-                        } catch (Exception e) {
-                            log.error(e.getMessage());
-                        } finally {
-                            latch.countDown();
-                        }
-                    });
-                }
-                latch.await();
-                Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertOverwrite(item)));
-            } catch (Exception e) {
-                log.error("refreshPriceByModelNos error, msg:{}", e.getMessage(), e);
+        List<List<PoisonItemDO>> partition = Lists.partition(poisonItemDOS, 20);
+        CountDownLatch insertLatch = new CountDownLatch(partition.size());
+        for (List<PoisonItemDO> itemDOS : partition) {
+            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+            CountDownLatch latch = new CountDownLatch(itemDOS.size());
+            // 查询价格
+            for (PoisonItemDO itemDO : itemDOS) {
+                Thread.startVirtualThread(() -> {
+                    try {
+                        LimiterHelper.limitPoisonPrice();
+                        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
+                        poisonPriceDOList.forEach(poisonPriceDO -> poisonPriceDO.setVersion(newVersion));
+                        toInsert.addAll(poisonPriceDOList);
+                    } catch (Exception e) {
+                        log.error(e.getMessage());
+                    } finally {
+                        latch.countDown();
+                    }
+                });
             }
+            latch.await();
+            // 插入价格
+            Thread.startVirtualThread(() -> {
+                try {
+                    SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertOverwrite(item));
+                } finally {
+                    insertLatch.countDown();
+                }
+            });
         }
+        // 等待所有的价格插入完成之后删除旧版本的数据
+        insertLatch.await();
+        poisonPriceMapper.deleteOldVersion(oldVersion);
+        LockHelper.unlockPoisonPrice();
     }
 
-    public List<String> getAllModelNos() {
+    public void refreshPrice() {
+        List<String> allModelNos = getAllModelNos();
+        updatePoisonItems(allModelNos);
+    }
+
+    private List<String> getAllModelNos() {
         List<String> modelNos = new ArrayList<>();
         List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
         List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
@@ -152,11 +172,4 @@ public class PoisonService {
         modelNos.addAll(mustCrawlModelNos);
         return modelNos;
     }
-
-    public void refreshPrice(boolean overwriteOld) {
-        List<String> allModelNos = getAllModelNos();
-        updatePoisonItems(allModelNos);
-        refreshPriceByModelNos(allModelNos, overwriteOld);
-    }
-
 }
