@@ -33,10 +33,6 @@
         update shoes.brand set crawl_cnt = least(total, #{cnt});
     </update>
 
-    <delete id="deleteAll">
-        delete from shoes.brand;
-    </delete>
-
     <select id="selectBrandNames" resultType="java.lang.String">
         select name from brand;
     </select>
@@ -48,7 +44,10 @@
                 and name like concat("%", #{name}, "%")
             </if>
             <if test="needCrawl != null">
-                name need_crawl = #{needCrawl}
+                and need_crawl = #{needCrawl}
+            </if>
+            <if test="platform != null">
+                and platform = #{platform}
             </if>
         </where>
         order by total desc
@@ -62,7 +61,10 @@
                 and name like concat("%", #{name}, "%")
             </if>
             <if test="needCrawl != null">
-                name need_crawl = #{needCrawl}
+                and need_crawl = #{needCrawl}
+            </if>
+            <if test="platform != null">
+                and platform = #{platform}
             </if>
         </where>
     </select>

@@ -44,7 +44,8 @@ const BrandPage = () => {
     const queryBrandSetting = () => {
         const name = conditionForm.getFieldValue("name");
         const needCrawl = conditionForm.getFieldValue("needCrawl");
-        doGetRequest(SETTING_API.QUERY_BRAND_SETTING, {name, needCrawl, pageIndex, pageSize}, {
+        const platform = 'kc'
+        doGetRequest(SETTING_API.QUERY_BRAND_SETTING, {name, needCrawl, platform, pageIndex, pageSize}, {
             onSuccess: res => {
                 res.data.forEach((brandSetting: any) => {
                     brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";

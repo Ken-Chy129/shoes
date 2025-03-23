@@ -11,8 +11,6 @@ import java.util.List;
 @Mapper
 public interface BrandMapper extends BaseMapper<BrandDO> {
 
-    void deleteAll();
-
     List<String> selectBrandNames();
 
     List<BrandDO> selectPage(BrandRequest request);

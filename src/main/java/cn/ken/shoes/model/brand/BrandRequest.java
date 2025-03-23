@@ -9,6 +9,8 @@ public class BrandRequest {
 
     private Boolean needCrawl;
 
+    private String platform;
+
     private Integer pageIndex = 1;
 
     private Integer pageSize = 10;
