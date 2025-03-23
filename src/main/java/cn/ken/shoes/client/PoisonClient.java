@@ -178,7 +178,8 @@ public class PoisonClient {
         String result = HttpUtil.doPost(url, JSON.toJSONString(params), buildHeaders());
         Result<List<PoisonItemDO>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
         if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
-            return null;
+            log.error("queryItemByModelNos error, msg:{}", result);
+            return Collections.emptyList();
         }
         return parseRes.getData();
     }

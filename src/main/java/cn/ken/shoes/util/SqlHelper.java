@@ -8,6 +8,7 @@ import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.util.List;
 import java.util.function.Function;
@@ -19,6 +20,9 @@ public class SqlHelper implements ApplicationContextAware {
     private static SqlSessionFactory sqlSessionFactory;
 
     public static <T> void batch(List<T> entityList, Function<T, Integer> function) {
+        if (CollectionUtils.isEmpty(entityList)) {
+            return;
+        }
         int cnt = 0;
         try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
             for (T entity : entityList) {
