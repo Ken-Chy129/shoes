@@ -34,8 +34,9 @@
         update shoes.brand set crawl_cnt = least(total, #{cnt});
     </update>
 
-    <select id="selectBrandNames" resultType="java.lang.String">
-        select name from brand;
+    <select id="selectByPlatform" resultType="cn.ken.shoes.model.entity.BrandDO">
+        select * from brand
+        where platform = #{platform}
     </select>
 
     <select id="selectPage" resultType="cn.ken.shoes.model.entity.BrandDO">
