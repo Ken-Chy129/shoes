@@ -1,5 +1,6 @@
 package cn.ken.shoes.listener;
 
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.service.PoisonService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -17,7 +18,9 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         while (true) {
-            poisonService.refreshAllPrice();
+            if (!PoisonSwitch.STOP_QUERY_PRICE) {
+                poisonService.refreshAllPrice();
+            }
             try {
                 Thread.sleep(5 * 60 * 1000);
             } catch (InterruptedException e) {
