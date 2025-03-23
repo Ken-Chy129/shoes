@@ -311,6 +311,9 @@ public class KickScrewService {
         int cnt = kickScrewClient.queryStockCnt();
         for (int i = 0; i < cnt; i++) {
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryStockList(i, 100);
+            if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
+                continue;
+            }
             Set<String> collect = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
             Map<String, Integer> map = poisonPriceMapper.selectListByModelNos(collect).stream().collect(Collectors.toMap(
                     price -> price.getModelNo() + ":" + price.getEuSize(),
