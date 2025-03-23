@@ -3,12 +3,14 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.model.entity.StockXItemDO;
+import cn.ken.shoes.common.StockXSortEnum;
+import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -33,6 +35,21 @@ public class StockXController {
     @GetMapping("queryPrices")
     public Result<List<StockXPriceDO>> queryPrices(String productId) {
         stockXService.searchPrices(productId);
+        return Result.buildSuccess();
+    }
+
+    @GetMapping("getSortType")
+    public Result<String> getSortType() {
+        return Result.buildSuccess(StockXSwitch.SORT_TYPE.getCode());
+    }
+
+    @PostMapping("updateSortType")
+    public Result<Boolean> updateSortType(String type) {
+        StockXSortEnum sortType = StockXSortEnum.from(type);
+        if (sortType == null) {
+            return Result.buildError("invalid type");
+        }
+        StockXSwitch.SORT_TYPE = sortType;
         return Result.buildSuccess();
     }
 
