@@ -105,6 +105,7 @@ public class KickScrewService {
             brandDO.setName(entry.getKey());
             brandDO.setTotal(entry.getValue());
             brandDO.setCrawlCnt(entry.getValue());
+            brandDO.setPlatform("kc");
             brandDO.setNeedCrawl(true);
             brandDOList.add(brandDO);
         }

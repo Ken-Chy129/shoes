@@ -15,5 +15,5 @@ public class PoisonSwitch {
     /**
      * 是否暂停查价
      */
-    public static Boolean STOP_QUERY_PRICE = false;
+    public static Boolean STOP_QUERY_PRICE = true;
 }

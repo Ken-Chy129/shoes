@@ -5,6 +5,7 @@ import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
@@ -51,6 +52,11 @@ public class StockXController {
         }
         StockXSwitch.SORT_TYPE = sortType;
         return Result.buildSuccess();
+    }
+
+    @GetMapping("queryBrands")
+    public Result<List<BrandDO>> queryBrands() {
+        return Result.buildSuccess(stockXClient.queryBrands());
     }
 
     @GetMapping("test")

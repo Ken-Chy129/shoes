@@ -3,14 +3,15 @@
 <mapper namespace="cn.ken.shoes.mapper.BrandMapper">
 
     <insert id="batchInsertOrUpdate">
-        insert into brand(name, total, crawl_cnt, need_crawl)
+        insert into brand(name, total, crawl_cnt, need_crawl, platform)
         values
         <foreach collection="brands" item="brand" separator=",">
             (
              #{brand.name},
              #{brand.total},
              #{brand.crawlCnt},
-             #{brand.needCrawl}
+             #{brand.needCrawl},
+             #{brand.platform}
             )
         </foreach>
         on duplicate key update
@@ -26,7 +27,7 @@
         <if test="crawlCnt != null">
             set crawl_cnt = #{crawlCnt}
         </if>
-        where `name` = #{name}
+        where `name` = #{name} and `platform` = #{platform}
     </update>
 
     <update id="updateDefaultCrawlCnt">
