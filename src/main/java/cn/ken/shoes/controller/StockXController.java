@@ -6,9 +6,9 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.model.entity.BrandDO;
+import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
-import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,8 +29,8 @@ public class StockXController {
     private StockXService stockXService;
 
     @GetMapping("queryItems")
-    public JSONObject queryItems(String brand) {
-        return stockXClient.queryItemByBrand(brand);
+    public Result<List<String>> queryItems(String brand) {
+        return Result.buildSuccess(stockXClient.queryHotItemsByBrand(brand));
     }
 
     @GetMapping("queryPrices")
