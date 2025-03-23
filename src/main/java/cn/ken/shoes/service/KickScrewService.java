@@ -19,6 +19,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -195,65 +196,19 @@ public class KickScrewService {
         refreshHotItems(clearOld);
     }
 
-    public int compareWithPoisonAndChangePrice() {
-        int uploadCnt = 0;
-        kickScrewClient.deleteAllItems();
-        long count = poisonPriceMapper.count();
-        long startIndex = 0;
-        while (startIndex < count) {
-            try {
-                // 1.查询得物价格
-                List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, PAGE_SIZE);
-                Set<String> modelNos = poisonPriceDOList.stream().map(PoisonPriceDO::getModelNo).collect(Collectors.toSet());
-                // 2.查询对应的货号在kc的价格
-                Map<String, Integer> kcPriceMap = kickScrewPriceMapper.selectListByModelNos(modelNos).stream()
-                        .collect(Collectors.toMap(
-                                kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
-                                KickScrewPriceDO::getPrice,
-                                (k1, k2) -> k1
-                        ));
-                List<KickScrewUploadItem> toUpload = new ArrayList<>();
-                for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
-                    String modelNo = poisonPriceDO.getModelNo();
-                    String euSize = poisonPriceDO.getEuSize();
-                    Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
-                    if (kcPrice == null || poisonPriceDO.getPrice() == null) {
-                        continue;
-                    }
-                    boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
-                    if (!canEarn) {
-                        continue;
-                    }
-                    KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
-                    kickScrewUploadItem.setModel_no(modelNo);
-                    kickScrewUploadItem.setSize(euSize);
-                    kickScrewUploadItem.setSize_system("EU");
-                    kickScrewUploadItem.setQty(1);
-                    kickScrewUploadItem.setPrice(kcPrice - 1);
-                    toUpload.add(kickScrewUploadItem);
-                }
-                uploadCnt += toUpload.size();
-                kickScrewClient.batchUploadItems(toUpload);
-                startIndex += PAGE_SIZE;
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-            }
-        }
-        return uploadCnt;
-    }
-
     public int refreshPriceV2() {
+        // 下架不盈利的商品
+        clearNoBenefitItem();
+        // 清空kc价格
+        kickScrewPriceMapper.delete(new QueryWrapper<>());
+        // 查询要比价的货号
         List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
         List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
         hotModelNos.addAll(mustCrawlModelNos);
         List<String> modelNoList = hotModelNos.stream().distinct().toList();
-        kickScrewPriceMapper.delete(new QueryWrapper<>());
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         int uploadCnt = 0;
-        if (LockHelper.CLEAN_OLD) {
-            clearNoBenefitItem();
-        }
-        LockHelper.CLEAN_OLD = false;
+        // 查询价格并上架盈利商品
         for (List<String> modelNos : partition) {
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
             Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
@@ -271,22 +226,22 @@ public class KickScrewService {
                 return 0;
             }
             List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(modelNos);
-            // 2.查询对应的货号在kc的价格
-            Map<String, Integer> kcPriceMap = kickScrewPriceDOS.stream()
+            // 2.查询对应的货号在得物的价格，如果有两个版本的价格，用新版本的
+            Map<String, PoisonPriceDO> poisonPriceDOMap = poisonPriceDOList.stream()
                     .collect(Collectors.toMap(
-                            kcPrice -> kcPrice.getModelNo() + ":" + kcPrice.getEuSize(),
-                            KickScrewPriceDO::getPrice,
-                            (k1, k2) -> k1
+                            poisonPriceDO -> poisonPriceDO.getModelNo() + ":" + poisonPriceDO.getEuSize(),
+                            Function.identity(),
+                            (k1, k2) -> k1.getVersion() > k2.getVersion() ? k1 : k2
                     ));
             List<KickScrewUploadItem> toUpload = new ArrayList<>();
-            for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
-                String modelNo = poisonPriceDO.getModelNo();
-                String euSize = poisonPriceDO.getEuSize();
-                Integer kcPrice = kcPriceMap.get(modelNo + ":" + euSize);
-                if (kcPrice == null || poisonPriceDO.getPrice() == null) {
+            for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                String modelNo = kickScrewPriceDO.getModelNo();
+                String euSize = kickScrewPriceDO.getEuSize();
+                PoisonPriceDO poisonPriceDO = poisonPriceDOMap.get(modelNo + ":" + euSize);
+                if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || kickScrewPriceDO.getPrice() == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kcPrice);
+                boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kickScrewPriceDO.getPrice());
                 if (!canEarn) {
                     continue;
                 }
@@ -295,7 +250,7 @@ public class KickScrewService {
                 kickScrewUploadItem.setSize(euSize);
                 kickScrewUploadItem.setSize_system("EU");
                 kickScrewUploadItem.setQty(1);
-                kickScrewUploadItem.setPrice(kcPrice - 1);
+                kickScrewUploadItem.setPrice(kickScrewPriceDO.getPrice() - 1);
                 toUpload.add(kickScrewUploadItem);
             }
             uploadCnt += toUpload.size();
