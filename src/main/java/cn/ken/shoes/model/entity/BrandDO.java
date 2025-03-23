@@ -26,4 +26,10 @@ public class BrandDO {
      * 是否爬取
      */
     private Boolean needCrawl;
+
+    /**
+     * 平台
+     */
+    private String platform;
+
 }
