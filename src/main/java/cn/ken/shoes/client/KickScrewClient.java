@@ -96,9 +96,13 @@ public class KickScrewClient {
         List<JSONObject> priceList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
         List<KickScrewPriceDO> result = new ArrayList<>();
         for (JSONObject jsonObject : priceList) {
+            Integer price = jsonObject.getInteger("price");
+            if (price == null || price <= 0) {
+                continue;
+            }
             KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
             kickScrewPriceDO.setModelNo(jsonObject.getString("model_no"));
-            kickScrewPriceDO.setPrice(jsonObject.getInteger("price"));
+            kickScrewPriceDO.setPrice(price);
             String euSize = jsonObject.getJSONObject("sizes").getString("eu");
             if (euSize.endsWith(".33")) {
                 euSize = euSize.replace(".33", "");
