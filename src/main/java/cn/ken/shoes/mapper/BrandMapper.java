@@ -11,7 +11,7 @@ import java.util.List;
 @Mapper
 public interface BrandMapper extends BaseMapper<BrandDO> {
 
-    List<String> selectBrandNames();
+    List<BrandDO> selectByPlatform(@Param("platform") String platform);
 
     List<BrandDO> selectPage(BrandRequest request);
 

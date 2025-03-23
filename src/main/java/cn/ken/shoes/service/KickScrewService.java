@@ -134,7 +134,7 @@ public class KickScrewService {
 
     @SneakyThrows
     public void refreshHotItems(boolean clearOld) {
-        List<BrandDO> brandDOList = brandMapper.selectList(new QueryWrapper<>());
+        List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
         if (clearOld) {
             kickScrewItemMapper.deleteAll();
         }
