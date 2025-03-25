@@ -35,6 +35,10 @@ public class StockXService {
         brandMapper.batchInsertOrUpdate(brandDOList);
     }
 
+    public void refreshItems() {
+
+    }
+
     public void searchItems() {
         for (int i = 1; i < 600; i++) {
             List<StockXItemDO> toInsert = stockXClient.searchItems("nike", i);

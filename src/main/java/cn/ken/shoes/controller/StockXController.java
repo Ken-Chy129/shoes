@@ -59,9 +59,10 @@ public class StockXController {
         return Result.buildSuccess(stockXClient.queryBrands());
     }
 
-    @GetMapping("test")
-    public Result<List<StockXPriceDO>> test(String id) {
-        return Result.buildSuccess(stockXClient.queryPrice(id));
+    @GetMapping("refreshItems")
+    public Result<Boolean> refreshItems() {
+        stockXService.refreshItems();
+        return Result.buildSuccess();
     }
 
     @GetMapping("create")
