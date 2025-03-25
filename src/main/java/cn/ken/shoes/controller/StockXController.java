@@ -30,13 +30,12 @@ public class StockXController {
 
     @GetMapping("queryItems")
     public Result<List<String>> queryItems(String brand) {
-        return Result.buildSuccess(stockXClient.queryHotItemsByBrand(brand));
+        return Result.buildSuccess(stockXClient.queryHotItemsByBrand(brand, 1));
     }
 
     @GetMapping("queryPrices")
     public Result<List<StockXPriceDO>> queryPrices(String productId) {
-        stockXService.searchPrices(productId);
-        return Result.buildSuccess();
+        return Result.buildSuccess(stockXService.searchPrices(productId));
     }
 
     @GetMapping("getSortType")

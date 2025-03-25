@@ -9,6 +9,8 @@ public class StockXPriceDO {
 
     private String variantId;
 
+    private String modelNo;
+
     private String productId;
 
     private String euSize;

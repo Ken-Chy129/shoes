@@ -36,7 +36,18 @@ public class StockXService {
     }
 
     public void refreshItems() {
-
+        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
+        for (BrandDO brandDO : brandDOList) {
+            if (!brandDO.getNeedCrawl()) {
+                continue;
+            }
+            String brand = brandDO.getName();
+            Integer crawlCnt = brandDO.getCrawlCnt();
+            int crawlPage = (int) Math.ceil(crawlCnt / 40.0);
+            for (int i = 1; i <= crawlPage; i++) {
+                List<String> productId = stockXClient.queryHotItemsByBrand(brand, i);
+            }
+        }
     }
 
     public void searchItems() {
@@ -46,21 +57,7 @@ public class StockXService {
         }
     }
 
-    public void searchPrices(String productId) {
-        long startTime = System.currentTimeMillis();
-        RateLimiter limiter = RateLimiter.create(3);
-        for (int i = 0; i <= 120000; i++) {
-            int finalI = i;
-            Thread.startVirtualThread(() -> {
-                limiter.acquire();
-                stockXClient.searchPrice(productId);
-                if (finalI % 1000 == 0) {
-                    long endTime = System.currentTimeMillis();
-                    log.info("i:{}, cost:{}", finalI, endTime - startTime);
-                }
-            });
-
-        }
-        log.info("finish, cost:{}", System.currentTimeMillis() - startTime);
+    public List<StockXPriceDO> searchPrices(String productId) {
+        return stockXClient.queryPrice(productId);
     }
 }
