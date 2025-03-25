@@ -3,8 +3,9 @@
 <mapper namespace="cn.ken.shoes.mapper.StockXPriceMapper">
 
     <insert id="insertIgnore">
-        insert ignore into stockx_price(variant_id, product_id, eu_size, sell_faster_amount, earn_more_amount) VALUE (
+        insert ignore into stockx_price(variant_id, model_no, product_id, eu_size, sell_faster_amount, earn_more_amount) VALUE (
             #{variantId},
+            #{modelNo},
             #{productId},
             #{euSize},
             #{sellFasterAmount},
