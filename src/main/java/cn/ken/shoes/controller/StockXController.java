@@ -58,6 +58,12 @@ public class StockXController {
         return Result.buildSuccess(stockXClient.queryBrands());
     }
 
+    @GetMapping("refreshBrand")
+    public Result<Boolean> refreshBrand() {
+        stockXService.refreshBrand();
+        return Result.buildSuccess();
+    }
+
     @GetMapping("refreshItems")
     public Result<Boolean> refreshItems() {
         stockXService.refreshItems();
