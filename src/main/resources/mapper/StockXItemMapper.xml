@@ -14,4 +14,8 @@
         )
     </insert>
 
+    <select id="selectAllProductIds" resultType="java.lang.String">
+        select product_id from stockx_item;
+    </select>
+
 </mapper>
