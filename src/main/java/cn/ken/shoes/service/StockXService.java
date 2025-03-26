@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.StockXItemMapper;
@@ -7,6 +8,7 @@ import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.SqlHelper;
 import com.google.common.collect.Lists;
@@ -42,6 +44,7 @@ public class StockXService {
         brandMapper.batchInsertOrUpdate(brandDOList);
     }
 
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshItems() {
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
@@ -64,6 +67,7 @@ public class StockXService {
     }
 
     @SneakyThrows
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshPrices() {
         List<String> productIds = stockXItemMapper.selectAllProductIds();
         for (List<String> partition : Lists.partition(productIds, 5)) {
