@@ -115,7 +115,7 @@ public class StockXService {
                             Function.identity(),
                             (k1, k2) -> k1.getVersion() > k2.getVersion() ? k1 : k2
                     ));
-            List<Pair<String, String>> toCreate = new ArrayList<>();
+            List<Pair<String, Integer>> toCreate = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
                 String modelNo = stockXPriceDO.getModelNo();
                 String euSize = stockXPriceDO.getEuSize();
@@ -123,11 +123,11 @@ public class StockXService {
                 if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || getStockXPrice(stockXPriceDO) == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), getStockXPrice(stockXPriceDO));
+                boolean canEarn = ShoesUtil.canStockxEarn(poisonPriceDO.getPrice(), getStockXPrice(stockXPriceDO));
                 if (!canEarn) {
                     continue;
                 }
-                toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), euSize));
+                toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), getStockXPrice(stockXPriceDO)));
             }
             uploadCnt += toCreate.size();
             stockXClient.createListing(toCreate);

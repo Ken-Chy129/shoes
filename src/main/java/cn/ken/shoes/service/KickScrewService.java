@@ -242,7 +242,7 @@ public class KickScrewService {
                 if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || kickScrewPriceDO.getPrice() == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canEarn(poisonPriceDO.getPrice(), kickScrewPriceDO.getPrice());
+                boolean canEarn = ShoesUtil.canKcEarn(poisonPriceDO.getPrice(), kickScrewPriceDO.getPrice());
                 if (!canEarn) {
                     continue;
                 }
@@ -286,7 +286,7 @@ public class KickScrewService {
                     toDelete.add(kickScrewPriceDO);
                     continue;
                 }
-                if (!ShoesUtil.canEarn(poisonPrice, price + 1)) {
+                if (!ShoesUtil.canKcEarn(poisonPrice, price + 1)) {
                     // 无盈利，下架
                     toDelete.add(kickScrewPriceDO);
                 }
