@@ -4,9 +4,12 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.common.StockXPriceEnum;
+import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
@@ -18,6 +21,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("setting")
@@ -61,6 +65,26 @@ public class SettingController {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx")
+    public Result<JSONObject> queryStockxSetting() {
+        JSONObject jsonObject = new JSONObject();
+        jsonObject.put("sortType", StockXSwitch.SORT_TYPE.getCode());
+        jsonObject.put("priceType", StockXSwitch.PRICE_TYPE.getCode());
+        return Result.buildSuccess(jsonObject);
+    }
+
+    @PostMapping("stockx")
+    public Result<Boolean> updateStockxSetting(@RequestBody JSONObject jsonObject) {
+        StockXSortEnum sortType = StockXSortEnum.from(jsonObject.getString("sortType"));
+        StockXPriceEnum priceType = StockXPriceEnum.from(jsonObject.getString("priceType"));
+        if (Objects.isNull(sortType) || Objects.isNull(priceType)) {
+            return Result.buildError("非法类型");
+        }
+        StockXSwitch.SORT_TYPE = sortType;
+        StockXSwitch.PRICE_TYPE = priceType;
         return Result.buildSuccess(true);
     }
 
