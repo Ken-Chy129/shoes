@@ -64,8 +64,8 @@ public class SettingController {
         return Result.buildSuccess(true);
     }
 
-    @GetMapping("stockx")
-    public Result<StockXConfig.OAuth2Config> queryStockxSetting() {
+    @GetMapping("queryStockxConfig")
+    public Result<StockXConfig.OAuth2Config> queryStockxConfig() {
         return Result.buildSuccess(StockXConfig.CONFIG);
     }
 

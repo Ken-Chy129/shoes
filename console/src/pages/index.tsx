@@ -19,7 +19,7 @@ const SettingPage = () => {
                 kcForm.setFieldsValue(res.data);
             }
         });
-        doGetRequest(SETTING_API.STOCKX, {}, {
+        doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
             onSuccess: res => {
                 stockxForm.setFieldsValue(res.data);
             }
