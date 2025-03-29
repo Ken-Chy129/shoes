@@ -98,11 +98,11 @@ public class StockXClient {
         return false;
     }
 
-    public String createListing(List<Pair<String, String>> items) {
+    public String createListing(List<Pair<String, Integer>> items) {
         List<Map<String, Object>> toCreate = new ArrayList<>();
-        for (Pair<String, String> item : items) {
+        for (Pair<String, Integer> item : items) {
             String variantId = item.getKey();
-            String price = item.getValue();
+            Integer price = item.getValue();
             Map<String, Object> map = new HashMap<>();
             map.put("variantId", variantId);
             map.put("amount", price);

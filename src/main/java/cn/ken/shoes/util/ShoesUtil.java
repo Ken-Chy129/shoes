@@ -38,11 +38,11 @@ public class ShoesUtil {
     /**
      * 比价，获取上架的价格
      * @param poisonPrice 得物价格
-     * @param otherPrice 三方平台的价格
-     * @return 如果三方平台价格-1有盈利，则修改为三方平台价格-1，否则返回null
+     * @param kcPrice kc的价格
+     * @return 如果kc价格-1有盈利，则修改为kc价格-1，否则返回null
      */
-    public static boolean canEarn(Integer poisonPrice, Integer otherPrice) {
-        double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
+    public static boolean canKcEarn(Integer poisonPrice, Integer kcPrice) {
+        double getFromPlatform = ((kcPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;
@@ -58,15 +58,19 @@ public class ShoesUtil {
 //        // 满足盈利的定价=（成本+目标盈利）➗汇率➗（1-平台抽成）
 //        int price = (int) Math.ceil(Math.ceil((cost + earn) / PriceSwitch.EXCHANGE_RATE) / (1 - PriceSwitch.PLATFORM_RATE));
 //        // 三方平台没有该商品出售，直接设置为满足盈利的定价
-//        if (otherPrice == -1) {
+//        if (kcPrice == -1) {
 //            return price;
 //        }
-//        return price < otherPrice - 1 ? otherPrice - 1 : null;
+//        return price < kcPrice - 1 ? kcPrice - 1 : null;
     }
 
     public static double getKcEarn(Integer poisonPrice, Integer otherPrice) {
         double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
+    }
+
+    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice) {
+        return false;
     }
 
 }
