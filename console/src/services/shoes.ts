@@ -16,9 +16,10 @@ enum SETTING_API {
     QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',
     UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
+    QUERY_STOCKX_CONFIG = '/api/setting/stockx/queryStockxConfig',
     AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',
     INIT_TOKEN = '/api/setting/stockx/initToken',
-    REFRESH_TOKEN = '/api/setting/stockx/refreshToken',
+    REFRESH_TOKEN = '/api/setting/stockx/refreshToken'
 }
 
 enum KC_API {
