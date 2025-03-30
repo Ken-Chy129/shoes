@@ -18,6 +18,4 @@ public class StockXItemDO {
     private String urlKey;
 
     private String title;
-
-    private String releaseDate;
 }

@@ -3,14 +3,13 @@
 <mapper namespace="cn.ken.shoes.mapper.StockXItemMapper">
 
     <insert id="insertIgnore">
-        insert ignore into stockx_item(product_id, brand, product_type, model_no, url_key, title, release_date) VALUE (
+        insert ignore into stockx_item(product_id, brand, product_type, model_no, url_key, title) VALUE (
             #{productId},
             #{brand},
             #{productType},
             #{modelNo},
             #{urlKey},
-            #{title},
-            #{releaseDate}
+            #{title}
         )
     </insert>
 
