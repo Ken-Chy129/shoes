@@ -50,18 +50,15 @@ public class StockXClient {
     public List<StockXPriceDO> queryPrice(String productId) {
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
-            return null;
+            return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
         List<JSONObject> variants = jsonObject.getJSONObject("data").getJSONObject("product").getJSONArray("variants").toJavaList(JSONObject.class);
-        String modelNo = jsonObject.getJSONObject("data")
-                .getJSONObject("product")
-                .getJSONArray("traits")
-                .toJavaList(JSONObject.class)
-                .stream()
-                .filter(trait -> trait.getString("name").equals("Style"))
-                .findFirst()
-                .map(trait -> trait.getString("value")).orElse(null);
+        String modelNo = jsonObject.getJSONObject("data").getJSONObject("product").getString("styleId");
+        if (modelNo == null) {
+            log.error("queryPrice.modelNo is null, productId:{}", productId);
+            return Collections.emptyList();
+        }
         List<StockXPriceDO> result = new ArrayList<>();
         for (JSONObject variant : variants) {
             StockXPriceDO stockXPriceDO = new StockXPriceDO();
@@ -316,7 +313,7 @@ public class StockXClient {
     private String buildPriceQueryRequest(String id) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "ProductVariants");
-        requestJson.put("query", "query ProductVariants($id: String!, $currency: CurrencyCode!, $country: String!, $market: String!, $skipFlexEligible: Boolean!, $skipGuidance: Boolean!) {\n  product(id: $id) {\n    id\n    traits {\n      value\n      name\n     }\n    variants {\n      id\n      isFlexEligible @skip(if: $skipFlexEligible)\n      sizeChart {\n        displayOptions {\n          size\n          type\n          }\n        }\n      market(currencyCode: $currency) {\n        state(country: $country, market: $market) {\n          highestBid {\n            amount\n            }\n          }\n        }\n      pricingGuidance(country: $country, market: $market, currencyCode: $currency) @skip(if: $skipGuidance) {\n        marketConsensusGuidance {\n          standardSellerGuidance {\n            sellFaster\n            earnMore\n            }\n          }\n        }\n      }\n      }\n}");
+        requestJson.put("query", "query ProductVariants($id: String!, $currency: CurrencyCode!, $country: String!, $market: String!, $skipFlexEligible: Boolean!, $skipGuidance: Boolean!) {\n  product(id: $id) {\n    id\n    styleId\n    traits {\n      value\n      name\n     }\n    variants {\n      id\n      isFlexEligible @skip(if: $skipFlexEligible)\n      sizeChart {\n        displayOptions {\n          size\n          type\n          }\n        }\n      market(currencyCode: $currency) {\n        state(country: $country, market: $market) {\n          highestBid {\n            amount\n            }\n          }\n        }\n      pricingGuidance(country: $country, market: $market, currencyCode: $currency) @skip(if: $skipGuidance) {\n        marketConsensusGuidance {\n          standardSellerGuidance {\n            sellFaster\n            earnMore\n            }\n          }\n        }\n      }\n      }\n}");
         JSONObject variables = new JSONObject();
         variables.put("id", id);
         variables.put("currency", "USD");
