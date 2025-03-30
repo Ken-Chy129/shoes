@@ -12,6 +12,7 @@ import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SqlHelper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
@@ -54,6 +55,7 @@ public class StockXService {
 
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshItems() {
+        stockXItemMapper.delete(new QueryWrapper<>());
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
             if (!brandDO.getNeedCrawl()) {
@@ -62,15 +64,13 @@ public class StockXService {
             String brand = brandDO.getName();
             Integer crawlCnt = brandDO.getCrawlCnt();
             int crawlPage = (int) Math.ceil(crawlCnt / 40.0);
+            List<StockXItemDO> toInsert = new ArrayList<>();
             for (int i = 1; i <= crawlPage; i++) {
-                List<String> productIds = stockXClient.queryHotItemsByBrand(brand, i);
-                List<StockXItemDO> stockXItemDOS = productIds.stream().map(productId -> {
-                    StockXItemDO stockXItemDO = new StockXItemDO();
-                    stockXItemDO.setProductId(productId);
-                    return stockXItemDO;
-                }).toList();
-                SqlHelper.batch(stockXItemDOS, stockXItemDO -> stockXItemMapper.insertIgnore(stockXItemDO));
+                List<StockXItemDO> stockXItemDOS = stockXClient.queryHotItemsByBrand(brand, i);
+                toInsert.addAll(stockXItemDOS);
             }
+            Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXItemDO -> stockXItemMapper.insertIgnore(stockXItemDO)));
+            log.info("refreshItem finish, brand:{}, crawlCnt:{}, toInsertCnt:{}", brand, crawlPage, toInsert.size());
         }
     }
 
