@@ -87,7 +87,7 @@ public class StockXService {
         int cnt = 0;
         for (List<String> partition : Lists.partition(productIds, 40)) {
             List<StockXPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(40);
+            CountDownLatch latch = new CountDownLatch(partition.size());
             for (String productId : partition) {
                 Thread.startVirtualThread(() -> {
                     try {
