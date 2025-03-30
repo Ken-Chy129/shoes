@@ -4,6 +4,7 @@ import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.BrandDO;
+import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
 import jakarta.annotation.Resource;
@@ -25,7 +26,7 @@ public class StockXController {
     private StockXService stockXService;
 
     @GetMapping("queryItems")
-    public Result<List<String>> queryItems(String brand) {
+    public Result<List<StockXItemDO>> queryItems(String brand) {
         return Result.buildSuccess(stockXClient.queryHotItemsByBrand(brand, 1));
     }
 
