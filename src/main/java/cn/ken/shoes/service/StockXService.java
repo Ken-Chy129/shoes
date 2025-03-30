@@ -76,11 +76,18 @@ public class StockXService {
 
     @SneakyThrows
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    public void refreshPrices() {
+    public int refreshPrices() {
+        // 1.下架不赢利的商品
+
+        // 2.清空绿叉价格
+        stockXPriceMapper.delete(new QueryWrapper<>());
+        // 3.查询所有要比价的商品
         List<String> productIds = stockXItemMapper.selectAllProductIds();
-        for (List<String> partition : Lists.partition(productIds, 5)) {
+        // 4.查询价格
+        int cnt = 0;
+        for (List<String> partition : Lists.partition(productIds, 40)) {
             List<StockXPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(5);
+            CountDownLatch latch = new CountDownLatch(40);
             for (String productId : partition) {
                 Thread.startVirtualThread(() -> {
                     try {
@@ -95,8 +102,11 @@ public class StockXService {
                 });
             }
             latch.await();
-            SqlHelper.batch(toInsert, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO));
+            Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
+            // 5.比价和上架
+//            cnt += compareWithPoisonAndChangePrice(toInsert);
         }
+        return cnt;
     }
 
     public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {

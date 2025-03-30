@@ -52,4 +52,10 @@ public class StockXController {
         return Result.buildSuccess();
     }
 
+    @GetMapping("refreshPrices")
+    public Result<Boolean> refreshPrices() {
+        stockXService.refreshPrices();
+        return Result.buildSuccess();
+    }
+
 }

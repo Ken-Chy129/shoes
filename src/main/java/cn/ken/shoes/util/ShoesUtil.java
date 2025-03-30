@@ -70,7 +70,12 @@ public class ShoesUtil {
     }
 
     public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice) {
-        return false;
+        double getFromPlatform = (stockXPrice * 0.9) * PriceSwitch.EXCHANGE_RATE;
+        double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
+        if (earn < PriceSwitch.MIN_PROFIT) {
+            return false;
+        }
+        return true;
     }
 
 }
