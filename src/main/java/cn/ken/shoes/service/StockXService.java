@@ -85,23 +85,17 @@ public class StockXService {
         List<String> productIds = stockXItemMapper.selectAllProductIds();
         // 4.查询价格
         int cnt = 0;
-        for (List<String> partition : Lists.partition(productIds, 40)) {
-            List<StockXPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(partition.size());
+        for (List<String> partition : Lists.partition(productIds, 50)) {
+            List<StockXPriceDO> toInsert = new ArrayList<>();
             for (String productId : partition) {
-                Thread.startVirtualThread(() -> {
-                    try {
-                        LimiterHelper.limitStockxPrice();
-                        List<StockXPriceDO> stockXPriceDOS = stockXClient.queryPrice(productId);
-                        toInsert.addAll(stockXPriceDOS);
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
+                try {
+                    LimiterHelper.limitStockxPrice();
+                    List<StockXPriceDO> stockXPriceDOS = stockXClient.queryPrice(productId);
+                    toInsert.addAll(stockXPriceDOS);
+                } catch (Exception e) {
+                    log.error(e.getMessage(), e);
+                }
             }
-            latch.await();
             Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
             // 5.比价和上架
 //            cnt += compareWithPoisonAndChangePrice(toInsert);
