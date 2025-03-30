@@ -63,7 +63,7 @@ public class StockXService {
             }
             String brand = brandDO.getName();
             Integer crawlCnt = brandDO.getCrawlCnt();
-            int crawlPage = (int) Math.ceil(crawlCnt / 40.0);
+            int crawlPage = (int) Math.ceil(crawlCnt / 100.0);
             List<StockXItemDO> toInsert = new ArrayList<>();
             for (int i = 1; i <= crawlPage; i++) {
                 List<StockXItemDO> stockXItemDOS = stockXClient.queryHotItemsByBrand(brand, i);
