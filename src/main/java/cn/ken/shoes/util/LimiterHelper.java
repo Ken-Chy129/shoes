@@ -8,7 +8,7 @@ public class LimiterHelper {
     private static final RateLimiter POISON_ITEM_LIMITER = RateLimiter.create(10);
     private static final RateLimiter KC_ITEM_LIMITER = RateLimiter.create(10);
     private static final RateLimiter POISON_PRICE_LIMITER = RateLimiter.create(6);
-    private static final RateLimiter STOCKX_PRICE_LIMITER = RateLimiter.create(6);
+    private static final RateLimiter STOCKX_PRICE_LIMITER = RateLimiter.create(3);
 
     public static void limitPoisonItem() {
         POISON_ITEM_LIMITER.acquire();

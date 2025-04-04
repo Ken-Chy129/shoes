@@ -53,6 +53,10 @@ public class StockXClient {
             return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("查询被拦截");
+            return Collections.emptyList();
+        }
         List<JSONObject> variants = jsonObject.getJSONObject("data").getJSONObject("product").getJSONArray("variants").toJavaList(JSONObject.class);
         String modelNo = jsonObject.getJSONObject("data").getJSONObject("product").getString("styleId");
         if (modelNo == null) {
@@ -239,7 +243,7 @@ public class StockXClient {
         return Headers.of(
                 "authorization", authorization,
                 "Content-Type", "application/json",
-                "User-Agent", "Apifox/1.0.1 (https://apifox.com)"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
         );
     }
 
