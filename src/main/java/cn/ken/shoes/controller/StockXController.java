@@ -12,7 +12,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -26,8 +25,8 @@ public class StockXController {
     private StockXService stockXService;
 
     @GetMapping("queryItems")
-    public Result<List<StockXItemDO>> queryItems(String brand) {
-        return Result.buildSuccess(stockXClient.queryHotItemsByBrand(brand, 1));
+    public Result<List<StockXPriceDO>> queryItems(String brand) {
+        return Result.buildSuccess(stockXClient.queryHotItemsByBrandWithPrice(brand, 1));
     }
 
     @GetMapping("queryPrices")
@@ -43,12 +42,6 @@ public class StockXController {
     @GetMapping("refreshBrand")
     public Result<Boolean> refreshBrand() {
         stockXService.refreshBrand();
-        return Result.buildSuccess();
-    }
-
-    @GetMapping("refreshItems")
-    public Result<Boolean> refreshItems() {
-        stockXService.refreshItems();
         return Result.buildSuccess();
     }
 
