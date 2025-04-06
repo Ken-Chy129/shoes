@@ -53,9 +53,15 @@ public class StockXService {
         brandMapper.batchInsertOrUpdate(brandDOList);
     }
 
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    public void refreshItems() {
-        stockXItemMapper.delete(new QueryWrapper<>());
+    @SneakyThrows
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
+    public int refreshPrices() {
+        // 1.下架不赢利的商品
+
+        // 2.清空绿叉价格
+        stockXPriceMapper.delete(new QueryWrapper<>());
+        // 3.查询要比价的商品和价格
+        int cnt = 0;
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
             if (!brandDO.getNeedCrawl()) {
@@ -64,47 +70,12 @@ public class StockXService {
             String brand = brandDO.getName();
             Integer crawlCnt = brandDO.getCrawlCnt();
             int crawlPage = (int) Math.ceil(crawlCnt / 100.0);
-            List<StockXItemDO> toInsert = new ArrayList<>();
             for (int i = 1; i <= crawlPage; i++) {
-                List<StockXItemDO> stockXItemDOS = stockXClient.queryHotItemsByBrand(brand, i);
-                toInsert.addAll(stockXItemDOS);
+                List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
+                Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
+                // 4.比价和上架
+//                cnt += compareWithPoisonAndChangePrice(stockXPriceDOList);
             }
-            Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXItemDO -> stockXItemMapper.insertIgnore(stockXItemDO)));
-            log.info("refreshItem finish, brand:{}, crawlCnt:{}, toInsertCnt:{}", brand, crawlPage, toInsert.size());
-        }
-    }
-
-    @SneakyThrows
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    public int refreshPrices() {
-        // 1.下架不赢利的商品
-
-        // 2.清空绿叉价格
-        stockXPriceMapper.delete(new QueryWrapper<>());
-        // 3.查询所有要比价的商品
-        List<String> productIds = stockXItemMapper.selectAllProductIds();
-        // 4.查询价格
-        int cnt = 0;
-        for (List<String> partition : Lists.partition(productIds, 50)) {
-            List<StockXPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(partition.size());
-            for (String productId : partition) {
-                Thread.startVirtualThread(() -> {
-                    try {
-                        LimiterHelper.limitStockxPrice();
-                        List<StockXPriceDO> stockXPriceDOS = stockXClient.queryPrice(productId);
-                        toInsert.addAll(stockXPriceDOS);
-                    } catch (Exception e) {
-                        log.error(e.getMessage(), e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
-            }
-            latch.await();
-            Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
-            // 5.比价和上架
-//            cnt += compareWithPoisonAndChangePrice(toInsert);
         }
         return cnt;
     }

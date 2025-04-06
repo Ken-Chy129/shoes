@@ -9,16 +9,17 @@ import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.util.HttpUtil;
-import cn.ken.shoes.util.ProxyUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.nio.charset.Charset;
 import java.time.LocalDateTime;
@@ -49,15 +50,15 @@ public class StockXClient {
     private String authorization;
 
     public List<StockXPriceDO> queryPrice(String productId) {
-        String currentNodeName = ProxyUtil.changeNode();
+//        String currentNodeName = ProxyUtil.changeNode();
+        String currentNodeName = "current";
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
-            log.error("no result, current proxyNode:{}", currentNodeName);
             return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
         if (jsonObject.containsKey("blockScript")) {
-            log.error("查询被拦截");
+            log.error("queryPrice|查询被拦截, current proxyNode:{}", currentNodeName);
             return Collections.emptyList();
         }
         List<JSONObject> variants = jsonObject.getJSONObject("data").getJSONObject("product").getJSONArray("variants").toJavaList(JSONObject.class);
@@ -258,23 +259,52 @@ public class StockXClient {
         );
     }
 
-    public List<StockXItemDO> queryHotItemsByBrand(String brand, Integer pageIndex) {
+    public List<StockXPriceDO> queryHotItemsByBrandWithPrice(String brand, Integer pageIndex) {
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildItemQueryRequest(brand, pageIndex), buildProHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+            return Collections.emptyList();
+        }
         List<JSONObject> itemList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results").getJSONArray("edges").toJavaList(JSONObject.class);
-        List<StockXItemDO> result = new ArrayList<>();
+        List<StockXPriceDO> result = new ArrayList<>();
         for (JSONObject item : itemList) {
-            StockXItemDO stockXItemDO = new StockXItemDO();
-            stockXItemDO.setProductId(item.getString("objectId"));
+            String productId = item.getString("objectId");
             JSONObject node = item.getJSONObject("node");
-            stockXItemDO.setBrand(node.getString("brand"));
-            stockXItemDO.setUrlKey(node.getString("urlKey"));
-            stockXItemDO.setProductType(node.getString("productCategory"));
-            stockXItemDO.setTitle(node.getString("title"));
-            result.add(stockXItemDO);
+            String modelNo = node.getString("styleId");
+            String urlKey = node.getString("urlKey");
+            if (StrUtil.isBlank(modelNo)) {
+                log.info("缺少货号，productId:{}，urlKey:{}", productId, urlKey);
+                continue;
+            }
+            JSONArray variants = node.getJSONArray("variants");
+            if (CollectionUtils.isEmpty(variants)) {
+                log.info("缺少尺码，productId:{}，urlKey:{}", productId, urlKey);
+                continue;
+            }
+            for (JSONObject variant : variants.toJavaList(JSONObject.class)) {
+                StockXPriceDO stockXPriceDO = new StockXPriceDO();
+                stockXPriceDO.setProductId(productId);
+                stockXPriceDO.setModelNo(modelNo);
+                String variantId = variant.getString("id");
+                stockXPriceDO.setVariantId(variantId);
+                JSONObject euOption = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().filter(option -> option.getString("type").equals("eu")).findFirst().orElse(null);
+                if (euOption == null) {
+                    log.error("queryPrice.euOption is null, productId:{}, variantId:{}, variant:{}", productId, variantId, variant);
+                    continue;
+                }
+                stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+                JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
+                stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
+                JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
+                stockXPriceDO.setEarnMoreAmount(guidance.getInteger("earnMore"));
+                stockXPriceDO.setSellFasterAmount(guidance.getInteger("sellFaster"));
+                stockXPriceDO.setModelNo(modelNo);
+                result.add(stockXPriceDO);
+            }
         }
         return result;
     }
@@ -282,7 +312,7 @@ public class StockXClient {
     private String buildItemQueryRequest(String brand, Integer index) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "getDiscoveryData");
-        requestJson.put("query", "query getDiscoveryData($filters: [BrowseFilterInput], $flow: BrowseFlow, $query: String, $sort: BrowseSortInput, $page: BrowsePageInput, $enableOpenSearch: Boolean) {\n  browse(\n    filters: $filters\n    flow: $flow\n    sort: $sort\n    page: $page\n    query: $query\n    experiments: {ads: {enabled: true}, dynamicFilter: {enabled: true}, dynamicFilterDefinitions: {enabled: true}, multiselect: {enabled: true}, openSearch: {enabled: $enableOpenSearch}}\n  ) {\n    results {\n      edges {\n        objectId\n        node {\n          ... on Product {\n            urlKey\n            title\n            brand\n            productCategory\n            }\n        }\n      }\n      pageInfo {\n        limit\n        page\n        pageCount\n        queryId\n        queryIndex\n        total\n      }\n    }\n    sort {\n      id\n      name\n      description\n      seoUrlKey\n      short\n    }\n  }\n}");
+        requestJson.put("query", "query getDiscoveryData($filters: [BrowseFilterInput], $flow: BrowseFlow, $query: String, $sort: BrowseSortInput, $page: BrowsePageInput, $enableOpenSearch: Boolean, $currency: CurrencyCode!, $country: String!, $market: String!, $skipFlexEligible: Boolean!, $skipGuidance: Boolean!) {\n  browse(\n    filters: $filters\n    flow: $flow\n    sort: $sort\n    page: $page\n    query: $query\n    experiments: {ads: {enabled: true}, dynamicFilter: {enabled: true}, dynamicFilterDefinitions: {enabled: true}, multiselect: {enabled: true}, openSearch: {enabled: $enableOpenSearch}}\n  ) {\n    results {\n      edges {\n        objectId\n        node {\n          ... on Product {\n            urlKey\n            title\n            brand\n            styleId\n            productCategory\n            variants {\n      id\n      isFlexEligible @skip(if: $skipFlexEligible)\n      sizeChart {\n        displayOptions {\n          size\n          type\n          }\n        }\n      market(currencyCode: $currency) {\n        state(country: $country, market: $market) {\n          highestBid {\n            amount\n            }\n          }\n        }\n      pricingGuidance(country: $country, market: $market, currencyCode: $currency) @skip(if: $skipGuidance) {\n        marketConsensusGuidance {\n          standardSellerGuidance {\n            sellFaster\n            earnMore\n            }\n          }\n        }\n      }\n}\n        }\n      }\n      pageInfo {\n        limit\n        page\n        pageCount\n        total\n      }\n    }\n    sort {\n      id\n     }\n  }\n}");
 //        requestJson.put("query", "query getDiscoveryData($country: String!, $currency: CurrencyCode, $filters: [BrowseFilterInput], $flow: BrowseFlow, $market: String, $query: String, $sort: BrowseSortInput, $page: BrowsePageInput, $enableOpenSearch: Boolean) {\n  browse(\n    filters: $filters\n    flow: $flow\n    sort: $sort\n    page: $page\n    market: $market\n    query: $query\n   ) {\n    filtersConfig {\n    quick {\n        ...FiltersFragment\n      }\n    }\n    results {\n      edges {\n        isAd\n        adIdentifier\n        adServiceLevel\n        adInventoryId\n        objectId\n        node {\n          __typename\n          ... on Variant {\n            id\n            favorite\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            product {\n              id\n              name\n              urlKey\n              title\n              brand\n              gender\n              description\n              model\n              condition\n              productCategory\n              browseVerticals\n              listingType\n              media {\n                thumbUrl\n                smallImageUrl\n              }\n              traits(filterTypes: [RELEASE_DATE]) {\n                name\n                value\n              }\n            }\n            sizeChart {\n              baseSize\n              baseType\n              displayOptions {\n                size\n                type\n              }\n            }\n          }\n          ... on Product {\n            id\n            name\n            urlKey\n            title\n            brand\n            description\n            model\n            condition\n            productCategory\n            browseVerticals\n            listingType\n            favorite\n            media {\n              thumbUrl\n              smallImageUrl\n            }\n            traits(filterTypes: [RELEASE_DATE]) {\n              name\n              value\n            }\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            variants {\n              id\n            }\n          }\n        }\n      }\n      pageInfo {\n        limit\n        page\n        pageCount\n        queryId\n        queryIndex\n        total\n      }\n    }\n  }\n}");
         JSONObject variables = new JSONObject();
         variables.put("enableOpenSearch", false);
@@ -291,7 +321,11 @@ public class StockXClient {
         filters.add(new Filter("brand", List.of(brand)));
         variables.put("filters", filters);
         variables.put("market", "HK");
-        variables.put("page", Map.of("index", index, "limit", 100));
+        variables.put("currency", "USD");
+        variables.put("country", "HK");
+        variables.put("skipFlexEligible", true);
+        variables.put("skipGuidance", false);
+        variables.put("page", Map.of("index", index, "limit", 50));
         variables.put("sort", Map.of("id", StockXSwitch.SORT_TYPE.getCode()));
         requestJson.put("variables", variables);
         return requestJson.toJSONString();
