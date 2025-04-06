@@ -7,6 +7,7 @@ import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -37,6 +38,11 @@ public class StockXController {
     @GetMapping("queryBrands")
     public Result<List<BrandDO>> queryBrands() {
         return Result.buildSuccess(stockXClient.queryBrands());
+    }
+
+    @GetMapping("querySellingItems")
+    public Result<JSONObject> querySellingItems() {
+        return Result.buildSuccess(stockXClient.querySellingItems(null));
     }
 
     @GetMapping("refreshBrand")
