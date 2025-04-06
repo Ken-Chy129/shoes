@@ -51,11 +51,18 @@ public class StockXController {
         return Result.buildSuccess();
     }
 
-    @GetMapping("test")
-    public Result<String> test() {
+    @GetMapping("testUp")
+    public Result<String> testUp() {
         Pair<String, Integer> pair = Pair.of("62a7f698-7896-4fc3-b499-a56da389dd6f", 9999);
         Pair<String, Integer> pair2 = Pair.of("9df4a9c7-cb5a-4dfb-a804-c936b9bf5d27", 9999);
         stockXClient.createListing(List.of(pair, pair2));
+        return Result.buildSuccess();
+    }
+
+    @GetMapping("testDown")
+    public Result<String> testDown(String id) {
+        Pair<String, Integer> pair = Pair.of(id, 9999);
+        stockXClient.deleteItems(List.of(pair));
         return Result.buildSuccess();
     }
 
