@@ -111,7 +111,7 @@ public class StockXClient {
             Integer price = item.getValue();
             Map<String, Object> map = new HashMap<>();
             map.put("variantId", variantId);
-            map.put("amount", price);
+            map.put("amount", String.valueOf(price));
             map.put("quantity", 1);
             toCreate.add(map);
         }
@@ -254,7 +254,8 @@ public class StockXClient {
     private Headers buildHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+                "Authorization", authorization,
                 "x-api-key", apiKey
         );
     }

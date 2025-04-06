@@ -53,8 +53,8 @@ public class StockXController {
 
     @GetMapping("test")
     public Result<String> test() {
-        Pair<String, Integer> pair = Pair.of("c21f8386-f7d0-40b8-b695-d26dd10b7348", 9999);
-        Pair<String, Integer> pair2 = Pair.of("c265ab86-1377-4d00-9043-a8532071c93b", 9999);
+        Pair<String, Integer> pair = Pair.of("62a7f698-7896-4fc3-b499-a56da389dd6f", 9999);
+        Pair<String, Integer> pair2 = Pair.of("9df4a9c7-cb5a-4dfb-a804-c936b9bf5d27", 9999);
         stockXClient.createListing(List.of(pair, pair2));
         return Result.buildSuccess();
     }
