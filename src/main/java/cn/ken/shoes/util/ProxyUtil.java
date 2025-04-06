@@ -38,7 +38,7 @@ public class ProxyUtil {
         }).toList();
     }
 
-    public synchronized static void changeNode() {
+    public synchronized static String changeNode() {
         if (INDEX == PROXY_NODE_LIST.size()) {
             INDEX = 0;
         }
@@ -46,6 +46,7 @@ public class ProxyUtil {
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("name", nextNodeName);
         HttpUtil.doPut(STR."http://\{IP}:\{PORT}/proxies/\{SELECTOR_NAME}", jsonObject.toJSONString(), getHeaders());
+        return nextNodeName;
     }
 
     private static Headers getHeaders() {
