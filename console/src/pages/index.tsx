@@ -59,7 +59,7 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.INIT_TOKEN, {}, {
             onSuccess: _ => {
                 message.success("初始化成功").then(_ => {});
-                doGetRequest(SETTING_API.STOCKX, {}, {
+                doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
                     onSuccess: res => {
                         stockxForm.setFieldsValue(res.data);
                     }
@@ -72,7 +72,7 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.REFRESH_TOKEN, {}, {
             onSuccess: _ => {
                 message.success("刷新成功").then(_ => {});
-                doGetRequest(SETTING_API.STOCKX, {}, {
+                doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
                     onSuccess: res => {
                         stockxForm.setFieldsValue(res.data);
                     }
