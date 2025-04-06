@@ -9,6 +9,7 @@ import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.ProxyUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
@@ -48,6 +49,7 @@ public class StockXClient {
     private String authorization;
 
     public List<StockXPriceDO> queryPrice(String productId) {
+        ProxyUtil.changeNode();
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return Collections.emptyList();
