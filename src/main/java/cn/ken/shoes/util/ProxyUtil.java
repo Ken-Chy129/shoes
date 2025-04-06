@@ -24,7 +24,7 @@ public class ProxyUtil {
 
     static {
         List<String> blackNodeList = List.of("自动选择", "故障转移", "最新官网", "剩余流量", "距离下次", "套餐到期");
-        String result = HttpUtil.doGet(STR."https://\{IP}:\{PORT}/proxies", getHeaders());
+        String result = HttpUtil.doGet(STR."http://\{IP}:\{PORT}/proxies", getHeaders());
         JSONObject jsonObject = JSON.parseObject(result);
         JSONObject proxies = jsonObject.getJSONObject("proxies");
         List<String> allProxies = proxies.getJSONObject(SELECTOR_NAME).getJSONArray("all").toJavaList(String.class);
@@ -45,7 +45,7 @@ public class ProxyUtil {
         String nextNodeName = PROXY_NODE_LIST.get(INDEX++);
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("name", nextNodeName);
-        HttpUtil.doPut(STR."https://\{IP}:\{PORT}/proxies/\{SELECTOR_NAME}", jsonObject.toJSONString(), getHeaders());
+        HttpUtil.doPut(STR."http://\{IP}:\{PORT}/proxies/\{SELECTOR_NAME}", jsonObject.toJSONString(), getHeaders());
     }
 
     private static Headers getHeaders() {
