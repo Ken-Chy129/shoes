@@ -102,7 +102,6 @@ public class StockXService {
                 });
             }
             latch.await();
-            Thread.sleep(3000);
             Thread.startVirtualThread(() -> SqlHelper.batch(toInsert, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
             // 5.比价和上架
 //            cnt += compareWithPoisonAndChangePrice(toInsert);
