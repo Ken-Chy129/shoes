@@ -49,9 +49,10 @@ public class StockXClient {
     private String authorization;
 
     public List<StockXPriceDO> queryPrice(String productId) {
-        ProxyUtil.changeNode();
+        String currentNodeName = ProxyUtil.changeNode();
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
+            log.error("no result, current proxyNode:{}", currentNodeName);
             return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
