@@ -49,6 +49,24 @@ public class StockXClient {
     @Value("${stockx.authorization}")
     private String authorization;
 
+    private final String expireTime = "2026-04-06T23:22:45+0800";
+
+    public void deleteItems(List<Pair<String, Integer>> itemList) {
+        JSONObject body = new JSONObject();
+        body.put("operationName", "DeleteAsks");
+        JSONObject variables = new JSONObject();
+        body.put("variables", variables);
+        List<Map<String, Object>> data = new ArrayList<>();
+        variables.put("items", data);
+        for (Pair<String, Integer> item : itemList) {
+            String id = item.getKey();
+            Integer amount = item.getValue();
+            data.add(Map.of("id", id, "amount", amount, "expires", expireTime, "currencyCode", "USD"));
+        }
+        body.put("query", "mutation DeleteAsks($items: [BulkDeleteAskInput]) {\n  deleteAsks(input: {items: $items}) {\n    result\n    __typename\n  }\n}");
+        HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+    }
+
     public List<StockXPriceDO> queryPrice(String productId) {
 //        String currentNodeName = ProxyUtil.changeNode();
         String currentNodeName = "current";
@@ -113,6 +131,7 @@ public class StockXClient {
             map.put("variantId", variantId);
             map.put("amount", String.valueOf(price));
             map.put("quantity", 1);
+            map.put("expiresAt", expireTime);
             toCreate.add(map);
         }
         JSONObject jsonObject = new JSONObject();
