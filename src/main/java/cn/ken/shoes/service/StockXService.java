@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.hutool.core.lang.Pair;
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.StockXSwitch;
@@ -12,6 +13,7 @@ import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SqlHelper;
+import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
@@ -57,7 +59,7 @@ public class StockXService {
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPrices() {
         // 1.下架不赢利的商品
-
+        clearNoBenefitItems();
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
@@ -78,6 +80,38 @@ public class StockXService {
             }
         }
         return cnt;
+    }
+
+    private void clearNoBenefitItems() {
+        String afterName = null;
+        boolean hasMore;
+        do {
+            JSONObject jsonObject = stockXClient.querySellingItems(afterName, null);
+            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+            Set<String> collect = items.stream().map(json -> json.getString("styleId")).collect(Collectors.toSet());
+            Map<String, Integer> map = poisonPriceMapper.selectListByModelNos(collect).stream().collect(Collectors.toMap(
+                    price -> STR."\{price.getModelNo()}:\{price.getEuSize()}",
+                    PoisonPriceDO::getPrice
+            ));
+            List<Pair<String, Integer>> toDelete = new ArrayList<>();
+            for (JSONObject item : items) {
+                String styleId = item.getString("styleId");
+                if (StrUtil.isBlank(styleId)) {
+                    continue;
+                }
+                Integer euSize = item.getInteger("euSize");
+                Integer poisonPrice = map.get(STR."\{styleId}:\{euSize}");
+                Integer amount = item.getInteger("amount");
+                // 得物无价或无盈利，下架该商品
+                if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
+                    String id = item.getString("id");
+                    toDelete.add(Pair.of(id, amount));
+                }
+            }
+            stockXClient.deleteItems(toDelete);
+            hasMore = jsonObject.getBoolean("hasMore");
+            afterName = jsonObject.getString("afterName");
+        } while (hasMore);
     }
 
     public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {
