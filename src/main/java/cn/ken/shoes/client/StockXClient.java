@@ -51,8 +51,8 @@ public class StockXClient {
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
-    public JSONObject querySellingItems(String after) {
-        String bodyString = buildItemsSellingQueryRequest(after);
+    public JSONObject querySellingItems(String after, String query) {
+        String bodyString = buildItemsSellingQueryRequest(after, query);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return null;
@@ -419,7 +419,7 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildItemsSellingQueryRequest(String after) {
+    private String buildItemsSellingQueryRequest(String after, String query) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "ViewerAsks");
         requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  productVariant {\n    id\n    sizeChart {\n      displayOptions {\n        size\n       }\n      }\n    product {\n      id\n      urlKey\n      styleId\n     }\n    }\n}");
@@ -429,6 +429,7 @@ public class StockXClient {
         variables.put("order", "DESC");
         variables.put("skipFlexEligible", true);
         variables.put("skipGuidance", false);
+        variables.put("query", query);
         if (StrUtil.isNotBlank(after)) {
             variables.put("after", after);
         }

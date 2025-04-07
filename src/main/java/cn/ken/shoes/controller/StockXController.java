@@ -42,7 +42,7 @@ public class StockXController {
 
     @GetMapping("querySellingItems")
     public Result<JSONObject> querySellingItems() {
-        return Result.buildSuccess(stockXClient.querySellingItems(null));
+        return Result.buildSuccess(stockXClient.querySellingItems(null, "HM9606-400"));
     }
 
     @GetMapping("refreshBrand")
