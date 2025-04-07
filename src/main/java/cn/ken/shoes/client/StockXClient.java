@@ -53,9 +53,35 @@ public class StockXClient {
 
     public JSONObject querySellingItems(String after) {
         String bodyString = buildItemsSellingQueryRequest(after);
-        String result = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
-        // todo
-        return JSON.parseObject(result);
+        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
+        if (StrUtil.isBlank(rawResult)) {
+            return null;
+        }
+        JSONObject result = new JSONObject();
+        JSONObject jsonObject = JSON.parseObject(rawResult);
+        JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
+        JSONObject pageInfo = ask.getJSONObject("pageInfo");
+        result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
+        result.put("endCursor", pageInfo.getString("endCursor"));
+        List<JSONObject> items = new ArrayList<>();
+        result.put("items", items);
+        for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            JSONObject node = edge.getJSONObject("node");
+            JSONObject item = new JSONObject();
+            item.put("id", node.getString("id"));
+            item.put("amount", node.getInteger("amount"));
+            JSONObject productVariant = node.getJSONObject("productVariant");
+            item.put("styleId", productVariant.getJSONObject("product").getString("styleId"));
+            productVariant.getJSONObject("sizeChart")
+                    .getJSONArray("displayOptions")
+                    .toJavaList(JSONObject.class)
+                    .stream()
+                    .filter(option -> option.getString("size").startsWith("EU"))
+                    .findFirst()
+                    .ifPresent(euOption -> item.put("euSize", ShoesUtil.getEuSizeFromPoison(euOption.getString("size"))));
+            items.add(item);
+        }
+        return result;
     }
 
     public void deleteItems(List<Pair<String, Integer>> itemList) {
