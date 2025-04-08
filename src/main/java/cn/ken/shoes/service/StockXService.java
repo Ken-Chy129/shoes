@@ -22,10 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.Function;
@@ -59,7 +56,7 @@ public class StockXService {
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPrices() {
         // 1.下架不赢利的商品
-        clearNoBenefitItems();
+        Map<String, Pair<String, Integer>> retainItemsMap = clearNoBenefitItems();
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
@@ -76,15 +73,19 @@ public class StockXService {
                 List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
                 Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
                 // 4.比价和上架
-//                cnt += compareWithPoisonAndChangePrice(stockXPriceDOList);
+                cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
             }
         }
         return cnt;
     }
 
-    private void clearNoBenefitItems() {
+    /**
+     * 下架不赢利的商品，返回仍在上架的商品
+     */
+    private Map<String, Pair<String, Integer>> clearNoBenefitItems() {
         String afterName = null;
         boolean hasMore;
+        Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
         do {
             JSONObject jsonObject = stockXClient.querySellingItems(afterName, null);
             List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
@@ -100,21 +101,25 @@ public class StockXService {
                     continue;
                 }
                 Integer euSize = item.getInteger("euSize");
-                Integer poisonPrice = map.get(STR."\{styleId}:\{euSize}");
+                String key = STR."\{styleId}:\{euSize}";
+                Integer poisonPrice = map.get(key);
                 Integer amount = item.getInteger("amount");
+                String id = item.getString("id");
                 // 得物无价或无盈利，下架该商品
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
-                    String id = item.getString("id");
                     toDelete.add(Pair.of(id, amount));
+                } else {
+                    retainItemsMap.put(key, Pair.of(id, amount));
                 }
             }
             stockXClient.deleteItems(toDelete);
             hasMore = jsonObject.getBoolean("hasMore");
             afterName = jsonObject.getString("afterName");
         } while (hasMore);
+        return retainItemsMap;
     }
 
-    public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {
+    public int compareWithPoisonAndChangePrice(Map<String, Pair<String, Integer>> retainItemsMap, List<StockXPriceDO> stockXPriceDOS) {
         int uploadCnt = 0;
         try {
             // 1.查询得物价格
@@ -126,15 +131,17 @@ public class StockXService {
             // 2.查询对应的货号在得物的价格，如果有两个版本的价格，用新版本的
             Map<String, PoisonPriceDO> poisonPriceDOMap = poisonPriceDOList.stream()
                     .collect(Collectors.toMap(
-                            poisonPriceDO -> poisonPriceDO.getModelNo() + ":" + poisonPriceDO.getEuSize(),
+                            poisonPriceDO -> STR."\{poisonPriceDO.getModelNo()}:\{poisonPriceDO.getEuSize()}",
                             Function.identity(),
                             (k1, k2) -> k1.getVersion() > k2.getVersion() ? k1 : k2
                     ));
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
+            List<Pair<String, Integer>> toRemove = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
                 String modelNo = stockXPriceDO.getModelNo();
                 String euSize = stockXPriceDO.getEuSize();
-                PoisonPriceDO poisonPriceDO = poisonPriceDOMap.get(modelNo + ":" + euSize);
+                String key = STR."\{modelNo}:\{euSize}";
+                PoisonPriceDO poisonPriceDO = poisonPriceDOMap.get(key);
                 if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || getStockXPrice(stockXPriceDO) == null) {
                     continue;
                 }
@@ -142,9 +149,16 @@ public class StockXService {
                 if (!canEarn) {
                     continue;
                 }
+                // 如果当前已经上架了该商品，则需要进行下架操作
+                if (retainItemsMap.containsKey(key)) {
+                    toRemove.add(retainItemsMap.get(key));
+                }
                 toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), getStockXPrice(stockXPriceDO)));
             }
             uploadCnt += toCreate.size();
+            // 下架重复商品
+            stockXClient.deleteItems(toRemove);
+            // 上架
             stockXClient.createListing(toCreate);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
