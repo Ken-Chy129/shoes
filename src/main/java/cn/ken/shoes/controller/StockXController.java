@@ -57,6 +57,14 @@ public class StockXController {
         return Result.buildSuccess();
     }
 
+    @GetMapping("testUpV2")
+    public Result<Boolean> testNewUp() {
+        Pair<String, Integer> pair = Pair.of("62a7f698-7896-4fc3-b499-a56da389dd6f", 9999);
+        Pair<String, Integer> pair2 = Pair.of("9df4a9c7-cb5a-4dfb-a804-c936b9bf5d27", 9999);
+        stockXClient.createListingV2(List.of(pair, pair2));
+        return Result.buildSuccess();
+    }
+
     @GetMapping("testUp")
     public Result<String> testUp() {
         Pair<String, Integer> pair = Pair.of("62a7f698-7896-4fc3-b499-a56da389dd6f", 9999);
