@@ -51,6 +51,24 @@ public class StockXClient {
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
+    public void createListingV2(List<Pair<String, Integer>> itemList) {
+        JSONObject body = new JSONObject();
+        body.put("operationName", "CreateBatchListings");
+        JSONObject variables = new JSONObject();
+        body.put("variables", variables);
+        List<Map<String, Object>> data = new ArrayList<>();
+        variables.put("items", data);
+        for (Pair<String, Integer> item : itemList) {
+            String variantId = item.getKey();
+            String amount = String.valueOf(item.getValue());
+            data.add(Map.of("variantID", variantId, "amount", amount, "expiresAt", expireTime, "currency", "USD", "quantity", 1));
+        }
+        body.put("query", "mutation CreateBatchListings($items: [CreateListingBatchInput]) {\n  createBatchListings(input: $items) {\n    id\n    status\n    __typename\n  }\n}");
+        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+        JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        String batchId = jsonObject.getJSONObject("data").getJSONObject("createBatchListings").getString("id");
+    }
+
     public JSONObject querySellingItems(String after, String query) {
         String bodyString = buildItemsSellingQueryRequest(after, query);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
