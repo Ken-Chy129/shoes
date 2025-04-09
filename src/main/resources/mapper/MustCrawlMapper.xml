@@ -2,6 +2,13 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.MustCrawlMapper">
 
+    <insert id="insertIgnore">
+        insert ignore into must_crawl(platform, model_no) VALUE (
+            #{platform},
+            #{modelNo}
+        )
+    </insert>
+
     <delete id="deleteByPlatform">
         delete from must_crawl
         where platform = #{platform}

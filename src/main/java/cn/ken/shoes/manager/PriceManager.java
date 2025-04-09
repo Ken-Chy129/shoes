@@ -62,7 +62,7 @@ public class PriceManager {
             MustCrawlDO mustCrawlDO = new MustCrawlDO();
             mustCrawlDO.setPlatform("stockx");
             mustCrawlDO.setModelNo(modelNumber);
-            mustCrawlMapper.insert(mustCrawlDO);
+            mustCrawlMapper.insertIgnore(mustCrawlDO);
             List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(poisonItemDO.getArticleNumber(), poisonItemDO.getSpuId());
             return poisonPriceDOList.stream().filter(poisonPriceDO -> euSize.equals(poisonPriceDO.getEuSize()))
                     .findFirst()
