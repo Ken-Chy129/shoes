@@ -72,9 +72,11 @@ public class PriceManager {
         return String.valueOf(price);
     }
 
-    public String getPrice(String modelNo, String euSize) {
+    // todo:绿叉通过该方式获取价格（kc不变），查价线程每次查到价格put到缓存中
+    public Integer getPrice(String modelNo, String euSize) {
         try {
-            return CACHE.get(STR."\{modelNo}:\{euSize}");
+            String price = CACHE.get(STR."\{modelNo}:\{euSize}");
+            return EMPTY_DATA.equals(price) ? null : Integer.valueOf(price);
         } catch (ExecutionException e) {
             return null;
         }
