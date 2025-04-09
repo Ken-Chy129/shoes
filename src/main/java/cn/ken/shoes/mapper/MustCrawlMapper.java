@@ -10,6 +10,8 @@ import java.util.List;
 @Mapper
 public interface MustCrawlMapper extends BaseMapper<MustCrawlDO> {
 
+    void insertIgnore(MustCrawlDO crawlDO);
+
     List<String> queryByPlatformList(@Param("platform") String platform);
 
     void deleteByPlatform(@Param("platform") String platform);
