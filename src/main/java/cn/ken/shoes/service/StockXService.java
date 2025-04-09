@@ -23,8 +23,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -159,7 +157,7 @@ public class StockXService {
             // 下架重复商品
             stockXClient.deleteItems(toRemove);
             // 上架
-            stockXClient.createListing(toCreate);
+            stockXClient.createListingV2(toCreate);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }

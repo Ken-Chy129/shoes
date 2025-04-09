@@ -22,4 +22,6 @@ public interface PoisonPriceMapper extends BaseMapper<PoisonPriceDO> {
     Integer getMaxVersion();
 
     void deleteOldVersion(int oldVersion);
+
+    Integer selectPriceByModelNoAndSize(@Param("modelNo") String modelNo, @Param("euSize") String euSize);
 }

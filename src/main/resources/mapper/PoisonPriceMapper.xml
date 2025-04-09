@@ -40,4 +40,8 @@
     <select id="getMaxVersion" resultType="java.lang.Integer">
         select max(version) from poison_price;
     </select>
+
+    <select id="selectPriceByModelNoAndSize" resultType="java.lang.Integer">
+        select price from poison_price where model_no = #{modelNo} and eu_size = #{euSize}
+    </select>
 </mapper>
