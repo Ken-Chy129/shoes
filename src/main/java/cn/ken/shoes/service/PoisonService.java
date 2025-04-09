@@ -12,18 +12,13 @@ import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
 import com.google.common.collect.Lists;
-import com.google.common.util.concurrent.RateLimiter;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.ibatis.session.ExecutorType;
-import org.apache.ibatis.session.SqlSession;
-import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 
@@ -45,6 +40,17 @@ public class PoisonService {
 
     @Resource
     private MustCrawlMapper mustCrawlMapper;
+
+    public PoisonItemDO selectItemByModelNo(String modelNo) {
+        PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
+        if (poisonItemDO == null) {
+            List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(List.of(modelNo));
+            poisonItemDO = CollectionUtils.isEmpty(poisonItemDOS) ? null : poisonItemDOS.getFirst();
+            PoisonItemDO finalPoisonItemDO = poisonItemDO;
+            Thread.startVirtualThread(() -> poisonItemMapper.insertIgnore(finalPoisonItemDO));
+        }
+        return poisonItemDO;
+    }
 
     /**
      * 增量更新得物商品
