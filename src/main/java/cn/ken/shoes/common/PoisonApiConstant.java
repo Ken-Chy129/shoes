@@ -36,4 +36,9 @@ public class PoisonApiConstant {
      * 根据spu查询价格
      */
     public static final String PRICE_BY_SPU_V2 = "http://134.175.182.182:6699/api/dewu/redis/price_token?spuid={spuId}&token={token}";
+
+    /**
+     * 根据货号查询价格
+     */
+    public static final String PRICE_BY_MODEL_NO = "http://134.175.182.182:6699/api/dewu/redis/price_token?artno={modelNo}&token={token}";
 }
