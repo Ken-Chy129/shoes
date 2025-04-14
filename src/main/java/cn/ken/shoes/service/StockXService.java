@@ -5,26 +5,21 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.mapper.StockXItemMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.model.entity.*;
-import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SqlHelper;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
-import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
 import java.util.*;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -34,7 +29,7 @@ public class StockXService {
     private StockXClient stockXClient;
 
     @Resource
-    private StockXItemMapper stockXItemMapper;
+    private PriceManager priceManager;
 
     @Resource
     private BrandMapper brandMapper;
@@ -87,27 +82,21 @@ public class StockXService {
         do {
             JSONObject jsonObject = stockXClient.querySellingItems(afterName, null);
             List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-            Set<String> collect = items.stream().map(json -> json.getString("styleId")).collect(Collectors.toSet());
-            Map<String, Integer> map = poisonPriceMapper.selectListByModelNos(collect).stream().collect(Collectors.toMap(
-                    price -> STR."\{price.getModelNo()}:\{price.getEuSize()}",
-                    PoisonPriceDO::getPrice
-            ));
             List<Pair<String, Integer>> toDelete = new ArrayList<>();
             for (JSONObject item : items) {
                 String styleId = item.getString("styleId");
                 if (StrUtil.isBlank(styleId)) {
                     continue;
                 }
-                Integer euSize = item.getInteger("euSize");
-                String key = STR."\{styleId}:\{euSize}";
-                Integer poisonPrice = map.get(key);
+                String euSize = item.getString("euSize");
+                Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
                 Integer amount = item.getInteger("amount");
                 String id = item.getString("id");
                 // 得物无价或无盈利，下架该商品
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
                     toDelete.add(Pair.of(id, amount));
                 } else {
-                    retainItemsMap.put(key, Pair.of(id, amount));
+                    retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
                 }
             }
             stockXClient.deleteItems(toDelete);
@@ -120,30 +109,17 @@ public class StockXService {
     public int compareWithPoisonAndChangePrice(Map<String, Pair<String, Integer>> retainItemsMap, List<StockXPriceDO> stockXPriceDOS) {
         int uploadCnt = 0;
         try {
-            // 1.查询得物价格
-            Set<String> modelNos = stockXPriceDOS.stream().map(StockXPriceDO::getModelNo).collect(Collectors.toSet());
-            if (CollectionUtils.isEmpty(modelNos)) {
-                return 0;
-            }
-            List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(modelNos);
-            // 2.查询对应的货号在得物的价格，如果有两个版本的价格，用新版本的
-            Map<String, PoisonPriceDO> poisonPriceDOMap = poisonPriceDOList.stream()
-                    .collect(Collectors.toMap(
-                            poisonPriceDO -> STR."\{poisonPriceDO.getModelNo()}:\{poisonPriceDO.getEuSize()}",
-                            Function.identity(),
-                            (k1, k2) -> k1.getVersion() > k2.getVersion() ? k1 : k2
-                    ));
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
             List<Pair<String, Integer>> toRemove = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
                 String modelNo = stockXPriceDO.getModelNo();
                 String euSize = stockXPriceDO.getEuSize();
+                Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
                 String key = STR."\{modelNo}:\{euSize}";
-                PoisonPriceDO poisonPriceDO = poisonPriceDOMap.get(key);
-                if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || getStockXPrice(stockXPriceDO) == null) {
+                if (poisonPrice == null || getStockXPrice(stockXPriceDO) == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canStockxEarn(poisonPriceDO.getPrice(), getStockXPrice(stockXPriceDO));
+                boolean canEarn = ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO));
                 if (!canEarn) {
                     continue;
                 }
