@@ -4,9 +4,7 @@ import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.mapper.MustCrawlMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.MustCrawlDO;
-import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
-import cn.ken.shoes.service.PoisonService;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -28,9 +26,6 @@ public class PriceManager {
 
     @Resource
     private PoisonClient poisonClient;
-
-    @Resource
-    private PoisonService poisonService;
 
     @Resource
     private MustCrawlMapper mustCrawlMapper;
@@ -68,7 +63,7 @@ public class PriceManager {
     }
 
     // todo:绿叉通过该方式获取价格（kc不变），查价线程每次查到价格put到缓存中
-    public Integer getPrice(String modelNo, String euSize) {
+    public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
             String price = CACHE.get(STR."\{modelNo}:\{euSize}");
             return EMPTY_DATA.equals(price) ? null : Integer.valueOf(price);

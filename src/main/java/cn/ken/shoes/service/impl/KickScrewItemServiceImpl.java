@@ -299,7 +299,7 @@ public class KickScrewItemServiceImpl implements ItemService {
 //                                KickScrewPriceDO kickScrewPriceDO = new KickScrewPriceDO();
 //                                kickScrewPriceDO.setModelNo(modelNo);
 //                                kickScrewPriceDO.setEuSize(euSize);
-//                                Map<String, String> price = kickScrewSizePrice.getPrice();
+//                                Map<String, String> price = kickScrewSizePrice.getPoisonPrice();
 //                                kickScrewPriceDO.setPrice((int) Double.parseDouble(String.valueOf(price.get("amount"))));
 //                                toInsert.add(kickScrewPriceDO);
 //                            }
