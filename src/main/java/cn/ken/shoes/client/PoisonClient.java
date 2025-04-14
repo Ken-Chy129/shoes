@@ -30,6 +30,41 @@ public class PoisonClient {
     @Value("${poison.token}")
     private String token;
 
+    public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
+        String url = PoisonApiConstant.PRICE_BY_MODEL_NO
+                .replace("{modelNo}", modelNo)
+                .replace("{token}", token);
+        String result = HttpUtil.doGet(url);
+        try {
+            if ("{}".equals(result)) {
+                lackModelLogger.info(modelNo);
+                return Collections.emptyList();
+            }
+            JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
+            List<JSONObject> dataList = dataJson.toJavaList(JSONObject.class);
+            List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+            Set<String> sizeSet = new HashSet<>();
+            for (JSONObject data : dataList) {
+                Integer price = data.getInteger("minprice");
+                String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
+                if (price == null || price == 0 || size == null || sizeSet.contains(size) || price > 100 * PoisonSwitch.MAX_PRICE) {
+                    continue;
+                } else {
+                    sizeSet.add(size);
+                }
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(size);
+                poisonPriceDO.setPrice(price / 100);
+                poisonPriceDOList.add(poisonPriceDO);
+            }
+            return poisonPriceDOList;
+        } catch (Exception e) {
+            log.error("queryPriceBySpuV2 error, msg:{}, model:{}", e.getMessage(), modelNo);
+            return Collections.emptyList();
+        }
+    }
+
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
         String url = PoisonApiConstant.PRICE_BY_SPU_V2
                 .replace("{spuId}", String.valueOf(spuId))
