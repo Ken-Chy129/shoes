@@ -53,17 +53,12 @@ public class PriceManager {
         String euSize = split[1];
         Integer price = poisonPriceMapper.selectPriceByModelNoAndSize(modelNumber, euSize);
         if (price == null) {
-            PoisonItemDO poisonItemDO = poisonService.selectItemByModelNo(modelNumber);
-            // 查询不到商品
-            if (poisonItemDO == null) {
-                return EMPTY_DATA;
-            }
             // 加入必爬商品，下次跑批自动会更新价格
             MustCrawlDO mustCrawlDO = new MustCrawlDO();
             mustCrawlDO.setPlatform("stockx");
             mustCrawlDO.setModelNo(modelNumber);
             mustCrawlMapper.insertIgnore(mustCrawlDO);
-            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(poisonItemDO.getArticleNumber(), poisonItemDO.getSpuId());
+            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
             return poisonPriceDOList.stream().filter(poisonPriceDO -> euSize.equals(poisonPriceDO.getEuSize()))
                     .findFirst()
                     .map(poisonPriceDO -> String.valueOf(poisonPriceDO.getPrice()))
