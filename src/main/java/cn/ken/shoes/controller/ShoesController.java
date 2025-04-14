@@ -4,6 +4,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.PriceEnum;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.model.shoes.ShoesRequest;
 import cn.ken.shoes.model.shoes.ShoesVO;
 import cn.ken.shoes.service.FileService;
@@ -30,13 +31,13 @@ public class ShoesController {
     @Resource
     private PoisonClient poisonClient;
     @Resource
-    private PoisonService poisonService;
-    @Resource
     private ItemService kickScrewItemService;
     @Resource
     private ShoesService shoesService;
     @Resource
     private FileService fileService;
+    @Resource
+    private PriceManager priceManager;
 
     @GetMapping("shoesPage")
     public PageResult<List<ShoesVO>> shoesPage(ShoesRequest request) {
@@ -56,6 +57,11 @@ public class ShoesController {
     @GetMapping("queryPriceByModelNo")
     public String queryPriceByModelNo(String modelNo) {
         return JSON.toJSONString(poisonClient.queryPriceByModelNo(modelNo));
+    }
+
+    @GetMapping("queryPriceByCache")
+    public Integer queryPriceByCache(String modelNo) {
+        return priceManager.getPrice(modelNo, "38.5");
     }
 
     @GetMapping("clearKcItems")
