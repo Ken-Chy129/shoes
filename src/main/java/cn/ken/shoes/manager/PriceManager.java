@@ -62,7 +62,6 @@ public class PriceManager {
         return String.valueOf(price);
     }
 
-    // todo:绿叉通过该方式获取价格（kc不变），查价线程每次查到价格put到缓存中
     public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
             String price = CACHE.get(STR."\{modelNo}:\{euSize}");
