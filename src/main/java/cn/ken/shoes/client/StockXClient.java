@@ -51,6 +51,18 @@ public class StockXClient {
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
+    public void extension(String chainId) {
+        JSONObject body = new JSONObject();
+        body.put("operationName", "RequestSellerShippingExtension");
+        JSONObject variables = new JSONObject();
+        body.put("variables", variables);
+        JSONObject input = new JSONObject();
+        input.put("chainId", chainId);
+        variables.put("input", input);
+        body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\\n  requestSellerShippingExtension(input: $input) {\\n    approved\\n    shipByDateExtendedTo\\n    __typename\\n  }\\n}");
+        HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+    }
+
     public void createListingV2(List<Pair<String, Integer>> itemList) {
         JSONObject body = new JSONObject();
         body.put("operationName", "CreateBatchListings");
