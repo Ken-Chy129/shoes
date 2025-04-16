@@ -4,7 +4,6 @@ import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.BrandDO;
-import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
@@ -80,4 +79,14 @@ public class StockXController {
         return Result.buildSuccess();
     }
 
+    @GetMapping("queryToDealItems")
+    public Result<JSONObject> queryToDealItems() {
+        return Result.buildSuccess(stockXClient.queryToDeal());
+    }
+
+    @GetMapping("extensionItem")
+    public Result<Void> extensionItem(String chainId) {
+        stockXClient.extensionItem(chainId);
+        return Result.buildSuccess();
+    }
 }
