@@ -40,6 +40,14 @@ public class StockXService {
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
 
+    public void extendAllItems() {
+        JSONObject jsonObject = stockXClient.queryToDeal();
+        List<String> chainIds = jsonObject.getJSONArray("chainIds").toJavaList(String.class);
+        for (String chainId : chainIds) {
+            stockXClient.extendItem(chainId);
+        }
+    }
+
     public void refreshBrand() {
         List<BrandDO> brandDOList = stockXClient.queryBrands();
         brandMapper.batchInsertOrUpdate(brandDOList);
@@ -54,7 +62,12 @@ public class StockXService {
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
         int cnt = 0;
-        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
+//        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
+        BrandDO brandDO1 = new BrandDO();
+        brandDO1.setName("nike");
+        brandDO1.setNeedCrawl(true);
+        brandDO1.setCrawlCnt(1000);
+        List<BrandDO> brandDOList = List.of(brandDO1);
         for (BrandDO brandDO : brandDOList) {
             if (!brandDO.getNeedCrawl()) {
                 continue;

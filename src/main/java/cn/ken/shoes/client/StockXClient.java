@@ -72,7 +72,7 @@ public class StockXClient {
         return result;
     }
 
-    public void extensionItem(String chainId) {
+    public void extendItem(String chainId) {
         JSONObject body = new JSONObject();
         body.put("operationName", "RequestSellerShippingExtension");
         JSONObject variables = new JSONObject();
@@ -80,7 +80,7 @@ public class StockXClient {
         JSONObject input = new JSONObject();
         input.put("chainId", chainId);
         variables.put("input", input);
-        body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\\n  requestSellerShippingExtension(input: $input) {\\n    approved\\n    shipByDateExtendedTo\\n    __typename\\n  }\\n}");
+        body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\n  requestSellerShippingExtension(input: $input) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
         HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
     }
 

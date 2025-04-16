@@ -85,8 +85,8 @@ public class StockXController {
     }
 
     @GetMapping("extensionItem")
-    public Result<Void> extensionItem(String chainId) {
-        stockXClient.extensionItem(chainId);
+    public Result<Void> extendItem(String chainId) {
+        stockXClient.extendItem(chainId);
         return Result.buildSuccess();
     }
 }
