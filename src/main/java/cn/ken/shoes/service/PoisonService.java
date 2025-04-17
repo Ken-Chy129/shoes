@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
@@ -38,6 +39,9 @@ public class PoisonService {
 
     @Resource
     private MustCrawlMapper mustCrawlMapper;
+
+    @Resource
+    private PriceManager priceManager;
 
     public PoisonItemDO selectItemByModelNo(String modelNo) {
         PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
@@ -96,6 +100,7 @@ public class PoisonService {
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
                         poisonPriceDOList.forEach(poisonPriceDO -> poisonPriceDO.setVersion(newVersion));
                         toInsert.addAll(poisonPriceDOList);
+                        priceManager.putModelPrice(itemDO.getArticleNumber(), poisonPriceDOList);
                     } catch (Exception e) {
                         log.error(e.getMessage());
                     } finally {

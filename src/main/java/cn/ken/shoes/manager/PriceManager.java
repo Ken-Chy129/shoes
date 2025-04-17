@@ -71,4 +71,15 @@ public class PriceManager {
             return null;
         }
     }
+
+    public void putModelPrice(String modelNo, List<PoisonPriceDO> poisonPriceDOList) {
+        Map<String, Integer> sizePriceMap = poisonPriceDOList.stream()
+                .collect(
+                        Collectors.toMap(
+                                PoisonPriceDO::getEuSize,
+                                PoisonPriceDO::getPrice
+                        )
+                );
+        CACHE.put(modelNo, sizePriceMap);
+    }
 }
