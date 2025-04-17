@@ -11,15 +11,17 @@ import com.google.common.cache.LoadingCache;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 @Service
 public class PriceManager {
-
-    private static final String EMPTY_DATA = "EMPTY";
 
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
@@ -30,42 +32,41 @@ public class PriceManager {
     @Resource
     private MustCrawlMapper mustCrawlMapper;
 
-    private final LoadingCache<String, String> CACHE = CacheBuilder.newBuilder()
+    private final LoadingCache<String, Map<String, Integer>> CACHE = CacheBuilder.newBuilder()
             .maximumSize(100000) // 设置最大容量
                 .expireAfterWrite(10, TimeUnit.HOURS) // 设置写入后过期时间
                 .build(new CacheLoader<>() {
-        @NonNull
-        @Override
-        public String load(@NonNull String key) {
-            return loadPrice(key);
-        }
-    }); // 加载逻辑
+                    @NonNull
+                    @Override
+                    public Map<String, Integer> load(@NonNull String key) {
+                        return loadPrice(key);
+                    }
+                }); // 加载逻辑
 
     @NonNull
-    public String loadPrice(String key) {
-        String[] split = key.split(":");
-        String modelNumber = split[0];
-        String euSize = split[1];
-        Integer price = poisonPriceMapper.selectPriceByModelNoAndSize(modelNumber, euSize);
-        if (price == null) {
+    public Map<String, Integer> loadPrice(String modelNo) {
+        List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(modelNo));
+        if (CollectionUtils.isEmpty(poisonPriceDOList)) {
             // 加入必爬商品，下次跑批自动会更新价格
             MustCrawlDO mustCrawlDO = new MustCrawlDO();
             mustCrawlDO.setPlatform("stockx");
-            mustCrawlDO.setModelNo(modelNumber);
+            mustCrawlDO.setModelNo(modelNo);
             mustCrawlMapper.insertIgnore(mustCrawlDO);
-            List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
-            return poisonPriceDOList.stream().filter(poisonPriceDO -> euSize.equals(poisonPriceDO.getEuSize()))
-                    .findFirst()
-                    .map(poisonPriceDO -> String.valueOf(poisonPriceDO.getPrice()))
-                    .orElse(EMPTY_DATA);
+            poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
         }
-        return String.valueOf(price);
+        return poisonPriceDOList.stream()
+                .collect(
+                        Collectors.toMap(
+                                PoisonPriceDO::getEuSize,
+                                PoisonPriceDO::getPrice
+                        )
+                );
     }
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
-            String price = CACHE.get(STR."\{modelNo}:\{euSize}");
-            return EMPTY_DATA.equals(price) ? null : Integer.valueOf(price);
+            Map<String, Integer> sizePriceMap = CACHE.get(modelNo);
+            return sizePriceMap.get(euSize);
         } catch (ExecutionException e) {
             return null;
         }
