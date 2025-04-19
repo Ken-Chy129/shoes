@@ -78,4 +78,14 @@ public class ShoesUtil {
         return true;
     }
 
+
+    public static Integer getThreeFivePrice(Integer normalPrice) {
+        return (int) (normalPrice * 0.955 - 38 - 8.9);
+    }
+
+    public static void main(String[] args) {
+        Integer normalPrice = 899;
+        System.out.println(normalPrice * 0.955 - 38 -8.9);
+    }
+
 }

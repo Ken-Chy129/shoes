@@ -1,6 +1,8 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
 import cn.ken.shoes.manager.PriceManager;
@@ -257,15 +259,14 @@ public class KickScrewService {
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
-                Integer price = kickScrewPriceDO.getPrice();
-                Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
-                // 得物无价，下架该商品
-                if (poisonPrice == null) {
-                    toDelete.add(kickScrewPriceDO);
+                if (ShoesContext.getModelType(modelNo, euSize) == CustomPriceTypeEnum.NOT_COMPARE) {
+                    // 不压价下架的商品
                     continue;
                 }
-                if (!ShoesUtil.canKcEarn(poisonPrice, price + 1)) {
-                    // 无盈利，下架
+                Integer price = kickScrewPriceDO.getPrice();
+                Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
+                if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, price + 1)) {
+                    // 得物无价或无盈利，下架该商品
                     toDelete.add(kickScrewPriceDO);
                 }
             }
