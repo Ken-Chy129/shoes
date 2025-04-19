@@ -72,7 +72,7 @@ public class PriceManager {
         }
     }
 
-    public void putModelPrice(String modelNo, List<PoisonPriceDO> poisonPriceDOList) {
+    public void putModelNoPrice(String modelNo, List<PoisonPriceDO> poisonPriceDOList) {
         Map<String, Integer> sizePriceMap = poisonPriceDOList.stream()
                 .collect(
                         Collectors.toMap(
@@ -81,5 +81,9 @@ public class PriceManager {
                         )
                 );
         CACHE.put(modelNo, sizePriceMap);
+    }
+
+    public void importPrice(Map<String, Map<String, Integer>> modelNoPriceMap) {
+        CACHE.putAll(modelNoPriceMap);
     }
 }
