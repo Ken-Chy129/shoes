@@ -94,7 +94,6 @@ public class PoisonService {
             for (String modelNumber : modelNumbers) {
                 Thread.startVirtualThread(() -> {
                     try {
-                        LimiterHelper.limitPoisonPrice();
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
                         noResultNum.addAndGet(poisonPriceDOList.isEmpty() ? 1 : 0);
                         toInsert.addAll(poisonPriceDOList);
