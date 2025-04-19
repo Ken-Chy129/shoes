@@ -1,5 +1,7 @@
 package cn.ken.shoes;
 
+import cn.ken.shoes.common.CustomPriceTypeEnum;
+import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import lombok.Getter;
 
@@ -11,6 +13,8 @@ public class ShoesContext {
 
     @Getter
     private static Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = new HashMap<>();
+
+    private static Map<String, CustomPriceTypeEnum> customPriceTypeMap = new HashMap<>();
 
     public static void setBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap) {
         ShoesContext.brandGenderSizeChartMap = brandGenderSizeChartMap;
@@ -34,5 +38,16 @@ public class ShoesContext {
             return null;
         }
         return brandGenderSizeChart.stream().filter(sizeChartDO -> sizeChartDO.getEuSize().equals(euSize)).findFirst().orElse(null);
+    }
+
+    public static void putCustomModel(CustomModelDO customModelDO) {
+        String modelNo = customModelDO.getModelNo();
+        String euSize = customModelDO.getEuSize();
+        CustomPriceTypeEnum customPriceTypeEnum = CustomPriceTypeEnum.from(customModelDO.getType());
+        customPriceTypeMap.put(STR."\{modelNo}:\{euSize}", customPriceTypeEnum);
+    }
+
+    public static CustomPriceTypeEnum getCustomModel(String modelNo, String euSize) {
+        return customPriceTypeMap.get(STR."\{modelNo}:\{euSize}");
     }
 }

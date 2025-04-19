@@ -1,9 +1,9 @@
 package cn.ken.shoes.scheduler;
 
 import cn.ken.shoes.ShoesContext;
-import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.mapper.BrandMapper;
+import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
+import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -22,13 +22,10 @@ import java.util.Map;
 public class StartedEventListener implements ApplicationListener<ApplicationStartedEvent> {
 
     @Resource
-    private KickScrewClient kickScrewClient;
-
-    @Resource
-    private BrandMapper brandMapper;
-
-    @Resource
     private SizeChartMapper sizeChartMapper;
+
+    @Resource
+    private CustomModelMapper customModelMapper;
 
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
@@ -42,6 +39,15 @@ public class StartedEventListener implements ApplicationListener<ApplicationStar
             brandGenderMap.put(brand, genderMap);
         }
         ShoesContext.setBrandGenderSizeChartMap(brandGenderMap);
+        initCustomModel();
+    }
+
+
+    private void initCustomModel() {
+        List<CustomModelDO> customModelDOS = customModelMapper.selectList(new QueryWrapper<>());
+        for (CustomModelDO customModelDO : customModelDOS) {
+            ShoesContext.putCustomModel(customModelDO);
+        }
     }
 
 }
