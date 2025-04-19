@@ -22,7 +22,4 @@ public class PoisonPriceDO {
     @ExcelProperty("价格")
     private Integer price;
 
-    @ExcelProperty("版本")
-    private Integer version;
-
 }
