@@ -3,11 +3,10 @@
 <mapper namespace="cn.ken.shoes.mapper.PoisonPriceMapper">
 
     <insert id="insertOverwrite">
-        insert into poison_price(model_no, eu_size, price, version) value (
+        insert into poison_price(model_no, eu_size, price) value (
             #{modelNo},
             #{euSize},
-            #{price},
-            #{version}
+            #{price}
         ) on duplicate key update
             price = values(price)
     </insert>

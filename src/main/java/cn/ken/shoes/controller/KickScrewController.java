@@ -46,15 +46,6 @@ public class KickScrewController {
     }
 
     /**
-     * 刷新当前kc商品表所有商品的价格
-     */
-    @GetMapping("refreshPrices")
-    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
-    public void refreshPrices() {
-        kickScrewService.refreshPrices();
-    }
-
-    /**
      * 查询尺码表
      */
     @GetMapping("querySizeChart")

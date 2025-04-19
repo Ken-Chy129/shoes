@@ -182,14 +182,6 @@ public class KickScrewService {
         }
     }
 
-    public void refreshPrices() {
-        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
-        hotModelNos.addAll(mustCrawlModelNos);
-        List<String> modelNos = hotModelNos.stream().distinct().toList();
-        refreshPricesByModelNos(modelNos);
-    }
-
     public void refreshItems(boolean clearOld) {
         // 1.爬取品牌和商品数量
         refreshBrand();
