@@ -7,6 +7,7 @@ import cn.ken.shoes.mapper.MustCrawlMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.MustCrawlDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -50,11 +51,6 @@ public class PriceManager {
     public Map<String, Integer> loadPrice(String modelNo) {
         List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(modelNo));
         if (CollectionUtils.isEmpty(poisonPriceDOList)) {
-            // 加入必爬商品，下次跑批自动会更新价格
-            MustCrawlDO mustCrawlDO = new MustCrawlDO();
-            mustCrawlDO.setPlatform("stockx");
-            mustCrawlDO.setModelNo(modelNo);
-            mustCrawlMapper.insertIgnore(mustCrawlDO);
             poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
         }
         return poisonPriceDOList.stream()

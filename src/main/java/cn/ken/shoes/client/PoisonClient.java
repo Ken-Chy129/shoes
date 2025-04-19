@@ -6,6 +6,7 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.*;
@@ -29,6 +30,7 @@ public class PoisonClient {
     private String token;
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
+        LimiterHelper.limitPoisonPrice();
         String url = PoisonApiConstant.PRICE_BY_MODEL_NO
                 .replace("{modelNo}", modelNo)
                 .replace("{token}", token);
