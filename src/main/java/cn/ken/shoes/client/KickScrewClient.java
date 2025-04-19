@@ -93,7 +93,13 @@ public class KickScrewClient {
             log.info("queryLowestPrice result is empty");
             return Collections.emptyList();
         }
-        List<JSONObject> priceList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
+        List<JSONObject> priceList;
+        try {
+            priceList = JSON.parseArray(rawResult).toJavaList(JSONObject.class);
+        } catch (Exception e) {
+            log.error("queryLowestPrice error", e);
+            return Collections.emptyList();
+        }
         List<KickScrewPriceDO> result = new ArrayList<>();
         for (JSONObject jsonObject : priceList) {
             Integer price = jsonObject.getInteger("price");

@@ -21,7 +21,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.stream.Collectors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 @Service
@@ -86,6 +86,7 @@ public class PoisonService {
         List<String> modelNos = getAllModelNos();
         List<List<String>> partition = Lists.partition(modelNos, 20);
         CountDownLatch insertLatch = new CountDownLatch(partition.size());
+        AtomicInteger noResultNum = new AtomicInteger();
         for (List<String> modelNumbers : partition) {
             CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
             CountDownLatch latch = new CountDownLatch(modelNumbers.size());
@@ -95,6 +96,7 @@ public class PoisonService {
                     try {
                         LimiterHelper.limitPoisonPrice();
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
+                        noResultNum.addAndGet(poisonPriceDOList.isEmpty() ? 1 : 0);
                         toInsert.addAll(poisonPriceDOList);
                         priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
@@ -114,6 +116,7 @@ public class PoisonService {
                 }
             });
         }
+        System.out.println(STR."allNo:\{modelNos.size()} ,noResultNum:\{noResultNum.get()}");
         insertLatch.await();
         LockHelper.unlockPoisonPrice();
     }
