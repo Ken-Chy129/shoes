@@ -82,24 +82,19 @@ public class PoisonService {
         LockHelper.lockPoisonPrice();
         // 拿到所有要查询的货号
         List<String> modelNos = getAllModelNos();
-        // 查询上一个价格版本号
-        int oldVersion = Optional.ofNullable(poisonPriceMapper.getMaxVersion()).orElse(-1);
-        int newVersion = oldVersion + 1;
-        List<PoisonItemDO> poisonItemDOS = poisonItemMapper.selectSpuIdByModelNos(modelNos);
-        List<List<PoisonItemDO>> partition = Lists.partition(poisonItemDOS, 20);
+        List<List<String>> partition = Lists.partition(modelNos, 20);
         CountDownLatch insertLatch = new CountDownLatch(partition.size());
-        for (List<PoisonItemDO> itemDOS : partition) {
+        for (List<String> modelNumbers : partition) {
             CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(itemDOS.size());
+            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
             // 查询价格
-            for (PoisonItemDO itemDO : itemDOS) {
+            for (String modelNumber : modelNumbers) {
                 Thread.startVirtualThread(() -> {
                     try {
                         LimiterHelper.limitPoisonPrice();
-                        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceBySpuV2(itemDO.getArticleNumber(), itemDO.getSpuId());
-                        poisonPriceDOList.forEach(poisonPriceDO -> poisonPriceDO.setVersion(newVersion));
+                        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
                         toInsert.addAll(poisonPriceDOList);
-                        priceManager.putModelPrice(itemDO.getArticleNumber(), poisonPriceDOList);
+                        priceManager.putModelPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
                         log.error(e.getMessage());
                     } finally {
@@ -117,9 +112,7 @@ public class PoisonService {
                 }
             });
         }
-        // 等待所有的价格插入完成之后删除旧版本的数据
         insertLatch.await();
-        poisonPriceMapper.deleteOldVersion(oldVersion);
         LockHelper.unlockPoisonPrice();
     }
 

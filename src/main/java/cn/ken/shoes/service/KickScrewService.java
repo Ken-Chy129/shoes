@@ -3,6 +3,7 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -19,7 +20,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,7 +45,7 @@ public class KickScrewService {
     private KickScrewPriceMapper kickScrewPriceMapper;
 
     @Resource
-    private PoisonPriceMapper poisonPriceMapper;
+    private PriceManager priceManager;
 
     private static final Integer PAGE_SIZE = 1_000;
 
@@ -221,28 +221,19 @@ public class KickScrewService {
     public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
         int uploadCnt = 0;
         try {
-            // 1.查询得物价格
             Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
             if (CollectionUtils.isEmpty(modelNos)) {
                 return 0;
             }
-            List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(modelNos);
-            // 2.查询对应的货号在得物的价格，如果有两个版本的价格，用新版本的
-            Map<String, PoisonPriceDO> poisonPriceDOMap = poisonPriceDOList.stream()
-                    .collect(Collectors.toMap(
-                            poisonPriceDO -> poisonPriceDO.getModelNo() + ":" + poisonPriceDO.getEuSize(),
-                            Function.identity(),
-                            (k1, k2) -> k1.getVersion() > k2.getVersion() ? k1 : k2
-                    ));
             List<KickScrewUploadItem> toUpload = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
-                PoisonPriceDO poisonPriceDO = poisonPriceDOMap.get(modelNo + ":" + euSize);
-                if (poisonPriceDO == null || poisonPriceDO.getPrice() == null || kickScrewPriceDO.getPrice() == null) {
+                Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
+                if (poisonPrice == null || kickScrewPriceDO.getPrice() == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canKcEarn(poisonPriceDO.getPrice(), kickScrewPriceDO.getPrice());
+                boolean canEarn = ShoesUtil.canKcEarn(poisonPrice, kickScrewPriceDO.getPrice());
                 if (!canEarn) {
                     continue;
                 }
@@ -270,17 +261,12 @@ public class KickScrewService {
             if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
                 continue;
             }
-            Set<String> collect = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
-            Map<String, Integer> map = poisonPriceMapper.selectListByModelNos(collect).stream().collect(Collectors.toMap(
-                    price -> price.getModelNo() + ":" + price.getEuSize(),
-                    PoisonPriceDO::getPrice
-            ));
             List<KickScrewPriceDO> toDelete = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
                 Integer price = kickScrewPriceDO.getPrice();
-                Integer poisonPrice = map.get(modelNo + ":" + euSize);
+                Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
                 // 得物无价，下架该商品
                 if (poisonPrice == null) {
                     toDelete.add(kickScrewPriceDO);
