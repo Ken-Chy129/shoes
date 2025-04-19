@@ -42,9 +42,9 @@ public class StockXService {
 
     public void extendAllItems() {
         JSONObject jsonObject = stockXClient.queryToDeal();
-        List<String> chainIds = jsonObject.getJSONArray("chainIds").toJavaList(String.class);
-        for (String chainId : chainIds) {
-            stockXClient.extendItem(chainId);
+        List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
+        for (JSONObject node : nodes) {
+            stockXClient.extendItem(node.getString("id"));
         }
     }
 
@@ -93,6 +93,7 @@ public class StockXService {
         boolean hasMore;
         Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
         do {
+            long startTime = System.currentTimeMillis();
             JSONObject jsonObject = stockXClient.querySellingItems(afterName, null);
             List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
             List<Pair<String, Integer>> toDelete = new ArrayList<>();
@@ -105,13 +106,19 @@ public class StockXService {
                 Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
                 Integer amount = item.getInteger("amount");
                 String id = item.getString("id");
+                if (StrUtil.isBlank(euSize)) {
+                    log.info("clearNoBenefitItems no euSize, modelNo:{}, euSize:{}, id:{}", styleId, euSize, id);
+                    continue;
+                }
                 // 得物无价或无盈利，下架该商品
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
+                    log.info("no benefit, modelNo:{}, euSize:{}, id:{}", styleId, euSize, id);
                     toDelete.add(Pair.of(id, amount));
                 } else {
                     retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
                 }
             }
+            log.info("clearNoBenefitItems end, cost:{}", System.currentTimeMillis() - startTime);
             stockXClient.deleteItems(toDelete);
             hasMore = jsonObject.getBoolean("hasMore");
             afterName = jsonObject.getString("afterName");
