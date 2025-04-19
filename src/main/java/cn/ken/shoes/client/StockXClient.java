@@ -63,14 +63,14 @@ public class StockXClient {
         JSONObject pageInfo = ask.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
         result.put("endCursor", pageInfo.getString("endCursor"));
-        List<String> chainIds = new ArrayList<>();
-        result.put("chainIds", chainIds);
+        List<JSONObject> nodes = new ArrayList<>();
+        result.put("nodes", nodes);
         for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
             JSONObject node = edge.getJSONObject("node");
             if (node.getBoolean("shippingExtensionRequested")) {
                 continue;
             }
-            chainIds.add(node.getString("id"));
+            nodes.add(node);
         }
         return result;
     }
@@ -476,7 +476,7 @@ public class StockXClient {
     private String buildItemsToDealQueryRequest(String after) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "ViewerAsks");
-        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  shippingExtensionRequested\n}");
+        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  shippingExtensionRequested\n  orderNumber\n}");
         JSONObject variables = new JSONObject();
         variables.put("pageSize", 1000);
         variables.put("sort", "LISTED_AT");
