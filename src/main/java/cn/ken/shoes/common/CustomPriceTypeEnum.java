@@ -25,7 +25,7 @@ public enum CustomPriceTypeEnum {
                 return customPriceTypeEnum;
             }
         }
-        return null;
+        return NORMAL;
     }
 
 }

@@ -2,8 +2,10 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -99,17 +101,18 @@ public class StockXService {
             List<Pair<String, Integer>> toDelete = new ArrayList<>();
             for (JSONObject item : items) {
                 String styleId = item.getString("styleId");
-                if (StrUtil.isBlank(styleId)) {
+                String euSize = item.getString("euSize");
+                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
+                    log.info("clearNoBenefitItems no styleId or euSize, modelNo:{}, euSize:{}", styleId, euSize);
                     continue;
                 }
-                String euSize = item.getString("euSize");
+                if (ShoesContext.getModelType(styleId, euSize) == CustomPriceTypeEnum.NOT_COMPARE) {
+                    // 不压价下架的商品
+                    continue;
+                }
                 Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
                 Integer amount = item.getInteger("amount");
                 String id = item.getString("id");
-                if (StrUtil.isBlank(euSize)) {
-                    log.info("clearNoBenefitItems no euSize, modelNo:{}, euSize:{}, id:{}", styleId, euSize, id);
-                    continue;
-                }
                 // 得物无价或无盈利，下架该商品
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
                     log.info("no benefit, modelNo:{}, euSize:{}, id:{}", styleId, euSize, id);

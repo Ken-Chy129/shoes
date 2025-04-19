@@ -47,7 +47,7 @@ public class ShoesContext {
         customPriceTypeMap.put(STR."\{modelNo}:\{euSize}", customPriceTypeEnum);
     }
 
-    public static CustomPriceTypeEnum getCustomModel(String modelNo, String euSize) {
+    public static CustomPriceTypeEnum getModelType(String modelNo, String euSize) {
         return customPriceTypeMap.get(STR."\{modelNo}:\{euSize}");
     }
 }
