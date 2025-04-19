@@ -31,8 +31,6 @@ public class PriceScheduler {
     public int refreshKcPrice() {
         LockHelper.lockKcItem();
         int changeCnt = kickScrewService.refreshPriceV2();
-//        kickScrewService.refreshPrices();
-//        int changeCnt = kickScrewService.compareWithPoisonAndChangePrice();
         LockHelper.unlockKcItem();
         return changeCnt;
     }
