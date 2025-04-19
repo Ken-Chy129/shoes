@@ -18,4 +18,8 @@
         select model_no from must_crawl
         where platform = #{platform}
     </select>
+
+    <select id="selectAllModelNos" resultType="java.lang.String">
+        select model_no from must_crawl;
+    </select>
 </mapper>

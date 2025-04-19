@@ -55,8 +55,9 @@ public class PoisonService {
     }
 
     /**
-     * 增量更新得物商品
+     * 增量更新得物商品（现在查得物价格的接口不需要spuId，因此没必要再查得物商品信息）
      */
+    @Deprecated
     public void updatePoisonItems(List<String> modelNumbers) {
         List<String> existItems = poisonItemMapper.selectExistModelNos(modelNumbers);
         List<String> toInsert = modelNumbers.stream().filter(modelNumber -> !existItems.contains(modelNumber)).toList();
@@ -81,8 +82,6 @@ public class PoisonService {
         LockHelper.lockPoisonPrice();
         // 拿到所有要查询的货号
         List<String> modelNos = getAllModelNos();
-        // 将得物没有的商品先进行增量更新
-        updatePoisonItems(modelNos);
         // 查询上一个价格版本号
         int oldVersion = Optional.ofNullable(poisonPriceMapper.getMaxVersion()).orElse(-1);
         int newVersion = oldVersion + 1;
@@ -124,15 +123,10 @@ public class PoisonService {
         LockHelper.unlockPoisonPrice();
     }
 
-    public void refreshPrice() {
-        List<String> allModelNos = getAllModelNos();
-        updatePoisonItems(allModelNos);
-    }
-
     private List<String> getAllModelNos() {
         List<String> modelNos = new ArrayList<>();
         List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        List<String> mustCrawlModelNos = mustCrawlMapper.selectAllModelNos();
         modelNos.addAll(hotModelNos);
         modelNos.addAll(mustCrawlModelNos);
         return modelNos;

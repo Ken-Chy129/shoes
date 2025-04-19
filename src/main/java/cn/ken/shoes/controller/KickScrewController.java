@@ -25,9 +25,6 @@ public class KickScrewController {
     @Resource
     private KickScrewClient kickScrewClient;
 
-    @Resource
-    private PoisonService poisonService;
-
     /**
      * 刷新商品，重新爬取品牌和热门商品
      */
@@ -36,7 +33,6 @@ public class KickScrewController {
     public Result<Void> refreshItems() {
         Thread.startVirtualThread(() -> {
             kickScrewService.refreshItems(false);
-            poisonService.refreshPrice();
         });
         return Result.buildSuccess();
     }
