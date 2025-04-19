@@ -34,7 +34,7 @@ public class PoisonClient {
         String url = PoisonApiConstant.PRICE_BY_MODEL_NO
                 .replace("{modelNo}", modelNo)
                 .replace("{token}", token);
-        String result = HttpUtil.doGet(url);
+        String result = HttpUtil.doGet(url, false);
         try {
             if ("{}".equals(result)) {
                 lackModelLogger.info(modelNo);
