@@ -144,7 +144,7 @@ public class KickScrewService {
                 continue;
             }
             String brandName = brandDO.getName();
-            Integer crawlCnt = brandDO.getCrawlCnt();
+            Integer crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
             int page = (int) Math.ceil(crawlCnt / 50.0);
             CountDownLatch latch = new CountDownLatch(page);
             for (int i = 0; i < page; i++) {

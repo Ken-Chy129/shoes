@@ -26,7 +26,7 @@ public class ApplicationStartListener implements ApplicationListener<Application
         }
         while (true) {
             try {
-                Thread.sleep(5 * 60 * 1000);
+//                Thread.sleep(5 * 60 * 1000);
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
                     continue;
                 }
