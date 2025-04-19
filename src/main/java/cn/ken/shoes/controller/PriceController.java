@@ -33,11 +33,6 @@ public class PriceController {
     @Resource
     private KickScrewService kickScrewService;
 
-    @GetMapping("list")
-    public Result<List<ItemDO>> list(PriceRequest priceRequest) {
-        return priceService.queryPriceByCondition(priceRequest);
-    }
-
     @GetMapping("queryBrand")
     public KickScrewCategory queryBrand() {
         return kickScrewClient.queryBrand();
