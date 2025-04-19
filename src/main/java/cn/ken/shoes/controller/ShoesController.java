@@ -3,7 +3,6 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PageResult;
-import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.model.shoes.ShoesRequest;
 import cn.ken.shoes.model.shoes.ShoesVO;
@@ -43,11 +42,6 @@ public class ShoesController {
         return shoesService.page(request);
     }
 
-    @GetMapping("queryPriceBySpu")
-    public String queryPriceBySpu(String modelNo, Long spuId) {
-        return JSON.toJSONString(poisonClient.queryPriceBySpu(modelNo, spuId));
-    }
-
     @GetMapping("queryPriceBySpuV2")
     public String queryPriceBySpuV2(String modelNo, Long spuId) {
         return JSON.toJSONString(poisonClient.queryPriceBySpuV2(modelNo, spuId));
@@ -76,11 +70,6 @@ public class ShoesController {
     @GetMapping("queryByModelNos")
     public String queryByModelNos(String modelNos) {
         return JSON.toJSONString(poisonClient.queryItemByModelNos(Arrays.stream(modelNos.split(",")).toList()));
-    }
-
-    @GetMapping("prices")
-    public Integer prices(Long skuId) {
-        return poisonClient.queryLowestPriceBySkuId(skuId, PriceEnum.NORMAL);
     }
 
     @GetMapping("queryByHandle")

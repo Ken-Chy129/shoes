@@ -1,12 +1,10 @@
 package cn.ken.shoes.client;
 
 import cn.ken.shoes.common.PoisonApiConstant;
-import cn.ken.shoes.common.PriceEnum;
 import cn.ken.shoes.config.PoisonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
-import cn.ken.shoes.model.poinson.PoisonItemPrice;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SignUtil;
@@ -105,54 +103,54 @@ public class PoisonClient {
      * @param spuId 商品spuId，通过货号唯一对应一个spuId
      * @return 商品价格，包括闪电价格，普通价格和极速价格
      */
-    public List<PoisonPriceDO> queryPriceBySpu(String modelNo, Long spuId) {
-        String url = PoisonApiConstant.PRICE_BY_SPU;
-        Map<String, String> params = new HashMap<>();
-        params.put("spuId", String.valueOf(spuId));
-        params.put("token", PoisonConfig.TOKEN);
-        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
-        Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
-        if (parseRes == null || parseRes.getData() == null || parseRes.getCode() == null) {
-            log.error("JSON解析结果为空, spuId:{}, result:{}", spuId, result);
-            return null;
-        }
-        if (parseRes.getCode() != 200) {
-            log.error("查询的得物价格失败, spuId:{}, msg:{}", spuId, parseRes.getMsg());
-            if (parseRes.getCode() == 205) {
-                log.error("余额不足, msg:{}", parseRes.getMsg());
-                throw new RuntimeException("余额不足");
-            }
-            return null;
-        }
-        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
-        Optional.ofNullable(parseRes.getData())
-                .map(json -> json.getJSONArray("price_detail"))
-                .map(jsonArray -> jsonArray.toJavaList(JSONObject.class))
-                .orElse(Collections.emptyList())
-                .forEach(json -> {
-                    String size = json.getString("size").replace("⅓", ".33").replace("⅔", ".67");
-                    PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                    poisonPriceDO.setEuSize(size);
-                    poisonPriceDO.setModelNo(modelNo);
-                    JSONObject price = json.getJSONObject("price");
-                    for (String type : price.keySet()) {
-                        PriceEnum priceEnum = PriceEnum.from(type);
-                        if (priceEnum == null) {
-                            log.info("未知的价格类型, type:{}, spuId:{}", type, spuId);
-                            continue;
-                        }
-                        if (poisonPriceDO.getPrice() == null) {
-                            poisonPriceDO.setPrice(price.getInteger(type) / 100);
-                        } else {
-                            poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type) / 100));
-                        }
-                    }
-                    if (poisonPriceDO.getPrice() != null && poisonPriceDO.getPrice() <= PoisonSwitch.MAX_PRICE) {
-                        poisonPriceDOList.add(poisonPriceDO);
-                    }
-                });
-        return poisonPriceDOList;
-    }
+//    public List<PoisonPriceDO> queryPriceBySpu(String modelNo, Long spuId) {
+//        String url = PoisonApiConstant.PRICE_BY_SPU;
+//        Map<String, String> params = new HashMap<>();
+//        params.put("spuId", String.valueOf(spuId));
+//        params.put("token", PoisonConfig.TOKEN);
+//        String result = HttpUtil.doPost(url, JSON.toJSONString(params));
+//        Result<JSONObject> parseRes = JSON.parseObject(result, new TypeReference<>() {});
+//        if (parseRes == null || parseRes.getData() == null || parseRes.getCode() == null) {
+//            log.error("JSON解析结果为空, spuId:{}, result:{}", spuId, result);
+//            return null;
+//        }
+//        if (parseRes.getCode() != 200) {
+//            log.error("查询的得物价格失败, spuId:{}, msg:{}", spuId, parseRes.getMsg());
+//            if (parseRes.getCode() == 205) {
+//                log.error("余额不足, msg:{}", parseRes.getMsg());
+//                throw new RuntimeException("余额不足");
+//            }
+//            return null;
+//        }
+//        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+//        Optional.ofNullable(parseRes.getData())
+//                .map(json -> json.getJSONArray("price_detail"))
+//                .map(jsonArray -> jsonArray.toJavaList(JSONObject.class))
+//                .orElse(Collections.emptyList())
+//                .forEach(json -> {
+//                    String size = json.getString("size").replace("⅓", ".33").replace("⅔", ".67");
+//                    PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+//                    poisonPriceDO.setEuSize(size);
+//                    poisonPriceDO.setModelNo(modelNo);
+//                    JSONObject price = json.getJSONObject("price");
+//                    for (String type : price.keySet()) {
+//                        PriceEnum priceEnum = PriceEnum.from(type);
+//                        if (priceEnum == null) {
+//                            log.info("未知的价格类型, type:{}, spuId:{}", type, spuId);
+//                            continue;
+//                        }
+//                        if (poisonPriceDO.getPrice() == null) {
+//                            poisonPriceDO.setPrice(price.getInteger(type) / 100);
+//                        } else {
+//                            poisonPriceDO.setPrice(Math.min(poisonPriceDO.getPrice(), price.getInteger(type) / 100));
+//                        }
+//                    }
+//                    if (poisonPriceDO.getPrice() != null && poisonPriceDO.getPrice() <= PoisonSwitch.MAX_PRICE) {
+//                        poisonPriceDOList.add(poisonPriceDO);
+//                    }
+//                });
+//        return poisonPriceDOList;
+//    }
 
     /**
      * 查询token余额
@@ -182,36 +180,6 @@ public class PoisonClient {
             return Collections.emptyList();
         }
         return parseRes.getData();
-    }
-
-    /**
-     * 根据sku
-     * @param skuId sku，商品的每个尺码对应不同的skuId
-     * @param priceEnum 查询得物价格的类型，目前对应自营卖家接入，只有查询普通发货价格的权限
-     * @return 商品指定尺码指定发货类型的最低价格
-     */
-    public Integer queryLowestPriceBySkuId(Long skuId, PriceEnum priceEnum) {
-        String url = PoisonConfig.getUrlPrefix() + getPriceApi(priceEnum);
-        Map<String, Object> params = new LinkedHashMap<>();
-        params.put("sku_id", skuId);
-        enhanceParams(params);
-        String result = HttpUtil.doGet(url, params);
-        Result<List<PoisonItemPrice>> parseRes = JSON.parseObject(result, new TypeReference<>() {});
-        if (parseRes == null || CollectionUtils.isEmpty(parseRes.getData())) {
-            return null;
-        }
-        PoisonItemPrice first = parseRes.getData().getFirst();
-        return first.getItems().getFirst().getLowestPrice();
-    }
-
-    private String getPriceApi(PriceEnum priceEnum) {
-        String priceApi;
-        switch (priceEnum) {
-            case LIGHTNING -> priceApi = PoisonApiConstant.LOWEST_PRICE;
-//            case FAST -> priceApi = PoisonApiConstant.FAST_LOWEST_PRICE;
-            default -> priceApi = PoisonApiConstant.NORMAL_LOWEST_PRICE;
-        }
-        return priceApi;
     }
 
     private Headers buildHeaders() {
