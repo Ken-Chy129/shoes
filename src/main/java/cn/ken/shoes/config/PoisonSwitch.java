@@ -16,4 +16,9 @@ public class PoisonSwitch {
      * 是否暂停查价
      */
     public static Boolean STOP_QUERY_PRICE = true;
+
+    /**
+     * 开启从DB导入数据
+     */
+    public static Boolean OPEN_IMPORT_DB_DATA = true;
 }

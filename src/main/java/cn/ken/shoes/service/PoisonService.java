@@ -10,6 +10,7 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
@@ -20,6 +21,7 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -94,7 +96,7 @@ public class PoisonService {
                         LimiterHelper.limitPoisonPrice();
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
                         toInsert.addAll(poisonPriceDOList);
-                        priceManager.putModelPrice(modelNumber, poisonPriceDOList);
+                        priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
                         log.error(e.getMessage());
                     } finally {
@@ -123,5 +125,20 @@ public class PoisonService {
         modelNos.addAll(hotModelNos);
         modelNos.addAll(mustCrawlModelNos);
         return modelNos;
+    }
+
+    /**
+     * 将db里的得物价格导入到缓存中
+     */
+    public void importPriceToCache() {
+        List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectList(new QueryWrapper<>());
+        Map<String, Map<String, Integer>> toImportMap = new HashMap<>();
+        for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
+            String modelNo = poisonPriceDO.getModelNo();
+            Integer price = poisonPriceDO.getPrice();
+            String euSize = poisonPriceDO.getEuSize();
+            toImportMap.computeIfAbsent(modelNo, k -> new HashMap<>()).put(euSize, price);
+        }
+        priceManager.importPrice(toImportMap);
     }
 }

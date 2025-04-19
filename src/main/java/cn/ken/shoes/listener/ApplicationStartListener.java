@@ -21,16 +21,22 @@ public class ApplicationStartListener implements ApplicationListener<Application
 
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
+        if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
+            poisonService.importPriceToCache();
+        }
         while (true) {
             try {
                 Thread.sleep(5 * 60 * 1000);
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
                     continue;
                 }
+                System.out.println("开始刷新kc商品");
                 // 1.刷新kc商品
                 kickScrewService.refreshItems(true);
+                System.out.println("开始刷新得物价格");
                 // 2.更新价格
                 poisonService.refreshAllPrice();
+                System.out.println("结束得物价格刷新");
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
