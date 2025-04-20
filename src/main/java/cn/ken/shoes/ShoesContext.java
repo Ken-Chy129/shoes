@@ -15,6 +15,7 @@ public class ShoesContext {
 
     private static Map<String, CustomPriceTypeEnum> customPriceTypeMap = new HashMap<>();
 
+    @Getter
     private static Set<String> noPriceModelNoSet = new HashSet<>();
 
     public static void setBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap) {
