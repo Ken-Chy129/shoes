@@ -3,11 +3,8 @@ package cn.ken.shoes.manager;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.CustomPriceTypeEnum;
-import cn.ken.shoes.mapper.MustCrawlMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.model.entity.MustCrawlDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
-import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -32,9 +29,6 @@ public class PriceManager {
 
     @Resource
     private PoisonClient poisonClient;
-
-    @Resource
-    private MustCrawlMapper mustCrawlMapper;
 
     private final LoadingCache<String, Map<String, Integer>> CACHE = CacheBuilder.newBuilder()
             .maximumSize(100000) // 设置最大容量
