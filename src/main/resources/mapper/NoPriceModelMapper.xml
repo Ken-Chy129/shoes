@@ -3,4 +3,9 @@
 <mapper namespace="cn.ken.shoes.mapper.NoPriceModelMapper">
 
 
+    <insert id="insertIgnore">
+        insert into no_price_model(model_no) value (
+            #{modelNO}
+        )
+    </insert>
 </mapper>
