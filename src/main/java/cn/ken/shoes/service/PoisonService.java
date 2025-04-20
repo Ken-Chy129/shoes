@@ -22,6 +22,8 @@ import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -86,7 +88,6 @@ public class PoisonService {
         List<String> modelNos = getAllModelNos();
         List<List<String>> partition = Lists.partition(modelNos, 20);
         CountDownLatch insertLatch = new CountDownLatch(partition.size());
-        AtomicInteger noResultNum = new AtomicInteger();
         for (List<String> modelNumbers : partition) {
             CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
             CountDownLatch latch = new CountDownLatch(modelNumbers.size());
@@ -95,7 +96,6 @@ public class PoisonService {
                 Thread.startVirtualThread(() -> {
                     try {
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
-                        noResultNum.addAndGet(poisonPriceDOList.isEmpty() ? 1 : 0);
                         toInsert.addAll(poisonPriceDOList);
                         priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
@@ -106,6 +106,7 @@ public class PoisonService {
                 });
             }
             latch.await();
+            System.out.println(STR."allNo:\{modelNumbers.size()}, resultNum:\{toInsert.stream().collect(Collectors.toMap(PoisonPriceDO::getPrice, Function.identity())).keySet().size()}");
             // 插入价格
             Thread.startVirtualThread(() -> {
                 try {
@@ -115,7 +116,6 @@ public class PoisonService {
                 }
             });
         }
-        System.out.println(STR."allNo:\{modelNos.size()} ,noResultNum:\{noResultNum.get()}");
         insertLatch.await();
         LockHelper.unlockPoisonPrice();
     }

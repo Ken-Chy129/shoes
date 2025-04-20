@@ -21,4 +21,9 @@ public class PoisonSwitch {
      * 开启从DB导入数据
      */
     public static Boolean OPEN_IMPORT_DB_DATA = true;
+
+    /**
+     * 开启无价货号缓存
+     */
+    public static Boolean OPEN_NO_PRICE_CACHE = true;
 }
