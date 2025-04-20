@@ -42,7 +42,7 @@ public class PoisonClient {
         String result = HttpUtil.doGet(url, false);
         try {
             if ("{}".equals(result)) {
-                lackModelLogger.info(modelNo);
+                ShoesContext.addNoPriceModelNo(modelNo);
                 return Collections.emptyList();
             }
             JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
