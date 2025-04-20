@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.config.PoisonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
@@ -30,6 +31,10 @@ public class PoisonClient {
     private String token;
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
+        // 已记录为得物无价的货号
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
         LimiterHelper.limitPoisonPrice();
         String url = PoisonApiConstant.PRICE_BY_MODEL_NO
                 .replace("{modelNo}", modelNo)

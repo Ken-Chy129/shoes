@@ -1,13 +1,27 @@
 package cn.ken.shoes.listener;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.PoisonSwitch;
+import cn.ken.shoes.mapper.CustomModelMapper;
+import cn.ken.shoes.mapper.NoPriceModelMapper;
+import cn.ken.shoes.mapper.SizeChartMapper;
+import cn.ken.shoes.model.entity.CustomModelDO;
+import cn.ken.shoes.model.entity.NoPriceModelDO;
+import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -19,11 +33,23 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Resource
     private KickScrewService kickScrewService;
 
+    @Resource
+    private SizeChartMapper sizeChartMapper;
+
+    @Resource
+    private CustomModelMapper customModelMapper;
+
+    @Resource
+    private NoPriceModelMapper noPriceModelMapper;
+
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
             poisonService.importPriceToCache();
         }
+        initSizeMap();
+        initCustomModel();
+        initNoPriceModel();
         while (true) {
             try {
 //                Thread.sleep(5 * 60 * 1000);
@@ -33,13 +59,38 @@ public class ApplicationStartListener implements ApplicationListener<Application
                 System.out.println("开始刷新kc商品");
                 // 1.刷新kc商品
                 kickScrewService.refreshItems(true);
-                System.out.println("开始刷新得物价格");
                 // 2.更新价格
+                System.out.println("开始刷新得物价格");
                 poisonService.refreshAllPrice();
                 System.out.println("结束得物价格刷新");
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }
         }
+    }
+
+    private void initSizeMap() {
+        List<SizeChartDO> sizeChartDOS = sizeChartMapper.selectList(new QueryWrapper<>());
+        Map<String, Map<String, List<SizeChartDO>>> brandGenderMap = new HashMap<>();
+        for (SizeChartDO sizeChartDO : sizeChartDOS) {
+            String brand = sizeChartDO.getBrand();
+            String gender = sizeChartDO.getGender();
+            Map<String, List<SizeChartDO>> genderMap = brandGenderMap.getOrDefault(brand, new HashMap<>());
+            genderMap.computeIfAbsent(gender, k -> new ArrayList<>()).add(sizeChartDO);
+            brandGenderMap.put(brand, genderMap);
+        }
+        ShoesContext.setBrandGenderSizeChartMap(brandGenderMap);
+    }
+
+    private void initCustomModel() {
+        List<CustomModelDO> customModelDOS = customModelMapper.selectList(new QueryWrapper<>());
+        for (CustomModelDO customModelDO : customModelDOS) {
+            ShoesContext.putCustomModel(customModelDO);
+        }
+    }
+
+    private void initNoPriceModel() {
+        List<NoPriceModelDO> noPriceModelDOS = noPriceModelMapper.selectList(new QueryWrapper<>());
+        ShoesContext.addAllNoPriceModelNo(noPriceModelDOS.stream().map(NoPriceModelDO::getModelNo).collect(Collectors.toSet()));
     }
 }

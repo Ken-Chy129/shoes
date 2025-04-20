@@ -1,13 +1,12 @@
 package cn.ken.shoes;
 
 import cn.ken.shoes.common.CustomPriceTypeEnum;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import lombok.Getter;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ShoesContext {
 
@@ -15,6 +14,8 @@ public class ShoesContext {
     private static Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = new HashMap<>();
 
     private static Map<String, CustomPriceTypeEnum> customPriceTypeMap = new HashMap<>();
+
+    private static Set<String> noPriceModelNoSet = new HashSet<>();
 
     public static void setBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap) {
         ShoesContext.brandGenderSizeChartMap = brandGenderSizeChartMap;
@@ -49,5 +50,16 @@ public class ShoesContext {
 
     public static CustomPriceTypeEnum getModelType(String modelNo, String euSize) {
         return customPriceTypeMap.get(STR."\{modelNo}:\{euSize}");
+    }
+
+    public static void addAllNoPriceModelNo(Set<String> noPriceModelNoSet) {
+        noPriceModelNoSet.addAll(noPriceModelNoSet);
+    }
+
+    public static boolean isNoPrice(String modelNo) {
+        if (!PoisonSwitch.OPEN_NO_PRICE_CACHE) {
+            return true;
+        }
+        return noPriceModelNoSet.contains(modelNo);
     }
 }
