@@ -139,6 +139,9 @@ public class StockXClient {
     }
 
     public void deleteItems(List<Pair<String, Integer>> itemList) {
+        if (itemList.isEmpty()) {
+            return;
+        }
         JSONObject body = new JSONObject();
         body.put("operationName", "DeleteAsks");
         JSONObject variables = new JSONObject();
@@ -151,7 +154,8 @@ public class StockXClient {
             data.add(Map.of("id", id, "amount", amount, "expires", expireTime, "currencyCode", "USD"));
         }
         body.put("query", "mutation DeleteAsks($items: [BulkDeleteAskInput]) {\n  deleteAsks(input: {items: $items}) {\n    result\n    __typename\n  }\n}");
-        HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+        String result = HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+        log.info("deleteItems, result:{}", result);
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
@@ -352,8 +356,9 @@ public class StockXClient {
     private Headers buildProHeaders() {
         return Headers.of(
                 "authorization", authorization,
+//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
                 "Content-Type", "application/json",
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36 Edg/134.0.0.0"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
         );
     }
 
