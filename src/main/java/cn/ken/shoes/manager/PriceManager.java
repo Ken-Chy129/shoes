@@ -60,6 +60,9 @@ public class PriceManager {
         try {
             Map<String, Integer> sizePriceMap = CACHE.get(modelNo);
             Integer normalPrice = sizePriceMap.get(euSize);
+            if (normalPrice == null) {
+                return null;
+            }
             CustomPriceTypeEnum modelType = ShoesContext.getModelType(modelNo, euSize);
             if (modelType == CustomPriceTypeEnum.NOT_COMPARE) {
                 // 不压价下架，直接返回null

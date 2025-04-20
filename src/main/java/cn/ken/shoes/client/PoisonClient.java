@@ -19,13 +19,10 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import java.util.*;
-import java.util.logging.Logger;
 
 @Slf4j
 @Component
 public class PoisonClient {
-
-    private static final Logger lackModelLogger = Logger.getLogger("lackModelLogger");
 
     @Value("${poison.token}")
     private String token;
@@ -44,6 +41,7 @@ public class PoisonClient {
         } while (result == null && times <= 3);
         if (result == null) {
             log.error("queryPriceByModelNo error, no result:{}", modelNo);
+            return Collections.emptyList();
         }
         try {
             if ("{}".equals(result)) {
@@ -70,7 +68,7 @@ public class PoisonClient {
             }
             return poisonPriceDOList;
         } catch (Exception e) {
-            log.error("queryPriceBySpuV2 error, msg:{}, model:{}", e.getMessage(), modelNo);
+            log.error("queryPriceByModelNo error, msg:{}, model:{}", e.getMessage(), modelNo);
             return Collections.emptyList();
         }
     }
@@ -90,7 +88,6 @@ public class PoisonClient {
         String result = HttpUtil.doGet(url);
         try {
             if ("{}".equals(result)) {
-                lackModelLogger.info(modelNo);
                 return Collections.emptyList();
             }
             JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");

@@ -9,11 +9,11 @@ import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
-import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SqlHelper;
+import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -39,9 +39,6 @@ public class StockXService {
     @Resource
     private StockXPriceMapper stockXPriceMapper;
 
-    @Resource
-    private PoisonPriceMapper poisonPriceMapper;
-
     public void extendAllItems() {
         JSONObject jsonObject = stockXClient.queryToDeal();
         List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
@@ -60,22 +57,19 @@ public class StockXService {
     public int refreshPrices() {
         // 1.下架不赢利的商品
         Map<String, Pair<String, Integer>> retainItemsMap = clearNoBenefitItems();
+        log.info("finish clearNoBenefitItems");
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
         int cnt = 0;
-//        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
-        BrandDO brandDO1 = new BrandDO();
-        brandDO1.setName("nike");
-        brandDO1.setNeedCrawl(true);
-        brandDO1.setCrawlCnt(1000);
-        List<BrandDO> brandDOList = List.of(brandDO1);
+        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
+            long now = System.currentTimeMillis();
             if (!brandDO.getNeedCrawl()) {
                 continue;
             }
             String brand = brandDO.getName();
-            Integer crawlCnt = brandDO.getCrawlCnt();
+            int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
             int crawlPage = (int) Math.ceil(crawlCnt / 100.0);
             for (int i = 1; i <= crawlPage; i++) {
                 List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
@@ -83,6 +77,7 @@ public class StockXService {
                 // 4.比价和上架
                 cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
             }
+            log.info("finish refreshPrice,brand:{},cost:{}", brand, TimeUtil.getCostMin(now));
         }
         return cnt;
     }
@@ -115,16 +110,15 @@ public class StockXService {
                 String id = item.getString("id");
                 // 得物无价或无盈利，下架该商品
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
-                    log.info("no benefit, modelNo:{}, euSize:{}, id:{}", styleId, euSize, id);
                     toDelete.add(Pair.of(id, amount));
                 } else {
                     retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
                 }
             }
-            log.info("clearNoBenefitItems end, cost:{}", System.currentTimeMillis() - startTime);
             stockXClient.deleteItems(toDelete);
+            log.info("clearNoBenefitItems end, toDelete:{}, cost:{}", toDelete.size(), System.currentTimeMillis() - startTime);
             hasMore = jsonObject.getBoolean("hasMore");
-            afterName = jsonObject.getString("afterName");
+            afterName = jsonObject.getString("endCursor");
         } while (hasMore);
         return retainItemsMap;
     }
@@ -157,6 +151,7 @@ public class StockXService {
             stockXClient.deleteItems(toRemove);
             // 上架
             stockXClient.createListingV2(toCreate);
+            log.info("总量：{},下架数量：{}，上架数量：{}", stockXPriceDOS.size(), toRemove.size(), toCreate.size());
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }

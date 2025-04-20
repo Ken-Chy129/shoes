@@ -5,7 +5,7 @@ public class PriceSwitch {
     /**
      * 汇率（美元->人民币）
      */
-    public static Double EXCHANGE_RATE = 7.25d;
+    public static Double EXCHANGE_RATE = 7.3d;
 
     /**
      * 运费

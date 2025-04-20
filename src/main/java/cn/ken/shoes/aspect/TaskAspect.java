@@ -48,6 +48,7 @@ public class TaskAspect {
             attributes.put("errorMsg", e.getMessage());
             update.setAttributes(JSON.toJSONString(attributes));
             taskMapper.updateById(update);
+            e.printStackTrace();
             log.error("task-{} execute error, msg:{}", taskName, e.getMessage());
             return null;
         } finally {
