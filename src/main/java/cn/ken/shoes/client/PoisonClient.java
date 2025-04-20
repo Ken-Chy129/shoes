@@ -35,11 +35,16 @@ public class PoisonClient {
         if (ShoesContext.isNoPrice(modelNo)) {
             return Collections.emptyList();
         }
-        LimiterHelper.limitPoisonPrice();
-        String url = PoisonApiConstant.PRICE_BY_MODEL_NO
-                .replace("{modelNo}", modelNo)
-                .replace("{token}", token);
-        String result = HttpUtil.doGet(url, false);
+        // 重试
+        int times = 0;
+        String result;
+        do {
+            result = doQueryPriceByModelNo(modelNo);
+            times++;
+        } while (result == null && times <= 3);
+        if (result == null) {
+            log.error("queryPriceByModelNo error, no result:{}", modelNo);
+        }
         try {
             if ("{}".equals(result)) {
                 ShoesContext.addNoPriceModelNo(modelNo);
@@ -68,6 +73,14 @@ public class PoisonClient {
             log.error("queryPriceBySpuV2 error, msg:{}, model:{}", e.getMessage(), modelNo);
             return Collections.emptyList();
         }
+    }
+
+    private String doQueryPriceByModelNo(String modelNo) {
+        LimiterHelper.limitPoisonPrice();
+        String url = PoisonApiConstant.PRICE_BY_MODEL_NO
+                .replace("{modelNo}", modelNo)
+                .replace("{token}", token);
+        return HttpUtil.doGet(url, false);
     }
 
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
