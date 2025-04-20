@@ -52,8 +52,8 @@ public class ShoesContext {
         return customPriceTypeMap.get(STR."\{modelNo}:\{euSize}");
     }
 
-    public static void addAllNoPriceModelNo(Set<String> noPriceModelNoSet) {
-        noPriceModelNoSet.addAll(noPriceModelNoSet);
+    public static void addNoPriceModelNo(String noPriceModelNo) {
+        noPriceModelNoSet.add(noPriceModelNo);
     }
 
     public static boolean isNoPrice(String modelNo) {

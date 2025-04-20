@@ -21,7 +21,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -56,9 +55,9 @@ public class ApplicationStartListener implements ApplicationListener<Application
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
                     continue;
                 }
-                System.out.println("开始刷新kc商品");
-                // 1.刷新kc商品
-                kickScrewService.refreshItems(true);
+//                System.out.println("开始刷新kc商品");
+//                // 1.刷新kc商品
+//                kickScrewService.refreshItems(true);
                 // 2.更新价格
                 System.out.println("开始刷新得物价格");
                 poisonService.refreshAllPrice();
@@ -91,6 +90,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
 
     private void initNoPriceModel() {
         List<NoPriceModelDO> noPriceModelDOS = noPriceModelMapper.selectList(new QueryWrapper<>());
-        ShoesContext.addAllNoPriceModelNo(noPriceModelDOS.stream().map(NoPriceModelDO::getModelNo).collect(Collectors.toSet()));
+        for (NoPriceModelDO noPriceModelDO : noPriceModelDOS) {
+            ShoesContext.addNoPriceModelNo(noPriceModelDO.getModelNo());
+        }
     }
 }
