@@ -21,9 +21,6 @@ import org.springframework.stereotype.Service;
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -106,7 +103,6 @@ public class PoisonService {
                 });
             }
             latch.await();
-            System.out.println(STR."allNo:\{modelNumbers.size()}, resultNum:\{toInsert.stream().collect(Collectors.toMap(PoisonPriceDO::getPrice, Function.identity())).keySet().size()}");
             // 插入价格
             Thread.startVirtualThread(() -> {
                 try {

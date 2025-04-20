@@ -5,7 +5,7 @@
 
     <insert id="insertIgnore">
         insert into no_price_model(model_no) value (
-            #{modelNO}
+            #{modelNo}
         )
     </insert>
 </mapper>
