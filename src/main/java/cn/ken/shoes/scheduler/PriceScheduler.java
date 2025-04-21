@@ -2,13 +2,14 @@ package cn.ken.shoes.scheduler;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.NoPriceModelMapper;
-import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.NoPriceModelDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
+import cn.ken.shoes.util.TimeUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -26,17 +27,20 @@ import java.util.stream.Collectors;
 public class PriceScheduler {
 
     @Resource
-    private PoisonPriceMapper poisonPriceMapper;
-
-    @Resource
     private KickScrewService kickScrewService;
 
     @Resource
     private NoPriceModelMapper noPriceModelMapper;
 
-    @Scheduled(cron = "0 0 0 * * *")
-    public void clearOldPoisonPrice() {
-        poisonPriceMapper.delete(null);
+    @Resource
+    private PriceManager priceManager;
+
+    @Scheduled(initialDelay = 60 * 60 * 1000, fixedDelay = 60 * 60 * 1000)
+    public void dumpPoisonPrice() {
+        long start = System.currentTimeMillis();
+        log.info("start dumpPoisonPrice");
+        priceManager.dumpPrice();
+        log.info("end dumpPoisonPrice, cost:{}", TimeUtil.getCostMin(start));
     }
 
     @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 40 * 60 * 1000)

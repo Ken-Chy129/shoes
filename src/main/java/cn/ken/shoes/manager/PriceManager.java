@@ -6,17 +6,19 @@ import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SqlHelper;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import jakarta.annotation.Resource;
 import lombok.NonNull;
 import org.springframework.stereotype.Service;
-import org.springframework.util.CollectionUtils;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -32,7 +34,7 @@ public class PriceManager {
 
     private final LoadingCache<String, Map<String, Integer>> CACHE = CacheBuilder.newBuilder()
             .maximumSize(100000) // 设置最大容量
-                .expireAfterWrite(10, TimeUnit.HOURS) // 设置写入后过期时间
+                .expireAfterWrite(20, TimeUnit.HOURS) // 设置写入后过期时间
                 .build(new CacheLoader<>() {
                     @NonNull
                     @Override
@@ -43,10 +45,7 @@ public class PriceManager {
 
     @NonNull
     public Map<String, Integer> loadPrice(String modelNo) {
-        List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectListByModelNos(Set.of(modelNo));
-        if (CollectionUtils.isEmpty(poisonPriceDOList)) {
-            poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
-        }
+        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
         return poisonPriceDOList.stream()
                 .collect(
                         Collectors.toMap(
@@ -90,5 +89,25 @@ public class PriceManager {
 
     public void importPrice(Map<String, Map<String, Integer>> modelNoPriceMap) {
         CACHE.putAll(modelNoPriceMap);
+    }
+
+    public void dumpPrice() {
+        List<PoisonPriceDO> toInsert = new ArrayList<>();
+        ConcurrentMap<String, Map<String, Integer>> map = CACHE.asMap();
+        for (Map.Entry<String, Map<String, Integer>> entry : map.entrySet()) {
+            String modelNo = entry.getKey();
+            Map<String, Integer> priceMap = entry.getValue();
+            for (Map.Entry<String, Integer> priceEntry : priceMap.entrySet()) {
+                String euSize = priceEntry.getKey();
+                Integer price = priceEntry.getValue();
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(euSize);
+                poisonPriceDO.setPrice(price);
+                toInsert.add(poisonPriceDO);
+            }
+        }
+        poisonPriceMapper.delete(new QueryWrapper<>());
+        SqlHelper.batch(toInsert, poisonPriceDO -> poisonPriceMapper.insertOverwrite(poisonPriceDO));
     }
 }
