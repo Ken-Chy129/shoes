@@ -87,8 +87,9 @@ public class ShoesController {
         fileService.updatePoisonPriceByExcel("3.xlsx");
     }
 
-    @GetMapping("kcp2")
-    public void kcp2() {
-        kickScrewItemService.refreshAllPricesV2();
+    @GetMapping("dump")
+    public void dump() {
+        priceManager.dumpPrice();
     }
+
 }

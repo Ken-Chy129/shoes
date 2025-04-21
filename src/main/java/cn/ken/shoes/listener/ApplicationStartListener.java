@@ -45,7 +45,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
             poisonService.importPriceToCache();
-            log.info("finish importPriceToCache");
         }
         initSizeMap();
         initCustomModel();
