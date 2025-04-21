@@ -84,35 +84,35 @@ public class PoisonService {
         // 拿到所有要查询的货号
         List<String> modelNos = getAllModelNos();
         List<List<String>> partition = Lists.partition(modelNos, 20);
-        CountDownLatch insertLatch = new CountDownLatch(partition.size());
+//        CountDownLatch insertLatch = new CountDownLatch(partition.size());
         for (List<String> modelNumbers : partition) {
-            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
+//            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
+//            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
             // 查询价格
             for (String modelNumber : modelNumbers) {
                 Thread.startVirtualThread(() -> {
                     try {
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
-                        toInsert.addAll(poisonPriceDOList);
+//                        toInsert.addAll(poisonPriceDOList);
                         priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
                         log.error(e.getMessage());
                     } finally {
-                        latch.countDown();
+//                        latch.countDown();
                     }
                 });
             }
-            latch.await();
-            // 插入价格
-            Thread.startVirtualThread(() -> {
-                try {
-                    SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertOverwrite(item));
-                } finally {
-                    insertLatch.countDown();
-                }
-            });
+//            latch.await();
+//            // 插入价格
+//            Thread.startVirtualThread(() -> {
+//                try {
+//                    SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertOverwrite(item));
+//                } finally {
+//                    insertLatch.countDown();
+//                }
+//            });
         }
-        insertLatch.await();
+//        insertLatch.await();
         LockHelper.unlockPoisonPrice();
     }
 
