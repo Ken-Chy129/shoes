@@ -138,5 +138,6 @@ public class PoisonService {
             toImportMap.computeIfAbsent(modelNo, k -> new HashMap<>()).put(euSize, price);
         }
         priceManager.importPrice(toImportMap);
+        log.info("finish importPriceToCache, size:{}", toImportMap.size());
     }
 }

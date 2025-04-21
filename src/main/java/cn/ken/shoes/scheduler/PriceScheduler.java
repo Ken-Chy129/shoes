@@ -35,12 +35,9 @@ public class PriceScheduler {
     @Resource
     private PriceManager priceManager;
 
-    @Scheduled(initialDelay = 60 * 60 * 1000, fixedDelay = 60 * 60 * 1000)
+    @Scheduled(initialDelay = 60 * 60 * 1000, fixedDelay = 30 * 60 * 1000)
     public void dumpPoisonPrice() {
-        long start = System.currentTimeMillis();
-        log.info("start dumpPoisonPrice");
         priceManager.dumpPrice();
-        log.info("end dumpPoisonPrice, cost:{}", TimeUtil.getCostMin(start));
     }
 
     @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 40 * 60 * 1000)
@@ -65,6 +62,5 @@ public class PriceScheduler {
         }
         SqlHelper.batch(needRefresh, modelNo -> noPriceModelMapper.insertIgnore(modelNo));
     }
-
 
 }
