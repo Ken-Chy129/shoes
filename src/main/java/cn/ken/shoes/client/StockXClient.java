@@ -342,6 +342,17 @@ public class StockXClient {
         Integer expiresIn = result.getInteger("expires_in");
         LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
         StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.getFormatter()));
+        Thread.startVirtualThread(() -> {
+            try {
+                while (true) {
+                    Thread.sleep(11 * 60 * 60 * 1000);
+                    refreshToken();
+                    log.info("refresh token");
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        });
         return true;
     }
 
@@ -355,9 +366,9 @@ public class StockXClient {
 
     private Headers buildProHeaders() {
         return Headers.of(
-                "authorization", authorization,
-//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
                 "Content-Type", "application/json",
+                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+//                "authorization", authorization,
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
         );
     }
@@ -365,8 +376,8 @@ public class StockXClient {
     private Headers buildHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
-                "Authorization", authorization,
+                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+//                "Authorization", authorization,
                 "x-api-key", apiKey
         );
     }
