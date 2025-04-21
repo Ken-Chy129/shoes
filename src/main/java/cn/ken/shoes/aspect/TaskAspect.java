@@ -26,7 +26,7 @@ public class TaskAspect {
 
     @Around("@annotation(cn.ken.shoes.annotation.Task) && @annotation(task)")
     public Object recordTask(ProceedingJoinPoint point, Task task) {
-        String taskName = point.getTarget().getClass().getName() + "." + point.getSignature().getName();
+        String taskName = STR."\{point.getTarget().getClass().getName()}.\{point.getSignature().getName()}";
         Map<String, String> attributes = new HashMap<>();
         attributes.put("taskName", taskName);
 
@@ -48,8 +48,7 @@ public class TaskAspect {
             attributes.put("errorMsg", e.getMessage());
             update.setAttributes(JSON.toJSONString(attributes));
             taskMapper.updateById(update);
-            e.printStackTrace();
-            log.error("task-{} execute error, msg:{}", taskName, e.getMessage());
+            log.error("task-{} execute error, msg:{}, e", taskName, e.getMessage(), e);
             return null;
         } finally {
             String cost = TimeUtil.getCostMin(startTime);

@@ -61,7 +61,7 @@ public class StockXService {
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
-        int cnt = 0;
+        int allCnt = 0, cnt = 0;
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
             long now = System.currentTimeMillis();
@@ -77,9 +77,11 @@ public class StockXService {
                 // 4.比价和上架
                 cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
             }
-            log.info("finish refreshPrice,brand:{},cost:{}", brand, TimeUtil.getCostMin(now));
+            log.info("finish refreshPrice, brand:{}, cnt:{}, cost:{}", brand, cnt, TimeUtil.getCostMin(now));
+            allCnt += cnt;
+            cnt = 0;
         }
-        return cnt;
+        return allCnt;
     }
 
     /**
@@ -116,7 +118,7 @@ public class StockXService {
                 }
             }
             stockXClient.deleteItems(toDelete);
-            log.info("clearNoBenefitItems end, toDelete:{}, cost:{}", toDelete.size(), System.currentTimeMillis() - startTime);
+            log.info("clearNoBenefitItems end, toDelete:{}, cost:{}", toDelete.size(), TimeUtil.getCostMin(startTime));
             hasMore = jsonObject.getBoolean("hasMore");
             afterName = jsonObject.getString("endCursor");
         } while (hasMore);
@@ -151,7 +153,7 @@ public class StockXService {
             stockXClient.deleteItems(toRemove);
             // 上架
             stockXClient.createListingV2(toCreate);
-            log.info("总量：{},下架数量：{}，上架数量：{}", stockXPriceDOS.size(), toRemove.size(), toCreate.size());
+            log.info("总量：{}, 下架数量：{}， 上架数量：{}", stockXPriceDOS.size(), toRemove.size(), toCreate.size());
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
