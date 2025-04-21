@@ -70,7 +70,7 @@ public class StockXService {
             }
             String brand = brandDO.getName();
             int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
-            int crawlPage = (int) Math.ceil(crawlCnt / 100.0);
+            int crawlPage = (int) Math.ceil(crawlCnt / 50.0);
             for (int i = 1; i <= crawlPage; i++) {
                 List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
                 Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));

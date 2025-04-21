@@ -88,6 +88,9 @@ public class StockXClient {
     }
 
     public void createListingV2(List<Pair<String, Integer>> itemList) {
+        if (CollectionUtils.isEmpty(itemList)) {
+            return;
+        }
         JSONObject body = new JSONObject();
         body.put("operationName", "CreateBatchListings");
         JSONObject variables = new JSONObject();
@@ -102,7 +105,12 @@ public class StockXClient {
         body.put("query", "mutation CreateBatchListings($items: [CreateListingBatchInput]) {\n  createBatchListings(input: $items) {\n    id\n    status\n    __typename\n  }\n}");
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
-        String batchId = jsonObject.getJSONObject("data").getJSONObject("createBatchListings").getString("id");
+        if (jsonObject.containsKey("data")) {
+            String batchId = jsonObject.getJSONObject("data").getJSONObject("createBatchListings").getString("id");
+            log.info("createListingV2 success, batchId:{}", batchId);
+        } else {
+            log.error("createListingV2 error, result:{}", rawResult);
+        }
     }
 
     public JSONObject querySellingItems(String after, String query) {
@@ -443,6 +451,7 @@ public class StockXClient {
         filters.add(new Filter("category", List.of("shoes", "sneakers")));
         filters.add(new Filter("brand", List.of(brand)));
         variables.put("filters", filters);
+//        variables.put("flow", "CATEGORY");
         variables.put("market", "HK");
         variables.put("currency", "USD");
         variables.put("country", "HK");

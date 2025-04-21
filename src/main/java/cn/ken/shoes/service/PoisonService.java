@@ -44,17 +44,6 @@ public class PoisonService {
     @Resource
     private PriceManager priceManager;
 
-    public PoisonItemDO selectItemByModelNo(String modelNo) {
-        PoisonItemDO poisonItemDO = poisonItemMapper.selectByArticleNumber(modelNo);
-        if (poisonItemDO == null) {
-            List<PoisonItemDO> poisonItemDOS = poisonClient.queryItemByModelNos(List.of(modelNo));
-            poisonItemDO = CollectionUtils.isEmpty(poisonItemDOS) ? null : poisonItemDOS.getFirst();
-            PoisonItemDO finalPoisonItemDO = poisonItemDO;
-            Thread.startVirtualThread(() -> poisonItemMapper.insertIgnore(finalPoisonItemDO));
-        }
-        return poisonItemDO;
-    }
-
     /**
      * 增量更新得物商品（现在查得物价格的接口不需要spuId，因此没必要再查得物商品信息）
      */
@@ -87,7 +76,7 @@ public class PoisonService {
 //        CountDownLatch insertLatch = new CountDownLatch(partition.size());
         for (List<String> modelNumbers : partition) {
 //            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
-//            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
+            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
             // 查询价格
             for (String modelNumber : modelNumbers) {
                 Thread.startVirtualThread(() -> {
@@ -98,11 +87,11 @@ public class PoisonService {
                     } catch (Exception e) {
                         log.error(e.getMessage());
                     } finally {
-//                        latch.countDown();
+                        latch.countDown();
                     }
                 });
             }
-//            latch.await();
+            latch.await();
 //            // 插入价格
 //            Thread.startVirtualThread(() -> {
 //                try {
