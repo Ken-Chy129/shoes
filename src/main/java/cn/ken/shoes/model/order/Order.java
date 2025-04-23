@@ -1,5 +1,7 @@
 package cn.ken.shoes.model.order;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
+import com.alibaba.excel.annotation.ExcelProperty;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -8,50 +10,85 @@ import java.util.Date;
 @Data
 public class Order {
 
-    private Long order_id;
+    @ExcelProperty("订单id")
+    private Long orderId;
 
-    private String order_number;
+    @ExcelProperty("订单号")
+    private String orderNumber;
 
-    private String stock_id;
+    @ExcelProperty("库存id")
+    private String stockId;
 
-    private String recipient_name;
+    @ExcelIgnore
+    private String recipientName;
 
-    private String address_line1;
+    @ExcelProperty("一级地址")
+    private String addressLine1;
 
-    private String address_line2;
+    @ExcelProperty("二级地址")
+    private String addressLine2;
 
+    @ExcelProperty("城市")
     private String city;
 
-    private String state_province;
+    @ExcelProperty("州/省")
+    private String stateProvince;
 
+    @ExcelProperty("国家")
     private String country;
 
+    @ExcelProperty("手机号码")
     private String mobile;
 
+    @ExcelIgnore
     private Size size;
 
+    @ExcelProperty("是否挂起")
     private Boolean on_hold;
 
+    @ExcelProperty("品牌")
     private String brand;
 
+    @ExcelProperty("货号")
+    private String modelNo;
+
+    @ExcelProperty("欧码")
+    private String euSize;
+
+    @ExcelProperty("价格")
     private Integer price;
 
+    @ExcelProperty("货币")
     private String currency;
 
+    @ExcelProperty("状态")
     private String status;
 
-    private BigDecimal service_fee;
+    @ExcelProperty("取消原因")
+    private String cancelReason;
 
-    private BigDecimal operation_fee;
+    @ExcelProperty("订单支付状态")
+    private String payoutStatus;
 
+    @ExcelProperty("服务费用")
+    private BigDecimal serviceFee;
+
+    @ExcelProperty("操作费用")
+    private BigDecimal operationFee;
+
+    @ExcelProperty("收入")
     private BigDecimal income;
 
-    private String customer_order_reference;
+    @ExcelProperty("客户订单参考")
+    private String customerOrderReference;
 
-    private Date created_at;
+    @ExcelProperty("创建时间")
+    private Date createdAt;
 
-    private String ext_ref;
+    @ExcelProperty("扩展信息")
+    private String extRef;
 
+    @ExcelIgnore
     private Payout payout;
 
     @Data
@@ -69,7 +106,7 @@ public class Order {
     }
 
     @Data
-    private static class Payout {
+    public static class Payout {
 
         private Long payout_id;
 

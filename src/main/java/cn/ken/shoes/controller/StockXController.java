@@ -1,6 +1,5 @@
 package cn.ken.shoes.controller;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.BrandDO;
