@@ -7,5 +7,5 @@ public class StockXSwitch {
 
     public static StockXSortEnum SORT_TYPE = StockXSortEnum.FEATURED;
 
-    public static StockXPriceEnum PRICE_TYPE = StockXPriceEnum.EARN_MORE;
+    public static StockXPriceEnum PRICE_TYPE = StockXPriceEnum.SELL_FASTER;
 }
