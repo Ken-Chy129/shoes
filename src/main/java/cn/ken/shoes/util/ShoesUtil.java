@@ -70,7 +70,11 @@ public class ShoesUtil {
     }
 
     public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice) {
-        double getFromPlatform = (stockXPrice * 0.9) * PriceSwitch.EXCHANGE_RATE;
+        // 转账手续费
+        double transferFee = stockXPrice * 0.03;
+        // 商家手续费
+        double merchantFee = Math.max(stockXPrice * 0.07, 5.79);
+        double getFromPlatform = (stockXPrice - transferFee - merchantFee) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;

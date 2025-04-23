@@ -43,10 +43,11 @@ public class PriceScheduler {
     @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 40 * 60 * 1000)
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.CHANGE_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshKcPrice() {
-        LockHelper.lockKcItem();
-        int changeCnt = kickScrewService.refreshPriceV2();
-        LockHelper.unlockKcItem();
-        return changeCnt;
+//        LockHelper.lockKcItem();
+//        int changeCnt = kickScrewService.refreshPriceV2();
+//        LockHelper.unlockKcItem();
+//        return changeCnt;
+        return 0;
     }
 
     @Scheduled(fixedDelay = 15 * 60 * 1000, initialDelay = 15 * 60 * 1000)

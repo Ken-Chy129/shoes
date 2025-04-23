@@ -69,10 +69,10 @@ public class PriceManager {
             if (modelType == CustomPriceTypeEnum.NOT_COMPARE) {
                 // 不压价下架，直接返回null
                 return null;
-            } else if (modelType == CustomPriceTypeEnum.NORMAL) {
-                return normalPrice;
-            } else {
+            } else if (modelType == CustomPriceTypeEnum.THREE_FIVE) {
                 return ShoesUtil.getThreeFivePrice(normalPrice);
+            } else {
+                return normalPrice;
             }
         } catch (ExecutionException e) {
             return null;
