@@ -51,8 +51,8 @@ public class StockXClient {
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
-    public JSONObject queryToDeal() {
-        String bodyString = buildItemsToDealQueryRequest(null);
+    public JSONObject queryToDeal(String after) {
+        String bodyString = buildItemsToDealQueryRequest(after);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return null;
