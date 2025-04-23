@@ -40,11 +40,17 @@ public class StockXService {
     private StockXPriceMapper stockXPriceMapper;
 
     public void extendAllItems() {
-        JSONObject jsonObject = stockXClient.queryToDeal();
-        List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
-        for (JSONObject node : nodes) {
-            stockXClient.extendItem(node.getString("id"));
-        }
+        boolean hasMore;
+        String afterName = null;
+        do {
+            JSONObject jsonObject = stockXClient.queryToDeal(afterName);
+            List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
+            for (JSONObject node : nodes) {
+                stockXClient.extendItem(node.getString("id"));
+            }
+            hasMore = jsonObject.getBoolean("hasMore");
+            afterName = jsonObject.getString("endCursor");
+        } while (hasMore);
     }
 
     public void refreshBrand() {
