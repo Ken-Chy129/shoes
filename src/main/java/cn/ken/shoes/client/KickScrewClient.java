@@ -2,6 +2,8 @@ package cn.ken.shoes.client;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.KickScrewApiConstant;
+import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -142,7 +144,7 @@ public class KickScrewClient {
         return kickScrewItemDO;
     }
 
-    public List<Order> queryOrders(OrderRequest request) {
+    public PageResult<List<Order>> queryOrders(OrderRequest request) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ORDER_LIST)
                 .queryParam("page", request.getPage())
                 .queryParam("date_to", request.getDateTo())
@@ -153,11 +155,21 @@ public class KickScrewClient {
                 "x-api-key", KickScrewConfig.API_KEY
         ));
         JSONObject jsonObject = JSON.parseObject(result);
-        if (jsonObject == null || !jsonObject.getString("message").equals("success") || !(jsonObject.get("data") == null)) {
+        if (jsonObject == null || !jsonObject.getString("message").equals("success") || jsonObject.get("data") == null) {
             log.error("queryOrders error, result:{}", jsonObject);
-            return Collections.emptyList();
+            return PageResult.buildError(JSON.toJSONString(jsonObject));
         }
-        return jsonObject.getJSONArray("data").toJavaList(Order.class);
+        List<Order> data = jsonObject.getJSONArray("data").toJavaList(Order.class);
+        for (Order order : data) {
+            Order.Size size = order.getSize();
+            order.setEuSize(size.getEU());
+            Order.Payout payout = order.getPayout();
+            order.setPayoutStatus(payout.getStatus());
+        }
+        JSONObject pagination = jsonObject.getJSONObject("meta").getJSONObject("pagination");
+        PageResult<List<Order>> orderResult = PageResult.buildSuccess(data);
+        orderResult.setPageSize(pagination.getInteger("totalPages"));
+        return orderResult;
     }
 
     public KickScrewCategory queryBrand() {
