@@ -259,7 +259,7 @@ public class KickScrewService {
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
-                if (ShoesContext.getModelType(modelNo, euSize) == CustomPriceTypeEnum.NOT_COMPARE) {
+                if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
                     // 不压价下架的商品
                     continue;
                 }

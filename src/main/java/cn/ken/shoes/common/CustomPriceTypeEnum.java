@@ -1,22 +1,30 @@
 package cn.ken.shoes.common;
 
+import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.model.entity.CustomModelDO;
 import lombok.Getter;
+
+import java.util.function.Consumer;
 
 @Getter
 public enum CustomPriceTypeEnum {
 
-    NORMAL(0, "普通价格"),
-    THREE_FIVE(1, "得物3.5"),
-    NOT_COMPARE(2, "不比价"),
+    THREE_FIVE(1, "得物3.5", ShoesContext::addThreeFiveModel),
+    NOT_COMPARE(2, "不比价", ShoesContext::addNotCompareModel),
+    NO_PRICE(3, "无价", ShoesContext::addNoPrice),
+    FLAWS(4, "瑕疵", ShoesContext::addFlawsModel),
     ;
 
     private final int code;
 
     private final String desc;
 
-    CustomPriceTypeEnum(int code, String desc) {
+    private final Consumer<CustomModelDO> cachePutConsumer;
+
+    CustomPriceTypeEnum(int code, String desc, Consumer<CustomModelDO> cachePutConsumer) {
         this.code = code;
         this.desc = desc;
+        this.cachePutConsumer = cachePutConsumer;
     }
 
     public static CustomPriceTypeEnum from(int code) {
@@ -25,7 +33,7 @@ public enum CustomPriceTypeEnum {
                 return customPriceTypeEnum;
             }
         }
-        return NORMAL;
+        return null;
     }
 
 }

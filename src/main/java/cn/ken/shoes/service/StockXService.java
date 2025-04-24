@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
-import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -109,7 +108,7 @@ public class StockXService {
                     log.info("clearNoBenefitItems no styleId or euSize, modelNo:{}, euSize:{}", styleId, euSize);
                     continue;
                 }
-                if (ShoesContext.getModelType(styleId, euSize) == CustomPriceTypeEnum.NOT_COMPARE) {
+                if (ShoesContext.isNotCompareModel(styleId, euSize)) {
                     // 不压价下架的商品
                     continue;
                 }
