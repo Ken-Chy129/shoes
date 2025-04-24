@@ -61,4 +61,9 @@ public class KickScrewApiConstant {
      * B端查询上架商品
      */
     public static final String QUERY_STOCK = "https://api.crewsupply.kickscrew.com/sapi/v2/stock/list";
+
+    /**
+     * 下载订单qr标签
+     */
+    public static final String DOWNLOAD_QR_LABEL = "https://api.crewsupply.kickscrew.com/sapi/v2/order/label/{orderId}";
 }
