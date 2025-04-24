@@ -33,12 +33,12 @@ public class OrderController {
     private OrderService orderService;
 
     @GetMapping("kc/list")
-    public PageResult<List<Order>> queryKCOrders(OrderRequest request) {
+    public PageResult<List<Order>> queryKcOrders(OrderRequest request) {
         return kickScrewClient.queryOrders(request);
     }
 
     @GetMapping("kc/excel")
-    public ResponseEntity<InputStreamResource> queryKCOrderExcel() throws IOException {
+    public ResponseEntity<InputStreamResource> downKcOrderExcel() throws IOException {
         orderService.downloadKcOrders();
         FileSystemResource file = new FileSystemResource(CommonConfig.DOWNLOAD_PATH + CommonConfig.KC_ORDER);
 
@@ -57,7 +57,27 @@ public class OrderController {
     }
 
     @GetMapping("kc/cancel")
-    public Result<String> cancelOrder(String orderId) {
+    public Result<String> cancelKcOrder(String orderId) {
         return Result.buildSuccess(kickScrewClient.cancelOrder(orderId));
+    }
+
+    @GetMapping("kc/qrLabel")
+    public ResponseEntity<InputStreamResource> downloadKcQrLabel(String orderId) throws IOException {
+        String fileName = STR."\{CommonConfig.DOWNLOAD_PATH}qr_label_\{orderId}.pdf";
+        kickScrewClient.downloadQrLabel(orderId);
+        FileSystemResource file = new FileSystemResource(fileName );
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
+        headers.add("Content-Disposition", STR."attachment; filename=\{URLEncoder.encode(fileName, StandardCharsets.UTF_8)}");
+        headers.add("Pragma", "no-cache");
+        headers.add("Expires", "0");
+
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentLength(file.contentLength())
+                .contentType(MediaType.parseMediaType("application/octet-stream"))
+                .body(new InputStreamResource(file.getInputStream()));
     }
 }

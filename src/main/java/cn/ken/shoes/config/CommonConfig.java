@@ -9,4 +9,6 @@ public class CommonConfig {
     public final static String POISON_PRICE_NAME = "得物价格表.xlsx";
 
     public final static String KC_ORDER = "kc订单.xlsx";
+
+    public final static String KC_QR_LABEL = "";
 }
