@@ -13,7 +13,7 @@ public class Order {
     @ExcelProperty("订单id")
     private Long orderId;
 
-    @ExcelProperty("订单号")
+    @ExcelProperty("KS id")
     private String orderNumber;
 
     @ExcelProperty("库存id")
