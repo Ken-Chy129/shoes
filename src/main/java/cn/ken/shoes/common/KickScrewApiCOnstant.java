@@ -43,6 +43,11 @@ public class KickScrewApiConstant {
     public static final String ORDER_LIST = "https://api.crewsupply.kickscrew.com/sapi/v2/orders";
 
     /**
+     * B端取消订单
+     */
+    public static final String CANCEL_ORDER = "https://api.crewsupply.kickscrew.com/sapi/v2/order/out-stock";
+
+    /**
      * B端查询商品
      */
     public static final String QUERY_ITEM_BY_MODEL_NO = "https://api.crewsupply.kickscrew.com/sapi/v2/product/{modelNo}";
