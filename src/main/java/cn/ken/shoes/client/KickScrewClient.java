@@ -3,7 +3,6 @@ package cn.ken.shoes.client;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.common.PageResult;
-import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
@@ -15,7 +14,6 @@ import cn.ken.shoes.model.order.Order;
 import cn.ken.shoes.model.order.OrderRequest;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSON;
-import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
@@ -39,10 +37,7 @@ public class KickScrewClient {
         json.put("page_no", pageNo);
         json.put("page_size", pageSize);
         json.put("min_qty", 1);
-        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK,
-                json.toJSONString(),
-                Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK, json.toJSONString(), getHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return Collections.emptyList();
         }
@@ -75,10 +70,7 @@ public class KickScrewClient {
         json.put("page_no", 0);
         json.put("page_size", 1);
         json.put("min_qty", 1);
-        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK,
-                json.toJSONString(),
-                Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_STOCK, json.toJSONString(), getHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return 200;
         }
@@ -87,10 +79,7 @@ public class KickScrewClient {
     }
 
     public List<KickScrewPriceDO> queryLowestPrice(List<String> modelNos) {
-        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE,
-                JSON.toJSONString(Map.of("model_nos", modelNos)),
-                Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.QUERY_LOWEST_PRICE, JSON.toJSONString(Map.of("model_nos", modelNos)), getHeaders());
         if (StrUtil.isBlank(rawResult)) {
             log.info("queryLowestPrice result is empty");
             return Collections.emptyList();
@@ -124,11 +113,8 @@ public class KickScrewClient {
     }
 
     public KickScrewItemDO queryItemByModelNo(String modelNo) {
-        String url = KickScrewApiConstant.QUERY_ITEM_BY_MODEL_NO
-                .replace("{modelNo}", modelNo);
-        String result = HttpUtil.doGet(url, Headers.of(
-                "x-api-key", KickScrewConfig.API_KEY
-        ));
+        String url = KickScrewApiConstant.QUERY_ITEM_BY_MODEL_NO.replace("{modelNo}", modelNo);
+        String result = HttpUtil.doGet(url, getHeaders());
         JSONObject data = JSON.parseObject(result).getJSONObject("data");
         if (data == null) {
             log.error("queryItemByModelNo error, data is null, modelNo:{}", modelNo);
@@ -144,6 +130,14 @@ public class KickScrewClient {
         return kickScrewItemDO;
     }
 
+    public String cancelOrder(String orderId) {
+        JSONObject body = new JSONObject();
+        body.put("order_id", orderId);
+        String result = HttpUtil.doPost(KickScrewApiConstant.CANCEL_ORDER, body.toJSONString(), getHeaders());
+        JSONObject jsonObject = JSON.parseObject(result);
+        return jsonObject.getString("message");
+    }
+
     public PageResult<List<Order>> queryOrders(OrderRequest request) {
         String url = UriComponentsBuilder.fromUriString(KickScrewApiConstant.ORDER_LIST)
                 .queryParam("page", request.getPage())
@@ -151,9 +145,7 @@ public class KickScrewClient {
                 .queryParam("date_from", request.getDateFrom())
                 .queryParam("status", request.getStatus())
                 .toUriString();
-        String result = HttpUtil.doGet(url, Headers.of(
-                "x-api-key", KickScrewConfig.API_KEY
-        ));
+        String result = HttpUtil.doGet(url, getHeaders());
         JSONObject jsonObject = JSON.parseObject(result);
         if (jsonObject == null || !jsonObject.getString("message").equals("success") || jsonObject.get("data") == null) {
             log.error("queryOrders error, result:{}", jsonObject);
@@ -306,17 +298,11 @@ public class KickScrewClient {
     }
 
     public void batchUploadItems(List<KickScrewUploadItem> items) {
-        HttpUtil.doPost(KickScrewApiConstant.BATCH_UPLOAD_ITEMS,
-            JSON.toJSONString(Collections.singletonMap("items", items)),
-            Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        HttpUtil.doPost(KickScrewApiConstant.BATCH_UPLOAD_ITEMS, JSON.toJSONString(Collections.singletonMap("items", items)), getHeaders());
     }
 
     public void deleteAllItems() {
-        HttpUtil.doDelete(KickScrewApiConstant.DELETE_ALL_ITEMS,
-                "",
-                Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        HttpUtil.doDelete(KickScrewApiConstant.DELETE_ALL_ITEMS, "", getHeaders());
     }
 
     public void deleteList(List<KickScrewPriceDO> toDeleteList) {
@@ -330,10 +316,7 @@ public class KickScrewClient {
             items.add(item);
         }
         json.put("items", items);
-        HttpUtil.doDelete(KickScrewApiConstant.DELETE_LIST,
-                json.toJSONString(),
-                Headers.of("x-api-key", KickScrewConfig.API_KEY)
-        );
+        HttpUtil.doDelete(KickScrewApiConstant.DELETE_LIST, json.toJSONString(), getHeaders());
     }
 
     private String buildAlgoliaBodyForItem(KickScrewAlgoliaRequest algoliaRequest) {
@@ -406,6 +389,10 @@ public class KickScrewClient {
         JSONObject body = new JSONObject();
         body.put("requests", List.of(request));
         return body.toJSONString();
+    }
+
+    private static Headers getHeaders() {
+        return Headers.of("x-api-key", KickScrewConfig.API_KEY);
     }
 
 }

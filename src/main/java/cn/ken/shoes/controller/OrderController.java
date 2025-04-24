@@ -2,12 +2,12 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.model.order.Order;
 import cn.ken.shoes.model.order.OrderRequest;
 import cn.ken.shoes.service.OrderService;
 import jakarta.annotation.Resource;
-import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
@@ -54,5 +54,10 @@ public class OrderController {
                 .contentLength(file.contentLength())
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
                 .body(new InputStreamResource(file.getInputStream()));
+    }
+
+    @GetMapping("kc/cancel")
+    public Result<String> cancelOrder(String orderId) {
+        return Result.buildSuccess(kickScrewClient.cancelOrder(orderId));
     }
 }
