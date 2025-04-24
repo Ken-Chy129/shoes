@@ -2,5 +2,15 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.CustomModelMapper">
 
+    <insert id="insertIgnore">
+        insert ignore into custom_model(model_no, eu_size, type) value (
+            #{modelNo},
+            #{euSize},
+            #{type}
+        )
+    </insert>
 
+    <select id="selectByType" resultType="cn.ken.shoes.model.entity.CustomModelDO">
+        select * from custom_model where type = #{type}
+    </select>
 </mapper>

@@ -1,6 +1,5 @@
 package cn.ken.shoes;
 
-import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
@@ -13,10 +12,13 @@ public class ShoesContext {
     @Getter
     private static Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = new HashMap<>();
 
-    private static Map<String, CustomPriceTypeEnum> customPriceTypeMap = new HashMap<>();
+    private final static Set<String> THREE_FIVE_MODEL_SET = new HashSet<>();
 
-    @Getter
-    private static Set<String> noPriceModelNoSet = new HashSet<>();
+    private final static Set<String> NOT_COMPARE_MODEL_SET = new HashSet<>();
+
+    private final static Set<String> NO_PRICE_MODEL_SET = new HashSet<>();
+
+    private final static Set<String> FLAWS_MODEL_SET = new HashSet<>();
 
     public static void setBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap) {
         ShoesContext.brandGenderSizeChartMap = brandGenderSizeChartMap;
@@ -34,33 +36,73 @@ public class ShoesContext {
         return brandMap.get(gender);
     }
 
-    public static SizeChartDO getBrandGenderSizeChartByEuSize(String brand, String gender, String euSize) {
-        List<SizeChartDO> brandGenderSizeChart = getBrandGenderSizeChart(brand, gender);
-        if (brandGenderSizeChart == null) {
-            return null;
-        }
-        return brandGenderSizeChart.stream().filter(sizeChartDO -> sizeChartDO.getEuSize().equals(euSize)).findFirst().orElse(null);
+    // 3.5
+
+    public static Set<String> getThreeFiveModelSet() {
+        return THREE_FIVE_MODEL_SET;
     }
 
-    public static void putCustomModel(CustomModelDO customModelDO) {
+    public static void addThreeFiveModel(CustomModelDO customModelDO) {
         String modelNo = customModelDO.getModelNo();
         String euSize = customModelDO.getEuSize();
-        CustomPriceTypeEnum customPriceTypeEnum = CustomPriceTypeEnum.from(customModelDO.getType());
-        customPriceTypeMap.put(STR."\{modelNo}:\{euSize}", customPriceTypeEnum);
+        THREE_FIVE_MODEL_SET.add(STR."\{modelNo}:\{euSize}");
     }
 
-    public static CustomPriceTypeEnum getModelType(String modelNo, String euSize) {
-        return customPriceTypeMap.get(STR."\{modelNo}:\{euSize}");
+    public static boolean isThreeFiveModel(String modelNo, String euSize) {
+        return THREE_FIVE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
     }
 
-    public static void addNoPriceModelNo(String noPriceModelNo) {
-        noPriceModelNoSet.add(noPriceModelNo);
+    // 不比价
+
+    public static Set<String> getNotCompareModelSet() {
+        return NOT_COMPARE_MODEL_SET;
+    }
+
+    public static void addNotCompareModel(CustomModelDO customModelDO) {
+        String modelNo = customModelDO.getModelNo();
+        String euSize = customModelDO.getEuSize();
+        NOT_COMPARE_MODEL_SET.add(STR."\{modelNo}:\{euSize}");
+    }
+
+    public static boolean isNotCompareModel(String modelNo, String euSize) {
+        return NOT_COMPARE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+    }
+
+    // 无价
+
+    public static Set<String> getNoPriceModelSet() {
+        return NO_PRICE_MODEL_SET;
+    }
+
+    public static void addNoPrice(CustomModelDO customModelDO) {
+        String modelNo = customModelDO.getModelNo();
+        NO_PRICE_MODEL_SET.add(modelNo);
+    }
+
+    public static void addNoPrice(String modelNo) {
+        NO_PRICE_MODEL_SET.add(modelNo);
     }
 
     public static boolean isNoPrice(String modelNo) {
         if (!PoisonSwitch.OPEN_NO_PRICE_CACHE) {
             return true;
         }
-        return noPriceModelNoSet.contains(modelNo);
+        return NO_PRICE_MODEL_SET.contains(modelNo);
     }
+
+    // 瑕疵
+
+    public static Set<String> getFlawsModelSet() {
+        return FLAWS_MODEL_SET;
+    }
+
+    public static void addFlawsModel(CustomModelDO customModelDO) {
+        String modelNo = customModelDO.getModelNo();
+        FLAWS_MODEL_SET.add(modelNo);
+    }
+
+    public static boolean isFlawsModel(String modelNo) {
+        return FLAWS_MODEL_SET.contains(modelNo);
+    }
+
 }

@@ -62,14 +62,10 @@ public class PriceManager {
         try {
             Map<String, Integer> sizePriceMap = CACHE.get(modelNo);
             Integer normalPrice = sizePriceMap.get(euSize);
-            if (normalPrice == null) {
+            if (normalPrice == null || ShoesContext.isNotCompareModel(modelNo, euSize) || ShoesContext.isFlawsModel(modelNo)) {
                 return null;
             }
-            CustomPriceTypeEnum modelType = ShoesContext.getModelType(modelNo, euSize);
-            if (modelType == CustomPriceTypeEnum.NOT_COMPARE) {
-                // 不压价下架，直接返回null
-                return null;
-            } else if (modelType == CustomPriceTypeEnum.THREE_FIVE) {
+            if (ShoesContext.isThreeFiveModel(modelNo, euSize)) {
                 return ShoesUtil.getThreeFivePrice(normalPrice);
             } else {
                 return normalPrice;

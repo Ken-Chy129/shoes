@@ -1,12 +1,11 @@
 package cn.ken.shoes.listener;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.CustomModelMapper;
-import cn.ken.shoes.mapper.NoPriceModelMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
-import cn.ken.shoes.model.entity.NoPriceModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
@@ -38,9 +37,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Resource
     private CustomModelMapper customModelMapper;
 
-    @Resource
-    private NoPriceModelMapper noPriceModelMapper;
-
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
@@ -48,7 +44,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
         }
         initSizeMap();
         initCustomModel();
-        initNoPriceModel();
         while (true) {
             try {
 //                Thread.sleep(5 * 60 * 1000);
@@ -84,14 +79,11 @@ public class ApplicationStartListener implements ApplicationListener<Application
     private void initCustomModel() {
         List<CustomModelDO> customModelDOS = customModelMapper.selectList(new QueryWrapper<>());
         for (CustomModelDO customModelDO : customModelDOS) {
-            ShoesContext.putCustomModel(customModelDO);
-        }
-    }
-
-    private void initNoPriceModel() {
-        List<NoPriceModelDO> noPriceModelDOS = noPriceModelMapper.selectList(new QueryWrapper<>());
-        for (NoPriceModelDO noPriceModelDO : noPriceModelDOS) {
-            ShoesContext.addNoPriceModelNo(noPriceModelDO.getModelNo());
+            CustomPriceTypeEnum customPriceTypeEnum = CustomPriceTypeEnum.from(customModelDO.getType());
+            if (customPriceTypeEnum == null) {
+                continue;
+            }
+            customPriceTypeEnum.getCachePutConsumer().accept(customModelDO);
         }
     }
 }

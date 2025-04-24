@@ -45,7 +45,7 @@ public class PoisonClient {
         }
         try {
             if ("{}".equals(result)) {
-                ShoesContext.addNoPriceModelNo(modelNo);
+                ShoesContext.addNoPrice(modelNo);
                 return Collections.emptyList();
             }
             JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
