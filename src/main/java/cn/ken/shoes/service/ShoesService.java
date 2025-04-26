@@ -37,11 +37,16 @@ public class ShoesService {
     }
 
     public List<String> queryAllModels() {
+        // kc热门商品
         List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
+        // 必爬商品
+        List<String> mustCrawlModelNos = mustCrawlMapper.selectAllModelNos();
         hotModelNos.addAll(mustCrawlModelNos);
-        List<String> modelNoList = hotModelNos.stream().distinct().collect(Collectors.toList());
-        modelNoList.removeIf(ShoesContext::isFlawsModel);
-        return modelNoList;
+        List<String> allModelNos = hotModelNos.stream().distinct().collect(Collectors.toList());
+        // 移除瑕疵商品
+        allModelNos.removeIf(ShoesContext::isFlawsModel);
+        // 移除无价商品
+        allModelNos.removeIf(ShoesContext::isNoPrice);
+        return allModelNos;
     }
 }

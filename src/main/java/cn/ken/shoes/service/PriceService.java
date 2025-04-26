@@ -1,13 +1,16 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.price.PriceVO;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SqlHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
@@ -39,13 +42,13 @@ public class PriceService {
     private KickScrewPriceMapper kickScrewPriceMapper;
 
     @Resource
-    private TaskService taskService;
-
-    @Resource
     private KickScrewItemMapper kickScrewItemMapper;
 
     @Resource
     private ItemService kickScrewItemService;
+
+    @Resource
+    private CustomModelMapper customModelMapper;
 
     public void refreshKcPrices() {
         List<KickScrewItemDO> kickScrewItemDOS = kickScrewItemMapper.selectAllItemsWithPoisonPrice();
@@ -167,4 +170,20 @@ public class PriceService {
         return Result.buildSuccess(result);
     }
 
+    public void refreshNoPriceModel() {
+        Set<String> noPriceModelDOS = customModelMapper.selectByType(CustomPriceTypeEnum.NO_PRICE.getCode()).stream().map(CustomModelDO::getModelNo).collect(Collectors.toSet());
+        List<CustomModelDO> needRefresh = new ArrayList<>();
+        Set<String> noPriceModelSet = ShoesContext.getNoPriceModelSet();
+        for (String modelNo : noPriceModelSet) {
+            if (noPriceModelDOS.contains(modelNo)) {
+                continue;
+            }
+            CustomModelDO customModelDO = new CustomModelDO();
+            customModelDO.setModelNo(modelNo);
+            customModelDO.setType(CustomPriceTypeEnum.NO_PRICE.getCode());
+            needRefresh.add(customModelDO);
+        }
+        SqlHelper.batch(needRefresh, model -> customModelMapper.insertIgnore(model));
+        log.info("finish refreshNoPriceModel, cache size:{}, insert size:{}", noPriceModelDOS.size(), needRefresh.size());
+    }
 }
