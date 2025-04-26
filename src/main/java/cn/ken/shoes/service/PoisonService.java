@@ -15,11 +15,9 @@ import com.google.common.collect.Lists;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 
 @Slf4j
@@ -36,13 +34,10 @@ public class PoisonService {
     private PoisonPriceMapper poisonPriceMapper;
 
     @Resource
-    private KickScrewItemMapper kickScrewItemMapper;
-
-    @Resource
-    private MustCrawlMapper mustCrawlMapper;
-
-    @Resource
     private PriceManager priceManager;
+
+    @Resource
+    private ShoesService shoesService;
 
     /**
      * 增量更新得物商品（现在查得物价格的接口不需要spuId，因此没必要再查得物商品信息）
@@ -71,47 +66,28 @@ public class PoisonService {
         // 互斥操作，一次只能进行一次全量价格更新
         LockHelper.lockPoisonPrice();
         // 拿到所有要查询的货号
-        List<String> modelNos = getAllModelNos();
+        List<String> modelNos = shoesService.queryAllModels();
+        log.info("start refreshAllPrice, cnt:{}", modelNos.size());
         List<List<String>> partition = Lists.partition(modelNos, 20);
-//        CountDownLatch insertLatch = new CountDownLatch(partition.size());
+        int i = 1;
         for (List<String> modelNumbers : partition) {
-//            CopyOnWriteArrayList<PoisonPriceDO> toInsert = new CopyOnWriteArrayList<>();
             CountDownLatch latch = new CountDownLatch(modelNumbers.size());
-            // 查询价格
             for (String modelNumber : modelNumbers) {
                 Thread.startVirtualThread(() -> {
                     try {
                         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
-//                        toInsert.addAll(poisonPriceDOList);
                         priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
                     } catch (Exception e) {
-                        log.error(e.getMessage());
+                        log.error("refreshAllPrice error", e);
                     } finally {
                         latch.countDown();
                     }
                 });
             }
             latch.await();
-//            // 插入价格
-//            Thread.startVirtualThread(() -> {
-//                try {
-//                    SqlHelper.batch(toInsert, item -> poisonPriceMapper.insertOverwrite(item));
-//                } finally {
-//                    insertLatch.countDown();
-//                }
-//            });
+            log.info("finish refreshAllPrice-{}, cnt:{}", i++, modelNumbers.size());
         }
-//        insertLatch.await();
         LockHelper.unlockPoisonPrice();
-    }
-
-    private List<String> getAllModelNos() {
-        List<String> modelNos = new ArrayList<>();
-        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.selectAllModelNos();
-        modelNos.addAll(hotModelNos);
-        modelNos.addAll(mustCrawlModelNos);
-        return modelNos;
     }
 
     /**
