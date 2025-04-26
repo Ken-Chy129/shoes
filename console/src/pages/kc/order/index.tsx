@@ -1,7 +1,7 @@
 import {
     Button, Card,
     Form,
-    Input,
+    Input, message,
     Table,
 } from "antd";
 import React, {useEffect, useState} from "react";
@@ -61,6 +61,10 @@ const SettingPage = () => {
         }
     ];
 
+    const downloadOrders = () => {
+        window.open('http://localhost:8080/order/kc/excel');
+    }
+
     return <>
         <Card title={"商品信息"} style={{marginTop: 10}}>
             <Form form={conditionForm}
@@ -68,6 +72,11 @@ const SettingPage = () => {
                 <div style={{display: "flex"}}>
                     <Form.Item name="name" label="品牌名称">
                         <Input/>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button type="primary" htmlType="submit" onClick={downloadOrders}>
+                            订单导出
+                        </Button>
                     </Form.Item>
                 </div>
             </Form>
