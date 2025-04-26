@@ -92,4 +92,8 @@ public class ShoesController {
         priceManager.dumpPrice();
     }
 
+    @GetMapping("importFlawsModel")
+    public void importFlawsModel() {
+        fileService.importFlawsModel("1.txt");
+    }
 }
