@@ -8,11 +8,14 @@ import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.model.shoes.ShoesRequest;
 import cn.ken.shoes.model.shoes.ShoesVO;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 public class ShoesService {
 
@@ -37,16 +40,25 @@ public class ShoesService {
     }
 
     public List<String> queryAllModels() {
+        List<String> result = new ArrayList<>();
         // kc热门商品
         List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        result.addAll(hotModelNos);
         // 必爬商品
         List<String> mustCrawlModelNos = mustCrawlMapper.selectAllModelNos();
-        hotModelNos.addAll(mustCrawlModelNos);
-        List<String> allModelNos = hotModelNos.stream().distinct().collect(Collectors.toList());
+        result.addAll(mustCrawlModelNos);
+        result = hotModelNos.stream().distinct().collect(Collectors.toList());
         // 移除瑕疵商品
-        allModelNos.removeIf(ShoesContext::isFlawsModel);
+        result.removeIf(ShoesContext::isFlawsModel);
         // 移除无价商品
-        allModelNos.removeIf(ShoesContext::isNoPrice);
-        return allModelNos;
+        result.removeIf(ShoesContext::isNoPrice);
+        log.info("queryAllModels, hotModelSize:{}, mustCrawlModelSize:{}, flawsModelSize:{}, noPriceModelSize:{}, finalModelSize:{}",
+                hotModelNos.size(),
+                mustCrawlModelNos.size(),
+                ShoesContext.getFlawsModelSet().size(),
+                ShoesContext.getNoPriceModelSet().size(),
+                result.size()
+        );
+        return result;
     }
 }
