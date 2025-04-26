@@ -5,4 +5,8 @@ enum KC_DOWNLOAD_API {
     LABELS = PREFIX + "/order/kc/label"
 }
 
-export {KC_DOWNLOAD_API}
+enum UPLOAD_API {
+    UPLOAD = "/api/file/upload",
+}
+
+export {KC_DOWNLOAD_API, UPLOAD_API}

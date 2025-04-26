@@ -8,17 +8,20 @@ import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 @RestController
-@RequestMapping("excel")
-public class ExcelController {
+@RequestMapping("file")
+public class FileController {
 
     @Resource
     private FileService fileService;
@@ -42,5 +45,28 @@ public class ExcelController {
                 .contentLength(file.contentLength())
                 .contentType(MediaType.parseMediaType("application/octet-stream"))
                 .body(new InputStreamResource(file.getInputStream()));
+    }
+
+    @PostMapping("/upload")
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        if (file.isEmpty()) {
+            return ResponseEntity.badRequest().body("文件为空，请选择文件后上传！");
+        }
+
+        try {
+            // 获取文件名
+            String fileName = file.getOriginalFilename();
+
+            // 构建文件保存路径
+            Path filePath = Paths.get(CommonConfig.UPLOAD_PATH + fileName);
+
+            // 将文件保存到指定路径
+            Files.copy(file.getInputStream(), filePath);
+
+            return ResponseEntity.ok("文件上传成功！文件路径：" + filePath.toString());
+        } catch (IOException e) {
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("文件上传失败：" + e.getMessage());
+        }
     }
 }
