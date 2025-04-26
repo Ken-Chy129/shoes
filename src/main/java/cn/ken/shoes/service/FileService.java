@@ -1,12 +1,13 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.ShoesContext;
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.CommonConfig;
+import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.mapper.SizeChartMapper;
+import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
@@ -14,6 +15,7 @@ import cn.ken.shoes.model.excel.ModelExcel;
 import cn.ken.shoes.model.excel.PriceExcel;
 import cn.ken.shoes.model.excel.SizeChartExcel;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SqlHelper;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.builder.ExcelWriterSheetBuilder;
@@ -46,7 +48,7 @@ public class FileService {
     private PoisonItemMapper poisonItemMapper;
 
     @Resource
-    private SizeChartMapper sizeChartMapper;
+    private CustomModelMapper customModelMapper;
 
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
@@ -156,4 +158,20 @@ public class FileService {
         }
     }
 
+    public void importFlawsModel(String filename) {
+        List<CustomModelDO> toInsert = new ArrayList<>();
+        try {
+            // 读取所有行
+            List<String> modelNos = Files.readAllLines(Paths.get(FILE_DIR + filename));
+            for (String modelNo : modelNos) {
+                CustomModelDO customModelDO = new CustomModelDO();
+                customModelDO.setModelNo(modelNo);
+                customModelDO.setType(CustomPriceTypeEnum.FLAWS.getCode());
+                toInsert.add(customModelDO);
+            }
+            SqlHelper.batch(toInsert, customModelDO -> customModelMapper.insertIgnore(customModelDO));
+        } catch (IOException e) {
+            log.error(e.getMessage());
+        }
+    }
 }
