@@ -8,6 +8,7 @@ import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -37,14 +38,13 @@ public class PriceScheduler {
         priceManager.dumpPrice();
     }
 
-    @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 40 * 60 * 1000)
+    @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 5 * 60 * 1000)
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.CHANGE_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshKcPrice() {
-//        LockHelper.lockKcItem();
-//        int changeCnt = kickScrewService.refreshPriceV2();
-//        LockHelper.unlockKcItem();
-//        return changeCnt;
-        return 0;
+        LockHelper.lockKcItem();
+        int changeCnt = kickScrewService.refreshPriceV2();
+        LockHelper.unlockKcItem();
+        return changeCnt;
     }
 
     @Scheduled(fixedDelay = 15 * 60 * 1000, initialDelay = 15 * 60 * 1000)

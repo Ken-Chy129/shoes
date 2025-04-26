@@ -49,6 +49,9 @@ public class KickScrewService {
     @Resource
     private PriceManager priceManager;
 
+    @Resource
+    private ShoesService shoesService;
+
     private static final Integer PAGE_SIZE = 1_000;
 
     /**
@@ -197,10 +200,7 @@ public class KickScrewService {
         // 清空kc价格
         kickScrewPriceMapper.delete(new QueryWrapper<>());
         // 查询要比价的货号
-        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
-        List<String> mustCrawlModelNos = mustCrawlMapper.queryByPlatformList("kc");
-        hotModelNos.addAll(mustCrawlModelNos);
-        List<String> modelNoList = hotModelNos.stream().distinct().toList();
+        List<String> modelNoList = shoesService.queryAllModels();
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         int uploadCnt = 0;
         // 查询价格并上架盈利商品
