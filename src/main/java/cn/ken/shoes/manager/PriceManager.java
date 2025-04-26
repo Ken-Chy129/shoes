@@ -93,9 +93,9 @@ public class PriceManager {
     public void dumpPrice() {
         synchronized (PriceManager.class) {
             long start = System.currentTimeMillis();
-            log.info("start dumpPoisonPrice");
             List<PoisonPriceDO> toInsert = new ArrayList<>();
             ConcurrentMap<String, Map<String, Integer>> map = CACHE.asMap();
+            log.info("start dumpPoisonPrice, modelCnt:{}", map.size());
             for (Map.Entry<String, Map<String, Integer>> entry : map.entrySet()) {
                 String modelNo = entry.getKey();
                 Map<String, Integer> priceMap = entry.getValue();
@@ -111,7 +111,7 @@ public class PriceManager {
             }
             poisonPriceMapper.delete(new QueryWrapper<>());
             SqlHelper.batch(toInsert, poisonPriceDO -> poisonPriceMapper.insertOverwrite(poisonPriceDO));
-            log.info("end dumpPoisonPrice, cost:{}", TimeUtil.getCostMin(start));
+            log.info("end dumpPoisonPrice, cnt:{}, cost:{}", toInsert.size(), TimeUtil.getCostMin(start));
         }
     }
 }
