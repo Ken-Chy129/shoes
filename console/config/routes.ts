@@ -75,6 +75,11 @@ export default [
     ]
   },
   {
+    path: '/file',
+    layout: true,
+    component: "./file"
+  },
+  {
     path: '*',
     layout: false,
     component: './404',

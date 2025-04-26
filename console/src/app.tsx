@@ -160,6 +160,10 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
             },
           ]
         },
+        {
+          name: "文件",
+          path: "/file"
+        }
       ]
       return data;
     },

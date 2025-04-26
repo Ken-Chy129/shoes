@@ -1,5 +1,6 @@
 import {request} from "@@/exports";
 import {message} from "antd";
+import {RcFile} from "antd/es/upload/interface";
 
 function doGetRequest(
     apiName: string,
@@ -64,5 +65,18 @@ function doDeleteRequest(
     });
 }
 
+function doUploadRequest(
+    apiName: string,
+    file: RcFile
+) {
+    const formData = new FormData();
+    formData.append("file", file);
+    request(apiName, {
+        method: 'POST',
+        formData,
+        headers: {'Content-Type': 'multipart/form-data'}
+    });
+}
 
-export {doGetRequest, doPostRequest, doDeleteRequest}
+
+export {doGetRequest, doPostRequest, doDeleteRequest, doUploadRequest}
