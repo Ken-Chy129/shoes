@@ -57,6 +57,8 @@ public class SettingController {
         priceSetting.setExchangeRate(PriceSwitch.EXCHANGE_RATE);
         priceSetting.setFreight(PriceSwitch.FREIGHT);
         priceSetting.setMinProfit(PriceSwitch.MIN_PROFIT);
+        priceSetting.setKcGetRate(PriceSwitch.KC_GET_RATE);
+        priceSetting.setKcServiceFee(PriceSwitch.KC_SERVICE_FEE);
         return Result.buildSuccess(priceSetting);
     }
 
@@ -65,6 +67,8 @@ public class SettingController {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
+        PriceSwitch.KC_GET_RATE = priceSetting.getKcGetRate();
+        PriceSwitch.KC_SERVICE_FEE = priceSetting.getKcServiceFee();
         return Result.buildSuccess(true);
     }
 

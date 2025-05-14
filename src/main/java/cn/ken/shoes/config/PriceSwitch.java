@@ -16,4 +16,14 @@ public class PriceSwitch {
      * 最小利润
      */
     public static Integer MIN_PROFIT = -30;
+
+    /**
+     * KC到手比例
+     */
+    public static Double KC_GET_RATE = 0.89d;
+
+    /**
+     * KC服务费
+     */
+    public static Integer KC_SERVICE_FEE = 18;
 }

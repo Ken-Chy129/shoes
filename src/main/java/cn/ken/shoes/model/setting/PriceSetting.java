@@ -19,4 +19,14 @@ public class PriceSetting {
      * 最小利润
      */
     private Integer minProfit;
+
+    /**
+     * KC到手比例
+     */
+    public Double kcGetRate;
+
+    /**
+     * KC服务费
+     */
+    public Integer kcServiceFee;
 }

@@ -42,7 +42,7 @@ public class ShoesUtil {
      * @return 如果kc价格-1有盈利，则修改为kc价格-1，否则返回null
      */
     public static boolean canKcEarn(Integer poisonPrice, Integer kcPrice) {
-        double getFromPlatform = ((kcPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
+        double getFromPlatform = ((kcPrice - 1.0) * PriceSwitch.KC_GET_RATE - PriceSwitch.KC_SERVICE_FEE) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
         if (earn < PriceSwitch.MIN_PROFIT) {
             return false;
@@ -65,7 +65,7 @@ public class ShoesUtil {
     }
 
     public static double getKcEarn(Integer poisonPrice, Integer otherPrice) {
-        double getFromPlatform = ((otherPrice - 1.0) * 0.88 - 15) * PriceSwitch.EXCHANGE_RATE;
+        double getFromPlatform = ((otherPrice - 1.0) * PriceSwitch.KC_GET_RATE - PriceSwitch.KC_SERVICE_FEE) * PriceSwitch.EXCHANGE_RATE;
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
