@@ -59,6 +59,10 @@ public class StockXClient {
         }
         JSONObject result = new JSONObject();
         JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.getJSONObject("data") == null || jsonObject.getJSONObject("data").getJSONObject("viewer") == null) {
+            log.error("queryToDeal error, {}", jsonObject);
+            return null;
+        }
         JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
         JSONObject pageInfo = ask.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
@@ -67,7 +71,7 @@ public class StockXClient {
         result.put("nodes", nodes);
         for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
             JSONObject node = edge.getJSONObject("node");
-            if (node.getBoolean("shippingExtensionRequested")) {
+            if (Boolean.parseBoolean(node.getString("shippingExtensionRequested"))) {
                 continue;
             }
             nodes.add(node);
@@ -375,8 +379,8 @@ public class StockXClient {
     private Headers buildProHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
-//                "authorization", authorization,
+//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
+                "authorization", authorization,
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
         );
     }
