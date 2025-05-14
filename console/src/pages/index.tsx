@@ -40,7 +40,9 @@ const SettingPage = () => {
         const exchangeRate = kcForm.getFieldValue("exchangeRate");
         const freight = kcForm.getFieldValue("freight");
         const minProfit = kcForm.getFieldValue("minProfit");
-        doPostRequest(SETTING_API.KC, {exchangeRate, freight, minProfit}, {
+        const kcGetRate = kcForm.getFieldValue("kcGetRate");
+        const kcServiceFee = kcForm.getFieldValue("kcServiceFee")
+        doPostRequest(SETTING_API.KC, {exchangeRate, freight, minProfit, kcGetRate, kcServiceFee}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -124,6 +126,12 @@ const SettingPage = () => {
                         <Input/>
                     </Form.Item>
                     <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item name="kcGetRate" label="KC到手比例" style={{marginLeft: 20}}>
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item name="kcServiceFee" label="kc服务费" style={{marginLeft: 20}}>
                         <Input/>
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
