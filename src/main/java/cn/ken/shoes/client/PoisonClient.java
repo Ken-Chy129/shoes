@@ -18,6 +18,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.*;
 
 @Slf4j
@@ -47,8 +49,13 @@ public class PoisonClient {
             ShoesContext.addNoPrice(modelNo);
             return Collections.emptyList();
         }
-        JSONArray dataJson = JSON.parseObject(result).getJSONArray("data");
-        List<JSONObject> dataList = dataJson.toJavaList(JSONObject.class);
+        JSONObject jsonObject = JSON.parseObject(result);
+        LocalDate update = LocalDate.ofInstant(jsonObject.getDate("update").toInstant(), ZoneId.systemDefault());
+        if (update.isBefore(LocalDate.now().minusDays(3))) {
+            log.error("queryPriceByModelNo data is too old, update:{}", update);
+            return Collections.emptyList();
+        }
+        List<JSONObject> dataList = jsonObject.getJSONArray("data").toJavaList(JSONObject.class);
         List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
         Set<String> sizeSet = new HashSet<>();
         for (JSONObject data : dataList) {
