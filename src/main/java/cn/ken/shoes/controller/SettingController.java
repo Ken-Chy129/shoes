@@ -22,6 +22,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @RestController
 @RequestMapping("setting")
@@ -168,10 +169,11 @@ public class SettingController {
     @PostMapping("updateDefaultCrawlCnt")
     public Result<Boolean> updateDefaultCrawlCnt(@RequestBody JSONObject jsonObject) {
         Integer defaultCnt = jsonObject.getInteger("defaultCnt");
+        String platform = Optional.ofNullable(jsonObject.getString("platform")).orElse("kc");
         if (defaultCnt == null) {
             return Result.buildSuccess(Boolean.FALSE);
         }
-        kickScrewService.updateDefaultCrawlCnt(defaultCnt);
+        brandMapper.updateDefaultCrawlCnt(defaultCnt, platform);
         return Result.buildSuccess(true);
     }
 }

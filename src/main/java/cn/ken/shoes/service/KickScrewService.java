@@ -133,10 +133,6 @@ public class KickScrewService {
         mustCrawlMapper.insert(mustCrawlDOList);
     }
 
-    public void updateDefaultCrawlCnt(Integer cnt) {
-        brandMapper.updateDefaultCrawlCnt(cnt);
-    }
-
     @SneakyThrows
     public void refreshHotItems(boolean clearOld) {
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
