@@ -140,6 +140,23 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           ]
         },
         {
+          name: "stockx",
+          children: [
+            {
+              name: "品牌信息",
+              path: "stockx/brand"
+            },
+            {
+              name: "商品信息",
+              path: "stockx/item"
+            },
+            {
+              name: "订单信息",
+              path: "stockx/order"
+            },
+          ]
+        },
+        {
           name: "得物",
           path: "/poison",
         },
