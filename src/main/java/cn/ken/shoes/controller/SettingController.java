@@ -120,6 +120,17 @@ public class SettingController {
         }
     }
 
+    @GetMapping("stockx/getAuthorization")
+    public Result<String> getAuthorization() {
+        return Result.buildSuccess(StockXConfig.CONFIG.getAccessToken());
+    }
+
+    @GetMapping("stockx/updateAuthorization")
+    public Result<Boolean> updateAuthorization(String accessToken) {
+        StockXConfig.CONFIG.setAccessToken(accessToken);
+        return Result.buildSuccess(true);
+    }
+
     @GetMapping("queryBrandSetting")
     public PageResult<List<BrandDO>> queryBrandSetting(BrandRequest request) {
         Long count = brandMapper.count(request);
