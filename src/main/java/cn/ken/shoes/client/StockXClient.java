@@ -9,6 +9,7 @@ import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
@@ -88,6 +89,7 @@ public class StockXClient {
         input.put("chainId", chainId);
         variables.put("input", input);
         body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\n  requestSellerShippingExtension(input: $input) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
+        LimiterHelper.limitStockxSecond();
         HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
     }
 
@@ -379,17 +381,22 @@ public class StockXClient {
     private Headers buildProHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-//                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
-                "authorization", authorization,
+                "authorization", getAuthorization(),
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
         );
+    }
+
+    private String getAuthorization() {
+        if (StockXConfig.CONFIG.getAccessToken() != null) {
+            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
+        }
+        return authorization;
     }
 
     private Headers buildHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-                "Authorization", STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}",
-//                "Authorization", authorization,
+                "Authorization", getAuthorization(),
                 "x-api-key", apiKey
         );
     }

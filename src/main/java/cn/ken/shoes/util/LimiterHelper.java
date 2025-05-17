@@ -10,6 +10,8 @@ public class LimiterHelper {
     private static final RateLimiter POISON_PRICE_LIMITER = RateLimiter.create(4);
     private static final RateLimiter STOCKX_PRICE_LIMITER = RateLimiter.create(10);
 
+    private static final RateLimiter STOCKX_SECOND_LIMITER = RateLimiter.create(1);
+
     public static void limitPoisonItem() {
         POISON_ITEM_LIMITER.acquire();
     }
@@ -25,4 +27,6 @@ public class LimiterHelper {
     public static void limitStockxPrice() {
         STOCKX_PRICE_LIMITER.acquire();
     }
+
+    public static void limitStockxSecond() {STOCKX_SECOND_LIMITER.acquire();}
 }

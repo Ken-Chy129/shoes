@@ -30,7 +30,7 @@ public class PriceScheduler {
         priceManager.dumpPrice();
     }
 
-    @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 20 * 60 * 1000)
+    @Scheduled(fixedDelay = 70 * 60 * 1000, initialDelay = 30 * 60 * 1000)
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.CHANGE_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshKcPrice() {
         LockHelper.lockKcItem();
