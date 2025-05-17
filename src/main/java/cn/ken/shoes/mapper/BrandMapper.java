@@ -19,7 +19,7 @@ public interface BrandMapper extends BaseMapper<BrandDO> {
 
     void updateByName(BrandDO brand);
 
-    void updateDefaultCrawlCnt(@Param("cnt") Integer cnt);
+    void updateDefaultCrawlCnt(@Param("cnt") Integer cnt, @Param("platform") String platform);
 
     void batchInsertOrUpdate(@Param("brands") List<BrandDO> brands);
 }

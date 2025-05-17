@@ -31,7 +31,7 @@
     </update>
 
     <update id="updateDefaultCrawlCnt">
-        update shoes.brand set crawl_cnt = least(total, #{cnt});
+        update shoes.brand set crawl_cnt = least(total, #{cnt}) where platform = #{platform};
     </update>
 
     <select id="selectByPlatform" resultType="cn.ken.shoes.model.entity.BrandDO">
