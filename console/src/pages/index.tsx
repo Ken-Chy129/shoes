@@ -25,6 +25,7 @@ const SettingPage = () => {
             }
         });
         queryToken();
+        queryStockxSetting();
     }, []);
 
     const updatePoisonSetting = () => {
@@ -98,6 +99,26 @@ const SettingPage = () => {
             onSuccess: _ => {
                 message.success("刷新成功").then(_ => {});
                 queryToken();
+            }
+        })
+    }
+
+    const queryStockxSetting = () => {
+        doGetRequest(SETTING_API.STOCKX, {}, {
+            onSuccess: res => {
+                stockxForm.setFieldValue("sortType", res.data.sortType);
+                stockxForm.setFieldValue("priceType", res.data.priceType);
+            }
+        })
+    }
+
+    const updateStockxSetting = () => {
+        const sortType = stockxForm.getFieldValue("sortType");
+        const priceType = stockxForm.getFieldValue("priceType");
+        doPostRequest(SETTING_API.STOCKX, {sortType, priceType}, {
+            onSuccess: _ => {
+                message.success("刷新成功").then(_ => {});
+                queryStockxSetting();
             }
         })
     }
@@ -195,6 +216,55 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={updateToken}>
                             手动重置令牌
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+            <Form form={stockxForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="sortType" label="排序方式">
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择字段"
+                            allowClear
+                            optionFilterProp="label"
+                            options={
+                                [
+                                    {label: '精选', value: "featured"},
+                                    {label: '最受欢迎', value: "most-active"},
+                                    {label: '新最低报价', value: "recent_asks"},
+                                    {label: '新最高出价', value: "recent_bids"},
+                                    {label: '平均成交价', value: "average_deadstock_price"},
+                                    {label: '总销量', value: "deadstock_sold"},
+                                    {label: '价格波动性', value: "volatility"},
+                                    {label: '溢价', value: "price_premium"},
+                                    {label: '最新售价', value: "last_sale"},
+                                    {label: '最低报价', value: "lowest_ask"},
+                                    {label: '最高出价', value: "highest_bid"},
+                                    {label: '发布日期', value: "release_date"},
+                                ]
+                            }
+                        />
+                    </Form.Item>
+                    <Form.Item name="priceType" style={{marginLeft: 50}} label="价格类型">
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择字段"
+                            allowClear
+                            optionFilterProp="label"
+                            options={
+                                [
+                                    {label: '更快售出', value: "sellFaster"},
+                                    {label: '挣得更多', value: "earnMore"},
+                                    {label: '立即售出', value: "sellNow"}
+                                ]
+                            }
+                        />
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={updateStockxSetting}>
+                            更新配置
                         </Button>
                     </Form.Item>
                 </div>
