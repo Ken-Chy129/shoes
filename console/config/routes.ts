@@ -54,6 +54,27 @@ export default [
     ]
   },
   {
+    path: '/stockx',
+    layout: true,
+    routes: [
+      {
+        path: '/stockx/brand',
+        layout: true,
+        component: './stockx/brand'
+      },
+      {
+        path: '/stockx/item',
+        layout: true,
+        component: "./stockx/item"
+      },
+      {
+        path: '/stockx/order',
+        layout: true,
+        component: "./stockx/order"
+      },
+    ]
+  },
+  {
     path: '/poison',
     layout: true,
     component: "./poison"
