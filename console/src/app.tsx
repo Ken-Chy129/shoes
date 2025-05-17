@@ -130,10 +130,6 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
               path: "kc/brand"
             },
             {
-              name: "商品信息",
-              path: "kc/item"
-            },
-            {
               name: "订单信息",
               path: "kc/order"
             },
@@ -145,10 +141,6 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
             {
               name: "品牌信息",
               path: "stockx/brand"
-            },
-            {
-              name: "商品信息",
-              path: "stockx/item"
             },
             {
               name: "订单信息",

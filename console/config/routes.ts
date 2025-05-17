@@ -42,11 +42,6 @@ export default [
         component: './kc/brand'
       },
       {
-        path: '/kc/item',
-        layout: true,
-        component: "./kc/item"
-      },
-      {
         path: '/kc/order',
         layout: true,
         component: "./kc/order"
@@ -61,11 +56,6 @@ export default [
         path: '/stockx/brand',
         layout: true,
         component: './stockx/brand'
-      },
-      {
-        path: '/stockx/item',
-        layout: true,
-        component: "./stockx/item"
       },
       {
         path: '/stockx/order',
