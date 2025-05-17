@@ -24,6 +24,7 @@ const SettingPage = () => {
                 stockxForm.setFieldsValue(res.data);
             }
         });
+        queryToken();
     }, []);
 
     const updatePoisonSetting = () => {
@@ -79,6 +80,24 @@ const SettingPage = () => {
                         stockxForm.setFieldsValue(res.data);
                     }
                 });
+            }
+        })
+    }
+
+    const queryToken = () => {
+        doGetRequest(SETTING_API.QUERY_TOKEN, {}, {
+            onSuccess: res => {
+                stockxForm.setFieldValue("accessToken", res.data);
+            }
+        })
+    }
+
+    const updateToken = () => {
+        const accessToken = stockxForm.getFieldValue("accessToken");
+        doPostRequest(SETTING_API.UPDATE_TOKEN, {accessToken}, {
+            onSuccess: _ => {
+                message.success("刷新成功").then(_ => {});
+                queryToken();
             }
         })
     }
@@ -163,6 +182,19 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={refreshToken}>
                             刷新令牌
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+            <Form form={stockxForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="accessToken" label="令牌">
+                        <Input />
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={updateToken}>
+                            手动重置令牌
                         </Button>
                     </Form.Item>
                 </div>

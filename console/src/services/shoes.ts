@@ -19,7 +19,9 @@ enum SETTING_API {
     QUERY_STOCKX_CONFIG = '/api/setting/queryStockxConfig',
     AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',
     INIT_TOKEN = '/api/setting/stockx/initToken',
-    REFRESH_TOKEN = '/api/setting/stockx/refreshToken'
+    REFRESH_TOKEN = '/api/setting/stockx/refreshToken',
+    QUERY_TOKEN = '/api/setting/stockx/getAuthorization',
+    UPDATE_TOKEN = '/api/setting/stockx/updateAuthorization'
 }
 
 enum KC_API {

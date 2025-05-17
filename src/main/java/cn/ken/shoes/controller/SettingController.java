@@ -125,9 +125,9 @@ public class SettingController {
         return Result.buildSuccess(StockXConfig.CONFIG.getAccessToken());
     }
 
-    @GetMapping("stockx/updateAuthorization")
-    public Result<Boolean> updateAuthorization(String accessToken) {
-        StockXConfig.CONFIG.setAccessToken(accessToken);
+    @PostMapping("stockx/updateAuthorization")
+    public Result<Boolean> updateAuthorization(@RequestBody JSONObject jsonObject) {
+        StockXConfig.CONFIG.setAccessToken(jsonObject.getString("accessToken"));
         return Result.buildSuccess(true);
     }
 
