@@ -386,11 +386,13 @@ public class StockXClient {
         );
     }
 
-    private String getAuthorization() {
-        if (StockXConfig.CONFIG.getAccessToken() != null) {
-            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
-        }
-        return authorization;
+    private Headers buildCustomerHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) chrome/124.0.0.0 safari/537.36",
+                "sec-ch-ua", "\"Chromium\";v=\"124\",\"Google Chrome\";v=\"124\",\"Not-A.Brand\";v=\"99\"",
+                "apollographql-client-name", "Iron"
+        );
     }
 
     private Headers buildHeaders() {
@@ -401,8 +403,65 @@ public class StockXClient {
         );
     }
 
+    private String getAuthorization() {
+        if (StockXConfig.CONFIG.getAccessToken() != null) {
+            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
+        }
+        return authorization;
+    }
+
     public List<StockXPriceDO> queryHotItemsByBrandWithPrice(String brand, Integer pageIndex) {
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildItemQueryRequest(brand, pageIndex), buildProHeaders());
+        if (rawResult == null) {
+            return Collections.emptyList();
+        }
+        JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+            return Collections.emptyList();
+        }
+        List<JSONObject> itemList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results").getJSONArray("edges").toJavaList(JSONObject.class);
+        List<StockXPriceDO> result = new ArrayList<>();
+        for (JSONObject item : itemList) {
+            String productId = item.getString("objectId");
+            JSONObject node = item.getJSONObject("node");
+            String modelNo = node.getString("styleId");
+            String urlKey = node.getString("urlKey");
+            if (StrUtil.isBlank(modelNo)) {
+                log.info("缺少货号，productId:{}，urlKey:{}", productId, urlKey);
+                continue;
+            }
+            JSONArray variants = node.getJSONArray("variants");
+            if (CollectionUtils.isEmpty(variants)) {
+                log.info("缺少尺码，productId:{}，urlKey:{}", productId, urlKey);
+                continue;
+            }
+            for (JSONObject variant : variants.toJavaList(JSONObject.class)) {
+                StockXPriceDO stockXPriceDO = new StockXPriceDO();
+                stockXPriceDO.setProductId(productId);
+                stockXPriceDO.setModelNo(modelNo);
+                String variantId = variant.getString("id");
+                stockXPriceDO.setVariantId(variantId);
+                JSONObject euOption = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().filter(option -> option.getString("type").equals("eu")).findFirst().orElse(null);
+                if (euOption == null) {
+                    log.error("queryPrice.euOption is null, productId:{}, variantId:{}, variant:{}", productId, variantId, variant);
+                    continue;
+                }
+                stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+                JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
+                stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
+                JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
+                stockXPriceDO.setEarnMoreAmount(guidance.getInteger("earnMore"));
+                stockXPriceDO.setSellFasterAmount(guidance.getInteger("sellFaster"));
+                stockXPriceDO.setModelNo(modelNo);
+                result.add(stockXPriceDO);
+            }
+        }
+        return result;
+    }
+
+    public List<StockXPriceDO> queryItemWithPrice(String brand, Integer pageIndex) {
+        String rawResult = HttpUtil.doPost(StockXConfig.STOCKX_CUSTOMER, buildItemQueryRequest(brand, pageIndex), buildCustomerHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
         }
