@@ -77,10 +77,14 @@ public class StockXService {
             int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
             int crawlPage = (int) Math.ceil(crawlCnt / 50.0);
             for (int i = 1; i <= crawlPage; i++) {
-                List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
-                Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
-                // 4.比价和上架
-                cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
+                try {
+                    List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
+                    Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
+                    // 4.比价和上架
+                    cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
+                } catch (Exception e) {
+                    log.error("refreshPrices error, msg:{}", e.getMessage(), e);
+                }
             }
             log.info("finish refreshPrice, brand:{}, cnt:{}, cost:{}", brand, cnt, TimeUtil.getCostMin(now));
             allCnt += cnt;

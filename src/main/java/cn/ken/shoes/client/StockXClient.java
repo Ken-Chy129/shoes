@@ -53,14 +53,11 @@ public class StockXClient {
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
     public JSONObject queryToDeal(String after) {
-        LimiterHelper.limitStockxSecond();
-        String bodyString = buildItemsToDealQueryRequest(after);
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
-        if (StrUtil.isBlank(rawResult)) {
+        JSONObject jsonObject = queryPro(buildItemsToDealQueryRequest(after));
+        if (jsonObject == null) {
             return null;
         }
         JSONObject result = new JSONObject();
-        JSONObject jsonObject = JSON.parseObject(rawResult);
         if (jsonObject.getJSONObject("data") == null || jsonObject.getJSONObject("data").getJSONObject("viewer") == null) {
             log.error("queryToDeal error, {}", jsonObject);
             return null;
@@ -82,7 +79,6 @@ public class StockXClient {
     }
 
     public void extendItem(String chainId) {
-        LimiterHelper.limitStockxSecond();
         JSONObject body = new JSONObject();
         body.put("operationName", "RequestSellerShippingExtension");
         JSONObject variables = new JSONObject();
@@ -91,11 +87,10 @@ public class StockXClient {
         input.put("chainId", chainId);
         variables.put("input", input);
         body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\n  requestSellerShippingExtension(input: $input) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
-        HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
+        queryPro(body.toJSONString());
     }
 
     public void createListingV2(List<Pair<String, Integer>> itemList) {
-        LimiterHelper.limitStockxSecond();
         if (CollectionUtils.isEmpty(itemList)) {
             return;
         }
@@ -111,25 +106,22 @@ public class StockXClient {
             data.add(Map.of("variantID", variantId, "amount", amount, "expiresAt", expireTime, "currency", "USD", "quantity", 1));
         }
         body.put("query", "mutation CreateBatchListings($items: [CreateListingBatchInput]) {\n  createBatchListings(input: $items) {\n    id\n    status\n    __typename\n  }\n}");
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
-        JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        JSONObject jsonObject = queryPro(body.toJSONString());
+        if (jsonObject == null) {
+            return;
+        }
         if (jsonObject.containsKey("data")) {
             String batchId = jsonObject.getJSONObject("data").getJSONObject("createBatchListings").getString("id");
             log.info("createListingV2 success, batchId:{}", batchId);
-        } else {
-            log.error("createListingV2 error, result:{}", rawResult);
         }
     }
 
     public JSONObject querySellingItems(String after, String query) {
-        LimiterHelper.limitStockxSecond();
-        String bodyString = buildItemsSellingQueryRequest(after, query);
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
-        if (StrUtil.isBlank(rawResult)) {
+        JSONObject jsonObject = queryPro(buildItemsSellingQueryRequest(after, query));
+        if (jsonObject == null) {
             return null;
         }
         JSONObject result = new JSONObject();
-        JSONObject jsonObject = JSON.parseObject(rawResult);
         JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
         JSONObject pageInfo = ask.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
@@ -156,7 +148,6 @@ public class StockXClient {
     }
 
     public void deleteItems(List<Pair<String, Integer>> itemList) {
-        LimiterHelper.limitStockxSecond();
         if (itemList.isEmpty()) {
             return;
         }
@@ -172,21 +163,13 @@ public class StockXClient {
             data.add(Map.of("id", id, "amount", amount, "expires", expireTime, "currencyCode", "USD"));
         }
         body.put("query", "mutation DeleteAsks($items: [BulkDeleteAskInput]) {\n  deleteAsks(input: {items: $items}) {\n    result\n    __typename\n  }\n}");
-        String result = HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
-        log.info("deleteItems, result:{}", result);
+        JSONObject jsonObject = queryPro(body.toJSONString());
+        log.info("deleteItems, result:{}", jsonObject);
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
-        LimiterHelper.limitStockxSecond();
-//        String currentNodeName = ProxyUtil.changeNode();
-        String currentNodeName = "current";
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
-        if (StrUtil.isBlank(rawResult)) {
-            return Collections.emptyList();
-        }
-        JSONObject jsonObject = JSON.parseObject(rawResult);
-        if (jsonObject.containsKey("blockScript")) {
-            log.error("queryPrice|查询被拦截, current proxyNode:{}", currentNodeName);
+        JSONObject jsonObject = queryPro(buildPriceQueryRequest(productId));
+        if (jsonObject == null) {
             return Collections.emptyList();
         }
         List<JSONObject> variants = jsonObject.getJSONObject("data").getJSONObject("product").getJSONArray("variants").toJavaList(JSONObject.class);
@@ -383,51 +366,9 @@ public class StockXClient {
         return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
     }
 
-    private Headers buildProHeaders() {
-        return Headers.of(
-                "Content-Type", "application/json",
-                "authorization", getAuthorization(),
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
-        );
-    }
-
-    private Headers buildCustomerHeaders() {
-        return Headers.of(
-                "Content-Type", "application/json",
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) chrome/124.0.0.0 safari/537.36",
-                "sec-ch-ua", "\"Chromium\";v=\"124\",\"Google Chrome\";v=\"124\",\"Not-A.Brand\";v=\"99\"",
-                "apollographql-client-name", "Iron"
-        );
-    }
-
-    private Headers buildHeaders() {
-        return Headers.of(
-                "Content-Type", "application/json",
-                "Authorization", getAuthorization(),
-                "x-api-key", apiKey
-        );
-    }
-
-    private String getAuthorization() {
-        if (StockXConfig.CONFIG.getAccessToken() != null) {
-            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
-        }
-        return authorization;
-    }
-
     public List<StockXPriceDO> queryHotItemsByBrandWithPrice(String brand, Integer pageIndex) {
-        LimiterHelper.limitStockxSecond();
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildItemQueryRequest(brand, pageIndex), buildProHeaders());
-        if (rawResult == null) {
-            return Collections.emptyList();
-        }
-        JSONObject jsonObject = JSON.parseObject(rawResult);
-        if (jsonObject.containsKey("status")) {
-            log.error("queryHotItemsByBrandWithPrice error, msg:{}", jsonObject.getString("message"));
-            return Collections.emptyList();
-        }
-        if (jsonObject.containsKey("blockScript")) {
-            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+        JSONObject jsonObject = queryPro(buildItemQueryRequest(brand, pageIndex));
+        if (jsonObject == null) {
             return Collections.emptyList();
         }
         List<JSONObject> itemList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results").getJSONArray("edges").toJavaList(JSONObject.class);
@@ -471,14 +412,8 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryItemWithPrice(String brand, Integer pageIndex) {
-        LimiterHelper.limitStockxSecond();
-        String rawResult = HttpUtil.doPost(StockXConfig.STOCKX_CUSTOMER, buildItemQueryRequest(brand, pageIndex), buildCustomerHeaders());
-        if (rawResult == null) {
-            return Collections.emptyList();
-        }
-        JSONObject jsonObject = JSON.parseObject(rawResult);
-        if (jsonObject.containsKey("blockScript")) {
-            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+        JSONObject jsonObject = queryCustomer(buildItemQueryRequest(brand, pageIndex));
+        if (jsonObject == null) {
             return Collections.emptyList();
         }
         List<JSONObject> itemList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results").getJSONArray("edges").toJavaList(JSONObject.class);
@@ -517,6 +452,29 @@ public class StockXClient {
                 stockXPriceDO.setModelNo(modelNo);
                 result.add(stockXPriceDO);
             }
+        }
+        return result;
+    }
+
+    public List<BrandDO> queryBrands() {
+        JSONObject jsonObject = queryPro(buildBrandQueryRequest("nike", 1, 1));
+        if (jsonObject == null) {
+            return Collections.emptyList();
+        }
+        List<JSONObject> quickList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("filtersConfig").getJSONArray("quick").toJavaList(JSONObject.class);
+        JSONObject brandJson = quickList.stream().filter(json -> json.getString("name").equals("BRANDS")).findFirst().orElse(null);
+        if (brandJson == null) {
+            return Collections.emptyList();
+        }
+        List<BrandDO> result = new ArrayList<>();
+        for (JSONObject option : brandJson.getJSONArray("options").toJavaList(JSONObject.class)) {
+            BrandDO brand = new BrandDO();
+            brand.setName(option.getString("value"));
+            brand.setTotal(option.getInteger("count"));
+            brand.setCrawlCnt(Math.min(brand.getTotal(), 1000));
+            brand.setNeedCrawl(true);
+            brand.setPlatform("stockx");
+            result.add(brand);
         }
         return result;
     }
@@ -623,29 +581,72 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    public List<BrandDO> queryBrands() {
+    private JSONObject queryPro(String body) {
         LimiterHelper.limitStockxSecond();
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildBrandQueryRequest("nike", 1, 1), buildProHeaders());
+        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, buildProHeaders());
         if (rawResult == null) {
-            return Collections.emptyList();
+            return null;
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
-        List<JSONObject> quickList = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("filtersConfig").getJSONArray("quick").toJavaList(JSONObject.class);
-        JSONObject brandJson = quickList.stream().filter(json -> json.getString("name").equals("BRANDS")).findFirst().orElse(null);
-        if (brandJson == null) {
-            return Collections.emptyList();
+        if (jsonObject.containsKey("status")) {
+            log.error("queryHotItemsByBrandWithPrice error, msg:{}", jsonObject.getString("message"));
+            return null;
         }
-        List<BrandDO> result = new ArrayList<>();
-        for (JSONObject option : brandJson.getJSONArray("options").toJavaList(JSONObject.class)) {
-            BrandDO brand = new BrandDO();
-            brand.setName(option.getString("value"));
-            brand.setTotal(option.getInteger("count"));
-            brand.setCrawlCnt(Math.min(brand.getTotal(), 1000));
-            brand.setNeedCrawl(true);
-            brand.setPlatform("stockx");
-            result.add(brand);
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+            return null;
         }
-        return result;
+        return JSON.parseObject(rawResult);
+    }
+
+    private JSONObject queryCustomer(String body) {
+        LimiterHelper.limitStockxSecond();
+        String rawResult = HttpUtil.doPost(StockXConfig.STOCKX_CUSTOMER, body, buildCustomerHeaders());
+        if (rawResult == null) {
+            return null;
+        }
+        JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("status")) {
+            log.error("queryHotItemsByBrandWithPrice error, msg:{}", jsonObject.getString("message"));
+            return null;
+        }
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("queryHotItemsByBrandWithPrice|查询被拦截");
+            return null;
+        }
+        return JSON.parseObject(rawResult);
+    }
+
+    private Headers buildProHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "authorization", getAuthorization(),
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+        );
+    }
+
+    private Headers buildCustomerHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) chrome/124.0.0.0 safari/537.36",
+                "sec-ch-ua", "\"Chromium\";v=\"124\",\"Google Chrome\";v=\"124\",\"Not-A.Brand\";v=\"99\"",
+                "apollographql-client-name", "Iron"
+        );
+    }
+
+    private Headers buildHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "Authorization", getAuthorization(),
+                "x-api-key", apiKey
+        );
+    }
+
+    private String getAuthorization() {
+        if (StockXConfig.CONFIG.getAccessToken() != null) {
+            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
+        }
+        return authorization;
     }
 
     @Data
