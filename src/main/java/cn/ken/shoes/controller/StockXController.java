@@ -28,6 +28,11 @@ public class StockXController {
         return Result.buildSuccess(stockXClient.queryHotItemsByBrandWithPrice(brand, 1));
     }
 
+    @GetMapping("queryItemsV2")
+    public Result<List<StockXPriceDO>> queryItemsV2(String brand) {
+        return Result.buildSuccess(stockXClient.queryItemWithPrice(brand, 1));
+    }
+
     @GetMapping("queryPrices")
     public Result<List<StockXPriceDO>> queryPrices(String productId) {
         return Result.buildSuccess(stockXClient.queryPrice(productId));

@@ -6,7 +6,7 @@ public class StockXConfig {
 
     public static final OAuth2Config CONFIG = new OAuth2Config();
 
-    public static final String ITEM_LIST = "https://stockx.com/api/p/e";
+    public static final String STOCKX_CUSTOMER = "https://stockx.com/api/p/e";
 
     public static final String AUTHORIZE = "https://accounts.stockx.com/authorize?" +
             "response_type=code&" +
