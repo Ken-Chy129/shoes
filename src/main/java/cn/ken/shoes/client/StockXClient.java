@@ -53,6 +53,7 @@ public class StockXClient {
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
     public JSONObject queryToDeal(String after) {
+        LimiterHelper.limitStockxSecond();
         String bodyString = buildItemsToDealQueryRequest(after);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
@@ -81,6 +82,7 @@ public class StockXClient {
     }
 
     public void extendItem(String chainId) {
+        LimiterHelper.limitStockxSecond();
         JSONObject body = new JSONObject();
         body.put("operationName", "RequestSellerShippingExtension");
         JSONObject variables = new JSONObject();
@@ -89,11 +91,11 @@ public class StockXClient {
         input.put("chainId", chainId);
         variables.put("input", input);
         body.put("query", "mutation RequestSellerShippingExtension($input: SellerShippingExtensionRequestInput) {\n  requestSellerShippingExtension(input: $input) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
-        LimiterHelper.limitStockxSecond();
         HttpUtil.doPost(StockXConfig.GRAPHQL, body.toJSONString(), buildProHeaders());
     }
 
     public void createListingV2(List<Pair<String, Integer>> itemList) {
+        LimiterHelper.limitStockxSecond();
         if (CollectionUtils.isEmpty(itemList)) {
             return;
         }
@@ -120,6 +122,7 @@ public class StockXClient {
     }
 
     public JSONObject querySellingItems(String after, String query) {
+        LimiterHelper.limitStockxSecond();
         String bodyString = buildItemsSellingQueryRequest(after, query);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, bodyString, buildProHeaders());
         if (StrUtil.isBlank(rawResult)) {
@@ -153,6 +156,7 @@ public class StockXClient {
     }
 
     public void deleteItems(List<Pair<String, Integer>> itemList) {
+        LimiterHelper.limitStockxSecond();
         if (itemList.isEmpty()) {
             return;
         }
@@ -173,6 +177,7 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
+        LimiterHelper.limitStockxSecond();
 //        String currentNodeName = ProxyUtil.changeNode();
         String currentNodeName = "current";
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildPriceQueryRequest(productId), buildProHeaders());
@@ -411,11 +416,16 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryHotItemsByBrandWithPrice(String brand, Integer pageIndex) {
+        LimiterHelper.limitStockxSecond();
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildItemQueryRequest(brand, pageIndex), buildProHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("status")) {
+            log.error("queryHotItemsByBrandWithPrice error, msg:{}", jsonObject.getString("message"));
+            return Collections.emptyList();
+        }
         if (jsonObject.containsKey("blockScript")) {
             log.error("queryHotItemsByBrandWithPrice|查询被拦截");
             return Collections.emptyList();
@@ -461,6 +471,7 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryItemWithPrice(String brand, Integer pageIndex) {
+        LimiterHelper.limitStockxSecond();
         String rawResult = HttpUtil.doPost(StockXConfig.STOCKX_CUSTOMER, buildItemQueryRequest(brand, pageIndex), buildCustomerHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
@@ -613,6 +624,7 @@ public class StockXClient {
     }
 
     public List<BrandDO> queryBrands() {
+        LimiterHelper.limitStockxSecond();
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, buildBrandQueryRequest("nike", 1, 1), buildProHeaders());
         if (rawResult == null) {
             return Collections.emptyList();
