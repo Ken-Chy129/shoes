@@ -29,7 +29,7 @@ const TaskPage = () => {
 
     useEffect(() => {
         queryTaskList();
-    }, []);
+    }, [pageIndex, pageSize]);
 
     const queryTaskList = () => {
         let startTime = conditionForm.getFieldValue("startTime");
@@ -47,6 +47,7 @@ const TaskPage = () => {
         doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, operateType, pageIndex, pageSize}, {
             onSuccess: res => {
                 setTaskList(res.data);
+                setTotal(res.total);
                 message.success("查询成功").then();
             }
         });

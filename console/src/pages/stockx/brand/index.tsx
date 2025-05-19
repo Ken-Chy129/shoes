@@ -32,10 +32,6 @@ const BrandPage = () => {
 
     useEffect(() => {
         queryBrandSetting();
-    }, []);
-
-    useEffect(() => {
-        queryBrandSetting();
     }, [pageIndex, pageSize]);
 
 
@@ -49,7 +45,7 @@ const BrandPage = () => {
                     brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
                 })
                 setBrandSettings(res.data);
-                setTotal(res.total)
+                setTotal(res.total);
             }
         });
     }
