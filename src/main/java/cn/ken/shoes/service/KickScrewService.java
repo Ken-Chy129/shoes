@@ -6,6 +6,7 @@ import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.*;
@@ -194,6 +195,9 @@ public class KickScrewService {
 
     @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPriceV2() {
+        if (TaskSwitch.STOP_KC_TASK) {
+            return 0;
+        }
         // 下架不盈利的商品
         clearNoBenefitItem();
         // 清空kc价格
@@ -204,6 +208,10 @@ public class KickScrewService {
         int uploadCnt = 0;
         // 查询价格并上架盈利商品
         for (List<String> modelNos : partition) {
+            if (TaskSwitch.STOP_KC_TASK) {
+                log.info("kc task terminated");
+                return uploadCnt;
+            }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
             Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
             uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS);
@@ -220,6 +228,10 @@ public class KickScrewService {
             }
             List<KickScrewUploadItem> toUpload = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                if (TaskSwitch.STOP_KC_TASK) {
+                    log.info("kc task terminated");
+                    return uploadCnt;
+                }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
