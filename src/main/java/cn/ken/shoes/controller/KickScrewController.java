@@ -1,11 +1,10 @@
 package cn.ken.shoes.controller;
 
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
-import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.task.KcTaskRunner;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,11 +23,13 @@ public class KickScrewController {
     @Resource
     private KickScrewClient kickScrewClient;
 
+    @Resource
+    private KcTaskRunner kcTaskRunner;
+
     /**
      * 刷新商品，重新爬取品牌和热门商品
      */
     @GetMapping("refreshItems")
-    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_INCREMENTAL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public Result<Void> refreshItems() {
         Thread.startVirtualThread(() -> {
             kickScrewService.refreshItems(false);
@@ -68,6 +69,15 @@ public class KickScrewController {
     @GetMapping("deleteList")
     public Result<Void> deleteList() {
         kickScrewService.clearNoBenefitItem();
+        return Result.buildSuccess();
+    }
+
+    @GetMapping("startTask")
+    public Result<Void> startTask() {
+        if (kcTaskRunner.isInit()) {
+            return Result.buildError("任务已经开始运行");
+        }
+        kcTaskRunner.start();
         return Result.buildSuccess();
     }
 }

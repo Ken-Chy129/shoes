@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.common.SizeEnum;
@@ -183,6 +184,7 @@ public class KickScrewService {
         }
     }
 
+    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshItems(boolean clearOld) {
         // 1.爬取品牌和商品数量
         refreshBrand();
@@ -190,6 +192,7 @@ public class KickScrewService {
         refreshHotItems(clearOld);
     }
 
+    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPriceV2() {
         // 下架不盈利的商品
         clearNoBenefitItem();
