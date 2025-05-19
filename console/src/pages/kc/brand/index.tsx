@@ -1,19 +1,17 @@
 import {
-    Button, Card, DatePicker,
+    Button,
+    Card,
     Form,
     Input,
     message,
     Modal,
-    Radio,
     Select,
     Space,
-    Table,
-    Tabs,
-    Tooltip
+    Table
 } from "antd";
 import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
-import {KC_API, SETTING_API} from "@/services/shoes";
+import {doGetRequest, doPostRequest} from "@/util/http";
+import {SETTING_API} from "@/services/shoes";
 
 const BrandPage = () => {
     const [conditionForm] = Form.useForm();
@@ -32,10 +30,6 @@ const BrandPage = () => {
 
     useEffect(() => {
         queryBrandSetting();
-    }, []);
-
-    useEffect(() => {
-        queryBrandSetting();
     }, [pageIndex, pageSize]);
 
 
@@ -49,7 +43,7 @@ const BrandPage = () => {
                     brandSetting.needCrawlText = brandSetting.needCrawl ? "需要爬取" : "已关闭爬取";
                 })
                 setBrandSettings(res.data);
-                setTotal(res.total)
+                setTotal(res.total);
             }
         });
     }
@@ -59,14 +53,6 @@ const BrandPage = () => {
             onSuccess: _ => {
                 message.success("修改成功").then();
                 queryBrandSetting();
-            }
-        });
-    }
-
-    const refreshKcItems = () => {
-        doGetRequest(KC_API.REFRESH_ITEM, {}, {
-            onSuccess: _ => {
-                message.success("开始异步执行刷新").then();
             }
         });
     }
@@ -191,13 +177,6 @@ const BrandPage = () => {
                     </Form.Item>
                 </div>
                 <div style={{display: "flex"}}>
-                    <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => {
-                            refreshKcItems();
-                        }}>
-                            刷新商品
-                        </Button>
-                    </Form.Item>
                     <Form.Item style={{marginLeft: 30}}>
                         <Button onClick={() => {
                             queryMustCrawlModelNos();

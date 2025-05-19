@@ -46,14 +46,10 @@ public class ApplicationStartListener implements ApplicationListener<Application
         initCustomModel();
         while (true) {
             try {
-//                Thread.sleep(5 * 60 * 1000);
+                Thread.sleep(5 * 60 * 1000);
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
                     continue;
                 }
-//                System.out.println("开始刷新kc商品");
-//                // 1.刷新kc商品
-//                kickScrewService.refreshItems(true);
-                // 2.更新价格
                 System.out.println("开始刷新得物价格");
                 poisonService.refreshAllPrice();
                 System.out.println("结束得物价格刷新");

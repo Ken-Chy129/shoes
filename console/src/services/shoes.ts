@@ -25,7 +25,7 @@ enum SETTING_API {
 }
 
 enum KC_API {
-    REFRESH_ITEM = '/api/kc/refreshItems',
+    START_TASK = '/api/kc/startTask',
 }
 
 enum POISON_API {
