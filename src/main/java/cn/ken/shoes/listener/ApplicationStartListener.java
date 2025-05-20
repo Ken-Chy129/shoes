@@ -29,9 +29,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
     private PoisonService poisonService;
 
     @Resource
-    private KickScrewService kickScrewService;
-
-    @Resource
     private SizeChartMapper sizeChartMapper;
 
     @Resource
@@ -50,9 +47,7 @@ public class ApplicationStartListener implements ApplicationListener<Application
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
                     continue;
                 }
-                System.out.println("开始刷新得物价格");
                 poisonService.refreshAllPrice();
-                System.out.println("结束得物价格刷新");
             } catch (Exception e) {
                 log.error(e.getMessage(), e);
             }

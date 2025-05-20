@@ -1,4 +1,4 @@
-import {Button, Card, Form, Input, message, Select} from "antd";
+import {Button, Card, Form, Input, message, Radio, Select} from "antd";
 import React, {useEffect} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
@@ -31,7 +31,10 @@ const SettingPage = () => {
     const updatePoisonSetting = () => {
         const apiMode = poisonForm.getFieldValue("apiMode");
         const maxPrice = poisonForm.getFieldValue("maxPrice");
-        doPostRequest(SETTING_API.POISON, {apiMode, maxPrice}, {
+        const openImportDBData = poisonForm.getFieldValue("openImportDBData");
+        const openNoPriceCache = poisonForm.getFieldValue("openNoPriceCache");
+        const stopQueryPrice = poisonForm.getFieldValue("stopQueryPrice");
+        doPostRequest(SETTING_API.POISON, {apiMode, maxPrice, openImportDBData, openNoPriceCache, stopQueryPrice}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -161,6 +164,30 @@ const SettingPage = () => {
                     {/*</Form.Item>*/}
                     <Form.Item name="maxPrice" label="最大价格限制">
                         <Input/>
+                    </Form.Item>
+                    <Form.Item name="openImportDBData" label="使用历史得物价格" style={{marginLeft: 20}}>
+                        <Radio.Group
+                            options={[
+                                { value: true, label: '是' },
+                                { value: false, label: '否' }
+                            ]}
+                        />
+                    </Form.Item>
+                    <Form.Item name="openNoPriceCache" label="开启无价货号缓存" style={{marginLeft: 20}}>
+                        <Radio.Group
+                            options={[
+                                { value: true, label: '是' },
+                                { value: false, label: '否' }
+                            ]}
+                        />
+                    </Form.Item>
+                    <Form.Item name="stopQueryPrice" label="开启得物自动查价" style={{marginLeft: 20}}>
+                        <Radio.Group
+                            options={[
+                                { value: true, label: '是' },
+                                { value: false, label: '否' }
+                            ]}
+                        />
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
                         <Button type="primary" htmlType="submit" onClick={updatePoisonSetting}>

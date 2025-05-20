@@ -42,6 +42,9 @@ public class SettingController {
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("apiMode", PoisonSwitch.API_MODE);
         jsonObject.put("maxPrice", PoisonSwitch.MAX_PRICE);
+        jsonObject.put("openImportDBData", PoisonSwitch.OPEN_IMPORT_DB_DATA);
+        jsonObject.put("openNoPriceCache", PoisonSwitch.OPEN_NO_PRICE_CACHE);
+        jsonObject.put("stopQueryPrice", PoisonSwitch.STOP_QUERY_PRICE);
         return Result.buildSuccess(jsonObject);
     }
 
@@ -49,6 +52,9 @@ public class SettingController {
     public Result<JSONObject> updatePoisonSetting(@RequestBody JSONObject jsonObject) {
         PoisonSwitch.API_MODE = jsonObject.getInteger("apiMode");
         PoisonSwitch.MAX_PRICE = jsonObject.getInteger("maxPrice");
+        PoisonSwitch.OPEN_IMPORT_DB_DATA = jsonObject.getBoolean("openImportDBData");
+        PoisonSwitch.OPEN_NO_PRICE_CACHE = jsonObject.getBoolean("openNoPriceCache");
+        PoisonSwitch.STOP_QUERY_PRICE = jsonObject.getBoolean("stopQueryPrice");
         return Result.buildSuccess(jsonObject);
     }
 
