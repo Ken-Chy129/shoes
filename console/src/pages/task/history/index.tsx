@@ -18,7 +18,7 @@ import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
 import {TASK_API} from "@/services/task";
 import moment from "moment";
 
-const TaskPage = () => {
+const TaskHistoryPage = () => {
     const [conditionForm] = Form.useForm();
 
     const [taskList, setTaskList] = useState<Template[]>([]);
@@ -156,24 +156,23 @@ const TaskPage = () => {
                                 {label: '增量刷新商品', value: "refreshIncrementalItems"},
                                 {label: '全量刷新价格', value: "refreshAllPrices"},
                                 {label: '增量商品价格', value: "refreshIncrementalPrices"},
-                                {label: '改价', value: "changePrices"},
                             ]
                         }
                         notFoundContent={"该命名空间下暂无字段"}
                     />
                 </Form.Item>
-                <Form.Item name="startTime" label="开始时间" style={{marginLeft: 20}}>
-                    <DatePicker
-                        showTime={{ format: 'HH:mm:ss' }}
-                        format="YYYY-MM-DD HH:mm:ss"
-                    />
-                </Form.Item>
-                <Form.Item name="endTime" label="结束时间" style={{marginLeft: 20}}>
-                    <DatePicker
-                        showTime={{ format: 'HH:mm' }}
-                        format="YYYY-MM-DD HH:mm"
-                    />
-                </Form.Item>
+                {/*<Form.Item name="startTime" label="开始时间" style={{marginLeft: 20}}>*/}
+                {/*    <DatePicker*/}
+                {/*        showTime={{ format: 'HH:mm:ss' }}*/}
+                {/*        format="YYYY-MM-DD HH:mm:ss"*/}
+                {/*    />*/}
+                {/*</Form.Item>*/}
+                {/*<Form.Item name="endTime" label="结束时间" style={{marginLeft: 20}}>*/}
+                {/*    <DatePicker*/}
+                {/*        showTime={{ format: 'HH:mm' }}*/}
+                {/*        format="YYYY-MM-DD HH:mm"*/}
+                {/*    />*/}
+                {/*</Form.Item>*/}
                 <Form.Item name="status" label="状态" style={{marginLeft: 20}}>
                     <Select
                         style={{width: 160}}
@@ -192,22 +191,22 @@ const TaskPage = () => {
                         notFoundContent={"该命名空间下暂无字段"}
                     />
                 </Form.Item>
-                <Form.Item name="operateType" label="操作类型" style={{marginLeft: 20}}>
-                    <Select
-                        style={{width: 160}}
-                        placeholder="请选择字段"
-                        allowClear
-                        showSearch={true}
-                        optionFilterProp="label"
-                        options={
-                            [
-                                {label: '人工执行', value: "manually"},
-                                {label: '系统触发', value: "system"}
-                            ]
-                        }
-                        notFoundContent={"该命名空间下暂无字段"}
-                    />
-                </Form.Item>
+                {/*<Form.Item name="operateType" label="操作类型" style={{marginLeft: 20}}>*/}
+                {/*    <Select*/}
+                {/*        style={{width: 160}}*/}
+                {/*        placeholder="请选择字段"*/}
+                {/*        allowClear*/}
+                {/*        showSearch={true}*/}
+                {/*        optionFilterProp="label"*/}
+                {/*        options={*/}
+                {/*            [*/}
+                {/*                {label: '人工执行', value: "manually"},*/}
+                {/*                {label: '系统触发', value: "system"}*/}
+                {/*            ]*/}
+                {/*        }*/}
+                {/*        notFoundContent={"该命名空间下暂无字段"}*/}
+                {/*    />*/}
+                {/*</Form.Item>*/}
                 <Form.Item style={{marginLeft: 30}}>
                     <Button type="primary" htmlType="submit" onClick={queryTaskList}>
                         查询
@@ -238,4 +237,4 @@ const TaskPage = () => {
     </>
 }
 
-export default TaskPage;
+export default TaskHistoryPage;

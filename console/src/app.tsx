@@ -154,7 +154,16 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
         },
         {
           name: "任务",
-          path: "/task",
+          children: [
+            {
+              name: "执行器",
+              path: "task/executor"
+            },
+            {
+              name: "订单信息",
+              path: "task/history"
+            },
+          ]
         },
         {
           name: "工具",
