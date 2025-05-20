@@ -13,4 +13,8 @@
     <select id="selectByType" resultType="cn.ken.shoes.model.entity.CustomModelDO">
         select * from custom_model where type = #{type}
     </select>
+
+    <delete id="clearByType">
+        delete from custom_model where type = #{type}
+    </delete>
 </mapper>

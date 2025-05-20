@@ -14,4 +14,6 @@ public interface CustomModelMapper extends BaseMapper<CustomModelDO> {
     int insertIgnore(CustomModelDO model);
 
     List<CustomModelDO> selectByType(@Param("type") int type);
+
+    int clearByType(@Param("type") int type);
 }
