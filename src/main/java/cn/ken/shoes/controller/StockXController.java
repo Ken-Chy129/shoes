@@ -8,6 +8,7 @@ import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -65,9 +66,9 @@ public class StockXController {
         return Result.buildSuccess(stockXClient.queryToDeal(null));
     }
 
-    @GetMapping("extendAllItems")
+    @PostMapping("extendAllItems")
     public Result<Void> extendAllItems() {
-        stockXService.extendAllItems();
+        Thread.startVirtualThread(() -> stockXService.extendAllItems());
         return Result.buildSuccess();
     }
 }

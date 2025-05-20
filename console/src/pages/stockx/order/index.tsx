@@ -5,6 +5,8 @@ import {
     Table,
 } from "antd";
 import React, {useEffect, useState} from "react";
+import {doPostRequest} from "@/util/http";
+import {ORDER_API} from "@/services/stockx";
 
 const SettingPage = () => {
     const [conditionForm] = Form.useForm();
@@ -65,6 +67,12 @@ const SettingPage = () => {
         window.open('http://localhost:8080/order/kc/excel');
     }
 
+    const extendAllItems = () => {
+        doPostRequest(ORDER_API.EXTEND_ALL, {}, {
+            onSuccess: _ => message.success("开始延期").then()
+        })
+    }
+
     return <>
         <Card title={"商品信息"} style={{marginTop: 10}}>
             <Form form={conditionForm}
@@ -76,6 +84,11 @@ const SettingPage = () => {
                     <Form.Item style={{marginLeft: 30}}>
                         <Button type="primary" htmlType="submit" onClick={downloadOrders}>
                             订单导出
+                        </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Button type="primary" htmlType="submit" onClick={extendAllItems}>
+                            批量订单延期
                         </Button>
                     </Form.Item>
                 </div>
