@@ -72,7 +72,18 @@ export default [
   {
     path: '/task',
     layout: true,
-    component: "./task"
+    routes: [
+      {
+        path: '/task/executor',
+        layout: true,
+        component: './task/executor'
+      },
+      {
+        path: '/task/history',
+        layout: true,
+        component: './task/history'
+      },
+    ]
   },
   {
     path: '/tool',
