@@ -18,7 +18,7 @@ public class PoisonSwitch {
     public static Boolean STOP_QUERY_PRICE = false;
 
     /**
-     * 开启从DB导入数据
+     * 开启启动时自动同步DB数据
      */
     public static Boolean OPEN_IMPORT_DB_DATA = true;
 
