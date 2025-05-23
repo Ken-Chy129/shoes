@@ -43,6 +43,7 @@ public class TaskDO {
         REFRESH_INCREMENTAL_ITEMS("增量刷新商品", "refreshIncrementalItems"),
         REFRESH_ALL_PRICES("全量刷新价格", "refreshAllPrices"),
         REFRESH_INCREMENTAL_PRICES("增量刷新价格", "refreshIncrementalPrices"),
+        EXTEND_ORDER("订单延期", "extendOrder"),
         ;
 
         private final String name;
