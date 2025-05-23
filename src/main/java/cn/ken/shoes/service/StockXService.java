@@ -38,6 +38,7 @@ public class StockXService {
     @Resource
     private StockXPriceMapper stockXPriceMapper;
 
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.EXTEND_ORDER, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public void extendAllItems() {
         boolean hasMore;
         String afterName = null;
