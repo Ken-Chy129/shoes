@@ -11,13 +11,23 @@ import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
 const TaskExecutorPage = () => {
-    const [kcForm] = Form.useForm();
-    const [stockForm] = Form.useForm();
-
+    const [taskForm] = Form.useForm();
 
     useEffect(() => {
-
+        queryTaskStatus();
     });
+
+    const queryTaskStatus = () => {
+        taskForm.setFieldsValue(
+            {"kcStatus": 1}
+        );
+    }
+
+    const startStockxTask = () => {
+        doPostRequest(TASK_API.RUN_KC, {}, {
+            onSuccess: _ => message.success("开始执行任务").then()
+        });
+    }
 
     const startKcTask = () => {
         doPostRequest(TASK_API.RUN_KC, {}, {
@@ -27,19 +37,29 @@ const TaskExecutorPage = () => {
 
 
     return <>
-        <Card title={"绿叉"}>
-            <Form form={stockForm}
+        <Card title={"任务配置"}>
+            <Form form={taskForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div>
-                    <Form.Item label={"当前状态"} name={"status"}>
-                        <Radio.Group
-                            options={[
-                                { value: true, label: '是' },
-                                { value: false, label: '否' }
-                            ]}
-                        />
+                <div style={{display: "flex"}}>
+                    <Form.Item name="freight" label="任务运行间隔时间">
+                        <Input/>
                     </Form.Item>
-                    <Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" >
+                            修改
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+        </Card>
+        <br/>
+        <Card title={"绿叉"}>
+            <Form style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item label={"当前状态"} name={"status"}>
+                        {taskForm.getFieldValue("kcStatus")}
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
                         <Button onClick={startKcTask}>开启改价</Button>
                     </Form.Item>
                 </div>
@@ -47,20 +67,16 @@ const TaskExecutorPage = () => {
         </Card>
         <br/>
         <Card title={"KC"}>
-            <Form form={kcForm}
-                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+            <Form style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div>
-                    <Form.Item label={"当前状态"} name={"status"}>
-                        <Radio.Group
-                            options={[
-                                { value: true, label: '是' },
-                                { value: false, label: '否' }
-                            ]}
-                        />
-                    </Form.Item>
-                    <Form.Item>
-                        <Button>开启改价</Button>
-                    </Form.Item>
+                    <div style={{display: "flex"}}>
+                        <Form.Item label={"当前状态"} name={"status"}>
+                            123
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 30}}>
+                            <Button onClick={startKcTask}>开启改价</Button>
+                        </Form.Item>
+                    </div>
                 </div>
             </Form>
         </Card>

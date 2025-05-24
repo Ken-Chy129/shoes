@@ -160,7 +160,7 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
               path: "task/executor"
             },
             {
-              name: "订单信息",
+              name: "历史任务",
               path: "task/history"
             },
           ]
