@@ -2,7 +2,6 @@ package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
-import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.util.ShoesUtil;
@@ -23,6 +22,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -35,40 +35,40 @@ public class PriceManager {
     @Resource
     private PoisonClient poisonClient;
 
-    private final LoadingCache<String, Map<String, Integer>> CACHE = CacheBuilder.newBuilder()
+    private final LoadingCache<String, Map<String, PoisonPriceDO>> CACHE = CacheBuilder.newBuilder()
                 .maximumSize(100000) // 设置最大容量
                 .expireAfterWrite(20, TimeUnit.HOURS) // 设置写入后过期时间
                 .build(new CacheLoader<>() {
                     @NonNull
                     @Override
-                    public Map<String, Integer> load(@NonNull String key) {
+                    public Map<String, PoisonPriceDO> load(@NonNull String key) {
                         return loadPrice(key);
                     }
                 }); // 加载逻辑
 
     @NonNull
-    public Map<String, Integer> loadPrice(String modelNo) {
+    public Map<String, PoisonPriceDO> loadPrice(String modelNo) {
         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
         return poisonPriceDOList.stream()
                 .collect(
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                PoisonPriceDO::getPrice
+                                Function.identity()
                         )
                 );
     }
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
-            Map<String, Integer> sizePriceMap = CACHE.get(modelNo);
-            Integer normalPrice = sizePriceMap.get(euSize);
+            Map<String, PoisonPriceDO> sizePriceMap = CACHE.get(modelNo);
+            PoisonPriceDO normalPrice = sizePriceMap.get(euSize);
             if (normalPrice == null || ShoesContext.isNotCompareModel(modelNo, euSize) || ShoesContext.isFlawsModel(modelNo)) {
                 return null;
             }
             if (ShoesContext.isThreeFiveModel(modelNo, euSize)) {
-                return ShoesUtil.getThreeFivePrice(normalPrice);
+                return ShoesUtil.getThreeFivePrice(normalPrice.getPrice());
             } else {
-                return normalPrice;
+                return normalPrice.getPrice();
             }
         } catch (ExecutionException e) {
             log.info("getPoisonPrice error", e);
@@ -77,17 +77,17 @@ public class PriceManager {
     }
 
     public void putModelNoPrice(String modelNo, List<PoisonPriceDO> poisonPriceDOList) {
-        Map<String, Integer> sizePriceMap = poisonPriceDOList.stream()
+        Map<String, PoisonPriceDO> sizePriceMap = poisonPriceDOList.stream()
                 .collect(
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                PoisonPriceDO::getPrice
+                                poisonPriceDO -> poisonPriceDO
                         )
                 );
         CACHE.put(modelNo, sizePriceMap);
     }
 
-    public void importPrice(Map<String, Map<String, Integer>> modelNoPriceMap) {
+    public void importPrice(Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap) {
         CACHE.putAll(modelNoPriceMap);
     }
 
@@ -95,20 +95,10 @@ public class PriceManager {
         synchronized (PriceManager.class) {
             long start = System.currentTimeMillis();
             List<PoisonPriceDO> toInsert = new ArrayList<>();
-            ConcurrentMap<String, Map<String, Integer>> map = CACHE.asMap();
+            ConcurrentMap<String, Map<String, PoisonPriceDO>> map = CACHE.asMap();
             log.info("start dumpPoisonPrice, modelCnt:{}", map.size());
-            for (Map.Entry<String, Map<String, Integer>> entry : map.entrySet()) {
-                String modelNo = entry.getKey();
-                Map<String, Integer> priceMap = entry.getValue();
-                for (Map.Entry<String, Integer> priceEntry : priceMap.entrySet()) {
-                    String euSize = priceEntry.getKey();
-                    Integer price = priceEntry.getValue();
-                    PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                    poisonPriceDO.setModelNo(modelNo);
-                    poisonPriceDO.setEuSize(euSize);
-                    poisonPriceDO.setPrice(price);
-                    toInsert.add(poisonPriceDO);
-                }
+            for (Map<String, PoisonPriceDO> value : map.values()) {
+                toInsert.addAll(value.values());
             }
             poisonPriceMapper.delete(new QueryWrapper<>());
             SqlHelper.batch(toInsert, poisonPriceDO -> poisonPriceMapper.insertOverwrite(poisonPriceDO));

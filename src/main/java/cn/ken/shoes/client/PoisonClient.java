@@ -51,7 +51,8 @@ public class PoisonClient {
         }
         JSONObject jsonObject = JSON.parseObject(result);
         LocalDate update = LocalDate.ofInstant(jsonObject.getDate("update").toInstant(), ZoneId.systemDefault());
-        if (update.isBefore(LocalDate.now().minusDays(3))) {
+        LocalDate threeDayAgo = LocalDate.now().minusDays(3);
+        if (update.isBefore(threeDayAgo)) {
             log.error("queryPriceByModelNo data is too old, update:{}", update);
             return Collections.emptyList();
         }
@@ -61,6 +62,13 @@ public class PoisonClient {
         for (JSONObject data : dataList) {
             Integer price = data.getInteger("minprice");
             String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
+            Date dataUpdate = jsonObject.getDate("update");
+            if (dataUpdate == null) {
+                continue;
+            }
+            if (LocalDate.ofInstant(dataUpdate.toInstant(), ZoneId.systemDefault()).isBefore(threeDayAgo)) {
+                continue;
+            }
             if (price == null || price == 0 || size == null || sizeSet.contains(size) || price > 100 * PoisonSwitch.MAX_PRICE) {
                 continue;
             } else {
@@ -70,6 +78,7 @@ public class PoisonClient {
             poisonPriceDO.setModelNo(modelNo);
             poisonPriceDO.setEuSize(size);
             poisonPriceDO.setPrice(price / 100);
+            poisonPriceDO.setUpdateTime(dataUpdate);
             poisonPriceDOList.add(poisonPriceDO);
         }
         return poisonPriceDOList;

@@ -20,4 +20,6 @@ public interface PoisonPriceMapper extends BaseMapper<PoisonPriceDO> {
     List<PoisonPriceDO> selectListByModelNos(Set<String> modelNos);
 
     Integer selectPriceByModelNoAndSize(@Param("modelNo") String modelNo, @Param("euSize") String euSize);
+
+    int deleteExpire();
 }

@@ -94,13 +94,13 @@ public class PoisonService {
      * 将db里的得物价格导入到缓存中
      */
     public void importPriceToCache() {
+        poisonPriceMapper.deleteExpire();
         List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectList(new QueryWrapper<>());
-        Map<String, Map<String, Integer>> toImportMap = new HashMap<>();
+        Map<String, Map<String, PoisonPriceDO>> toImportMap = new HashMap<>();
         for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
             String modelNo = poisonPriceDO.getModelNo();
-            Integer price = poisonPriceDO.getPrice();
             String euSize = poisonPriceDO.getEuSize();
-            toImportMap.computeIfAbsent(modelNo, k -> new HashMap<>()).put(euSize, price);
+            toImportMap.computeIfAbsent(modelNo, _ -> new HashMap<>()).put(euSize, poisonPriceDO);
         }
         priceManager.importPrice(toImportMap);
         log.info("finish importPriceToCache, size:{}", toImportMap.size());
