@@ -6,6 +6,8 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
+import java.util.Date;
+
 @Data
 @TableName("poison_price")
 public class PoisonPriceDO {
@@ -21,5 +23,8 @@ public class PoisonPriceDO {
 
     @ExcelProperty("价格")
     private Integer price;
+
+    @ExcelProperty("更新时间")
+    private Date updateTime;
 
 }

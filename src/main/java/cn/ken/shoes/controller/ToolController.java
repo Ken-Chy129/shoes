@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.MustCrawlMapper;
+import cn.ken.shoes.mapper.PoisonPriceMapper;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,6 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("tool")
 public class ToolController {
+
+    @Resource
+    private PoisonPriceMapper poisonPriceMapper;
 
     @Resource
     private CustomModelMapper customModelMapper;
@@ -30,5 +34,10 @@ public class ToolController {
     @GetMapping("clearMustCrawlModel")
     public Result<Integer> clearMustCrawlModel(String platform) {
         return Result.buildSuccess(mustCrawlMapper.deleteByPlatform(platform));
+    }
+
+    @GetMapping("clearPoisonPrice")
+    public Result<Integer> clearPoisonPrice(String platform) {
+        return Result.buildSuccess(poisonPriceMapper.delete(null));
     }
 }
