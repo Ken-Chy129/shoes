@@ -7,7 +7,6 @@ import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
-import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -43,8 +42,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
         initCustomModel();
         while (true) {
             try {
-                Thread.sleep(5 * 60 * 1000);
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
+                    Thread.sleep(5 * 60 * 1000);
                     continue;
                 }
                 poisonService.refreshAllPrice();
