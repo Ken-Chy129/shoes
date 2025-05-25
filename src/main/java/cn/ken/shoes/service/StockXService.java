@@ -5,6 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -97,6 +98,7 @@ public class StockXService {
     /**
      * 下架不赢利的商品，返回仍在上架的商品
      */
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     private Map<String, Pair<String, Integer>> clearNoBenefitItems() {
         String afterName = null;
         boolean hasMore;
@@ -145,7 +147,7 @@ public class StockXService {
                 String euSize = stockXPriceDO.getEuSize();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
                 String key = STR."\{modelNo}:\{euSize}";
-                if (poisonPrice == null || getStockXPrice(stockXPriceDO) == null) {
+                if (poisonPrice == null || poisonPrice > PoisonSwitch.MAX_PRICE || getStockXPrice(stockXPriceDO) == null) {
                     continue;
                 }
                 boolean canEarn = ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO));

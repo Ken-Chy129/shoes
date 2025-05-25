@@ -3,9 +3,9 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.*;
@@ -235,7 +235,7 @@ public class KickScrewService {
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
-                if (poisonPrice == null || kickScrewPriceDO.getPrice() == null) {
+                if (poisonPrice == null || poisonPrice > PoisonSwitch.MAX_PRICE || kickScrewPriceDO.getPrice() == null) {
                     continue;
                 }
                 boolean canEarn = ShoesUtil.canKcEarn(poisonPrice, kickScrewPriceDO.getPrice());
