@@ -13,6 +13,7 @@
     <version>0.0.1-SNAPSHOT</version>
     <name>shoes</name>
     <description>shoes</description>
+    <packaging>jar</packaging>
     <url/>
     <licenses>
         <license/>
@@ -113,6 +114,7 @@
             <version>4.0.3</version>
         </dependency>
     </dependencies>
+
     <build>
         <plugins>
             <plugin>
@@ -123,6 +125,10 @@
                     <target>21</target>
                     <compilerArgs>--enable-preview</compilerArgs>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
             </plugin>
         </plugins>
     </build>

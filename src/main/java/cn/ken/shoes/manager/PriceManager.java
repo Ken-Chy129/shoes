@@ -60,6 +60,10 @@ public class PriceManager {
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
+            Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, euSize);
+            if (specialPrice != null) {
+                return specialPrice;
+            }
             Map<String, PoisonPriceDO> sizePriceMap = CACHE.get(modelNo);
             PoisonPriceDO normalPrice = sizePriceMap.get(euSize);
             if (normalPrice == null || ShoesContext.isNotCompareModel(modelNo, euSize) || ShoesContext.isFlawsModel(modelNo, euSize)) {

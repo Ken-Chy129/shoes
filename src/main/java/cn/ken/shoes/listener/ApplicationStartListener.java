@@ -5,8 +5,10 @@ import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
+import cn.ken.shoes.mapper.SpecialPriceMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.model.entity.SpecialPriceDO;
 import cn.ken.shoes.service.PoisonService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -33,6 +35,9 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Resource
     private CustomModelMapper customModelMapper;
 
+    @Resource
+    private SpecialPriceMapper specialPriceMapper;
+
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
@@ -40,10 +45,11 @@ public class ApplicationStartListener implements ApplicationListener<Application
         }
         initSizeMap();
         initCustomModel();
+        initSpecialPrice();
         while (true) {
             try {
+                Thread.sleep(5 * 60 * 1000);
                 if (PoisonSwitch.STOP_QUERY_PRICE) {
-                    Thread.sleep(5 * 60 * 1000);
                     continue;
                 }
                 poisonService.refreshAllPrice();
@@ -75,5 +81,10 @@ public class ApplicationStartListener implements ApplicationListener<Application
             }
             customPriceTypeEnum.getCachePutConsumer().accept(customModelDO);
         }
+    }
+
+    private void initSpecialPrice() {
+        List<SpecialPriceDO> specialPriceDOS = specialPriceMapper.selectList(new QueryWrapper<>());
+        specialPriceDOS.forEach(ShoesContext::addSpecialPrice);
     }
 }

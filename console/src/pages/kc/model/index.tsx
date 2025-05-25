@@ -59,7 +59,7 @@ const ModelPage = () => {
     }
 
     return <>
-        <Card title={"必爬货号"} style={{ marginTop: 10 }}>
+        <Card title={"必爬货号"}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
                 <Input.TextArea rows={15} value={mustCrawlModelNos} onChange={e => setMustCrawlModelNos(e.target.value)} />
 

@@ -30,7 +30,7 @@ public class HttpUtil {
 
     private static final OkHttpClient proxyClient = new OkHttpClient()
             .newBuilder()
-            .proxy(new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("localhost", 7890)))
+            .proxy(new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("localhost", 7897)))
             .build();
 
     private static final OkHttpClient client = new OkHttpClient()

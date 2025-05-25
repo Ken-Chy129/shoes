@@ -1,9 +1,7 @@
 package cn.ken.shoes.controller;
 
-import cn.ken.shoes.annotation.CheckToken;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.user.LoginReq;
-import cn.ken.shoes.model.user.UserResp;
 import cn.ken.shoes.service.UserService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
