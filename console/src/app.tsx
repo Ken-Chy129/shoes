@@ -130,9 +130,13 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
               path: "kc/brand"
             },
             {
+              name: "特殊货号管理",
+              path: "kc/model"
+            },
+            {
               name: "订单信息",
               path: "kc/order"
-            },
+            }
           ]
         },
         {

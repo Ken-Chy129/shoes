@@ -42,10 +42,15 @@ export default [
         component: './kc/brand'
       },
       {
+        path: '/kc/model',
+        layout: true,
+        component: './kc/model'
+      },
+      {
         path: '/kc/order',
         layout: true,
         component: "./kc/order"
-      },
+      }
     ]
   },
   {
