@@ -138,7 +138,7 @@ public class StockXService {
     }
 
     public int compareWithPoisonAndChangePrice(Map<String, Pair<String, Integer>> retainItemsMap, List<StockXPriceDO> stockXPriceDOS) {
-        int uploadCnt = 0;
+        int uploadCnt = 0, poisonNoPriceCnt = 0, noBenefitCnt = 0, tooExpensiveCnt = 0, stockXNoPriceCnt = 0;
         try {
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
             List<Pair<String, Integer>> toRemove = new ArrayList<>();
@@ -147,11 +147,20 @@ public class StockXService {
                 String euSize = stockXPriceDO.getEuSize();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
                 String key = STR."\{modelNo}:\{euSize}";
-                if (poisonPrice == null || poisonPrice > PoisonSwitch.MAX_PRICE || getStockXPrice(stockXPriceDO) == null) {
+                if (poisonPrice == null) {
+                    poisonNoPriceCnt++;
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO));
-                if (!canEarn) {
+                if (poisonPrice > PoisonSwitch.MAX_PRICE) {
+                    tooExpensiveCnt++;
+                    continue;
+                }
+                if (getStockXPrice(stockXPriceDO) == null) {
+                    stockXNoPriceCnt++;
+                    continue;
+                }
+                if (!ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO))) {
+                    noBenefitCnt++;
                     continue;
                 }
                 // 如果当前已经上架了该商品，则需要进行下架操作
@@ -165,7 +174,10 @@ public class StockXService {
             stockXClient.deleteItems(toRemove);
             // 上架
             stockXClient.createListingV2(toCreate);
-            log.info("总量：{}, 下架数量：{}， 上架数量：{}", stockXPriceDOS.size(), toRemove.size(), toCreate.size());
+            log.info("总量：{}, 下架数量：{}， 上架数量：{}，得物无价数量：{}，绿叉无价数量：{}，得物太贵数量：{}，不盈利数量：{}",
+                    stockXPriceDOS.size(), toRemove.size(), toCreate.size(),
+                    poisonNoPriceCnt, stockXNoPriceCnt, tooExpensiveCnt, noBenefitCnt
+            );
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
