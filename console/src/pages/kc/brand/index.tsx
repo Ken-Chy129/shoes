@@ -16,7 +16,6 @@ import {SETTING_API} from "@/services/shoes";
 const BrandPage = () => {
     const [conditionForm] = Form.useForm();
     const [crawlCntForm] = Form.useForm();
-    const [mustCrawlForm] = Form.useForm();
     const [defaultCntForm] = Form.useForm();
 
     const [brandSettings, setBrandSettings] = useState<[]>([]);
@@ -25,7 +24,6 @@ const BrandPage = () => {
     const [total, setTotal] = useState(0);
 
     const [showCrawlCntModifiedModal, setShowCrawlCntModifiedModal] = useState(false);
-    const [showCrawlModelNoModifiedModal, setShowCrawlModelNoModifiedModal] = useState(false);
     const [showDefaultCntModifiedModal, setShowDefaultCntModifiedModal] = useState(false);
 
     useEffect(() => {
@@ -57,23 +55,6 @@ const BrandPage = () => {
         });
     }
 
-    const queryMustCrawlModelNos = () => {
-        doGetRequest(SETTING_API.QUERY_MUST_CRAWL_MODEL_NOS, {}, {
-            onSuccess: res => {
-                mustCrawlForm.setFieldValue("mustCrawlModelNos", res.data);
-            }
-        });
-    }
-
-    const updateMustCrawlModelNos = () => {
-        const modelNos = mustCrawlForm.getFieldValue("mustCrawlModelNos");
-        doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {modelNos}, {
-            onSuccess: _ => {
-                message.success("修改成功").then();
-            }
-        });
-    }
-
     const updateDefaultCrawlCntModelNos = () => {
         const defaultCnt = defaultCntForm.getFieldValue("defaultCnt");
         const platform = "kc";
@@ -87,7 +68,6 @@ const BrandPage = () => {
 
     const handleModalClose = () => {
         setShowCrawlCntModifiedModal(false);
-        setShowCrawlModelNoModifiedModal(false);
         setShowDefaultCntModifiedModal(false);
         crawlCntForm.resetFields();
     }
@@ -178,14 +158,6 @@ const BrandPage = () => {
                 </div>
                 <div style={{display: "flex"}}>
                     <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => {
-                            queryMustCrawlModelNos();
-                            setShowCrawlModelNoModifiedModal(true);
-                        }}>
-                            指定必爬货号
-                        </Button>
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 30}}>
                         <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
                             指定默认爬取数量
                         </Button>
@@ -236,33 +208,6 @@ const BrandPage = () => {
             <Form form={crawlCntForm} style={{margin: 30}}>
                 <Form.Item name={"crawlCnt"} label={"爬取数量"}>
                     <Input.TextArea/>
-                </Form.Item>
-            </Form>
-        </Modal>
-
-        <Modal
-            title="指定爬取货号"
-            open={showCrawlModelNoModifiedModal}
-            onOk={handleModalClose}
-            onCancel={handleModalClose}
-            footer={[
-                <Space>
-                    <Button key="push" onClick={() => {
-                        updateMustCrawlModelNos();
-                        handleModalClose();
-                    }}>
-                        修改
-                    </Button>
-                    <Button key="close" onClick={handleModalClose}>
-                        关闭
-                    </Button>
-                </Space>
-            ]}
-            width={1000}
-        >
-            <Form form={mustCrawlForm} style={{margin: 30}}>
-                <Form.Item name={"mustCrawlModelNos"} label={"爬取货号"}>
-                    <Input.TextArea rows={25}/>
                 </Form.Item>
             </Form>
         </Modal>
