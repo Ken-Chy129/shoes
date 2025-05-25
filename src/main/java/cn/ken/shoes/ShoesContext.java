@@ -92,17 +92,27 @@ public class ShoesContext {
 
     // 瑕疵
 
+    public static void clearFlawsModelSet() {
+        FLAWS_MODEL_SET.clear();
+    }
+
     public static Set<String> getFlawsModelSet() {
         return FLAWS_MODEL_SET;
     }
 
     public static void addFlawsModel(CustomModelDO customModelDO) {
-        String modelNo = customModelDO.getModelNo();
-        FLAWS_MODEL_SET.add(modelNo);
+        String key = customModelDO.getModelNo();
+        if (customModelDO.getEuSize() != null) {
+            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getModelNo()}";
+        }
+        FLAWS_MODEL_SET.add(key);
     }
 
     public static boolean isFlawsModel(String modelNo) {
         return FLAWS_MODEL_SET.contains(modelNo);
     }
 
+    public static boolean isFlawsModel(String modelNo, String euSize) {
+        return FLAWS_MODEL_SET.contains(modelNo) || FLAWS_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+    }
 }

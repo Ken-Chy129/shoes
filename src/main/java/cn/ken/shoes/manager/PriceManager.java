@@ -62,7 +62,7 @@ public class PriceManager {
         try {
             Map<String, PoisonPriceDO> sizePriceMap = CACHE.get(modelNo);
             PoisonPriceDO normalPrice = sizePriceMap.get(euSize);
-            if (normalPrice == null || ShoesContext.isNotCompareModel(modelNo, euSize) || ShoesContext.isFlawsModel(modelNo)) {
+            if (normalPrice == null || ShoesContext.isNotCompareModel(modelNo, euSize) || ShoesContext.isFlawsModel(modelNo, euSize)) {
                 return null;
             }
             if (ShoesContext.isThreeFiveModel(modelNo, euSize)) {

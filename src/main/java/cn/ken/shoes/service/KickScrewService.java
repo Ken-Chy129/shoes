@@ -125,6 +125,9 @@ public class KickScrewService {
 
     public void updateMustCrawlModelNos(List<String> modelNoList) {
         mustCrawlMapper.deleteByPlatform("kc");
+        if (CollectionUtils.isEmpty(modelNoList)) {
+            return;
+        }
         List<MustCrawlDO> mustCrawlDOList = new ArrayList<>();
         for (String modelNo : modelNoList) {
             MustCrawlDO mustCrawlDO = new MustCrawlDO();

@@ -1,22 +1,24 @@
 package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
-import cn.ken.shoes.common.PageResult;
-import cn.ken.shoes.common.Result;
-import cn.ken.shoes.common.StockXPriceEnum;
-import cn.ken.shoes.common.StockXSortEnum;
+import cn.ken.shoes.common.*;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.mapper.BrandMapper;
+import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
+import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.setting.PriceSetting;
 import cn.ken.shoes.service.KickScrewService;
+import cn.ken.shoes.util.SqlHelper;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
+import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
@@ -36,6 +38,9 @@ public class SettingController {
 
     @Resource
     private StockXClient stockXClient;
+
+    @Resource
+    private CustomModelMapper customModelMapper;
 
     @GetMapping("poison")
     public Result<JSONObject> queryPoisonSetting() {
@@ -163,12 +168,49 @@ public class SettingController {
 
     @PostMapping("updateMustCrawlModelNos")
     public Result<Boolean> updateMustCrawlModelNos(@RequestBody JSONObject jsonObject) {
-        String modelNos = jsonObject.getString("modelNos");
-        if (StrUtil.isBlank(modelNos)) {
-            return Result.buildSuccess(Boolean.TRUE);
-        }
-        List<String> modelNoList = Arrays.stream(modelNos.split(",")).map(String::trim).toList();
+        String modelNos = Optional.ofNullable(jsonObject.getString("modelNos")).orElse("");
+        List<String> modelNoList = Arrays.stream(modelNos.split(",")).filter(StrUtil::isNotBlank).map(String::trim).toList();
         kickScrewService.updateMustCrawlModelNos(modelNoList);
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("queryForbiddenCrawlModelNos")
+    public Result<List<String>> queryForbiddenCrawlModelNos() {
+        List<CustomModelDO> customModelDOS = customModelMapper.selectByType(CustomPriceTypeEnum.FLAWS.getCode());
+        List<String> result = customModelDOS.stream().map(customModelDO -> {
+            String modelNo = customModelDO.getModelNo();
+            String euSize = customModelDO.getEuSize();
+            if (StrUtil.isBlank(euSize)) {
+                return modelNo;
+            }
+            return modelNo + ":" + euSize;
+        }).toList();
+        return Result.buildSuccess(result);
+    }
+
+    @PostMapping("updateForbiddenCrawlModelNos")
+    public Result<Boolean> updateForbiddenCrawlModelNos(@RequestBody JSONObject jsonObject) {
+        String modelNos = Optional.ofNullable(jsonObject.getString("modelNos")).orElse("");
+        List<String> modelList = Arrays.stream(modelNos.split(",")).filter(StrUtil::isNotBlank).map(String::trim).toList();
+        List<CustomModelDO> toInsert = modelList.stream().filter(StrUtil::isNotBlank).map(model -> {
+            CustomModelDO customModelDO = new CustomModelDO();
+            customModelDO.setType(CustomPriceTypeEnum.FLAWS.getCode());
+            String[] split = model.split(":");
+            if (split.length != 2) {
+                customModelDO.setModelNo(model);
+            } else {
+                customModelDO.setModelNo(split[0]);
+                customModelDO.setEuSize(split[1]);
+            }
+            return customModelDO;
+        }).toList();
+        ShoesContext.clearFlawsModelSet();
+        customModelMapper.clearByType(CustomPriceTypeEnum.FLAWS.getCode());
+        if (CollectionUtils.isEmpty(toInsert)) {
+            return Result.buildSuccess(true);
+        }
+        toInsert.forEach(ShoesContext::addFlawsModel);
+        SqlHelper.batch(toInsert, modelDO -> customModelMapper.insertIgnore(modelDO));
         return Result.buildSuccess(true);
     }
 
