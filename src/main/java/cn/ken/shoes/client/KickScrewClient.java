@@ -4,7 +4,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.config.CommonConfig;
-import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
@@ -19,11 +18,11 @@ import com.alibaba.fastjson.JSONObject;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
-import java.io.*;
 import java.util.*;
 
 @Slf4j
@@ -32,13 +31,16 @@ public class KickScrewClient {
 
     private static final String AGENT = "Algolia for JavaScript (4.24.0); Browser; instantsearch.js (4.74.0); react (18.3.1); react-instantsearch (7.13.0); react-instantsearch-core (7.13.0); next.js (14.2.10); JS Helper (3.22.4)";
 
+    @Value("${kc.apiKey}")
+    private String apiKey;
+
     private static final Integer PAGE_SIZE = 30;
 
     public void downloadQrLabel(String orderId) {
         HttpUtil.downloadFile(KickScrewApiConstant.DOWNLOAD_QR_LABEL.replace("{orderId}", orderId),
                 Headers.of(
                         "accept", "application/pdf",
-                        "x-api-key", KickScrewConfig.API_KEY
+                        "x-api-key", apiKey
                 ),
                 STR."\{CommonConfig.DOWNLOAD_PATH}qr_label_\{orderId}.pdf"
         );
@@ -403,8 +405,8 @@ public class KickScrewClient {
         return body.toJSONString();
     }
 
-    private static Headers getHeaders() {
-        return Headers.of("x-api-key", KickScrewConfig.API_KEY);
+    private Headers getHeaders() {
+        return Headers.of("x-api-key", apiKey);
     }
 
 }
