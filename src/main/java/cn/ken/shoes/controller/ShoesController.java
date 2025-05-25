@@ -62,11 +62,6 @@ public class ShoesController {
         kickScrewClient.deleteAllItems();
     }
 
-    @GetMapping("queryTokenBalance")
-    public String queryTokenBalance() {
-        return poisonClient.queryTokenBalance();
-    }
-
     @GetMapping("queryByModelNos")
     public String queryByModelNos(String modelNos) {
         return JSON.toJSONString(poisonClient.queryItemByModelNos(Arrays.stream(modelNos.split(",")).toList()));
