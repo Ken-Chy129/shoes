@@ -16,6 +16,7 @@ import {SETTING_API} from "@/services/shoes";
 const ModelPage = () => {
     const [mustCrawlModelNos, setMustCrawlModelNos] = useState('');
     const [forbiddenCrawlModelNos, setForbiddenCrawlModelNos] = useState('');
+    const forbiddenType = 4;
 
     useEffect(() => {
         queryMustCrawlModelNos();
@@ -41,7 +42,7 @@ const ModelPage = () => {
     }
 
     const queryForbiddenCrawlModelNos = () => {
-        doGetRequest(SETTING_API.QUERY_FORBIDDEN_CRAWL_MODEL_NOS, {}, {
+        doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: forbiddenType}, {
             onSuccess: res => {
                 setForbiddenCrawlModelNos(res.data);
             }
@@ -50,7 +51,7 @@ const ModelPage = () => {
 
     const updateForbiddenCrawlModelNos = () => {
         const modelNos = forbiddenCrawlModelNos;
-        doPostRequest(SETTING_API.UPDATE_FORBIDDEN_CRAWL_MODEL_NOS, {modelNos}, {
+        doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: forbiddenType}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
             }

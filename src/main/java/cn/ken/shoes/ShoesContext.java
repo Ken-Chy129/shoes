@@ -1,5 +1,6 @@
 package cn.ken.shoes;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
@@ -37,22 +38,30 @@ public class ShoesContext {
     }
 
     // 3.5
+    public static void clearThreeFiveModelSet() {
+        THREE_FIVE_MODEL_SET.clear();
+    }
 
     public static Set<String> getThreeFiveModelSet() {
         return THREE_FIVE_MODEL_SET;
     }
 
     public static void addThreeFiveModel(CustomModelDO customModelDO) {
-        String modelNo = customModelDO.getModelNo();
-        String euSize = customModelDO.getEuSize();
-        THREE_FIVE_MODEL_SET.add(STR."\{modelNo}:\{euSize}");
+        String key = customModelDO.getModelNo();
+        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
+            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
+        }
+        THREE_FIVE_MODEL_SET.add(key);
     }
 
     public static boolean isThreeFiveModel(String modelNo, String euSize) {
-        return THREE_FIVE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+        return THREE_FIVE_MODEL_SET.contains(modelNo) || THREE_FIVE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
     }
 
     // 不比价
+    public static void clearNotCompareModelSet() {
+        NOT_COMPARE_MODEL_SET.clear();
+    }
 
     public static Set<String> getNotCompareModelSet() {
         return NOT_COMPARE_MODEL_SET;
@@ -69,6 +78,9 @@ public class ShoesContext {
     }
 
     // 无价
+    public static void clearNoPriceModelSet() {
+        NO_PRICE_MODEL_SET.clear();
+    }
 
     public static Set<String> getNoPriceModelSet() {
         return NO_PRICE_MODEL_SET;
@@ -102,8 +114,8 @@ public class ShoesContext {
 
     public static void addFlawsModel(CustomModelDO customModelDO) {
         String key = customModelDO.getModelNo();
-        if (customModelDO.getEuSize() != null) {
-            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getModelNo()}";
+        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
+            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
         }
         FLAWS_MODEL_SET.add(key);
     }

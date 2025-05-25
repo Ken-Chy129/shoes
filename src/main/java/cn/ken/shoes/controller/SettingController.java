@@ -1,7 +1,6 @@
 package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
-import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.*;
 import cn.ken.shoes.config.PoisonSwitch;
@@ -174,9 +173,9 @@ public class SettingController {
         return Result.buildSuccess(true);
     }
 
-    @GetMapping("queryForbiddenCrawlModelNos")
-    public Result<List<String>> queryForbiddenCrawlModelNos() {
-        List<CustomModelDO> customModelDOS = customModelMapper.selectByType(CustomPriceTypeEnum.FLAWS.getCode());
+    @GetMapping("queryCustomModelNos")
+    public Result<List<String>> queryCustomModelNos(int type) {
+        List<CustomModelDO> customModelDOS = customModelMapper.selectByType(type);
         List<String> result = customModelDOS.stream().map(customModelDO -> {
             String modelNo = customModelDO.getModelNo();
             String euSize = customModelDO.getEuSize();
@@ -188,13 +187,17 @@ public class SettingController {
         return Result.buildSuccess(result);
     }
 
-    @PostMapping("updateForbiddenCrawlModelNos")
-    public Result<Boolean> updateForbiddenCrawlModelNos(@RequestBody JSONObject jsonObject) {
+    @PostMapping("updateCustomModelNos")
+    public Result<Boolean> updateCustomModelNos(@RequestBody JSONObject jsonObject) {
         String modelNos = Optional.ofNullable(jsonObject.getString("modelNos")).orElse("");
+        CustomPriceTypeEnum type = CustomPriceTypeEnum.from(jsonObject.getInteger("type"));
+        if (type == null) {
+            return Result.buildSuccess(false);
+        }
         List<String> modelList = Arrays.stream(modelNos.split(",")).filter(StrUtil::isNotBlank).map(String::trim).toList();
         List<CustomModelDO> toInsert = modelList.stream().filter(StrUtil::isNotBlank).map(model -> {
             CustomModelDO customModelDO = new CustomModelDO();
-            customModelDO.setType(CustomPriceTypeEnum.FLAWS.getCode());
+            customModelDO.setType(type.getCode());
             String[] split = model.split(":");
             if (split.length != 2) {
                 customModelDO.setModelNo(model);
@@ -204,12 +207,13 @@ public class SettingController {
             }
             return customModelDO;
         }).toList();
-        ShoesContext.clearFlawsModelSet();
-        customModelMapper.clearByType(CustomPriceTypeEnum.FLAWS.getCode());
+
+        type.getClearRunnable().run();
+        customModelMapper.clearByType(type.getCode());
         if (CollectionUtils.isEmpty(toInsert)) {
             return Result.buildSuccess(true);
         }
-        toInsert.forEach(ShoesContext::addFlawsModel);
+        toInsert.forEach(model -> type.getCachePutConsumer().accept(model));
         SqlHelper.batch(toInsert, modelDO -> customModelMapper.insertIgnore(modelDO));
         return Result.buildSuccess(true);
     }
