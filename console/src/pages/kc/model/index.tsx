@@ -14,8 +14,8 @@ import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
 const ModelPage = () => {
-    const [mustCrawlModelNos, setMustCrawlModelNos] = useState();
-    const [forbiddenCrawlModelNos, setForbiddenCrawlModelNos] = useState();
+    const [mustCrawlModelNos, setMustCrawlModelNos] = useState('');
+    const [forbiddenCrawlModelNos, setForbiddenCrawlModelNos] = useState('');
 
     useEffect(() => {
         queryMustCrawlModelNos();
@@ -32,7 +32,8 @@ const ModelPage = () => {
     }
 
     const updateMustCrawlModelNos = () => {
-        doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {mustCrawlModelNos}, {
+        const modelNos = mustCrawlModelNos;
+        doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {modelNos}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
             }
@@ -48,7 +49,8 @@ const ModelPage = () => {
     }
 
     const updateForbiddenCrawlModelNos = () => {
-        doPostRequest(SETTING_API.UPDATE_FORBIDDEN_CRAWL_MODEL_NOS, {forbiddenCrawlModelNos}, {
+        const modelNos = forbiddenCrawlModelNos;
+        doPostRequest(SETTING_API.UPDATE_FORBIDDEN_CRAWL_MODEL_NOS, {modelNos}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
             }
@@ -58,7 +60,7 @@ const ModelPage = () => {
     return <>
         <Card title={"必爬货号"} style={{ marginTop: 10 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea rows={15} value={mustCrawlModelNos} />
+                <Input.TextArea rows={15} value={mustCrawlModelNos} onChange={e => setMustCrawlModelNos(e.target.value)} />
 
                 {/* 按钮容器，使用 flex-end 实现右对齐 */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
@@ -74,7 +76,7 @@ const ModelPage = () => {
 
         <Card title={"禁爬货号"} style={{ marginTop: 10 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea rows={15} value={forbiddenCrawlModelNos} />
+                <Input.TextArea rows={15} value={forbiddenCrawlModelNos} onChange={e => setForbiddenCrawlModelNos(e.target.value)}/>
 
                 {/* 按钮容器，使用 flex-end 实现右对齐 */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
