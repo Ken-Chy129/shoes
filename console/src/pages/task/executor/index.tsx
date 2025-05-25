@@ -1,13 +1,11 @@
 import {
-    Button, Card, DatePicker,
+    Button, Card,
     Form,
     Input,
     message,
-    Modal,
-    Radio,
 } from "antd";
 import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
+import {doGetRequest, doPostRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
 const TaskExecutorPage = () => {
@@ -42,13 +40,15 @@ const TaskExecutorPage = () => {
 
     const startKcTask = () => {
         doPostRequest(TASK_API.RUN_KC, {}, {
-            onSuccess: _ => message.success("开始执行任务").then()
+            onSuccess: _ => message.success("开始执行任务").then(),
+            onFinally: queryTaskStatus
         });
     }
 
     const stopKcTask = () => {
         doPostRequest(TASK_API.STOP_KC, {}, {
-            onSuccess: _ => message.success("已暂停").then()
+            onSuccess: _ => message.success("已暂停").then(),
+            onFinally: queryTaskStatus
         });
     }
 

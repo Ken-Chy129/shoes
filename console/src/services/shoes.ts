@@ -17,6 +17,8 @@ enum SETTING_API {
     UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     QUERY_CUSTOM_MODEL_NOS = '/api/setting/queryCustomModelNos',
     UPDATE_CUSTOM_MODEL_NOS = '/api/setting/updateCustomModelNos',
+    QUERY_SPECIAL_PRICE_MODEL_NOS = '/api/poison/querySpecialPrice',
+    UPDATE_SPECIAL_PRICE_MODEL_NOS = '/api/poison/updateSpecialPrice',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
     QUERY_STOCKX_CONFIG = '/api/setting/queryStockxConfig',
     AUTHORIZE_URL = '/api/setting/stockx/getAuthorizeUrl',

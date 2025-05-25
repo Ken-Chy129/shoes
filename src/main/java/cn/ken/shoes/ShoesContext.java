@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.model.entity.SpecialPriceDO;
 import lombok.Getter;
 
 import java.util.*;
@@ -20,6 +21,8 @@ public class ShoesContext {
     private final static Set<String> NO_PRICE_MODEL_SET = new HashSet<>();
 
     private final static Set<String> FLAWS_MODEL_SET = new HashSet<>();
+
+    private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
 
     public static void setBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap) {
         ShoesContext.brandGenderSizeChartMap = brandGenderSizeChartMap;
@@ -126,5 +129,24 @@ public class ShoesContext {
 
     public static boolean isFlawsModel(String modelNo, String euSize) {
         return FLAWS_MODEL_SET.contains(modelNo) || FLAWS_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+    }
+
+    // 指定特殊价格
+    public static void clearSpecialPrice() {
+        SPECIAL_PRICE_MAP.clear();
+    }
+
+    public static Map<String, Integer> getSpecialPriceMap() {
+        return SPECIAL_PRICE_MAP;
+    }
+
+    public static void addSpecialPrice(SpecialPriceDO specialPriceDO) {
+        String key = STR."\{specialPriceDO.getModelNo()}:\{specialPriceDO.getEuSize()}";
+        SPECIAL_PRICE_MAP.put(key, specialPriceDO.getPrice());
+    }
+
+    public static Integer getSpecialPrice(String modelNo, String euSize) {
+        String key = STR."\{modelNo}:\{euSize}";
+        return SPECIAL_PRICE_MAP.get(key);
     }
 }
