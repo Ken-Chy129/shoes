@@ -19,10 +19,11 @@ import {POISON_API, SETTING_API} from "@/services/shoes";
 
 const PoisonPage = () => {
     const [poisonForm] = Form.useForm();
-    const [kcForm] = Form.useForm();
+    const [threePointFiveModelNos, setThreePointFiveModelNos] = useState('');
+    const threePointFiveType = 1;
 
     useEffect(() => {
-
+        queryThreePointFiveModelNos();
     }, []);
 
     const refreshPoisonPrice = (overwriteOld: boolean) => {
@@ -31,6 +32,23 @@ const PoisonPage = () => {
                 message.success("开始执行异步刷新").then(_ => {});
             }
         })
+    }
+
+    const queryThreePointFiveModelNos = () => {
+        doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: threePointFiveType}, {
+            onSuccess: res => {
+                setThreePointFiveModelNos(res.data);
+            }
+        });
+    }
+
+    const updateThreePointFiveModelNos = () => {
+        const modelNos = threePointFiveModelNos;
+        doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: threePointFiveType}, {
+            onSuccess: _ => {
+                message.success("修改成功").then();
+            }
+        });
     }
 
     return <>
@@ -52,6 +70,21 @@ const PoisonPage = () => {
             </Form>
         </Card>
         <br/>
+        <Card title={"使用3.5的货号"} style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                <Input.TextArea rows={15} value={threePointFiveModelNos} onChange={e => setThreePointFiveModelNos(e.target.value)} />
+
+                {/* 按钮容器，使用 flex-end 实现右对齐 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                    <Button
+                        key="push"
+                        onClick={updateThreePointFiveModelNos}
+                    >
+                        修改
+                    </Button>
+                </div>
+            </div>
+        </Card>
     </>
 }
 
