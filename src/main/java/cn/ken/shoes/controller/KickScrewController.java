@@ -2,11 +2,13 @@ package cn.ken.shoes.controller;
 
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.task.KcTaskRunner;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -72,12 +74,24 @@ public class KickScrewController {
         return Result.buildSuccess();
     }
 
-    @GetMapping("startTask")
+    @PostMapping("startTask")
     public Result<Void> startTask() {
         if (kcTaskRunner.isInit()) {
             return Result.buildError("任务已经开始运行");
         }
+        TaskSwitch.STOP_KC_TASK = false;
         kcTaskRunner.start();
+        return Result.buildSuccess();
+    }
+
+    @GetMapping("queryTaskStatus")
+    public Result<Boolean> queryTaskStatus() {
+        return Result.buildSuccess(!TaskSwitch.STOP_KC_TASK);
+    }
+
+    @PostMapping("stopTask")
+    public Result<Void> stopTask() {
+        TaskSwitch.STOP_KC_TASK = true;
         return Result.buildSuccess();
     }
 }

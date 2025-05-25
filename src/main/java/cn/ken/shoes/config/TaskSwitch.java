@@ -8,7 +8,7 @@ public class TaskSwitch {
 
     public static boolean STOP_KC_TASK = true;
 
-    public static long KC_TASK_INTERVAL = 30 * 60 * 1000;
+    public static long KC_TASK_INTERVAL = 60 * 1000;
 
     public static boolean STOP_STOCK_TASK = true;
 
