@@ -241,7 +241,8 @@ public class KickScrewService {
                 if (poisonPrice == null || poisonPrice > PoisonSwitch.MAX_PRICE || kickScrewPriceDO.getPrice() == null) {
                     continue;
                 }
-                boolean canEarn = ShoesUtil.canKcEarn(poisonPrice, kickScrewPriceDO.getPrice());
+                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                boolean canEarn = ShoesUtil.canKcEarn(poisonPrice, kickScrewPriceDO.getPrice(), minExpectProfit);
                 if (!canEarn) {
                     continue;
                 }
@@ -279,7 +280,8 @@ public class KickScrewService {
                 }
                 Integer price = kickScrewPriceDO.getPrice();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
-                if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, price + 1)) {
+                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, price + 1, minExpectProfit)) {
                     // 得物无价或无盈利，下架该商品
                     toDelete.add(kickScrewPriceDO);
                 }

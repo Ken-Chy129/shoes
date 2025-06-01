@@ -123,7 +123,8 @@ public class StockXService {
                 Integer amount = item.getInteger("amount");
                 String id = item.getString("id");
                 // 得物无价或无盈利，下架该商品
-                if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount)) {
+                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
                     toDelete.add(Pair.of(id, amount));
                 } else {
                     retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
@@ -159,7 +160,8 @@ public class StockXService {
                     stockXNoPriceCnt++;
                     continue;
                 }
-                if (!ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO))) {
+                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                if (!ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO), minExpectProfit)) {
                     noBenefitCnt++;
                     continue;
                 }
