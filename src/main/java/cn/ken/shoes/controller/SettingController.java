@@ -49,6 +49,9 @@ public class SettingController {
         jsonObject.put("openImportDBData", PoisonSwitch.OPEN_IMPORT_DB_DATA);
         jsonObject.put("openNoPriceCache", PoisonSwitch.OPEN_NO_PRICE_CACHE);
         jsonObject.put("stopQueryPrice", PoisonSwitch.STOP_QUERY_PRICE);
+        jsonObject.put("openAllThreeFive", PoisonSwitch.OPEN_ALL_THREE_FIVE);
+        jsonObject.put("minProfit", PoisonSwitch.MIN_PROFIT);
+        jsonObject.put("minThreeFiveProfit", PoisonSwitch.MIN_THREE_PROFIT);
         return Result.buildSuccess(jsonObject);
     }
 
@@ -59,6 +62,9 @@ public class SettingController {
         PoisonSwitch.OPEN_IMPORT_DB_DATA = jsonObject.getBoolean("openImportDBData");
         PoisonSwitch.OPEN_NO_PRICE_CACHE = jsonObject.getBoolean("openNoPriceCache");
         PoisonSwitch.STOP_QUERY_PRICE = jsonObject.getBoolean("stopQueryPrice");
+        PoisonSwitch.OPEN_ALL_THREE_FIVE = jsonObject.getBoolean("openAllThreeFive");
+        PoisonSwitch.MIN_PROFIT = jsonObject.getInteger("minProfit");
+        PoisonSwitch.MIN_THREE_PROFIT = jsonObject.getInteger("minThreeFiveProfit");
         return Result.buildSuccess(jsonObject);
     }
 
@@ -67,7 +73,6 @@ public class SettingController {
         PriceSetting priceSetting = new PriceSetting();
         priceSetting.setExchangeRate(PriceSwitch.EXCHANGE_RATE);
         priceSetting.setFreight(PriceSwitch.FREIGHT);
-        priceSetting.setMinProfit(PriceSwitch.MIN_PROFIT);
         priceSetting.setKcGetRate(PriceSwitch.KC_GET_RATE);
         priceSetting.setKcServiceFee(PriceSwitch.KC_SERVICE_FEE);
         return Result.buildSuccess(priceSetting);
@@ -77,7 +82,6 @@ public class SettingController {
     public Result<Boolean> updateKcSetting(@RequestBody PriceSetting priceSetting) {
         PriceSwitch.EXCHANGE_RATE = priceSetting.getExchangeRate();
         PriceSwitch.FREIGHT = priceSetting.getFreight();
-        PriceSwitch.MIN_PROFIT = priceSetting.getMinProfit();
         PriceSwitch.KC_GET_RATE = priceSetting.getKcGetRate();
         PriceSwitch.KC_SERVICE_FEE = priceSetting.getKcServiceFee();
         return Result.buildSuccess(true);

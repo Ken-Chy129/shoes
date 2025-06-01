@@ -1,4 +1,4 @@
-import {Button, Card, Form, Input, message, Radio, Select} from "antd";
+import {Button, Card, Form, Input, message, Radio, Row, Select} from "antd";
 import React, {useEffect} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
@@ -34,7 +34,10 @@ const SettingPage = () => {
         const openImportDBData = poisonForm.getFieldValue("openImportDBData");
         const openNoPriceCache = poisonForm.getFieldValue("openNoPriceCache");
         const stopQueryPrice = poisonForm.getFieldValue("stopQueryPrice");
-        doPostRequest(SETTING_API.POISON, {apiMode, maxPrice, openImportDBData, openNoPriceCache, stopQueryPrice}, {
+        const openAllThreeFive = poisonForm.getFieldValue("openAllThreeFive");
+        const minProfit = poisonForm.getFieldValue("minProfit");
+        const minThreeFiveProfit = poisonForm.getFieldValue("minThreeFiveProfit");
+        doPostRequest(SETTING_API.POISON, {apiMode, maxPrice, openImportDBData, openNoPriceCache, stopQueryPrice, openAllThreeFive, minProfit, minThreeFiveProfit}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -44,10 +47,9 @@ const SettingPage = () => {
     const updateKcSetting = () => {
         const exchangeRate = kcForm.getFieldValue("exchangeRate");
         const freight = kcForm.getFieldValue("freight");
-        const minProfit = kcForm.getFieldValue("minProfit");
         const kcGetRate = kcForm.getFieldValue("kcGetRate");
         const kcServiceFee = kcForm.getFieldValue("kcServiceFee")
-        doPostRequest(SETTING_API.KC, {exchangeRate, freight, minProfit, kcGetRate, kcServiceFee}, {
+        doPostRequest(SETTING_API.KC, {exchangeRate, freight, kcGetRate, kcServiceFee}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
             }
@@ -145,8 +147,37 @@ const SettingPage = () => {
         <br/>
         <Card title={"得物配置"}>
             <Form form={poisonForm}
-                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div style={{display: "flex"}}>
+                  style={{display: "flex", alignItems: "center", flexWrap: "wrap"}}>
+                <div>
+                    <Row>
+                        <Form.Item name="maxPrice" label="最大价格限制">
+                            <Input/>
+                        </Form.Item>
+                        <Form.Item name="openImportDBData" label="使用历史得物价格" style={{marginLeft: 20}}>
+                            <Radio.Group
+                                options={[
+                                    { value: true, label: '是' },
+                                    { value: false, label: '否' }
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item name="openNoPriceCache" label="开启无价货号缓存" style={{marginLeft: 20}}>
+                            <Radio.Group
+                                options={[
+                                    { value: true, label: '是' },
+                                    { value: false, label: '否' }
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item name="stopQueryPrice" label="开启得物自动查价" style={{marginLeft: 20}}>
+                            <Radio.Group
+                                options={[
+                                    { value: true, label: '是' },
+                                    { value: false, label: '否' }
+                                ]}
+                            />
+                        </Form.Item>
+                    </Row>
                     {/*<Form.Item name="apiMode" label="查价模式">*/}
                     {/*    <Select*/}
                     {/*        style={{width: 160}}*/}
@@ -162,38 +193,27 @@ const SettingPage = () => {
                     {/*        }*/}
                     {/*    />*/}
                     {/*</Form.Item>*/}
-                    <Form.Item name="maxPrice" label="最大价格限制">
-                        <Input/>
-                    </Form.Item>
-                    <Form.Item name="openImportDBData" label="使用历史得物价格" style={{marginLeft: 20}}>
-                        <Radio.Group
-                            options={[
-                                { value: true, label: '是' },
-                                { value: false, label: '否' }
-                            ]}
-                        />
-                    </Form.Item>
-                    <Form.Item name="openNoPriceCache" label="开启无价货号缓存" style={{marginLeft: 20}}>
-                        <Radio.Group
-                            options={[
-                                { value: true, label: '是' },
-                                { value: false, label: '否' }
-                            ]}
-                        />
-                    </Form.Item>
-                    <Form.Item name="stopQueryPrice" label="开启得物自动查价" style={{marginLeft: 20}}>
-                        <Radio.Group
-                            options={[
-                                { value: true, label: '是' },
-                                { value: false, label: '否' }
-                            ]}
-                        />
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 50}}>
-                        <Button type="primary" htmlType="submit" onClick={updatePoisonSetting}>
-                            修改
-                        </Button>
-                    </Form.Item>
+                    <Row>
+                       <Form.Item name="openAllThreeFive" label="开启全量3.5">
+                           <Radio.Group
+                               options={[
+                                   { value: true, label: '是' },
+                                   { value: false, label: '否' }
+                               ]}
+                           />
+                       </Form.Item>
+                       <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
+                           <Input/>
+                       </Form.Item>
+                       <Form.Item name="minThreeFiveProfit" label="3.5最小利润" style={{marginLeft: 20}}>
+                           <Input/>
+                       </Form.Item>
+                       <Form.Item style={{marginLeft: 50}}>
+                           <Button type="primary" htmlType="submit" onClick={updatePoisonSetting}>
+                               修改
+                           </Button>
+                       </Form.Item>
+                    </Row>
                 </div>
             </Form>
         </Card>
@@ -203,9 +223,6 @@ const SettingPage = () => {
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
                     <Form.Item name="freight" label="运费">
-                        <Input/>
-                    </Form.Item>
-                    <Form.Item name="minProfit" label="最小利润" style={{marginLeft: 20}}>
                         <Input/>
                     </Form.Item>
                     <Form.Item name="kcGetRate" label="KC到手比例" style={{marginLeft: 20}}>

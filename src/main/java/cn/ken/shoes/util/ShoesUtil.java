@@ -1,5 +1,7 @@
 package cn.ken.shoes.util;
 
+import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 
 import java.util.regex.Matcher;
@@ -39,12 +41,13 @@ public class ShoesUtil {
      * 比价，获取上架的价格
      * @param poisonPrice 得物价格
      * @param kcPrice kc的价格
+     * @param minExpectProfit 预期最小盈利
      * @return 如果kc价格-1有盈利，则修改为kc价格-1，否则返回null
      */
-    public static boolean canKcEarn(Integer poisonPrice, Integer kcPrice) {
+    public static boolean canKcEarn(Integer poisonPrice, Integer kcPrice, Integer minExpectProfit) {
         double getFromPlatform = ((kcPrice - 1.0) * PriceSwitch.KC_GET_RATE - PriceSwitch.KC_SERVICE_FEE) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
-        if (earn < PriceSwitch.MIN_PROFIT) {
+        if (earn < minExpectProfit) {
             return false;
         }
         return true;
@@ -69,14 +72,14 @@ public class ShoesUtil {
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
-    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice) {
+    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit) {
         // 转账手续费
         double transferFee = stockXPrice * 0.03;
         // 商家手续费
         double merchantFee = Math.max(stockXPrice * 0.07, 5.79);
         double getFromPlatform = (stockXPrice - transferFee - merchantFee) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
-        if (earn < PriceSwitch.MIN_PROFIT) {
+        if (earn < minExpectProfit) {
             return false;
         }
         return true;
@@ -86,4 +89,7 @@ public class ShoesUtil {
         return (int) (normalPrice * 0.955 - 38 - 8.9);
     }
 
+    public static boolean isThreeFiveModel(String model, String euSize) {
+        return PoisonSwitch.OPEN_ALL_THREE_FIVE || ShoesContext.isThreeFiveModel(model, euSize);
+    }
 }
