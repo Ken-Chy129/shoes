@@ -10,8 +10,11 @@ import lombok.Data;
 @Data
 public class StockXOrderExcel {
 
-    @ExcelProperty("名称")
+    @ExcelProperty("商品")
     private String title;
+
+    @ExcelProperty("货号名称")
+    private String name;
 
     @ExcelProperty("货号")
     private String styleId;
@@ -22,18 +25,21 @@ public class StockXOrderExcel {
     @ExcelProperty("销售价格")
     private Integer amount;
 
+    @ExcelProperty("价格币种")
+    private String currentCurrency;
+
     @ExcelProperty("出售日期")
     private String soldOn;
 
     @ExcelProperty("发货截止日期")
     private String dateToShipBy;
 
-    @ExcelProperty("状态")
-    private Integer state;
-
     @ExcelProperty("欧码")
     private String euSize;
 
     @ExcelProperty("美码")
     private String usSize;
+
+    @ExcelProperty("运单号")
+    private String trackingNumber;
 }
