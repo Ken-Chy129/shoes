@@ -8,6 +8,7 @@ import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
+import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
@@ -51,6 +52,39 @@ public class StockXClient {
     private String authorization;
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
+
+    public List<StockXOrderExcel> queryOrder(String after) {
+        JSONObject jsonObject = queryPro(buildOrder(after));
+        if (jsonObject == null) {
+            return null;
+        }
+        List<StockXOrderExcel> result = new ArrayList<>();
+        JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
+        for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            StockXOrderExcel stockXOrderExcel = new StockXOrderExcel();
+            JSONObject node = edge.getJSONObject("node");
+            stockXOrderExcel.setOrderNumber(node.getString("orderNumber"));
+            stockXOrderExcel.setAmount(node.getInteger("amount"));
+            stockXOrderExcel.setState(node.getInteger("state"));
+            stockXOrderExcel.setSoldOn(node.getString("soldOn"));
+            stockXOrderExcel.setDateToShipBy(node.getString("dateToShipBy"));
+            JSONObject productVariant = node.getJSONObject("productVariant");
+            JSONObject product = productVariant.getJSONObject("product");
+            stockXOrderExcel.setTitle(product.getString("title"));
+            stockXOrderExcel.setStyleId(product.getString("styleId"));
+            List<JSONObject> sizeList = productVariant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class);
+            for (JSONObject sizeObject : sizeList) {
+                String size = sizeObject.getString("size");
+                if (size.contains("US")) {
+                    stockXOrderExcel.setUsSize(ShoesUtil.getEuSizeFromPoison(size));
+                } else if (size.contains("EU")) {
+                    stockXOrderExcel.setEuSize(ShoesUtil.getEuSizeFromPoison(size));
+                }
+            }
+            result.add(stockXOrderExcel);
+        }
+        return result;
+    }
 
     public JSONObject queryToDeal(String after) {
         JSONObject jsonObject = queryPro(buildItemsToDealQueryRequest(after));
@@ -542,6 +576,30 @@ public class StockXClient {
         requestJson.put("operationName", "ViewerAsks");
         requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  shippingExtensionRequested\n  orderNumber\n}");
         JSONObject variables = new JSONObject();
+        variables.put("pageSize", 1000);
+        variables.put("sort", "LISTED_AT");
+        variables.put("order", "DESC");
+        variables.put("skipFlexEligible", true);
+        variables.put("skipGuidance", false);
+        if (StrUtil.isNotBlank(after)) {
+            variables.put("after", after);
+        }
+        JSONObject filters = new JSONObject();
+        filters.put("statesList", Map.of("in", List.of(410, 411, 415)));
+        filters.put("inventoryType", Map.of("in", List.of("STANDARD", "CUSTODIAL")));
+        variables.put("filters", filters);
+        variables.put("state", "PENDING");
+        requestJson.put("variables", variables);
+        return requestJson.toJSONString();
+    }
+
+    private String buildOrder(String after) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "ViewerAsks");
+        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput, $country: String!, $market: String!, $skipGuidance: Boolean = true, $skipFlexEligible: Boolean = true, $includeHasAttributedAd: Boolean = false) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      includeHasAttributedAd: $includeHasAttributedAd\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        __typename\n      }\n      edges {\n        node {\n          ...AskAttributes\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  created\n  bidAskSpread\n  currentCurrency\n  expires\n  soldOn\n  orderNumber\n  state\n  dateToShipBy\n  authCenter\n  inventoryType\n  associatedAutomation {\n    status\n    id\n    fields {\n      price\n      __typename\n    }\n    __typename\n  }\n  pricingGuidance(country: $country, market: $market) @skip(if: $skipGuidance) {\n    marketConsensusGuidance {\n      standardSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      flexSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  shipment {\n    id\n    bulk\n    deleted\n    displayId\n    trackingNumber\n    trackingUrl\n    deliveryDate\n    commercialInvoiceUrl\n    documents {\n      sellerShippingInstructions\n      sellerShippingInstructionsThermal\n      __typename\n    }\n    __typename\n  }\n  productVariant {\n    id\n    isFlexEligible @skip(if: $skipFlexEligible)\n    traits {\n      size\n      sizeDescriptor\n      __typename\n    }\n    sizeChart {\n      displayOptions {\n        size\n        __typename\n      }\n      baseType\n      __typename\n    }\n    market(currencyCode: $currencyCode) {\n      state(country: $country, market: $market) {\n        bidInventoryTypes {\n          standard {\n            highest {\n              amount\n              chainId\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        askServiceLevels {\n          standard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          expressStandard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    product {\n      id\n      name\n      styleId\n      model\n      title\n      productCategory\n      contentGroup\n      browseVerticals\n      primaryCategory\n      minimumBid(currencyCode: $currencyCode)\n      traits {\n        name\n        value\n        __typename\n      }\n      taxInformation {\n        id\n        code\n        __typename\n      }\n      media {\n        thumbUrl\n        __typename\n      }\n      sizeDescriptor\n      hazardousMaterial {\n        lithiumIonBucket\n        __typename\n      }\n      lockSelling\n      listingType\n      __typename\n    }\n    __typename\n  }\n  hasAttributedAd\n  __typename\n}");
+        JSONObject variables = new JSONObject();
+        variables.put("country", "HK");
+        variables.put("market", "HK");
         variables.put("pageSize", 1000);
         variables.put("sort", "LISTED_AT");
         variables.put("order", "DESC");

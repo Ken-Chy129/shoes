@@ -4,6 +4,7 @@ import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
+import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -64,6 +65,11 @@ public class StockXController {
     @GetMapping("queryToDealItems")
     public Result<JSONObject> queryToDealItems() {
         return Result.buildSuccess(stockXClient.queryToDeal(null));
+    }
+
+    @GetMapping("queryOrder")
+    public Result<List<StockXOrderExcel>> queryOrder() {
+        return Result.buildSuccess(stockXClient.queryOrder(null));
     }
 
     @PostMapping("extendAllItems")
