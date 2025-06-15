@@ -94,4 +94,10 @@ public class KickScrewController {
         TaskSwitch.STOP_KC_TASK = true;
         return Result.buildSuccess();
     }
+
+    @GetMapping("queryHotModels")
+    public Result<Boolean> queryHotModels() {
+        kickScrewService.queryHotModels();
+        return Result.buildSuccess(true);
+    }
 }
