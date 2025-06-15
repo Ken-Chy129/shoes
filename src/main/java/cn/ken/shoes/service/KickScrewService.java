@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
 
+import java.io.*;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
@@ -136,6 +137,44 @@ public class KickScrewService {
             mustCrawlDOList.add(mustCrawlDO);
         }
         mustCrawlMapper.insert(mustCrawlDOList);
+    }
+
+    @SneakyThrows
+    public void queryHotModels() {
+        List<String> brandDOList = List.of("361 Degrees", "HOKA ONE ONE", "ANTA", "Li-Ning", "Rigorer", "Onitsuka Tiger");
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("file/货号.txt")));
+        for (String brandName : brandDOList) {
+            int crawlCnt = 500;
+            int page = (int) Math.ceil(crawlCnt / 50.0);
+            CountDownLatch latch = new CountDownLatch(page);
+            for (int i = 0; i < page; i++) {
+                final int pageIndex = i;
+                Thread.ofVirtual().name("queryHotModel-" + brandName).start(() -> {
+                    try {
+                        LimiterHelper.limitKcItem();
+                        KickScrewAlgoliaRequest request = new KickScrewAlgoliaRequest();
+                        request.setBrands(List.of(brandName));
+                        request.setPageIndex(pageIndex);
+                        request.setPageSize(50);
+                        List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.queryItemPageV2(request);
+                        kickScrewItemDOS.stream().map(KickScrewItemDO::getModelNo).forEach(modelName -> {
+                            try {
+                                writer.write(modelName);
+                                writer.newLine();
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        });
+                    } catch (Exception e) {
+                        log.error("queryHotModel error, msg:{}", e.getMessage());
+                    } finally {
+                        latch.countDown();
+                    }
+                });
+            }
+            latch.await();
+        }
+        writer.close();
     }
 
     @SneakyThrows
