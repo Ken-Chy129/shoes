@@ -7,14 +7,12 @@ import java.time.format.DateTimeFormatter;
 
 public class TimeUtil {
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
+    public static final DateTimeFormatter YYYY_MM_DD_HH_MM_SS = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
-    public static DateTimeFormatter getFormatter() {
-        return FORMATTER;
-    }
+    public static final DateTimeFormatter MM_DD_YYYY = DateTimeFormatter.ofPattern("MM/dd/yyyy").withZone(ZoneId.systemDefault());
 
     public static String now() {
-        return LocalDateTime.now().format(getFormatter());
+        return LocalDateTime.now().format(YYYY_MM_DD_HH_MM_SS);
     }
 
     public static String milliSecondToMin(long time) {
@@ -29,8 +27,9 @@ public class TimeUtil {
         return milliSecondToMin(System.currentTimeMillis() - startTime);
     }
 
-    public static String formatISO(String isoDateTime) {
+    public static String formatISO(String isoDateTime, DateTimeFormatter formatter) {
         Instant instant = Instant.parse(isoDateTime);
-        return FORMATTER.withZone(ZoneId.systemDefault()).format(instant);
+        return formatter.format(instant);
     }
+
 }

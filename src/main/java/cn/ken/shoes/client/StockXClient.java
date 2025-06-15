@@ -69,17 +69,14 @@ public class StockXClient {
             StockXOrderExcel stockXOrderExcel = new StockXOrderExcel();
             JSONObject node = edge.getJSONObject("node");
             stockXOrderExcel.setOrderNumber(node.getString("orderNumber"));
-            stockXOrderExcel.setAmount(node.getInteger("amount"));
-            stockXOrderExcel.setCurrentCurrency(node.getString("currentCurrency"));
-            stockXOrderExcel.setSoldOn(TimeUtil.formatISO(node.getString("soldOn")));
-            stockXOrderExcel.setDateToShipBy(TimeUtil.formatISO(node.getString("dateToShipBy")));
+            stockXOrderExcel.setUsd(node.getInteger("amount"));
+            stockXOrderExcel.setSoldOn(TimeUtil.formatISO(node.getString("soldOn"), TimeUtil.MM_DD_YYYY));
             JSONObject productVariant = node.getJSONObject("productVariant");
             JSONObject product = productVariant.getJSONObject("product");
             stockXOrderExcel.setTitle(product.getString("title"));
             stockXOrderExcel.setName(product.getString("name"));
             stockXOrderExcel.setStyleId(product.getString("styleId"));
             List<JSONObject> sizeList = productVariant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class);
-            stockXOrderExcel.setTrackingNumber(node.getJSONObject("shipment").getString("trackingNumber"));
             for (JSONObject sizeObject : sizeList) {
                 String size = sizeObject.getString("size");
                 if (size.contains("US")) {
@@ -358,7 +355,7 @@ public class StockXClient {
         }
         Integer expiresIn = result.getInteger("expires_in");
         LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
-        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.getFormatter()));
+        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
         StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
         return true;
     }
@@ -384,7 +381,7 @@ public class StockXClient {
         StockXConfig.CONFIG.setIdToken(result.getString("id_token"));
         Integer expiresIn = result.getInteger("expires_in");
         LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
-        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.getFormatter()));
+        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
         Thread.startVirtualThread(() -> {
             try {
                 while (true) {

@@ -5,7 +5,7 @@ import {
     Table,
 } from "antd";
 import React, {useEffect, useState} from "react";
-import {doPostRequest} from "@/util/http";
+import {doGetRequest, doPostRequest} from "@/util/http";
 import {ORDER_API} from "@/services/stockx";
 
 const SettingPage = () => {
@@ -64,7 +64,7 @@ const SettingPage = () => {
     ];
 
     const downloadOrders = () => {
-        window.open('http://localhost:8080/order/kc/excel');
+        window.open('http://localhost:8080/order/stockx/excel');
     }
 
     const extendAllItems = () => {
@@ -74,7 +74,7 @@ const SettingPage = () => {
     }
 
     return <>
-        <Card title={"商品信息"} style={{marginTop: 10}}>
+        <Card title={"订单列表"} style={{marginTop: 10}}>
             <Form form={conditionForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
