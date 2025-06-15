@@ -70,14 +70,16 @@ public class StockXClient {
             JSONObject node = edge.getJSONObject("node");
             stockXOrderExcel.setOrderNumber(node.getString("orderNumber"));
             stockXOrderExcel.setAmount(node.getInteger("amount"));
-            stockXOrderExcel.setState(node.getInteger("state"));
+            stockXOrderExcel.setCurrentCurrency(node.getString("currentCurrency"));
             stockXOrderExcel.setSoldOn(TimeUtil.formatISO(node.getString("soldOn")));
             stockXOrderExcel.setDateToShipBy(TimeUtil.formatISO(node.getString("dateToShipBy")));
             JSONObject productVariant = node.getJSONObject("productVariant");
             JSONObject product = productVariant.getJSONObject("product");
             stockXOrderExcel.setTitle(product.getString("title"));
+            stockXOrderExcel.setName(product.getString("name"));
             stockXOrderExcel.setStyleId(product.getString("styleId"));
             List<JSONObject> sizeList = productVariant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class);
+            stockXOrderExcel.setTrackingNumber(node.getJSONObject("shipment").getString("trackingNumber"));
             for (JSONObject sizeObject : sizeList) {
                 String size = sizeObject.getString("size");
                 if (size.contains("US")) {
