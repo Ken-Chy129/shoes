@@ -68,8 +68,8 @@ public class StockXController {
     }
 
     @GetMapping("queryOrder")
-    public Result<List<StockXOrderExcel>> queryOrder() {
-        return Result.buildSuccess(stockXClient.queryOrder(null));
+    public Result<JSONObject> queryOrder() {
+        return Result.buildSuccess(stockXClient.queryOrders(null));
     }
 
     @PostMapping("extendAllItems")

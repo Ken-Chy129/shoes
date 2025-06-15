@@ -12,5 +12,7 @@ public class CommonConfig {
 
     public final static String KC_ORDER = "kc订单.xlsx";
 
+    public final static String STOCKX_ORDER = "stockx订单.xlsx";
+
     public final static String KC_QR_LABEL = "";
 }

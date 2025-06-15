@@ -53,13 +53,18 @@ public class StockXClient {
 
     private final String expireTime = "2026-04-06T23:22:45+0800";
 
-    public List<StockXOrderExcel> queryOrder(String after) {
+    public JSONObject queryOrders(String after) {
         JSONObject jsonObject = queryPro(buildOrder(after));
         if (jsonObject == null) {
             return null;
         }
-        List<StockXOrderExcel> result = new ArrayList<>();
+        JSONObject result = new JSONObject();
+        List<StockXOrderExcel> orders = new ArrayList<>();
         JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
+        JSONObject pageInfo = ask.getJSONObject("pageInfo");
+        result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
+        result.put("endCursor", pageInfo.getString("endCursor"));
+        result.put("orders", orders);
         for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
             StockXOrderExcel stockXOrderExcel = new StockXOrderExcel();
             JSONObject node = edge.getJSONObject("node");
@@ -81,7 +86,7 @@ public class StockXClient {
                     stockXOrderExcel.setEuSize(ShoesUtil.getEuSizeFromPoison(size));
                 }
             }
-            result.add(stockXOrderExcel);
+            orders.add(stockXOrderExcel);
         }
         return result;
     }
