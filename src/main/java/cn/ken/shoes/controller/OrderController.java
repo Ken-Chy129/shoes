@@ -63,6 +63,25 @@ public class OrderController {
                 .body(new InputStreamResource(file.getInputStream()));
     }
 
+    @GetMapping("stockx/excel")
+    public ResponseEntity<InputStreamResource> downStockXOrderExcel() throws IOException {
+        orderService.downloadStockXOrders();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
+        headers.add("Content-Disposition", "attachment; filename=" + URLEncoder.encode(CommonConfig.STOCKX_ORDER, StandardCharsets.UTF_8));
+        headers.add("Pragma", "no-cache");
+        headers.add("Expires", "0");
+
+        FileSystemResource file = new FileSystemResource(CommonConfig.DOWNLOAD_PATH + CommonConfig.STOCKX_ORDER);
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentLength(file.contentLength())
+                .contentType(MediaType.parseMediaType("application/octet-stream"))
+                .body(new InputStreamResource(file.getInputStream()));
+    }
+
     @GetMapping("kc/cancel")
     public Result<String> cancelKcOrder(String orderId) {
         return Result.buildSuccess(kickScrewClient.cancelOrder(orderId));
