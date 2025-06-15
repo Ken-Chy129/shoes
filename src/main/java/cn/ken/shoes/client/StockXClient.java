@@ -71,8 +71,8 @@ public class StockXClient {
             stockXOrderExcel.setOrderNumber(node.getString("orderNumber"));
             stockXOrderExcel.setAmount(node.getInteger("amount"));
             stockXOrderExcel.setState(node.getInteger("state"));
-            stockXOrderExcel.setSoldOn(node.getString("soldOn"));
-            stockXOrderExcel.setDateToShipBy(node.getString("dateToShipBy"));
+            stockXOrderExcel.setSoldOn(TimeUtil.formatISO(node.getString("soldOn")));
+            stockXOrderExcel.setDateToShipBy(TimeUtil.formatISO(node.getString("dateToShipBy")));
             JSONObject productVariant = node.getJSONObject("productVariant");
             JSONObject product = productVariant.getJSONObject("product");
             stockXOrderExcel.setTitle(product.getString("title"));
