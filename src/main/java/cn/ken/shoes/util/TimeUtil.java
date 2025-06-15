@@ -1,11 +1,13 @@
 package cn.ken.shoes.util;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 
 public class TimeUtil {
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZoneId.systemDefault());
 
     public static DateTimeFormatter getFormatter() {
         return FORMATTER;
@@ -25,5 +27,10 @@ public class TimeUtil {
 
     public static String getCostMin(long startTime) {
         return milliSecondToMin(System.currentTimeMillis() - startTime);
+    }
+
+    public static String formatISO(String isoDateTime) {
+        Instant instant = Instant.parse(isoDateTime);
+        return FORMATTER.withZone(ZoneId.systemDefault()).format(instant);
     }
 }
