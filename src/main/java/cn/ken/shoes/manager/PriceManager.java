@@ -2,8 +2,6 @@ package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
-import cn.ken.shoes.config.PoisonSwitch;
-import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.util.ShoesUtil;
