@@ -37,4 +37,7 @@ public class StockXOrderExcel {
     @ExcelProperty("EU码")
     private String euSize;
 
+    @ExcelProperty("得物价格")
+    private Integer poisonPrice;
+
 }

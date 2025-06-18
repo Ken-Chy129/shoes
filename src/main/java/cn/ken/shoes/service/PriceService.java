@@ -171,6 +171,7 @@ public class PriceService {
     }
 
     public void refreshNoPriceModel() {
+        customModelMapper.clearByType(CustomPriceTypeEnum.NO_PRICE.getCode());
         Set<String> noPriceModelDOS = customModelMapper.selectByType(CustomPriceTypeEnum.NO_PRICE.getCode()).stream().map(CustomModelDO::getModelNo).collect(Collectors.toSet());
         List<CustomModelDO> needRefresh = new ArrayList<>();
         Set<String> noPriceModelSet = ShoesContext.getNoPriceModelSet();

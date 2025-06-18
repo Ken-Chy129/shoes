@@ -53,8 +53,8 @@ public class ShoesController {
     }
 
     @GetMapping("queryPriceByCache")
-    public Integer queryPriceByCache(String modelNo) {
-        return priceManager.getPoisonPrice(modelNo, "38.5");
+    public Integer queryPriceByCache(String modelNo, String euSize) {
+        return priceManager.getPoisonPrice(modelNo, euSize);
     }
 
     @GetMapping("clearKcItems")
