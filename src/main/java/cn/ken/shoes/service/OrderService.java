@@ -57,6 +57,9 @@ public class OrderService {
         List<StockXOrderExcel> allOrderList = new ArrayList<>();
         do {
             JSONObject result = stockXClient.queryOrders(afterName);
+            if (result == null) {
+                break;
+            }
             List<StockXOrderExcel> orders = result.getJSONArray("orders").toJavaList(StockXOrderExcel.class);
             CountDownLatch latch = new CountDownLatch(orders.size());
             for (StockXOrderExcel order : orders) {
