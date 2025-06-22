@@ -5,12 +5,14 @@ import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.util.LockHelper;
 import jakarta.annotation.Resource;
 import lombok.Getter;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
  * @author Ken-Chy129
  * @date 2025/5/19
  */
+@Slf4j
 @Component
 public class KcTaskRunner extends Thread {
 
@@ -36,7 +38,7 @@ public class KcTaskRunner extends Thread {
                 }
                 Thread.sleep(TaskSwitch.KC_TASK_INTERVAL);
             } catch (InterruptedException e) {
-                throw new RuntimeException(e);
+                log.error(e.getMessage(), e);
             }
         }
     }

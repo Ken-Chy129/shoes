@@ -56,6 +56,10 @@ public class KickScrewClient {
             return Collections.emptyList();
         }
         JSONObject result = JSON.parseObject(rawResult);
+        if (result.getJSONArray("data") == null) {
+            log.error("queryStockList error, no data");
+            return Collections.emptyList();
+        }
         List<JSONObject> javaList = result.getJSONArray("data").toJavaList(JSONObject.class);
         List<KickScrewPriceDO> priceList = new ArrayList<>();
         for (JSONObject jsonObject : javaList) {
