@@ -101,6 +101,10 @@ public class StockXClient {
             return null;
         }
         JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
+        if (!ask.containsKey("edges")) {
+            log.error("queryToDeal error, no edges, result:{}", jsonObject);
+            return null;
+        }
         JSONObject pageInfo = ask.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
         result.put("endCursor", pageInfo.getString("endCursor"));

@@ -45,6 +45,9 @@ public class StockXService {
         String afterName = null;
         do {
             JSONObject jsonObject = stockXClient.queryToDeal(afterName);
+            if (jsonObject == null) {
+                throw new RuntimeException("发生异常");
+            }
             List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
             for (JSONObject node : nodes) {
                 stockXClient.extendItem(node.getString("id"));
