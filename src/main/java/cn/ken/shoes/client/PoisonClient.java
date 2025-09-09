@@ -38,6 +38,66 @@ public class PoisonClient {
     private String token;
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
+        if (modelNo == null) {
+            return Collections.emptyList();
+        }
+        if (PoisonSwitch.USE_V2_API) {
+            return queryPriceByModelNoV2(modelNo);
+        } else {
+            return queryPriceByModelNoV1(modelNo);
+        }
+    }
+
+    public List<PoisonPriceDO> queryPriceByModelNoV2(String modelNo) {
+        // 已记录为得物无价的货号
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
+        // 重试
+        int times = 0;
+        String result;
+        do {
+            result = doQueryPriceByModelNoV2(modelNo);
+            times++;
+        } while (result == null && times <= 3);
+        if (result == null) {
+            log.error("queryPriceByModelNoV2 error, no result:{}", modelNo);
+            return Collections.emptyList();
+        }
+        JSONObject jsonObject = JSON.parseObject(result);
+        JSONObject priceData = jsonObject.getJSONObject("price_data");
+        if (priceData == null) {
+            ShoesContext.addNoPrice(modelNo);
+            return Collections.emptyList();
+        }
+        Date time = jsonObject.getDate("time");
+        LocalDate update = LocalDate.ofInstant(time.toInstant(), ZoneId.systemDefault());
+        LocalDate threeDayAgo = LocalDate.now().minusDays(3);
+        if (update.isBefore(threeDayAgo)) {
+            log.error("queryPriceByModelNoV2 data is too old, update:{}", update);
+            return Collections.emptyList();
+        }
+        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+        for (String euSize: priceData.keySet()) {
+            JSONObject priceObject = priceData.getJSONObject(euSize);
+            if (priceObject == null) {
+                continue;
+            }
+            Integer price = priceObject.getInteger("price");
+            if (price == null || price <= 0 || price > PoisonSwitch.MAX_PRICE) {
+                continue;
+            }
+            PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+            poisonPriceDO.setModelNo(modelNo);
+            poisonPriceDO.setEuSize(euSize);
+            poisonPriceDO.setPrice(price);
+            poisonPriceDO.setUpdateTime(time);
+            poisonPriceDOList.add(poisonPriceDO);
+        }
+        return poisonPriceDOList;
+    }
+
+    public List<PoisonPriceDO> queryPriceByModelNoV1(String modelNo) {
         // 已记录为得物无价的货号
         if (ShoesContext.isNoPrice(modelNo)) {
             return Collections.emptyList();
@@ -97,6 +157,12 @@ public class PoisonClient {
         String url = PoisonApiConstant.PRICE_BY_MODEL_NO
                 .replace("{modelNo}", modelNo)
                 .replace("{token}", token);
+        return HttpUtil.doGet(url, false);
+    }
+
+    private String doQueryPriceByModelNoV2(String modelNo) {
+        LimiterHelper.limitPoisonPrice();
+        String url = PoisonApiConstant.PRICE_BY_MODEL_NO_V2.replace("{modelNo}", modelNo);
         return HttpUtil.doGet(url, false);
     }
 

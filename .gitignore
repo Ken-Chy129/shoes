@@ -32,3 +32,7 @@ build/
 ### VS Code ###
 .vscode/
 /ui/src/.umi/
+/src/main/resources/application.yml
+/log/
+/file/
+/downloads/
