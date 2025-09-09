@@ -41,4 +41,6 @@ public class PoisonSwitch {
      * 开启全量货号3.5
      */
     public static Boolean OPEN_ALL_THREE_FIVE = false;
+
+    public static Boolean USE_V2_API = true;
 }
