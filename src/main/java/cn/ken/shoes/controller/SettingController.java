@@ -65,6 +65,7 @@ public class SettingController {
         PoisonSwitch.OPEN_ALL_THREE_FIVE = jsonObject.getBoolean("openAllThreeFive");
         PoisonSwitch.MIN_PROFIT = jsonObject.getInteger("minProfit");
         PoisonSwitch.MIN_THREE_PROFIT = jsonObject.getInteger("minThreeFiveProfit");
+        PoisonSwitch.saveConfig();
         return Result.buildSuccess(jsonObject);
     }
 
@@ -84,6 +85,7 @@ public class SettingController {
         PriceSwitch.FREIGHT = priceSetting.getFreight();
         PriceSwitch.KC_GET_RATE = priceSetting.getKcGetRate();
         PriceSwitch.KC_SERVICE_FEE = priceSetting.getKcServiceFee();
+        PriceSwitch.saveConfig();
         return Result.buildSuccess(true);
     }
 
@@ -104,6 +106,7 @@ public class SettingController {
         }
         StockXSwitch.SORT_TYPE = sortType;
         StockXSwitch.PRICE_TYPE = priceType;
+        StockXSwitch.saveConfig();
         return Result.buildSuccess(true);
     }
 
@@ -143,6 +146,7 @@ public class SettingController {
     @PostMapping("stockx/updateAuthorization")
     public Result<Boolean> updateAuthorization(@RequestBody JSONObject jsonObject) {
         StockXConfig.CONFIG.setAccessToken(jsonObject.getString("accessToken"));
+        StockXConfig.saveOAuthConfig();
         return Result.buildSuccess(true);
     }
 

@@ -1,5 +1,8 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.manager.ConfigManager;
+import cn.ken.shoes.util.SpringContextUtil;
+
 public class PoisonSwitch {
 
     /**
@@ -43,4 +46,18 @@ public class PoisonSwitch {
     public static Boolean OPEN_ALL_THREE_FIVE = false;
 
     public static Boolean USE_V2_API = true;
+
+    /**
+     * 保存配置到文件
+     */
+    public static void saveConfig() {
+        try {
+            ConfigManager configManager = SpringContextUtil.getBean(ConfigManager.class);
+            if (configManager != null) {
+                configManager.savePoisonConfig();
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to save poison config: " + e.getMessage());
+        }
+    }
 }

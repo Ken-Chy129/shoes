@@ -359,6 +359,7 @@ public class StockXClient {
         LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
         StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
         StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
+        StockXConfig.saveOAuthConfig();
         return true;
     }
 
@@ -384,6 +385,7 @@ public class StockXClient {
         Integer expiresIn = result.getInteger("expires_in");
         LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
         StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
+        StockXConfig.saveOAuthConfig();
         Thread.startVirtualThread(() -> {
             try {
                 while (true) {

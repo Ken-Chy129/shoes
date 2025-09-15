@@ -1,5 +1,7 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.manager.ConfigManager;
+import cn.ken.shoes.util.SpringContextUtil;
 import lombok.Data;
 
 public class StockXConfig {
@@ -31,6 +33,20 @@ public class StockXConfig {
     public static final String GET_LISTING_STATUS = "https://api.stockx.com/v2/selling/batch/create-listing/{batchId}";
 
     public static final String GRAPHQL = "https://pro.stockx.com/api/graphql";
+
+    /**
+     * 保存OAuth配置到文件
+     */
+    public static void saveOAuthConfig() {
+        try {
+            ConfigManager configManager = SpringContextUtil.getBean(ConfigManager.class);
+            if (configManager != null) {
+                configManager.saveStockXOAuthConfig();
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to save stockx oauth config: " + e.getMessage());
+        }
+    }
 
     @Data
     public static class OAuth2Config {
