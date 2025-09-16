@@ -76,11 +76,10 @@ public class KickScrewController {
 
     @PostMapping("startTask")
     public Result<Void> startTask() {
-        if (kcTaskRunner.isInit()) {
-            return Result.buildError("任务已经开始运行");
-        }
         TaskSwitch.STOP_KC_TASK = false;
-        kcTaskRunner.start();
+        if (!kcTaskRunner.isInit()) {
+            kcTaskRunner.start();
+        }
         return Result.buildSuccess();
     }
 
