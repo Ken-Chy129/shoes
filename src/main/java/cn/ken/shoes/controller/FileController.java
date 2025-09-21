@@ -1,7 +1,9 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.service.FileService;
+import cn.ken.shoes.service.StockXService;
 import jakarta.annotation.Resource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.InputStreamResource;
@@ -26,6 +28,9 @@ public class FileController {
     @Resource
     private FileService fileService;
 
+    @Resource
+    private StockXService stockXService;
+
     @GetMapping("sizeChart")
     public ResponseEntity<InputStreamResource> downloadSizeChart() throws IOException {
         FileSystemResource file = new FileSystemResource(CommonConfig.DOWNLOAD_PATH + CommonConfig.SIZE_CHART_NAME);
@@ -36,6 +41,27 @@ public class FileController {
         HttpHeaders headers = new HttpHeaders();
         headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
         headers.add("Content-Disposition", "attachment; filename=" + URLEncoder.encode(CommonConfig.SIZE_CHART_NAME, StandardCharsets.UTF_8));
+        headers.add("Pragma", "no-cache");
+        headers.add("Expires", "0");
+
+        return ResponseEntity
+                .ok()
+                .headers(headers)
+                .contentLength(file.contentLength())
+                .contentType(MediaType.parseMediaType("application/octet-stream"))
+                .body(new InputStreamResource(file.getInputStream()));
+    }
+
+    @GetMapping("downloadItemsForSearch")
+    public ResponseEntity<InputStreamResource> downloadItemsForSearch(String query) throws IOException {
+        stockXService.searchItems(query, StockXSortEnum.FEATURED.getCode(), 20);
+        FileSystemResource file = new FileSystemResource(STR."file/\{query}.xlsx");
+        if (file.exists()) {
+            return ResponseEntity.noContent().build();
+        }
+        HttpHeaders headers = new HttpHeaders();
+        headers.add("Cache-Control", "no-cache, no-store, must-revalidate");
+        headers.add("Content-Disposition", "attachment; filename=" + URLEncoder.encode(STR."file/\{query}.xlsx", StandardCharsets.UTF_8));
         headers.add("Pragma", "no-cache");
         headers.add("Expires", "0");
 

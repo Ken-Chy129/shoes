@@ -5,15 +5,21 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.model.entity.*;
+import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SqlHelper;
 import cn.ken.shoes.util.TimeUtil;
+import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
+import com.alibaba.excel.write.builder.ExcelWriterSheetBuilder;
+import com.alibaba.excel.write.metadata.WriteSheet;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -191,5 +197,31 @@ public class StockXService {
 
     private Integer getStockXPrice(StockXPriceDO stockXPriceDO) {
         return StockXSwitch.PRICE_TYPE.getPriceFunction().apply(stockXPriceDO);
+    }
+
+    public void searchItems(String query, String sort, Integer pageCount) {
+        Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort);
+        if (firstPair == null) {
+            return;
+        }
+        Integer totalPage = firstPair.getKey();
+        List<StockXPriceExcel> result = new ArrayList<>(firstPair.getValue());
+        for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
+            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort);
+            if (pair == null) {
+                log.error("searchItems no result, query:{}, page:{}", query, i);
+                continue;
+            }
+            result.addAll(pair.getValue());
+        }
+        for (StockXPriceExcel stockXPriceExcel : result) {
+            String modelNo = stockXPriceExcel.getModelNo();
+            String euSize = stockXPriceExcel.getEuSize();
+            stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+        }
+        try (ExcelWriter excelWriter = EasyExcel.write(STR."file/\{query}.xlsx").build()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet(0, query).head(StockXPriceExcel.class).build();
+            excelWriter.write(result, writeSheet);
+        }
     }
 }
