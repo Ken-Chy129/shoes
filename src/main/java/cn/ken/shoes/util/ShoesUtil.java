@@ -25,6 +25,9 @@ public class ShoesUtil {
     }
 
     public static String getEuSizeFromPoison(String rawSize) {
+        if (rawSize == null) {
+            return null;
+        }
         // 正则表达式匹配整数和小数
         Matcher matcher = POISON_EU_SIZE_PATTEN.matcher(rawSize);
 
