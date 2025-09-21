@@ -9,6 +9,7 @@ import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
+import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
@@ -26,6 +27,7 @@ import org.springframework.util.CollectionUtils;
 import java.nio.charset.Charset;
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 import static java.lang.StringTemplate.STR;
 
@@ -498,6 +500,69 @@ public class StockXClient {
         return result;
     }
 
+    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort) {
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort));
+        if (jsonObject == null) {
+            return null;
+        }
+        JSONObject results = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results");
+        JSONObject pageInfo = results.getJSONObject("pageInfo");
+        Integer pageCount = pageInfo.getInteger("pageCount");
+        if (pageCount == null) {
+            pageCount = (int) Math.ceil(pageInfo.getDouble("total") / pageInfo.getInteger("limit"));
+        }
+        List<JSONObject> itemList = results.getJSONArray("edges").toJavaList(JSONObject.class);
+        List<StockXPriceExcel> result = new ArrayList<>();
+        for (JSONObject item : itemList) {
+            JSONObject node = item.getJSONObject("node");
+            String title = node.getString("title");
+            String modelNo = node.getString("styleId");
+            String urlKey = node.getString("urlKey");
+            if (StrUtil.isBlank(modelNo)) {
+                log.info("缺少货号，urlKey:{}", urlKey);
+                continue;
+            }
+            JSONArray variants = node.getJSONArray("variants");
+            if (CollectionUtils.isEmpty(variants)) {
+                log.info("缺少尺码，urlKey:{}", urlKey);
+                continue;
+            }
+            for (JSONObject variant : variants.toJavaList(JSONObject.class)) {
+                StockXPriceExcel stockXPriceExcel = new StockXPriceExcel();
+                stockXPriceExcel.setTitle(title);
+                String variantId = variant.getString("id");
+                stockXPriceExcel.setId(variantId);
+                stockXPriceExcel.setUk(urlKey);
+                stockXPriceExcel.setModelNo(modelNo);
+                Map<String, String> sizeMap = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().collect(Collectors.toMap(option -> option.getString("type"), option -> option.getString("size")));
+                stockXPriceExcel.setEuSize(ShoesUtil.getEuSizeFromPoison(sizeMap.get("eu")));
+                stockXPriceExcel.setUsmSize(ShoesUtil.getEuSizeFromPoison(getUsSize(sizeMap)));
+                JSONObject state = variant.getJSONObject("market").getJSONObject("state");
+                JSONObject lowestAsk = state.getJSONObject("lowestAsk");
+                stockXPriceExcel.setPrice(Optional.ofNullable(lowestAsk).map(bid -> bid.getInteger("amount")).orElse(0));
+                JSONObject highestBid = state.getJSONObject("highestBid");
+                stockXPriceExcel.setPurchasePrice(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
+                Integer salesCount = variant.getJSONObject("market").getJSONObject("statistics").getJSONObject("last72Hours").getInteger("salesCount");
+                stockXPriceExcel.setLast72HoursSales(salesCount);
+                result.add(stockXPriceExcel);
+            }
+        }
+        return Pair.of(pageCount, result);
+    }
+
+    private String getUsSize(Map<String, String> sizeMap) {
+        String usSize;
+        usSize = ShoesUtil.getEuSizeFromPoison(sizeMap.get("us"));
+        if (StrUtil.isNotBlank(usSize)) {
+            return usSize;
+        }
+        usSize = ShoesUtil.getEuSizeFromPoison(sizeMap.get("us m"));
+        if (StrUtil.isNotBlank(usSize)) {
+            return usSize;
+        }
+        return ShoesUtil.getEuSizeFromPoison(sizeMap.get("us w"));
+    }
+
     public List<BrandDO> queryBrands() {
         JSONObject jsonObject = queryPro(buildBrandQueryRequest("nike", 1, 1));
         if (jsonObject == null) {
@@ -540,6 +605,117 @@ public class StockXClient {
         variables.put("skipGuidance", false);
         variables.put("page", Map.of("index", index, "limit", 50));
         variables.put("sort", Map.of("id", StockXSwitch.SORT_TYPE.getCode()));
+        requestJson.put("variables", variables);
+        return requestJson.toJSONString();
+    }
+
+    private String buildItemSearchRequest(String query, Integer index, String sort) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "getDiscoveryData");
+        requestJson.put("query", "query getDiscoveryData(\n" +
+                "  $filters: [BrowseFilterInput]\n" +
+                "  $flow: BrowseFlow\n" +
+                "  $query: String\n" +
+                "  $sort: BrowseSortInput\n" +
+                "  $page: BrowsePageInput\n" +
+                "  $enableOpenSearch: Boolean\n" +
+                "  $currency: CurrencyCode!\n" +
+                "  $country: String!\n" +
+                "  $market: String!\n" +
+                "  $skipFlexEligible: Boolean!\n" +
+                "  $skipGuidance: Boolean!\n" +
+                ") {\n" +
+                "  browse(\n" +
+                "    filters: $filters\n" +
+                "    flow: $flow\n" +
+                "    sort: $sort\n" +
+                "    page: $page\n" +
+                "    query: $query\n" +
+                "    experiments: {\n" +
+                "      ads: { enabled: true }\n" +
+                "      dynamicFilter: { enabled: true }\n" +
+                "      dynamicFilterDefinitions: { enabled: true }\n" +
+                "      multiselect: { enabled: true }\n" +
+                "      openSearch: { enabled: $enableOpenSearch }\n" +
+                "    }\n" +
+                "  ) {\n" +
+                "    results {\n" +
+                "      edges {\n" +
+                "        objectId\n" +
+                "        node {\n" +
+                "          ... on Product {\n" +
+                "            urlKey\n" +
+                "            title\n" +
+                "            brand\n" +
+                "            styleId\n" +
+                "            productCategory\n" +
+                "            variants {\n" +
+                "              id\n" +
+                "              isFlexEligible @skip(if: $skipFlexEligible)\n" +
+                "              sizeChart {\n" +
+                "                displayOptions {\n" +
+                "                  size\n" +
+                "                  type\n" +
+                "                }\n" +
+                "              }\n" +
+                "              market(currencyCode: $currency) {\n" +
+                "                state(country: $country, market: $market) {\n" +
+                "                  lowestAsk {\n" +
+                "                    amount\n" +
+                "                  }\n" +
+                "                  highestBid {\n" +
+                "                    amount\n" +
+                "                  }\n" +
+                "                }\n" +
+                "                statistics(market: $market) {\n" +
+                "                   last72Hours {\n" +
+                "                     salesCount\n" +
+                "                   }\n" +
+                "                }\n" +
+                "              }\n" +
+                "              pricingGuidance(\n" +
+                "                country: $country\n" +
+                "                market: $market\n" +
+                "                currencyCode: $currency\n" +
+                "              ) @skip(if: $skipGuidance) {\n" +
+                "                marketConsensusGuidance {\n" +
+                "                  standardSellerGuidance {\n" +
+                "                    sellFaster\n" +
+                "                    earnMore\n" +
+                "                  }\n" +
+                "                }\n" +
+                "              }\n" +
+                "            }\n" +
+                "          }\n" +
+                "        }\n" +
+                "      }\n" +
+                "      pageInfo {\n" +
+                "        limit\n" +
+                "        page\n" +
+                "        pageCount\n" +
+                "        total\n" +
+                "      }\n" +
+                "    }\n" +
+                "    sort {\n" +
+                "      id\n" +
+                "    }\n" +
+                "  }\n" +
+                "}");
+//        requestJson.put("query", "query getDiscoveryData($country: String!, $currency: CurrencyCode, $filters: [BrowseFilterInput], $flow: BrowseFlow, $market: String, $query: String, $sort: BrowseSortInput, $page: BrowsePageInput, $enableOpenSearch: Boolean) {\n  browse(\n    filters: $filters\n    flow: $flow\n    sort: $sort\n    page: $page\n    market: $market\n    query: $query\n   ) {\n    filtersConfig {\n    quick {\n        ...FiltersFragment\n      }\n    }\n    results {\n      edges {\n        isAd\n        adIdentifier\n        adServiceLevel\n        adInventoryId\n        objectId\n        node {\n          __typename\n          ... on Variant {\n            id\n            favorite\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            product {\n              id\n              name\n              urlKey\n              title\n              brand\n              gender\n              description\n              model\n              condition\n              productCategory\n              browseVerticals\n              listingType\n              media {\n                thumbUrl\n                smallImageUrl\n              }\n              traits(filterTypes: [RELEASE_DATE]) {\n                name\n                value\n              }\n            }\n            sizeChart {\n              baseSize\n              baseType\n              displayOptions {\n                size\n                type\n              }\n            }\n          }\n          ... on Product {\n            id\n            name\n            urlKey\n            title\n            brand\n            description\n            model\n            condition\n            productCategory\n            browseVerticals\n            listingType\n            favorite\n            media {\n              thumbUrl\n              smallImageUrl\n            }\n            traits(filterTypes: [RELEASE_DATE]) {\n              name\n              value\n            }\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            variants {\n              id\n            }\n          }\n        }\n      }\n      pageInfo {\n        limit\n        page\n        pageCount\n        queryId\n        queryIndex\n        total\n      }\n    }\n  }\n}");
+        JSONObject variables = new JSONObject();
+        variables.put("enableOpenSearch", false);
+        List<Filter> filters = new ArrayList<>();
+        filters.add(new Filter("category", List.of("shoes", "sneakers")));
+        variables.put("filters", filters);
+//        variables.put("flow", "CATEGORY");
+        variables.put("market", "HK");
+        variables.put("currency", "USD");
+        variables.put("country", "HK");
+        variables.put("skipFlexEligible", true);
+        variables.put("skipGuidance", false);
+        variables.put("page", Map.of("index", index, "limit", 40));
+        variables.put("sort", Map.of("id", sort));
+        variables.put("query", query);
         requestJson.put("variables", variables);
         return requestJson.toJSONString();
     }
@@ -687,7 +863,8 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "authorization", getAuthorization(),
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/60.0.3100.0 Safari/537.36",
+                "Connection", "close"
         );
     }
 
@@ -696,7 +873,8 @@ public class StockXClient {
                 "Content-Type", "application/json",
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) chrome/124.0.0.0 safari/537.36",
                 "sec-ch-ua", "\"Chromium\";v=\"124\",\"Google Chrome\";v=\"124\",\"Not-A.Brand\";v=\"99\"",
-                "apollographql-client-name", "Iron"
+                "apollographql-client-name", "Iron",
+                "Connection", "close"
         );
     }
 
@@ -704,13 +882,14 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "Authorization", getAuthorization(),
-                "x-api-key", apiKey
+                "x-api-key", apiKey,
+                "Connection", "close"
         );
     }
 
     private String getAuthorization() {
-        if (StockXConfig.CONFIG.getAccessToken() != null) {
-            return STR."Bearer \{StockXConfig.CONFIG.getAccessToken()}";
+        if (StrUtil.isNotBlank(StockXConfig.CONFIG.getAccessToken())) {
+            return StockXConfig.CONFIG.getAccessToken();
         }
         return authorization;
     }
