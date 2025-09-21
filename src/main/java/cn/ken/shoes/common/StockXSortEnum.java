@@ -6,17 +6,15 @@ import lombok.Getter;
 public enum StockXSortEnum {
 
     FEATURED("featured", "精选"),
-    MOST_ACTIVE("most-active", "最受欢迎"),
-    RECENT_ASKS("recent_asks", "新最低报价"),
-    RECENT_BIDS("recent_bids", "新最高出价"),
-    AVERAGE_PRICE("average_deadstock_price", "平均成交价"),
-    DEADSTOCK_SOLD("deadstock_sold", "总销量"),
-    VOLATILITY("volatility", "价格波动性"),
-    PRICE_PREMIUM("price_premium", "溢价"),
-    LAST_SALE("last_sale", "最新售价"),
-    LOWEST_ASK("lowest_ask", "最低报价"),
-    HIGHEST_BID("highest_bid", "最高出价"),
+    MOST_ACTIVE("most-active", "Top Selling"),
+    LOWEST_ASK("lowest_ask", "Price: Low to High"),
+    HIGHEST_BID("highest_bid", "出价: 从高到低"),
+    RECENT_BIDS("recent_bids", "Recent High Bids"),
+    RECENT_ASKS("recent_asks", "Recent Price Drops"),
+    DEADSTOCK_SOLD("deadstock_sold", "Total Sold: High to Low"),
     RELEASE_DATE("release_date", "发布日期"),
+    PRICE_PREMIUM("price_premium", "Price Premium: High to Low"),
+    LAST_SALE("last_sale", "Last Sale: High to Low"),
     ;
 
     private final String code;
