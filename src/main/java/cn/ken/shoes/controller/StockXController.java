@@ -48,8 +48,8 @@ public class StockXController {
     }
 
     @GetMapping("searchItems")
-    public Result<List<StockXPriceExcel>> searchItems(String query) {
-        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, 1, StockXSortEnum.DEADSTOCK_SOLD.getCode());
+    public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType) {
+        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType);
         if (pair == null) {
             return Result.buildError("no result");
         }

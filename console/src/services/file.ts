@@ -9,4 +9,8 @@ enum UPLOAD_API {
     UPLOAD = "/api/file/upload",
 }
 
-export {KC_DOWNLOAD_API, UPLOAD_API}
+enum STOCKX_DOWNLOAD_API {
+    SEARCH = '/api/file/downloadItemsForSearch',
+}
+
+export {KC_DOWNLOAD_API, UPLOAD_API, STOCKX_DOWNLOAD_API}
