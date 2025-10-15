@@ -53,10 +53,13 @@ public class FileController {
     }
 
     @GetMapping("downloadItemsForSearch")
-    public ResponseEntity<InputStreamResource> downloadItemsForSearch(String query) throws IOException {
-        stockXService.searchItems(query, StockXSortEnum.FEATURED.getCode(), 20);
+    public ResponseEntity<InputStreamResource> downloadItemsForSearch(String query, String sortType) throws IOException {
+        if (sortType == null) {
+            sortType = StockXSortEnum.FEATURED.getCode();
+        }
+        stockXService.searchItems(query, sortType, 20);
         FileSystemResource file = new FileSystemResource(STR."file/\{query}.xlsx");
-        if (file.exists()) {
+        if (!file.exists()) {
             return ResponseEntity.noContent().build();
         }
         HttpHeaders headers = new HttpHeaders();
