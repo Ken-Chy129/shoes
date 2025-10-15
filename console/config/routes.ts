@@ -67,6 +67,11 @@ export default [
         layout: true,
         component: "./stockx/order"
       },
+      {
+        path: '/stockx/search',
+        layout: true,
+        component: "./stockx/search"
+      },
     ]
   },
   {
