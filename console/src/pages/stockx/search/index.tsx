@@ -42,8 +42,9 @@ const BrandPage = () => {
 
     const downloadItems = () => {
         const query = conditionForm.getFieldValue("query");
-        doPostRequest(STOCKX_DOWNLOAD_API.SEARCH, {query, pageIndex, pageSize}, {
+        doGetRequest(STOCKX_DOWNLOAD_API.SEARCH, {query}, {
             onSuccess: res => {
+                message.success("导出成功")
             }
         })
     }
