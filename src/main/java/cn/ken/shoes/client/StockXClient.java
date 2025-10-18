@@ -500,8 +500,8 @@ public class StockXClient {
         return result;
     }
 
-    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort) {
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort));
+    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String category) {
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, category));
         if (jsonObject == null) {
             return null;
         }
@@ -609,7 +609,7 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildItemSearchRequest(String query, Integer index, String sort) {
+    private String buildItemSearchRequest(String query, Integer index, String sort, String category) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "getDiscoveryData");
         requestJson.put("query", "query getDiscoveryData(\n" +
@@ -705,7 +705,13 @@ public class StockXClient {
         JSONObject variables = new JSONObject();
         variables.put("enableOpenSearch", false);
         List<Filter> filters = new ArrayList<>();
-        filters.add(new Filter("category", List.of("shoes", "sneakers")));
+        // 根据category参数设置不同的filter值
+        if ("apparel".equals(category)) {
+            filters.add(new Filter("category", List.of("apparel")));
+        } else {
+            // 默认为shoes
+            filters.add(new Filter("category", List.of("shoes", "sneakers")));
+        }
         variables.put("filters", filters);
 //        variables.put("flow", "CATEGORY");
         variables.put("market", "HK");

@@ -29,6 +29,11 @@ public class SearchTaskDO extends BaseDO {
     private Integer pageCount;
 
     /**
+     * 商品类别: shoes-鞋类, apparel-服饰
+     */
+    private String category;
+
+    /**
      * 进度百分比 (0-100)
      */
     private Integer progress;
