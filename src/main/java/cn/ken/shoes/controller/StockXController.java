@@ -1,14 +1,19 @@
 package cn.ken.shoes.controller;
 
 import cn.hutool.core.lang.Pair;
+import cn.hutool.core.bean.BeanUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.config.CommonConfig;
+import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.entity.BrandDO;
+import cn.ken.shoes.model.entity.SearchTaskDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.stockx.SearchTaskRequest;
+import cn.ken.shoes.model.stockx.SearchTaskVO;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -36,6 +41,9 @@ public class StockXController {
 
     @Resource
     private StockXService stockXService;
+
+    @Resource
+    private SearchTaskMapper searchTaskMapper;
 
     @GetMapping("queryItems")
     public Result<List<StockXPriceDO>> queryItems(String brand) {
@@ -97,5 +105,49 @@ public class StockXController {
     public Result<Void> extendAllItems() {
         Thread.startVirtualThread(() -> stockXService.extendAllItems());
         return Result.buildSuccess();
+    }
+
+    /**
+     * 创建搜索任务
+     */
+    @PostMapping("searchTask")
+    public Result<Long> createSearchTask(SearchTaskRequest request) {
+        if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
+            return Result.buildError("参数不能为空");
+        }
+        Long taskId = stockXService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount());
+        return Result.buildSuccess(taskId);
+    }
+
+    /**
+     * 查询单个任务详情
+     */
+    @GetMapping("searchTask/{id}")
+    public Result<SearchTaskVO> getSearchTask(Long id) {
+        SearchTaskDO searchTask = searchTaskMapper.selectById(id);
+        if (searchTask == null) {
+            return Result.buildError("任务不存在");
+        }
+        SearchTaskVO vo = BeanUtil.copyProperties(searchTask, SearchTaskVO.class);
+        return Result.buildSuccess(vo);
+    }
+
+    /**
+     * 查询任务列表
+     */
+    @GetMapping("searchTasks")
+    public Result<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
+        if (pageIndex == null) {
+            pageIndex = 1;
+        }
+        if (pageSize == null) {
+            pageSize = 10;
+        }
+        int startIndex = (pageIndex - 1) * pageSize;
+
+        List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(status, startIndex, pageSize);
+        List<SearchTaskVO> voList = BeanUtil.copyToList(taskList, SearchTaskVO.class);
+
+        return Result.buildSuccess(voList);
     }
 }
