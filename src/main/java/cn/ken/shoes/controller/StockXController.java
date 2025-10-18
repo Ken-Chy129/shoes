@@ -110,7 +110,7 @@ public class StockXController {
     /**
      * 创建搜索任务
      */
-    @PostMapping("searchTask")
+    @PostMapping("createSearchTask")
     public Result<Long> createSearchTask(SearchTaskRequest request) {
         if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
             return Result.buildError("参数不能为空");
@@ -120,22 +120,9 @@ public class StockXController {
     }
 
     /**
-     * 查询单个任务详情
-     */
-    @GetMapping("searchTask/{id}")
-    public Result<SearchTaskVO> getSearchTask(Long id) {
-        SearchTaskDO searchTask = searchTaskMapper.selectById(id);
-        if (searchTask == null) {
-            return Result.buildError("任务不存在");
-        }
-        SearchTaskVO vo = BeanUtil.copyProperties(searchTask, SearchTaskVO.class);
-        return Result.buildSuccess(vo);
-    }
-
-    /**
      * 查询任务列表
      */
-    @GetMapping("searchTasks")
+    @GetMapping("getSearchTasks")
     public Result<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
         if (pageIndex == null) {
             pageIndex = 1;
