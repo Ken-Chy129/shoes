@@ -20,6 +20,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 
 @RestController
 @RequestMapping("file")
@@ -57,7 +58,7 @@ public class FileController {
         if (sortType == null) {
             sortType = StockXSortEnum.FEATURED.getCode();
         }
-        stockXService.searchItems(query, sortType, 20);
+        stockXService.downloadItems(query, List.of(sortType), 20);
         FileSystemResource file = new FileSystemResource(STR."file/\{query}.xlsx");
         if (!file.exists()) {
             return ResponseEntity.noContent().build();

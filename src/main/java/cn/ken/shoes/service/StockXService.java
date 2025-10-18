@@ -10,6 +10,7 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
+import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
@@ -44,6 +45,9 @@ public class StockXService {
 
     @Resource
     private StockXPriceMapper stockXPriceMapper;
+
+    @Resource
+    private SearchTaskMapper searchTaskMapper;
 
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.EXTEND_ORDER, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public void extendAllItems() {
@@ -199,29 +203,194 @@ public class StockXService {
         return StockXSwitch.PRICE_TYPE.getPriceFunction().apply(stockXPriceDO);
     }
 
-    public void searchItems(String query, String sort, Integer pageCount) {
-        Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort);
-        if (firstPair == null) {
-            return;
-        }
-        Integer totalPage = firstPair.getKey();
-        List<StockXPriceExcel> result = new ArrayList<>(firstPair.getValue());
-        for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
-            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort);
-            if (pair == null) {
-                log.error("searchItems no result, query:{}, page:{}", query, i);
+    public List<StockXPriceExcel> searchItems(String query, List<String> sorts, Integer pageCount) {
+        // 使用LinkedHashMap保证去重后保持顺序，key为 modelNo:euSize
+        Map<String, StockXPriceExcel> resultMap = new LinkedHashMap<>();
+
+        for (String sort : sorts) {
+            Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort);
+            if (firstPair == null) {
+                log.error("searchItems no result, query:{}, sort:{}, page:{}", query, sort, 1);
                 continue;
             }
-            result.addAll(pair.getValue());
+            Integer totalPage = firstPair.getKey();
+
+            // 处理第一页数据
+            for (StockXPriceExcel stockXPriceExcel : firstPair.getValue()) {
+                String modelNo = stockXPriceExcel.getModelNo();
+                String euSize = stockXPriceExcel.getEuSize();
+                String key = STR."\{modelNo}:\{euSize}";
+
+                // 按货号+EU码去重，如果key已存在则跳过
+                if (!resultMap.containsKey(key)) {
+                    stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+                    resultMap.put(key, stockXPriceExcel);
+                }
+            }
+
+            // 处理后续页
+            for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
+                Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort);
+                if (pair == null) {
+                    log.error("searchItems no result, query:{}, sort:{}, page:{}", query, sort, i);
+                    continue;
+                }
+                for (StockXPriceExcel stockXPriceExcel : pair.getValue()) {
+                    String modelNo = stockXPriceExcel.getModelNo();
+                    String euSize = stockXPriceExcel.getEuSize();
+                    String key = STR."\{modelNo}:\{euSize}";
+
+                    // 按货号+EU码去重
+                    if (!resultMap.containsKey(key)) {
+                        stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+                        resultMap.put(key, stockXPriceExcel);
+                    }
+                }
+            }
         }
-        for (StockXPriceExcel stockXPriceExcel : result) {
-            String modelNo = stockXPriceExcel.getModelNo();
-            String euSize = stockXPriceExcel.getEuSize();
-            stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+
+        return new ArrayList<>(resultMap.values());
+    }
+
+    public void saveItemsToExcel(String filename, List<StockXPriceExcel> items) {
+        try (ExcelWriter excelWriter = EasyExcel.write(STR."file/\{filename}.xlsx").build()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet(0, filename).head(StockXPriceExcel.class).build();
+            excelWriter.write(items, writeSheet);
         }
-        try (ExcelWriter excelWriter = EasyExcel.write(STR."file/\{query}.xlsx").build()) {
-            WriteSheet writeSheet = EasyExcel.writerSheet(0, query).head(StockXPriceExcel.class).build();
-            excelWriter.write(result, writeSheet);
+    }
+
+    public void downloadItems(String query, List<String> sorts, Integer pageCount) {
+        List<StockXPriceExcel> stockXPriceExcels = searchItems(query, sorts, pageCount);
+        saveItemsToExcel(query, stockXPriceExcels);
+    }
+
+    /**
+     * 创建搜索任务
+     */
+    public Long createSearchTask(String query, String sorts, Integer pageCount) {
+        // 创建任务记录
+        SearchTaskDO searchTask = new SearchTaskDO();
+        searchTask.setQuery(query);
+        searchTask.setSorts(sorts);
+        searchTask.setPageCount(pageCount);
+        searchTask.setProgress(0);
+        searchTask.setStatus(SearchTaskDO.StatusEnum.PENDING.getCode());
+
+        // 保存到数据库
+        searchTaskMapper.insert(searchTask);
+        Long taskId = searchTask.getId();
+
+        // 异步执行搜索任务
+        Thread.startVirtualThread(() -> executeSearchTask(taskId));
+
+        return taskId;
+    }
+
+    /**
+     * 异步执行搜索任务
+     */
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.SEARCH_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
+    public void executeSearchTask(Long taskId) {
+        SearchTaskDO searchTask = searchTaskMapper.selectById(taskId);
+        if (searchTask == null) {
+            log.error("executeSearchTask task not found, taskId:{}", taskId);
+            return;
+        }
+
+        try {
+            // 更新任务状态为RUNNING
+            searchTaskMapper.updateStartStatus(taskId, SearchTaskDO.StatusEnum.RUNNING.getCode(), new Date());
+
+            String query = searchTask.getQuery();
+            String sortsStr = searchTask.getSorts();
+            Integer pageCount = searchTask.getPageCount();
+
+            // 分割sorts字符串为列表
+            List<String> sortsList = Arrays.asList(sortsStr.split(","));
+
+            // 使用LinkedHashMap保证去重后保持顺序
+            Map<String, StockXPriceExcel> resultMap = new LinkedHashMap<>();
+
+            // 计算总的查询次数用于进度计算
+            int totalQueries = sortsList.size() * pageCount;
+            int completedQueries = 0;
+
+            // 遍历每个sort进行查询
+            for (String sort : sortsList) {
+                Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort.trim());
+                if (firstPair == null) {
+                    log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, 1);
+                    completedQueries++;
+                    int progress = (int) ((completedQueries * 100.0) / totalQueries);
+                    searchTaskMapper.updateProgress(taskId, progress);
+                    continue;
+                }
+
+                Integer totalPage = firstPair.getKey();
+
+                // 处理第一页数据
+                for (StockXPriceExcel stockXPriceExcel : firstPair.getValue()) {
+                    String modelNo = stockXPriceExcel.getModelNo();
+                    String euSize = stockXPriceExcel.getEuSize();
+                    String key = STR."\{modelNo}:\{euSize}";
+
+                    if (!resultMap.containsKey(key)) {
+                        stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+                        resultMap.put(key, stockXPriceExcel);
+                    }
+                }
+
+                // 更新进度
+                completedQueries++;
+                int progress = (int) ((completedQueries * 100.0) / totalQueries);
+                searchTaskMapper.updateProgress(taskId, progress);
+
+                // 处理后续页
+                for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
+                    Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort.trim());
+                    if (pair == null) {
+                        log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
+                        completedQueries++;
+                        progress = (int) ((completedQueries * 100.0) / totalQueries);
+                        searchTaskMapper.updateProgress(taskId, progress);
+                        continue;
+                    }
+
+                    for (StockXPriceExcel stockXPriceExcel : pair.getValue()) {
+                        String modelNo = stockXPriceExcel.getModelNo();
+                        String euSize = stockXPriceExcel.getEuSize();
+                        String key = STR."\{modelNo}:\{euSize}";
+
+                        if (!resultMap.containsKey(key)) {
+                            stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
+                            resultMap.put(key, stockXPriceExcel);
+                        }
+                    }
+
+                    // 更新进度
+                    completedQueries++;
+                    progress = (int) ((completedQueries * 100.0) / totalQueries);
+                    searchTaskMapper.updateProgress(taskId, progress);
+                }
+            }
+
+            // 生成文件名（使用时间戳避免重复）
+            String timestamp = String.valueOf(System.currentTimeMillis());
+            String filename = STR."\{query}_\{timestamp}";
+            String filePath = STR."file/\{filename}.xlsx";
+
+            // 保存到Excel
+            List<StockXPriceExcel> resultList = new ArrayList<>(resultMap.values());
+            saveItemsToExcel(filename, resultList);
+
+            // 更新任务状态为SUCCESS
+            searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
+            log.info("executeSearchTask success, taskId:{}, query:{}, resultCount:{}", taskId, query, resultList.size());
+
+        } catch (Exception e) {
+            log.error("executeSearchTask error, taskId:{}, msg:{}", taskId, e.getMessage(), e);
+            // 更新任务状态为FAILED
+            searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.FAILED.getCode(), new Date(), null);
         }
     }
 }
