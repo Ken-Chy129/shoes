@@ -57,7 +57,7 @@ public class FileController {
                 .body(new InputStreamResource(file.getInputStream()));
     }
 
-    @GetMapping("downloadItemsForSearch")
+    @GetMapping("downloadSearchResult")
     public ResponseEntity<InputStreamResource> downloadSearchResult(Long searchTaskId) throws IOException {
         // 根据searchTaskId找到文件路径进行下载
         SearchTaskDO searchTask = searchTaskMapper.selectById(searchTaskId);

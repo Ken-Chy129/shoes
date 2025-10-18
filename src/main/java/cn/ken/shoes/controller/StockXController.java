@@ -4,32 +4,18 @@ import cn.hutool.core.lang.Pair;
 import cn.hutool.core.bean.BeanUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
-import cn.ken.shoes.common.StockXSortEnum;
-import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.SearchTaskDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
-import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.SearchTaskRequest;
 import cn.ken.shoes.model.stockx.SearchTaskVO;
 import cn.ken.shoes.service.StockXService;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
-import org.springframework.core.io.FileSystemResource;
-import org.springframework.core.io.InputStreamResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @RestController
@@ -111,7 +97,7 @@ public class StockXController {
      * 创建搜索任务
      */
     @PostMapping("createSearchTask")
-    public Result<Long> createSearchTask(SearchTaskRequest request) {
+    public Result<Long> createSearchTask(@RequestBody SearchTaskRequest request) {
         if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
             return Result.buildError("参数不能为空");
         }
