@@ -10,7 +10,7 @@ enum UPLOAD_API {
 }
 
 enum STOCKX_DOWNLOAD_API {
-    SEARCH = '/api/file/downloadItemsForSearch',
+    SEARCH = '/api/file/downloadItemsForSearch',  // 参数: searchTaskId
 }
 
 export {KC_DOWNLOAD_API, UPLOAD_API, STOCKX_DOWNLOAD_API}
