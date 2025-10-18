@@ -21,7 +21,7 @@ public class SearchTaskRequest {
     private Integer pageCount;
 
     /**
-     * 商品类别: shoes-鞋类, apparel-服饰
+     * 搜索类型类别: shoes-鞋类, clothes-服饰
      */
-    private String category;
+    private String searchType;
 }

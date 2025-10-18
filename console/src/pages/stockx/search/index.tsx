@@ -24,7 +24,7 @@ interface SearchTask {
     query: string;
     sorts: string;
     pageCount: number;
-    category: string;
+    searchType: string;
     progress: number;
     status: string;
     filePath: string;
@@ -94,10 +94,10 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {query, sorts, pageCount, category} = values;
+            const {query, sorts, pageCount, searchType} = values;
             const sortsStr = sorts.join(',');
 
-            doPostRequest(SEARCH_TASK_API.CREATE, {query, sorts: sortsStr, pageCount, category}, {
+            doPostRequest(SEARCH_TASK_API.CREATE, {query, sorts: sortsStr, pageCount, searchType}, {
                 onSuccess: res => {
                     message.success(`创建成功`);
                     handleCreateModalClose();
@@ -147,12 +147,12 @@ const SearchPage = () => {
         {label: 'Last Sale: High to Low', value: 'last_sale'},
     ];
 
-    const getCategoryText = (category: string) => {
-        const categoryMap: Record<string, string> = {
-            shoes: '\u978b\u7c7b',
-            apparel: '\u670d\u9970',
+    const getSearchTypeText = (category: string) => {
+        const searchTypeMap: Record<string, string> = {
+            shoes: '鞋类',
+            clothes: '服饰',
         };
-        return categoryMap[category] || category;
+        return searchTypeMap[category] || category;
     }
 
     const columns = [
@@ -169,11 +169,11 @@ const SearchPage = () => {
             width: '10%',
         },
         {
-            title: '\u7c7b\u522b',
-            dataIndex: 'category',
-            key: 'category',
+            title: '搜索类型',
+            dataIndex: 'searchType',
+            key: 'searchType',
             width: '6%',
-            render: (category: string) => getCategoryText(category)
+            render: (searchType: string) => getSearchTypeText(searchType)
         },
         {
             title: '排序规则',
@@ -350,16 +350,16 @@ const SearchPage = () => {
                     <Input />
                 </Form.Item>
                 <Form.Item
-                    name="category"
-                    label="\u5546\u54c1\u7c7b\u522b"
-                    rules={[{required: true, message: '\u8bf7\u9009\u62e9\u5546\u54c1\u7c7b\u522b'}]}
+                    name="searchType"
+                    label="搜索类型"
+                    rules={[{required: true}]}
                     initialValue="shoes"
                 >
                     <Select
-                        placeholder="\u8bf7\u9009\u62e9\u5546\u54c1\u7c7b\u522b"
+                        placeholder="请选择搜索类型"
                         options={[
-                            {label: '\u978b\u7c7b', value: 'shoes'},
-                            {label: '\u670d\u9970', value: 'apparel'},
+                            {label: '鞋类', value: 'shoes'},
+                            {label: '服饰', value: 'clothes'},
                         ]}
                     />
                 </Form.Item>

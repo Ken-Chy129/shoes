@@ -3,6 +3,7 @@ package cn.ken.shoes.client;
 import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
+import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.model.entity.BrandDO;
@@ -82,9 +83,9 @@ public class StockXClient {
             for (JSONObject sizeObject : sizeList) {
                 String size = sizeObject.getString("size");
                 if (size.contains("US")) {
-                    stockXOrderExcel.setUsSize(ShoesUtil.getEuSizeFromPoison(size));
+                    stockXOrderExcel.setUsSize(ShoesUtil.getShoesSizeFrom(size));
                 } else if (size.contains("EU")) {
-                    stockXOrderExcel.setEuSize(ShoesUtil.getEuSizeFromPoison(size));
+                    stockXOrderExcel.setEuSize(ShoesUtil.getShoesSizeFrom(size));
                 }
             }
             orders.add(stockXOrderExcel);
@@ -183,7 +184,7 @@ public class StockXClient {
                     .stream()
                     .filter(option -> option.getString("size").startsWith("EU"))
                     .findFirst()
-                    .ifPresent(euOption -> item.put("euSize", ShoesUtil.getEuSizeFromPoison(euOption.getString("size"))));
+                    .ifPresent(euOption -> item.put("euSize", ShoesUtil.getShoesSizeFrom(euOption.getString("size"))));
             items.add(item);
         }
         return result;
@@ -231,7 +232,7 @@ public class StockXClient {
                 log.error("queryPrice.euOption is null, productId:{}, variantId:{}, variant:{}", productId, variantId, variant);
                 continue;
             }
-            stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+            stockXPriceDO.setEuSize(ShoesUtil.getShoesSizeFrom(euOption.getString("size")));
             JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
             stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
             JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
@@ -297,7 +298,7 @@ public class StockXClient {
                 if (!type.equals("eu")) {
                     continue;
                 }
-                euSize = ShoesUtil.getEuSizeFromPoison(json.getString("size"));
+                euSize = ShoesUtil.getShoesSizeFrom(json.getString("size"));
                 break;
             }
             stockXPrice.setProductId(productId);
@@ -442,7 +443,7 @@ public class StockXClient {
                     log.error("queryPrice.euOption is null, productId:{}, variantId:{}, variant:{}", productId, variantId, variant);
                     continue;
                 }
-                stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+                stockXPriceDO.setEuSize(ShoesUtil.getShoesSizeFrom(euOption.getString("size")));
                 JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
                 stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
                 JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
@@ -487,7 +488,7 @@ public class StockXClient {
                     log.error("queryPrice.euOption is null, productId:{}, variantId:{}, variant:{}", productId, variantId, variant);
                     continue;
                 }
-                stockXPriceDO.setEuSize(ShoesUtil.getEuSizeFromPoison(euOption.getString("size")));
+                stockXPriceDO.setEuSize(ShoesUtil.getShoesSizeFrom(euOption.getString("size")));
                 JSONObject highestBid = variant.getJSONObject("market").getJSONObject("state").getJSONObject("highestBid");
                 stockXPriceDO.setSellNowAmount(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
                 JSONObject guidance = variant.getJSONObject("pricingGuidance").getJSONObject("marketConsensusGuidance").getJSONObject("standardSellerGuidance");
@@ -500,8 +501,12 @@ public class StockXClient {
         return result;
     }
 
-    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String category) {
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, category));
+    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType) {
+        SearchTypeEnum searchTypeEnum = SearchTypeEnum.from(searchType);
+        if (searchTypeEnum == null) {
+            return null;
+        }
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, searchTypeEnum));
         if (jsonObject == null) {
             return null;
         }
@@ -535,8 +540,8 @@ public class StockXClient {
                 stockXPriceExcel.setUk(urlKey);
                 stockXPriceExcel.setModelNo(modelNo);
                 Map<String, String> sizeMap = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().collect(Collectors.toMap(option -> option.getString("type"), option -> option.getString("size")));
-                stockXPriceExcel.setEuSize(ShoesUtil.getEuSizeFromPoison(sizeMap.get("eu")));
-                stockXPriceExcel.setUsmSize(ShoesUtil.getEuSizeFromPoison(getUsSize(sizeMap)));
+                stockXPriceExcel.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
+                stockXPriceExcel.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
                 JSONObject state = variant.getJSONObject("market").getJSONObject("state");
                 JSONObject lowestAsk = state.getJSONObject("lowestAsk");
                 stockXPriceExcel.setPrice(Optional.ofNullable(lowestAsk).map(bid -> bid.getInteger("amount")).orElse(0));
@@ -550,17 +555,34 @@ public class StockXClient {
         return Pair.of(pageCount, result);
     }
 
-    private String getUsSize(Map<String, String> sizeMap) {
+    private String getUsSize(SearchTypeEnum searchTypeEnum, Map<String, String> sizeMap) {
+        return searchTypeEnum == SearchTypeEnum.SHOES ? getUsShoesSize(sizeMap) : getUsClothesSize(sizeMap);
+    }
+
+    private String getUsShoesSize(Map<String, String> sizeMap) {
         String usSize;
-        usSize = ShoesUtil.getEuSizeFromPoison(sizeMap.get("us"));
+        usSize = ShoesUtil.getShoesSizeFrom(sizeMap.get("us"));
         if (StrUtil.isNotBlank(usSize)) {
             return usSize;
         }
-        usSize = ShoesUtil.getEuSizeFromPoison(sizeMap.get("us m"));
+        usSize = ShoesUtil.getShoesSizeFrom(sizeMap.get("us m"));
         if (StrUtil.isNotBlank(usSize)) {
             return usSize;
         }
-        return ShoesUtil.getEuSizeFromPoison(sizeMap.get("us w"));
+        return ShoesUtil.getShoesSizeFrom(sizeMap.get("us w"));
+    }
+
+    private String getUsClothesSize(Map<String, String> sizeMap) {
+        String usSize;
+        usSize = ShoesUtil.getClothesSize(sizeMap.get("us"));
+        if (StrUtil.isNotBlank(usSize)) {
+            return usSize;
+        }
+        usSize = ShoesUtil.getClothesSize(sizeMap.get("us m"));
+        if (StrUtil.isNotBlank(usSize)) {
+            return usSize;
+        }
+        return ShoesUtil.getClothesSize(sizeMap.get("us w"));
     }
 
     public List<BrandDO> queryBrands() {
@@ -609,7 +631,7 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildItemSearchRequest(String query, Integer index, String sort, String category) {
+    private String buildItemSearchRequest(String query, Integer index, String sort, SearchTypeEnum searchTypeEnum) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "getDiscoveryData");
         requestJson.put("query", "query getDiscoveryData(\n" +
@@ -706,12 +728,7 @@ public class StockXClient {
         variables.put("enableOpenSearch", false);
         List<Filter> filters = new ArrayList<>();
         // 根据category参数设置不同的filter值
-        if ("apparel".equals(category)) {
-            filters.add(new Filter("category", List.of("apparel")));
-        } else {
-            // 默认为shoes
-            filters.add(new Filter("category", List.of("shoes", "sneakers")));
-        }
+        filters.add(new Filter("category", searchTypeEnum.getCategories()));
         variables.put("filters", filters);
 //        variables.put("flow", "CATEGORY");
         variables.put("market", "HK");

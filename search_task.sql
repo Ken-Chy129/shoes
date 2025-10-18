@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS `search_task` (
     `query` VARCHAR(255) NOT NULL COMMENT '搜索关键词',
     `sorts` VARCHAR(500) NOT NULL COMMENT '排序规则，逗号分隔',
     `page_count` INT(11) NOT NULL COMMENT '每个sort查询的页数',
-    `category` VARCHAR(20) NOT NULL DEFAULT 'shoes' COMMENT '商品类别：shoes-鞋类, apparel-服饰',
+    `search_type` VARCHAR(20) NOT NULL DEFAULT 'shoes' COMMENT '商品类别：shoes-鞋类, apparel-服饰',
     `progress` INT(11) NOT NULL DEFAULT 0 COMMENT '进度百分比(0-100)',
     `status` VARCHAR(20) NOT NULL COMMENT '任务状态：pending/running/success/failed',
     `file_path` VARCHAR(500) DEFAULT NULL COMMENT '生成的文件路径',
@@ -15,6 +15,6 @@ CREATE TABLE IF NOT EXISTS `search_task` (
     `version` INT(11) DEFAULT 0 COMMENT '版本号',
     PRIMARY KEY (`id`),
     INDEX `idx_status` (`status`),
-    INDEX `idx_category` (`category`),
+    INDEX `idx_search_type` (`search_type`),
     INDEX `idx_gmt_create` (`gmt_create`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='StockX搜索任务表';

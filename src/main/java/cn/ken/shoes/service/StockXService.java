@@ -213,13 +213,13 @@ public class StockXService {
     /**
      * 创建搜索任务
      */
-    public Long createSearchTask(String query, String sorts, Integer pageCount, String category) {
+    public Long createSearchTask(String query, String sorts, Integer pageCount, String searchType) {
         // 创建任务记录
         SearchTaskDO searchTask = new SearchTaskDO();
         searchTask.setQuery(query);
         searchTask.setSorts(sorts);
         searchTask.setPageCount(pageCount);
-        searchTask.setCategory(category != null ? category : "shoes"); // 默认为shoes
+        searchTask.setSearchType(searchType);
         searchTask.setProgress(0);
         searchTask.setStatus(SearchTaskDO.StatusEnum.PENDING.getCode());
 
@@ -250,10 +250,7 @@ public class StockXService {
             String query = searchTask.getQuery();
             String sortsStr = searchTask.getSorts();
             Integer pageCount = searchTask.getPageCount();
-            String category = searchTask.getCategory();
-            if (category == null || category.isEmpty()) {
-                category = "shoes"; // 默认为shoes
-            }
+            String searchType = searchTask.getSearchType();
 
             // 分割sorts字符串为列表
             List<String> sortsList = Arrays.asList(sortsStr.split(","));
@@ -267,7 +264,7 @@ public class StockXService {
 
             // 遍历每个sort进行查询
             for (String sort : sortsList) {
-                Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort.trim(), category);
+                Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort.trim(), searchType);
                 if (firstPair == null) {
                     log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, 1);
                     completedQueries++;
@@ -297,7 +294,7 @@ public class StockXService {
 
                 // 处理后续页
                 for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
-                    Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort.trim(), category);
+                    Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort.trim(), searchType);
                     if (pair == null) {
                         log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
                         completedQueries++;

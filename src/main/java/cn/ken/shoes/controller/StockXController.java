@@ -4,6 +4,7 @@ import cn.hutool.core.lang.Pair;
 import cn.hutool.core.bean.BeanUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.SearchTaskDO;
@@ -42,8 +43,8 @@ public class StockXController {
     }
 
     @GetMapping("searchItems")
-    public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType) {
-        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType);
+    public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType, String searchType) {
+        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType, searchType);
         if (pair == null) {
             return Result.buildError("no result");
         }
@@ -101,7 +102,10 @@ public class StockXController {
         if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
             return Result.buildError("参数不能为空");
         }
-        Long taskId = stockXService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount(), request.getCategory());
+        if (SearchTypeEnum.from(request.getSearchType()) == null) {
+            return Result.buildError("搜索类型不存在");
+        }
+        Long taskId = stockXService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount(), request.getSearchType());
         return Result.buildSuccess(taskId);
     }
 
