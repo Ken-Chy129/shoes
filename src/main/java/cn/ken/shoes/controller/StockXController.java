@@ -115,7 +115,7 @@ public class StockXController {
         if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
             return Result.buildError("参数不能为空");
         }
-        Long taskId = stockXService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount());
+        Long taskId = stockXService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount(), request.getCategory());
         return Result.buildSuccess(taskId);
     }
 

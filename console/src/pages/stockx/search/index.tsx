@@ -24,6 +24,7 @@ interface SearchTask {
     query: string;
     sorts: string;
     pageCount: number;
+    category: string;
     progress: number;
     status: string;
     filePath: string;
@@ -93,10 +94,10 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {query, sorts, pageCount} = values;
+            const {query, sorts, pageCount, category} = values;
             const sortsStr = sorts.join(',');
 
-            doPostRequest(SEARCH_TASK_API.CREATE, {query, sorts: sortsStr, pageCount}, {
+            doPostRequest(SEARCH_TASK_API.CREATE, {query, sorts: sortsStr, pageCount, category}, {
                 onSuccess: res => {
                     message.success(`\u4efb\u52a1\u521b\u5efa\u6210\u529f\uff0c\u4efb\u52a1ID: ${res.data}`);
                     handleCreateModalClose();
@@ -146,6 +147,14 @@ const SearchPage = () => {
         {label: 'Last Sale: High to Low', value: 'last_sale'},
     ];
 
+    const getCategoryText = (category: string) => {
+        const categoryMap: Record<string, string> = {
+            shoes: '\u978b\u7c7b',
+            apparel: '\u670d\u9970',
+        };
+        return categoryMap[category] || category;
+    }
+
     const columns = [
         {
             title: 'ID',
@@ -158,6 +167,13 @@ const SearchPage = () => {
             dataIndex: 'query',
             key: 'query',
             width: '10%',
+        },
+        {
+            title: '\u7c7b\u522b',
+            dataIndex: 'category',
+            key: 'category',
+            width: '6%',
+            render: (category: string) => getCategoryText(category)
         },
         {
             title: '\u6392\u5e8f\u89c4\u5219',
@@ -353,6 +369,20 @@ const SearchPage = () => {
                     rules={[{required: true, message: '\u8bf7\u8f93\u5165\u641c\u7d22\u5173\u952e\u8bcd'}]}
                 >
                     <Input placeholder="\u8bf7\u8f93\u5165\u641c\u7d22\u5173\u952e\u8bcd\uff0c\u5982: Jordan" />
+                </Form.Item>
+                <Form.Item
+                    name="category"
+                    label="\u5546\u54c1\u7c7b\u522b"
+                    rules={[{required: true, message: '\u8bf7\u9009\u62e9\u5546\u54c1\u7c7b\u522b'}]}
+                    initialValue="shoes"
+                >
+                    <Select
+                        placeholder="\u8bf7\u9009\u62e9\u5546\u54c1\u7c7b\u522b"
+                        options={[
+                            {label: '\u978b\u7c7b', value: 'shoes'},
+                            {label: '\u670d\u9970', value: 'apparel'},
+                        ]}
+                    />
                 </Form.Item>
                 <Form.Item
                     name="sorts"

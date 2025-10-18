@@ -19,4 +19,9 @@ public class SearchTaskRequest {
      * 每个sort查询的页数
      */
     private Integer pageCount;
+
+    /**
+     * 商品类别: shoes-鞋类, apparel-服饰
+     */
+    private String category;
 }
