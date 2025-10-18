@@ -203,65 +203,11 @@ public class StockXService {
         return StockXSwitch.PRICE_TYPE.getPriceFunction().apply(stockXPriceDO);
     }
 
-    public List<StockXPriceExcel> searchItems(String query, List<String> sorts, Integer pageCount) {
-        // 使用LinkedHashMap保证去重后保持顺序，key为 modelNo:euSize
-        Map<String, StockXPriceExcel> resultMap = new LinkedHashMap<>();
-
-        for (String sort : sorts) {
-            Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort);
-            if (firstPair == null) {
-                log.error("searchItems no result, query:{}, sort:{}, page:{}", query, sort, 1);
-                continue;
-            }
-            Integer totalPage = firstPair.getKey();
-
-            // 处理第一页数据
-            for (StockXPriceExcel stockXPriceExcel : firstPair.getValue()) {
-                String modelNo = stockXPriceExcel.getModelNo();
-                String euSize = stockXPriceExcel.getEuSize();
-                String key = STR."\{modelNo}:\{euSize}";
-
-                // 按货号+EU码去重，如果key已存在则跳过
-                if (!resultMap.containsKey(key)) {
-                    stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
-                    resultMap.put(key, stockXPriceExcel);
-                }
-            }
-
-            // 处理后续页
-            for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
-                Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort);
-                if (pair == null) {
-                    log.error("searchItems no result, query:{}, sort:{}, page:{}", query, sort, i);
-                    continue;
-                }
-                for (StockXPriceExcel stockXPriceExcel : pair.getValue()) {
-                    String modelNo = stockXPriceExcel.getModelNo();
-                    String euSize = stockXPriceExcel.getEuSize();
-                    String key = STR."\{modelNo}:\{euSize}";
-
-                    // 按货号+EU码去重
-                    if (!resultMap.containsKey(key)) {
-                        stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
-                        resultMap.put(key, stockXPriceExcel);
-                    }
-                }
-            }
-        }
-
-        return new ArrayList<>(resultMap.values());
-    }
-
     public void saveItemsToExcel(String filename, List<StockXPriceExcel> items) {
         try (ExcelWriter excelWriter = EasyExcel.write(STR."file/\{filename}.xlsx").build()) {
             WriteSheet writeSheet = EasyExcel.writerSheet(0, filename).head(StockXPriceExcel.class).build();
             excelWriter.write(items, writeSheet);
         }
-    }
-
-    public void downloadItems(String query, List<String> sorts, Integer pageCount) {
-        List<StockXPriceExcel> stockXPriceExcels = searchItems(query, sorts, pageCount);
-        saveItemsToExcel(query, stockXPriceExcels);
     }
 
     /**
@@ -289,7 +235,6 @@ public class StockXService {
     /**
      * 异步执行搜索任务
      */
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.SEARCH_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public void executeSearchTask(Long taskId) {
         SearchTaskDO searchTask = searchTaskMapper.selectById(taskId);
         if (searchTask == null) {
