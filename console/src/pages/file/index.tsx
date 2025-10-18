@@ -6,12 +6,13 @@ import {
 } from "antd";
 import React, {useEffect, useState} from "react";
 import {DownloadOutlined, UploadOutlined} from "@ant-design/icons";
-import {doPostRequest, doUploadRequest} from "@/util/http";
-import {UPLOAD_API} from "@/services/file";
+import {doGetRequest, doPostRequest, doUploadRequest} from "@/util/http";
+import {STOCKX_DOWNLOAD_API, UPLOAD_API} from "@/services/file";
 
 const SettingPage = () => {
     const [fileUpload] = Form.useForm();
     const [fileDownload] = Form.useForm();
+    const [stockxDownload] = Form.useForm();
 
     useEffect(() => {
 
@@ -20,6 +21,12 @@ const SettingPage = () => {
 
     const downloadOrders = () => {
         window.open('http://localhost:8080/order/kc/excel');
+    }
+
+    const downloadStockXItems = () => {
+        const query = stockxDownload.getFieldValue("query");
+        const sortType = stockxDownload.getFieldValue("sortType");
+        window.open('http://localhost:8080/file/downloadItemsForSearch?query=' + query + '&sortType=' + sortType)
     }
 
     return <>
@@ -83,6 +90,44 @@ const SettingPage = () => {
                     </Form.Item>
                     <Form.Item name="minProfit" style={{marginLeft: 50}}>
                         <Button icon={<DownloadOutlined/>} onClick={downloadOrders}>
+                            订单导出
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
+        </Card>
+        <Card title={"绿叉导出"}>
+            <Form form={stockxDownload}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="query" label="关键词搜索">
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item name="sortType" label="排序" style={{marginLeft: 20}}>
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择字段"
+                            allowClear
+                            optionFilterProp="label"
+                            defaultValue={'featured'}
+                            options={
+                                [
+                                    {label: '精选', value: 'featured'},
+                                    {label: 'Top Selling', value: 'most-active'},
+                                    {label: 'Price: Low to High', value: 'lowest_ask'},
+                                    {label: '出价: 从高到低', value: 'highest_bid'},
+                                    {label: 'Recent High Bids', value: 'recent_bids'},
+                                    {label: 'Recent Price Drops', value: 'recent_asks'},
+                                    {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
+                                    {label: '发布日期', value: 'release_date'},
+                                    {label: 'Price Premium: High to Low', value: 'price_premium'},
+                                    {label: 'Last Sale: High to Low', value: 'last_sale'},
+                                ]
+                            }
+                        />
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button icon={<DownloadOutlined/>} onClick={downloadStockXItems}>
                             订单导出
                         </Button>
                     </Form.Item>
