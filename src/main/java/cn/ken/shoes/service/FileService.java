@@ -76,7 +76,7 @@ public class FileService {
                 List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectPage(startIndex, pageSize);
                 List<PoisonPriceDO> toInsert = new ArrayList<>();
                 for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
-                    String size = ShoesUtil.getEuSizeFromPoison(poisonPriceDO.getEuSize());
+                    String size = ShoesUtil.getShoesSizeFrom(poisonPriceDO.getEuSize());
                     if (size == null) {
                         continue;
                     }
@@ -91,7 +91,7 @@ public class FileService {
     }
 
     public static void main(String[] args) {
-        System.out.println(ShoesUtil.getEuSizeFromPoison("D宽"));
+        System.out.println(ShoesUtil.getShoesSizeFrom("D宽"));
     }
 
     public List<String> getModelNoFromFile(String filename) {

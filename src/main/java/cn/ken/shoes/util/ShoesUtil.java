@@ -11,7 +11,9 @@ public class ShoesUtil {
 
     private static final Pattern KC_EU_SIZE_PATTEN = Pattern.compile("EU\\s*(\\d+\\.?\\d*)", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern POISON_EU_SIZE_PATTEN = Pattern.compile("\\d+(\\.\\d+)?");;
+    private static final Pattern SHOES_SIZE_PATTEN = Pattern.compile("\\d+(\\.\\d+)?");;
+
+    private static final Pattern CLOTHES_SIZE_PATTEN = Pattern.compile("US\\s+([A-Za-z0-9]+)");;
 
     public static String getEuSizeFromKickScrew(String rawTitle) {
         // 定义正则表达式以匹配 "EU" 后跟随的数字（包括小数）
@@ -24,16 +26,32 @@ public class ShoesUtil {
         }
     }
 
-    public static String getEuSizeFromPoison(String rawSize) {
+    public static String getShoesSizeFrom(String rawSize) {
         if (rawSize == null) {
             return null;
         }
         // 正则表达式匹配整数和小数
-        Matcher matcher = POISON_EU_SIZE_PATTEN.matcher(rawSize);
+        Matcher matcher = SHOES_SIZE_PATTEN.matcher(rawSize);
 
         if (matcher.find()) {
             // 返回找到的数值字符串
             return matcher.group();
+        } else {
+            // 如果没有找到匹配项，可以根据需求抛出异常或返回特定值
+            return null; // 或者可以选择抛出异常等其他处理方式
+        }
+    }
+
+    public static String getClothesSize(String rawSize) {
+        if (rawSize == null) {
+            return null;
+        }
+        // 正则表达式匹配整数和小数
+        Matcher matcher = CLOTHES_SIZE_PATTEN.matcher(rawSize);
+
+        if (matcher.find()) {
+            // 返回找到的数值字符串
+            return matcher.group(1);
         } else {
             // 如果没有找到匹配项，可以根据需求抛出异常或返回特定值
             return null; // 或者可以选择抛出异常等其他处理方式

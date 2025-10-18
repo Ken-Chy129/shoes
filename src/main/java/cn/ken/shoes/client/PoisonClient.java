@@ -129,7 +129,7 @@ public class PoisonClient {
         Set<String> sizeSet = new HashSet<>();
         for (JSONObject data : dataList) {
             Integer price = data.getInteger("minprice");
-            String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
+            String size = ShoesUtil.getShoesSizeFrom(data.getString("size"));
             Date dataUpdate = jsonObject.getDate("update");
             if (dataUpdate == null) {
                 continue;
@@ -181,7 +181,7 @@ public class PoisonClient {
             Set<String> sizeSet = new HashSet<>();
             for (JSONObject data : dataList) {
                 Integer price = data.getInteger("minprice");
-                String size = ShoesUtil.getEuSizeFromPoison(data.getString("size"));
+                String size = ShoesUtil.getShoesSizeFrom(data.getString("size"));
                 if (price == null || price == 0 || size == null || sizeSet.contains(size) || price > 100 * PoisonSwitch.MAX_PRICE) {
                     continue;
                 } else {
