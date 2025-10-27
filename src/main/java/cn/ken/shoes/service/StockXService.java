@@ -28,6 +28,7 @@ import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
 import java.util.*;
 
 @Slf4j
@@ -203,9 +204,17 @@ public class StockXService {
         return StockXSwitch.PRICE_TYPE.getPriceFunction().apply(stockXPriceDO);
     }
 
-    public void saveItemsToExcel(String filename, List<StockXPriceExcel> items) {
-        try (ExcelWriter excelWriter = EasyExcel.write(STR."file/\{filename}.xlsx").build()) {
-            WriteSheet writeSheet = EasyExcel.writerSheet(0, filename).head(StockXPriceExcel.class).build();
+    public void saveItemsToExcel(String filepath, List<StockXPriceExcel> items) {
+        File file = new File(filepath);
+        File parentDir = file.getParentFile();
+        if (parentDir != null && !parentDir.exists()) {
+            boolean isSuccess = parentDir.mkdirs();
+            if (!isSuccess) {
+                return;
+            }
+        }
+        try (ExcelWriter excelWriter = EasyExcel.write(filepath).build()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(StockXPriceExcel.class).build();
             excelWriter.write(items, writeSheet);
         }
     }
@@ -323,12 +332,12 @@ public class StockXService {
 
             // 生成文件名（使用时间戳避免重复）
             String timestamp = String.valueOf(System.currentTimeMillis());
-            String filename = STR."\{query}_\{timestamp}";
-            String filePath = STR."file/\{filename}.xlsx";
+            String filename = STR."\{searchType}_\{query}_\{timestamp}";
+            String filePath = STR."file/stockx/search/\{filename}.xlsx";
 
             // 保存到Excel
             List<StockXPriceExcel> resultList = new ArrayList<>(resultMap.values());
-            saveItemsToExcel(filename, resultList);
+            saveItemsToExcel(filePath, resultList);
 
             // 更新任务状态为SUCCESS
             searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
