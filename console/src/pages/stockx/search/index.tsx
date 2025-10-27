@@ -377,7 +377,7 @@ const SearchPage = () => {
                 </Form.Item>
                 <Form.Item
                     name="pageCount"
-                    label="爬取页面数量"
+                    label="爬取页面数量(每页40个商品)"
                     initialValue={10}
                     rules={[{required: true}]}
                 >

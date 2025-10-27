@@ -128,7 +128,7 @@ const SettingPage = () => {
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>
                         <Button icon={<DownloadOutlined/>} onClick={downloadStockXItems}>
-                            订单导出
+                            导出
                         </Button>
                     </Form.Item>
                 </div>
