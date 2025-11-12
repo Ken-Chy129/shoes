@@ -376,7 +376,7 @@ const SearchPage = () => {
                     queries: [{keyword: ''}],
                     searchType: 'shoes',
                     sorts: defaultSorts,
-                    pageCount: 10
+                    pageCount: 25
                 }}
             >
                 <Form.List
