@@ -176,6 +176,8 @@ const SearchPage = () => {
         {label: 'Last Sale: High to Low', value: 'last_sale'},
     ];
 
+    const defaultSorts = sortOptions.map(option => option.value);
+
     const getSearchTypeText = (category: string) => {
         const searchTypeMap: Record<string, string> = {
             shoes: '鞋类',
@@ -373,6 +375,7 @@ const SearchPage = () => {
                 initialValues={{
                     queries: [{keyword: ''}],
                     searchType: 'shoes',
+                    sorts: defaultSorts,
                     pageCount: 10
                 }}
             >
@@ -411,16 +414,19 @@ const SearchPage = () => {
                                     >
                                         <Input
                                             placeholder={`关键词 ${index + 1}`}
-                                            style={{width: 'calc(100% - 40px)', marginRight: 8}}
+                                            style={{
+                                                width: fields.length > 1 ? 'calc(100% - 40px)' : '100%',
+                                                marginRight: fields.length > 1 ? 8 : 0
+                                            }}
                                         />
                                     </Form.Item>
-                                    {fields.length > 1 ? (
+                                    {fields.length > 1 && (
                                         <MinusCircleOutlined
                                             className="dynamic-delete-button"
                                             onClick={() => remove(field.name)}
                                             style={{fontSize: 20, color: '#ff4d4f', cursor: 'pointer'}}
                                         />
-                                    ) : null}
+                                    )}
                                 </Form.Item>
                             ))}
                             <Form.Item>
