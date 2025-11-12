@@ -14,7 +14,7 @@ import {
     Tooltip
 } from "antd";
 import React, {useEffect, useState, useRef} from "react";
-import {DownloadOutlined, PlusOutlined} from "@ant-design/icons";
+import {DownloadOutlined, PlusOutlined, MinusCircleOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
@@ -94,19 +94,48 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {query, sorts, pageCount, searchType} = values;
+            const {queries, sorts, pageCount, searchType} = values;
             const sortsStr = sorts.join(',');
 
-            doPostRequest(SEARCH_TASK_API.CREATE, {query, sorts: sortsStr, pageCount, searchType}, {
-                onSuccess: res => {
-                    message.success(`创建成功`);
-                    handleCreateModalClose();
-                    queryTaskList();
-                },
-                onFinally: () => {
-                    setLoading(false);
-                }
+            // 统计总任务数和完成数
+            let totalTasks = queries.length;
+            let completedTasks = 0;
+            let failedTasks = 0;
+
+            // 为每个关键词创建任务
+            queries.forEach((queryItem: { keyword: string }, index: number) => {
+                doPostRequest(SEARCH_TASK_API.CREATE, {
+                    query: queryItem.keyword,
+                    sorts: sortsStr,
+                    pageCount,
+                    searchType
+                }, {
+                    onSuccess: res => {
+                        completedTasks++;
+                        if (completedTasks + failedTasks === totalTasks) {
+                            if (failedTasks === 0) {
+                                message.success(`全部任务创建成功！共创建 ${totalTasks} 个任务`);
+                            } else {
+                                message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                            }
+                            handleCreateModalClose();
+                            queryTaskList();
+                            setLoading(false);
+                        }
+                    },
+                    onError: err => {
+                        failedTasks++;
+                        if (completedTasks + failedTasks === totalTasks) {
+                            message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                            handleCreateModalClose();
+                            queryTaskList();
+                            setLoading(false);
+                        }
+                    }
+                });
             });
+        }).catch(err => {
+            console.error('表单验证失败:', err);
         });
     }
 
@@ -341,19 +370,77 @@ const SearchPage = () => {
                 form={createTaskForm}
                 layout="vertical"
                 style={{marginTop: 20}}
+                initialValues={{
+                    queries: [{keyword: ''}],
+                    searchType: 'shoes',
+                    pageCount: 10
+                }}
             >
-                <Form.Item
-                    name="query"
-                    label="关键词"
-                    rules={[{required: true}]}
+                <Form.List
+                    name="queries"
+                    rules={[
+                        {
+                            validator: async (_, queries) => {
+                                if (!queries || queries.length < 1) {
+                                    return Promise.reject(new Error('至少需要添加一个关键词'));
+                                }
+                            },
+                        },
+                    ]}
                 >
-                    <Input />
-                </Form.Item>
+                    {(fields, {add, remove}, {errors}) => (
+                        <>
+                            <div style={{marginBottom: 8, fontWeight: 500}}>关键词列表</div>
+                            {fields.map((field, index) => (
+                                <Form.Item
+                                    required={false}
+                                    key={field.key}
+                                >
+                                    <Form.Item
+                                        {...field}
+                                        name={[field.name, 'keyword']}
+                                        validateTrigger={['onChange', 'onBlur']}
+                                        rules={[
+                                            {
+                                                required: true,
+                                                whitespace: true,
+                                                message: "请输入关键词或删除此项",
+                                            },
+                                        ]}
+                                        noStyle
+                                    >
+                                        <Input
+                                            placeholder={`关键词 ${index + 1}`}
+                                            style={{width: 'calc(100% - 40px)', marginRight: 8}}
+                                        />
+                                    </Form.Item>
+                                    {fields.length > 1 ? (
+                                        <MinusCircleOutlined
+                                            className="dynamic-delete-button"
+                                            onClick={() => remove(field.name)}
+                                            style={{fontSize: 20, color: '#ff4d4f', cursor: 'pointer'}}
+                                        />
+                                    ) : null}
+                                </Form.Item>
+                            ))}
+                            <Form.Item>
+                                <Button
+                                    type="dashed"
+                                    onClick={() => add()}
+                                    style={{width: '100%'}}
+                                    icon={<PlusOutlined />}
+                                >
+                                    添加关键词
+                                </Button>
+                                <Form.ErrorList errors={errors} />
+                            </Form.Item>
+                        </>
+                    )}
+                </Form.List>
                 <Form.Item
                     name="searchType"
                     label="搜索类型"
                     rules={[{required: true}]}
-                    initialValue="shoes"
                 >
                     <Select
                         placeholder="请选择搜索类型"
@@ -378,7 +465,6 @@ const SearchPage = () => {
                 <Form.Item
                     name="pageCount"
                     label="爬取页面数量(每页40个商品)"
-                    initialValue={10}
                     rules={[{required: true}]}
                 >
                     <InputNumber
