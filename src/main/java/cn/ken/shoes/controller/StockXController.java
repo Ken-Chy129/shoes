@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.lang.Pair;
 import cn.hutool.core.bean.BeanUtil;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.mapper.SearchTaskMapper;
@@ -113,7 +114,11 @@ public class StockXController {
      * 查询任务列表
      */
     @GetMapping("getSearchTasks")
-    public Result<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
+    public PageResult<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
+        Long count = searchTaskMapper.count(status);
+        if (count <= 0) {
+            return PageResult.buildSuccess();
+        }
         if (pageIndex == null) {
             pageIndex = 1;
         }
@@ -125,6 +130,8 @@ public class StockXController {
         List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(status, startIndex, pageSize);
         List<SearchTaskVO> voList = BeanUtil.copyToList(taskList, SearchTaskVO.class);
 
-        return Result.buildSuccess(voList);
+        PageResult<List<SearchTaskVO>> result = PageResult.buildSuccess(voList);
+        result.setTotal(count);
+        return result;
     }
 }
