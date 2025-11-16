@@ -4,6 +4,7 @@ import cn.ken.shoes.common.DunkSortEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
+import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.service.DunkService;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
@@ -32,4 +33,8 @@ public class DunkController {
         return dunkService.search(request);
     }
 
+    @GetMapping("queryPrice")
+    public Result<List<DunkPriceExcel>> queryPrice(String modelNo) {
+        return dunkService.queryPrice(modelNo);
+    }
 }
