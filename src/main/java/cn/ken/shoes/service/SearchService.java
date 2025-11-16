@@ -198,6 +198,7 @@ public class SearchService {
                                 try {
                                     DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
                                     dunkPriceExcel.setModelNo(modelNo);
+                                    dunkPriceExcel.setCategory(dunkItem.getCategory());
                                     dunkPriceExcel.setBrand(dunkItem.getBrandId());
                                     dunkPriceExcel.setTitle(dunkItem.getTitle());
                                     dunkPriceExcel.setSize(price.getSize());
