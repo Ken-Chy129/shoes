@@ -504,11 +504,11 @@ public class StockXClient {
     public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType) {
         SearchTypeEnum searchTypeEnum = SearchTypeEnum.from(searchType);
         if (searchTypeEnum == null) {
-            return null;
+            return Pair.of(0, Collections.emptyList());
         }
         JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, searchTypeEnum));
         if (jsonObject == null) {
-            return null;
+            return Pair.of(0, Collections.emptyList());
         }
         JSONObject results = jsonObject.getJSONObject("data").getJSONObject("browse").getJSONObject("results");
         JSONObject pageInfo = results.getJSONObject("pageInfo");

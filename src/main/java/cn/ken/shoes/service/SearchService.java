@@ -7,15 +7,21 @@ import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.SearchTaskMapper;
+import cn.ken.shoes.model.dunk.DunkItem;
+import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.entity.SearchTaskDO;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.search.SearchTaskRequest;
 import cn.ken.shoes.model.search.SearchTaskVO;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.util.*;
@@ -43,13 +49,14 @@ public class SearchService {
     /**
      * 创建搜索任务
      */
-    public Long createSearchTask(String query, String sorts, Integer pageCount, String searchType) {
+    public Long createSearchTask(SearchTaskRequest request) {
         // 创建任务记录
         SearchTaskDO searchTask = new SearchTaskDO();
-        searchTask.setQuery(query);
-        searchTask.setSorts(sorts);
-        searchTask.setPageCount(pageCount);
-        searchTask.setSearchType(searchType);
+        searchTask.setPlatform(request.getPlatform());
+        searchTask.setQuery(request.getQuery());
+        searchTask.setSorts(request.getSorts());
+        searchTask.setPageCount(request.getPageCount());
+        searchTask.setSearchType(request.getSearchType());
         searchTask.setProgress(0);
         searchTask.setStatus(SearchTaskDO.StatusEnum.PENDING.getCode());
 
@@ -77,6 +84,7 @@ public class SearchService {
             // 更新任务状态为RUNNING
             searchTaskMapper.updateStartStatus(taskId, SearchTaskDO.StatusEnum.RUNNING.getCode(), new Date());
 
+            String platform = searchTask.getPlatform();
             String query = searchTask.getQuery();
             String sortsStr = searchTask.getSorts();
             Integer pageCount = searchTask.getPageCount();
@@ -86,7 +94,7 @@ public class SearchService {
             List<String> sortsList = Arrays.asList(sortsStr.split(","));
 
             // 使用LinkedHashMap保证去重后保持顺序
-            Map<String, StockXPriceExcel> resultMap = new LinkedHashMap<>();
+            Map<String, JSONObject> resultMap = new LinkedHashMap<>();
 
             // 计算总的查询次数用于进度计算
             int totalQueries = sortsList.size() * pageCount;
@@ -94,8 +102,9 @@ public class SearchService {
 
             // 遍历每个sort进行查询
             for (String sort : sortsList) {
-                Pair<Integer, List<StockXPriceExcel>> firstPair = stockXClient.searchItemWithPrice(query, 1, sort.trim(), searchType);
-                if (firstPair == null) {
+                Pair<Integer, JSONArray> firstPair = doSearch(platform, query, sort.trim(), searchType, 1);
+                Integer totalPage = firstPair.getKey();
+                if (totalPage == 0 || CollectionUtils.isEmpty(firstPair.getValue())) {
                     log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, 1);
                     completedQueries++;
                     int progress = (int) ((completedQueries * 100.0) / totalQueries);
@@ -103,17 +112,12 @@ public class SearchService {
                     continue;
                 }
 
-                Integer totalPage = firstPair.getKey();
-
                 // 处理第一页数据
-                for (StockXPriceExcel stockXPriceExcel : firstPair.getValue()) {
-                    String modelNo = stockXPriceExcel.getModelNo();
-                    String euSize = stockXPriceExcel.getEuSize();
-                    String key = STR."\{modelNo}:\{euSize}";
-
+                for (Object item : firstPair.getValue()) {
+                    JSONObject jsonObject = enhanceItem(platform, item);
+                    String key = getItemKey(platform, item);
                     if (!resultMap.containsKey(key)) {
-                        stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
-                        resultMap.put(key, stockXPriceExcel);
+                        resultMap.put(key, jsonObject);
                     }
                 }
 
@@ -124,8 +128,8 @@ public class SearchService {
 
                 // 处理后续页
                 for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
-                    Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, i, sort.trim(), searchType);
-                    if (pair == null) {
+                    Pair<Integer, JSONArray> pair = doSearch(platform, query, sort.trim(), searchType, i);
+                    if (pair.getKey() == 0 || CollectionUtils.isEmpty(firstPair.getValue())) {
                         log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
                         completedQueries++;
                         progress = (int) ((completedQueries * 100.0) / totalQueries);
@@ -133,14 +137,11 @@ public class SearchService {
                         continue;
                     }
 
-                    for (StockXPriceExcel stockXPriceExcel : pair.getValue()) {
-                        String modelNo = stockXPriceExcel.getModelNo();
-                        String euSize = stockXPriceExcel.getEuSize();
-                        String key = STR."\{modelNo}:\{euSize}";
-
+                    for (Object item : firstPair.getValue()) {
+                        JSONObject jsonObject = enhanceItem(platform, item);
+                        String key = getItemKey(platform, item);
                         if (!resultMap.containsKey(key)) {
-                            stockXPriceExcel.setPoisonPrice(priceManager.getPoisonPrice(modelNo, euSize));
-                            resultMap.put(key, stockXPriceExcel);
+                            resultMap.put(key, jsonObject);
                         }
                     }
 
@@ -153,12 +154,12 @@ public class SearchService {
 
             // 生成文件名（使用时间戳避免重复）
             String timestamp = String.valueOf(System.currentTimeMillis());
-            String filename = STR."\{searchType}_\{query}_\{timestamp}";
-            String filePath = STR."file/stockx/search/\{filename}.xlsx";
+            String filename = STR."\{platform}_\{searchType}_\{query}_\{timestamp}";
+            String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
 
             // 保存到Excel
-            List<StockXPriceExcel> resultList = new ArrayList<>(resultMap.values());
-            saveItemsToExcel(filePath, resultList);
+            List<JSONObject> resultList = new ArrayList<>(resultMap.values());
+            saveItemsToExcel(platform, filePath, resultList);
 
             // 更新任务状态为SUCCESS
             searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
@@ -171,7 +172,43 @@ public class SearchService {
         }
     }
 
-    public void saveItemsToExcel(String filepath, List<StockXPriceExcel> items) {
+    private Pair<Integer, JSONArray> doSearch(String platform, String query, String sort, String searchType, Integer pageIndex) {
+        if ("stockx".equals(platform)) {
+            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType);
+            return Pair.of (pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
+        } else if ("dunk".equals(platform)) {
+            DunkSearchRequest dunkSearchRequest = new DunkSearchRequest();
+            dunkSearchRequest.setKeyword(query);
+            dunkSearchRequest.setSortKey(sort);
+            dunkSearchRequest.setPage(pageIndex);
+            Pair<Integer, List<DunkItem>> pair = dunkClient.search(dunkSearchRequest);
+            return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
+        }
+        return Pair.of(0, new JSONArray());
+    }
+
+    private JSONObject enhanceItem(String platform, Object item) {
+        JSONObject jsonObject = (JSONObject) item;
+        if ("stockx".equals(platform)) {
+            String modelNo = jsonObject.getString("modelNo");
+            String euSize = jsonObject.getString("euSize");
+            jsonObject.put("poisonPrice", priceManager.getPoisonPrice(modelNo, euSize));
+        }
+        return jsonObject;
+    }
+
+    private String getItemKey(String platform, Object item) {
+        if ("stockx".equals(platform)) {
+            JSONObject jsonObject = (JSONObject) item;
+            String modelNo = jsonObject.getString("modelNo");
+            String euSize = jsonObject.getString("euSize");
+            return STR."\{modelNo}:\{euSize}";
+        } else {
+        }
+        return "";
+    }
+
+    private void saveItemsToExcel(String platform, String filepath, List<JSONObject> items) {
         File file = new File(filepath);
         File parentDir = file.getParentFile();
         if (parentDir != null && !parentDir.exists()) {
@@ -180,9 +217,18 @@ public class SearchService {
                 return;
             }
         }
+
         try (ExcelWriter excelWriter = EasyExcel.write(filepath).build()) {
-            WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(StockXPriceExcel.class).build();
-            excelWriter.write(items, writeSheet);
+            if ("stockx".equals(platform)) {
+                List<StockXPriceExcel> excels = new ArrayList<>();
+                for (JSONObject jsonObject : items) {
+                    excels.add(jsonObject.toJavaObject(StockXPriceExcel.class));
+                }
+                WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(StockXPriceExcel.class).build();
+                excelWriter.write(excels, writeSheet);
+            } else {
+
+            }
         }
     }
 

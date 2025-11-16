@@ -30,10 +30,7 @@ public class SearchController {
         if (request.getQuery() == null || request.getSorts() == null || request.getPageCount() == null) {
             return Result.buildError("参数不能为空");
         }
-        if (SearchTypeEnum.from(request.getSearchType()) == null) {
-            return Result.buildError("搜索类型不存在");
-        }
-        Long taskId = searchService.createSearchTask(request.getQuery(), request.getSorts(), request.getPageCount(), request.getSearchType());
+        Long taskId = searchService.createSearchTask(request);
         return Result.buildSuccess(taskId);
     }
 
