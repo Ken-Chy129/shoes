@@ -4,6 +4,7 @@ import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.common.DunkApiConstant;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.model.dunk.DunkItem;
+import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.util.HttpUtil;
@@ -109,5 +110,26 @@ public class DunkClient {
             dunkPriceExcel.setBuyCount(offeringItemCount);
         }
         return result;
+    }
+
+    public List<DunkSalesHistory> querySalesHistory(String modelNo, Integer sizeId) {
+        String baseUrl = DunkApiConstant.SALES_HISTORY.replace("{modelNo}", modelNo);
+        HttpUrl url = Objects.requireNonNull(HttpUrl.parse(baseUrl))
+                .newBuilder()
+                .addQueryParameter("size_id", String.valueOf(sizeId))
+                .addQueryParameter("page", String.valueOf(1))
+                .addQueryParameter("per_page", String.valueOf(5))
+                .build();
+        String rawResult = HttpUtil.doGet(url);
+        JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        if (jsonObject == null) {
+            return Collections.emptyList();
+        }
+        List<DunkSalesHistory> history = jsonObject.getJSONArray("history").toJavaList(DunkSalesHistory.class);
+        for (DunkSalesHistory dunkSalesHistory : history) {
+            dunkSalesHistory.setModelNo(modelNo);
+            dunkSalesHistory.setSizeId(sizeId);
+        }
+        return history;
     }
 }

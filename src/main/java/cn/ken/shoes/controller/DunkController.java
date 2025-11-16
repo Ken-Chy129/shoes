@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.DunkSortEnum;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.dunk.DunkItem;
+import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.service.DunkService;
@@ -36,5 +37,10 @@ public class DunkController {
     @GetMapping("queryPrice")
     public Result<List<DunkPriceExcel>> queryPrice(String modelNo) {
         return dunkService.queryPrice(modelNo);
+    }
+
+    @GetMapping("querySalesHistory")
+    public Result<List<DunkSalesHistory>> querySalesHistory(String modelNo, Integer sizeId) {
+        return dunkService.querySalesHistory(modelNo, sizeId);
     }
 }
