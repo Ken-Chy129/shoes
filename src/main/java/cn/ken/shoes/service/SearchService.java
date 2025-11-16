@@ -232,7 +232,7 @@ public class SearchService {
         }
     }
 
-    public PageResult<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
+    public PageResult<List<SearchTaskVO>> getSearchTasks(String platform, String status, Integer pageIndex, Integer pageSize) {
         Long count = searchTaskMapper.count(status);
         if (count <= 0) {
             return PageResult.buildSuccess();
@@ -245,7 +245,7 @@ public class SearchService {
         }
         int startIndex = (pageIndex - 1) * pageSize;
 
-        List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(status, startIndex, pageSize);
+        List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(platform, status, startIndex, pageSize);
         List<SearchTaskVO> voList = BeanUtil.copyToList(taskList, SearchTaskVO.class);
 
         PageResult<List<SearchTaskVO>> result = PageResult.buildSuccess(voList);

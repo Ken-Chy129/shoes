@@ -38,7 +38,7 @@ public class SearchController {
      * 查询任务列表
      */
     @GetMapping("getSearchTasks")
-    public PageResult<List<SearchTaskVO>> getSearchTasks(String status, Integer pageIndex, Integer pageSize) {
-        return searchService.getSearchTasks(status, pageIndex, pageSize);
+    public PageResult<List<SearchTaskVO>> getSearchTasks(String platform, String status, Integer pageIndex, Integer pageSize) {
+        return searchService.getSearchTasks(platform, status, pageIndex, pageSize);
     }
 }
