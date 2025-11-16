@@ -105,6 +105,7 @@ const SearchPage = () => {
             // 为每个关键词创建任务
             queries.forEach((queryItem: { keyword: string }, index: number) => {
                 doPostRequest(SEARCH_TASK_API.CREATE, {
+                    platform: "stockx",
                     query: queryItem.keyword,
                     sorts: sortsStr,
                     pageCount,
@@ -166,14 +167,14 @@ const SearchPage = () => {
     const sortOptions = [
         {label: '精选', value: 'featured'},
         {label: 'Top Selling', value: 'most-active'},
-        {label: 'Price: Low to High', value: 'lowest_ask'},
-        {label: '出价: 从高到低', value: 'highest_bid'},
-        {label: 'Recent High Bids', value: 'recent_bids'},
-        {label: 'Recent Price Drops', value: 'recent_asks'},
-        {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
-        {label: '发布日期', value: 'release_date'},
-        {label: 'Price Premium: High to Low', value: 'price_premium'},
-        {label: 'Last Sale: High to Low', value: 'last_sale'},
+        // {label: 'Price: Low to High', value: 'lowest_ask'},
+        // {label: '出价: 从高到低', value: 'highest_bid'},
+        // {label: 'Recent High Bids', value: 'recent_bids'},
+        // {label: 'Recent Price Drops', value: 'recent_asks'},
+        // {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
+        // {label: '发布日期', value: 'release_date'},
+        // {label: 'Price Premium: High to Low', value: 'price_premium'},
+        // {label: 'Last Sale: High to Low', value: 'last_sale'},
     ];
 
     const defaultSorts = sortOptions.map(option => option.value);

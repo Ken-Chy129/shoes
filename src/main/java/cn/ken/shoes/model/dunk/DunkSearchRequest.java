@@ -29,5 +29,5 @@ public class DunkSearchRequest {
 
     private Integer page = 1;
 
-    private Integer perPage = 25;
+    private Integer perPage = 40;
 }

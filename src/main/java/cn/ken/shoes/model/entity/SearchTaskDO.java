@@ -14,6 +14,11 @@ import java.util.Date;
 public class SearchTaskDO extends BaseDO {
 
     /**
+     * 搜索平台
+     */
+    private String platform;
+
+    /**
      * 搜索关键词
      */
     private String query;
