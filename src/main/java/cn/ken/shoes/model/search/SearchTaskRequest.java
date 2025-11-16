@@ -1,4 +1,4 @@
-package cn.ken.shoes.model.stockx;
+package cn.ken.shoes.model.search;
 
 import lombok.Data;
 
