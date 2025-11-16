@@ -157,6 +157,15 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           ]
         },
         {
+          name: "dunk",
+          children: [
+            {
+              name: "搜索",
+              path: "dunk/search"
+            },
+          ]
+        },
+        {
           name: "得物",
           path: "/poison",
         },

@@ -14,7 +14,8 @@ public interface SearchTaskMapper extends BaseMapper<SearchTaskDO> {
     /**
      * 根据条件查询任务列表
      */
-    List<SearchTaskDO> selectByCondition(@Param("status") String status,
+    List<SearchTaskDO> selectByCondition(@Param("platform") String platform,
+                                          @Param("status") String status,
                                           @Param("startIndex") Integer startIndex,
                                           @Param("pageSize") Integer pageSize);
 

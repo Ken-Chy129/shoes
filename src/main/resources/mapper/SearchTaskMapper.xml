@@ -5,6 +5,9 @@
     <select id="selectByCondition" resultType="cn.ken.shoes.model.entity.SearchTaskDO">
         select * from search_task
         <where>
+            <if test="platform != null and platform != ''">
+                and platform = #{platform}
+            </if>
             <if test="status != null and status != ''">
                 and status = #{status}
             </if>

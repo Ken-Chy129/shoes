@@ -75,6 +75,17 @@ export default [
     ]
   },
   {
+    path: '/dunk',
+    layout: true,
+    routes: [
+      {
+        path: '/dunk/search',
+        layout: true,
+        component: "./dunk/search"
+      },
+    ]
+  },
+  {
     path: '/poison',
     layout: true,
     component: "./poison"
