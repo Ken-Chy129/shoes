@@ -170,23 +170,20 @@ const SearchPage = () => {
     }
 
     const sortOptions = [
-        {label: '精选', value: 'featured'},
-        {label: 'Top Selling', value: 'most-active'},
-        // {label: 'Price: Low to High', value: 'lowest_ask'},
-        // {label: '出价: 从高到低', value: 'highest_bid'},
-        // {label: 'Recent High Bids', value: 'recent_bids'},
-        // {label: 'Recent Price Drops', value: 'recent_asks'},
-        // {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
-        // {label: '发布日期', value: 'release_date'},
-        // {label: 'Price Premium: High to Low', value: 'price_premium'},
-        // {label: 'Last Sale: High to Low', value: 'last_sale'},
+        {label: '推荐', value: 'recommend'},
+        {label: '人气', value: 'most-hottest'},
+        {label: '新到货订单', value: 'latest'},
+        {label: '按最低价排序', value: 'price_low'},
+        {label: '按最高价排序', value: 'price_high'},
+        {label: '按发售日期排序', value: 'launch'},
+        {label: '最喜欢的订单', value: 'favorite'},
     ];
 
     const defaultSorts = sortOptions.map(option => option.value);
 
     const getSearchTypeText = (category: string) => {
         const searchTypeMap: Record<string, string> = {
-            shoes: '鞋类',
+            sneakers: '鞋类',
             clothes: '服饰',
         };
         return searchTypeMap[category] || category;
@@ -380,7 +377,7 @@ const SearchPage = () => {
                 style={{marginTop: 20}}
                 initialValues={{
                     queries: [{keyword: ''}],
-                    searchType: 'shoes',
+                    searchType: 'sneakers',
                     sorts: defaultSorts,
                     pageCount: 25
                 }}
@@ -457,8 +454,8 @@ const SearchPage = () => {
                     <Select
                         placeholder="请选择搜索类型"
                         options={[
-                            {label: '鞋类', value: 'shoes'},
-                            {label: '服饰', value: 'clothes'},
+                            {label: '鞋类', value: 'sneakers'},
+                            {label: '服饰', value: 'apparels'},
                         ]}
                     />
                 </Form.Item>

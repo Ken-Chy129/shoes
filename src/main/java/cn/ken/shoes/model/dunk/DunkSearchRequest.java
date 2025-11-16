@@ -17,6 +17,9 @@ public class DunkSearchRequest {
 
     private String itemConditions = "brand_new";
 
+    // 鞋类
+    private String categoryIds = "1";
+
     private String sortKey;
 
     private Boolean isDiscounted;

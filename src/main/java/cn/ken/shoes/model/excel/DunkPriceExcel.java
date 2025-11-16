@@ -19,8 +19,8 @@ public class DunkPriceExcel {
     @ExcelProperty("名称")
     private String title;
 
-    @ExcelProperty("性别")
-    private String gender;
+//    @ExcelProperty("性别")
+//    private String gender;
 
     @ExcelProperty("编号")
     private Integer size;
@@ -35,10 +35,10 @@ public class DunkPriceExcel {
     private Integer highPrice;
 
     @ExcelProperty("卖家库存")
-    private Integer inventory;
+    private String inventory;
 
     @ExcelProperty("求购数量")
-    private Integer buyCount;
+    private String buyCount;
 
     @ExcelProperty("最近销量")
     private String lastSales;
