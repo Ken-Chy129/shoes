@@ -10,7 +10,8 @@ public class LimiterHelper {
     private static final RateLimiter POISON_PRICE_LIMITER = RateLimiter.create(10);
     private static final RateLimiter STOCKX_PRICE_LIMITER = RateLimiter.create(10);
     private static final RateLimiter STOCKX_SECOND_LIMITER = RateLimiter.create(1);
-    private static final RateLimiter DUNK_PRICE_LIMITER = RateLimiter.create(10);
+    private static final RateLimiter DUNK_PRICE_LIMITER = RateLimiter.create(1);
+    private static final RateLimiter DUNK_SALES_LIMITER = RateLimiter.create(10);
 
     public static void limitPoisonItem() {
         POISON_ITEM_LIMITER.acquire();
@@ -32,5 +33,9 @@ public class LimiterHelper {
 
     public static void limitDunkPrice() {
         DUNK_PRICE_LIMITER.acquire();
+    }
+
+    public static void listDunkSales() {
+        DUNK_SALES_LIMITER.acquire();
     }
 }
