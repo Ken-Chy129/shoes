@@ -6,9 +6,7 @@ import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.service.DunkService;
 import jakarta.annotation.Resource;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
