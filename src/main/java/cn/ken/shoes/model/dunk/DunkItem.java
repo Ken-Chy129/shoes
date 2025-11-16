@@ -10,6 +10,8 @@ import lombok.Data;
 @Data
 public class DunkItem {
 
+    private String modelNo;
+
     private String displayCardPattern;
 
     private String title;

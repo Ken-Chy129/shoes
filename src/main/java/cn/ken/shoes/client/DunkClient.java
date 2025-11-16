@@ -5,18 +5,14 @@ import cn.ken.shoes.common.DunkApiConstant;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
+import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.util.HttpUtil;
 import com.alibaba.fastjson.JSONObject;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
 import org.springframework.stereotype.Component;
 
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 
 /**
  * @author Ken-Chy129
@@ -55,6 +51,9 @@ public class DunkClient {
             if (supershipLog == null) {
                 continue;
             }
+            String link = product.getLink();
+            String[] split = link.split("/");
+            product.setModelNo(split[split.length - 1]);
             product.setBrandId(supershipLog.getString("brandId"));
             product.setCategoryId(supershipLog.getString("categoryId"));
             product.setItemId(supershipLog.getString("itemId"));
@@ -62,20 +61,53 @@ public class DunkClient {
         return Pair.of(pageCount, products);
     }
 
-    public void queryPrice(String modelNo) {
-        String url = PoisonApiConstant.PRICE_BY_MODEL_NO
+    public List<DunkPriceExcel> queryPrice(String modelNo) {
+        String url = DunkApiConstant.PRICE
                 .replace("{modelNo}", modelNo);
         String rawResult = HttpUtil.doGet(url);
-    }
-
-    private void buildDuckSearchRequest(String keyword, String sortKey, Integer page, Integer perPage) {
-        DunkSearchRequest request = new DunkSearchRequest();
-        request.setKeyword(keyword);
-        request.setSortKey(sortKey);
-        request.setPage(page);
-        request.setPerPage(perPage);
-        ObjectMapper mapper = new ObjectMapper();
-        Map<String, Object> stringObjectMap = mapper.convertValue(request, new TypeReference<Map<String, Object>>() {
-        });
+        JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        if (jsonObject == null) {
+            return Collections.emptyList();
+        }
+        String status = jsonObject.getString("status");
+        if (!"success".equals(status)) {
+            log.error("queryPrice error, result: {}", rawResult);
+            return Collections.emptyList();
+        }
+        JSONObject data = jsonObject.getJSONObject("data");
+        Map<Integer, DunkPriceExcel> size2PriceMap = new LinkedHashMap<>();
+        List<JSONObject> maxPriceList = data.getJSONArray("maxPriceOfSizeList").toJavaList(JSONObject.class);
+        for (JSONObject priceObject : maxPriceList) {
+            Integer size = priceObject.getInteger("size");
+            Integer price = priceObject.getInteger("price");
+            String sizeText = priceObject.getString("sizeText");
+            DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
+            dunkPriceExcel.setModelNo(modelNo);
+            dunkPriceExcel.setSize(size);
+            dunkPriceExcel.setSizeText(sizeText);
+            dunkPriceExcel.setHighPrice(price);
+            size2PriceMap.put(size, dunkPriceExcel);
+        }
+        List<JSONObject> minPriceList = data.getJSONArray("minPriceOfSizeList").toJavaList(JSONObject.class);
+        for (JSONObject priceObject : minPriceList) {
+            Integer size = priceObject.getInteger("size");
+            Integer price = priceObject.getInteger("price");
+            DunkPriceExcel dunkPriceExcel = size2PriceMap.get(size);
+            if (dunkPriceExcel == null) {
+                continue;
+            }
+            dunkPriceExcel.setLowPrice(price);
+        }
+        JSONObject listingItemCountMap = data.getJSONObject("listingItemCountMap");
+        JSONObject offeringItemCountMap = data.getJSONObject("offeringItemCountMap");
+        List<DunkPriceExcel> result = size2PriceMap.values().stream().toList();
+        for (DunkPriceExcel dunkPriceExcel : result) {
+            Integer size = dunkPriceExcel.getSize();
+            Integer itemCount = listingItemCountMap.getInteger(String.valueOf(size));
+            Integer offeringItemCount = offeringItemCountMap.getInteger(String.valueOf(size));
+            dunkPriceExcel.setInventory(itemCount);
+            dunkPriceExcel.setBuyCount(offeringItemCount);
+        }
+        return result;
     }
 }

@@ -4,6 +4,7 @@ import cn.ken.shoes.client.DunkClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
+import cn.ken.shoes.model.excel.DunkPriceExcel;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
@@ -21,5 +22,9 @@ public class DunkService {
 
     public Result<List<DunkItem>> search(DunkSearchRequest request) {
         return Result.buildSuccess(dunkClient.search(request).getValue());
+    }
+
+    public Result<List<DunkPriceExcel>> queryPrice(String modelNo) {
+        return Result.buildSuccess(dunkClient.queryPrice(modelNo));
     }
 }

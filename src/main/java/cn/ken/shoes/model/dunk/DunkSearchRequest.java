@@ -15,6 +15,8 @@ public class DunkSearchRequest {
 
     private Integer cardVersion = 2;
 
+    private String itemConditions = "brand_new";
+
     private String sortKey;
 
     private Boolean isDiscounted;
