@@ -1,0 +1,25 @@
+package cn.ken.shoes.service;
+
+import cn.ken.shoes.client.DunkClient;
+import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.dunk.DunkItem;
+import cn.ken.shoes.model.dunk.DunkSearchRequest;
+import jakarta.annotation.Resource;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+/**
+ * @author Ken-Chy129
+ * @date 2025/11/16
+ */
+@Service
+public class DunkService {
+
+    @Resource
+    private DunkClient dunkClient;
+
+    public Result<List<DunkItem>> search(DunkSearchRequest request) {
+        return Result.buildSuccess(dunkClient.search(request));
+    }
+}
