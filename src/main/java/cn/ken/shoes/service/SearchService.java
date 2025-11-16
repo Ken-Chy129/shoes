@@ -226,6 +226,8 @@ public class SearchService {
                         } catch (InterruptedException e) {
                             log.error(e.getMessage(), e);
                         }
+                    } catch (Exception e) {
+                        log.error("queryPrice error, modelNo:{}, category:{}, title:{}", dunkItem.getModelNo(), dunkItem.getCategory(), dunkItem.getTitle(), e);
                     } finally {
                         priceLatch.countDown();
                     }

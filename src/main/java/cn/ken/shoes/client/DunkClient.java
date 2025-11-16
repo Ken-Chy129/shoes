@@ -67,9 +67,11 @@ public class DunkClient {
 
     public List<DunkPriceExcel> queryPrice(String category, String modelNo) {
         LimiterHelper.limitDunkPrice();
-        String url = DunkApiConstant.PRICE
-                .replace("{category}", category)
-                .replace("{modelNo}", modelNo);
+        String baseUrl = DunkApiConstant.SNEAKERS_PRICE;
+        if ("apparels".equals(category)) {
+            baseUrl = DunkApiConstant.APPARELS_PRICE;
+        }
+        String url = baseUrl.replace("{modelNo}", modelNo);
         String rawResult = HttpUtil.doGet(url);
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
         if (jsonObject == null) {
@@ -150,6 +152,7 @@ public class DunkClient {
     }
 
     public List<DunkSalesHistory> querySalesHistory(String category, String modelNo, Integer sizeId) {
+        LimiterHelper.listDunkSales();
         String baseUrl = DunkApiConstant.SALES_HISTORY
                 .replace("{category}", category)
                 .replace("{modelNo}", modelNo);
