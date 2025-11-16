@@ -191,7 +191,7 @@ public class SearchService {
                 Thread.startVirtualThread(() -> {
                     try {
                         String modelNo = dunkItem.getModelNo();
-                        List<DunkPriceExcel> priceList = dunkClient.queryPrice(modelNo);
+                        List<DunkPriceExcel> priceList = dunkClient.queryPrice(dunkItem.getCategory(), modelNo);
                         CountDownLatch salesLatch = new CountDownLatch(priceList.size());
                         for (DunkPriceExcel price : priceList) {
                             Thread.startVirtualThread(() -> {
@@ -206,7 +206,7 @@ public class SearchService {
                                     dunkPriceExcel.setHighPrice(price.getHighPrice());
                                     dunkPriceExcel.setInventory(price.getInventory());
                                     dunkPriceExcel.setBuyCount(price.getBuyCount());
-                                    List<DunkSalesHistory> dunkSalesHistories = dunkClient.querySalesHistory(modelNo, price.getSize());
+                                    List<DunkSalesHistory> dunkSalesHistories = dunkClient.querySalesHistory(dunkItem.getCategory(), modelNo, price.getSize());
                                     StringBuilder sb = new StringBuilder();
                                     for (DunkSalesHistory salesHistory : dunkSalesHistories) {
                                         sb.append("¥");

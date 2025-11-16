@@ -7,6 +7,7 @@ import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.service.DunkService;
+import com.alibaba.excel.util.StringUtils;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
@@ -35,12 +36,18 @@ public class DunkController {
     }
 
     @GetMapping("queryPrice")
-    public Result<List<DunkPriceExcel>> queryPrice(String modelNo) {
-        return dunkService.queryPrice(modelNo);
+    public Result<List<DunkPriceExcel>> queryPrice(String modelNo, String category) {
+        if (StringUtils.isBlank(category)) {
+            category = "products";
+        }
+        return dunkService.queryPrice(modelNo, category);
     }
 
     @GetMapping("querySalesHistory")
-    public Result<List<DunkSalesHistory>> querySalesHistory(String modelNo, Integer sizeId) {
-        return dunkService.querySalesHistory(modelNo, sizeId);
+    public Result<List<DunkSalesHistory>> querySalesHistory(String modelNo, Integer sizeId, String category) {
+        if (StringUtils.isBlank(category)) {
+            category = "products";
+        }
+        return dunkService.querySalesHistory(modelNo, sizeId, category);
     }
 }

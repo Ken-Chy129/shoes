@@ -12,6 +12,8 @@ public class DunkItem {
 
     private String modelNo;
 
+    private String category;
+
     private String displayCardPattern;
 
     private String title;
