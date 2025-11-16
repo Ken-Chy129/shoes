@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.common.DunkApiConstant;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.model.dunk.DunkItem;
@@ -11,7 +12,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
 import org.springframework.stereotype.Component;
-import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.List;
@@ -26,7 +26,7 @@ import java.util.Objects;
 @Component
 public class DunkClient {
 
-    public List<DunkItem> search(DunkSearchRequest searchRequest) {
+    public Pair<Integer, List<DunkItem>> search(DunkSearchRequest searchRequest) {
         HttpUrl url = Objects.requireNonNull(HttpUrl.parse(DunkApiConstant.SEARCH))
                 .newBuilder()
                 .addQueryParameter("func", searchRequest.getFunc())
@@ -38,10 +38,16 @@ public class DunkClient {
                 .build();
         String rawResult = HttpUtil.doGet(url);
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        JSONObject pageInfo = jsonObject.getJSONObject("supershipLog");
+        if (pageInfo == null) {
+            log.error("search error, result is null, result: {}", rawResult);
+            return Pair.of(0, Collections.emptyList());
+        }
+        Integer pageCount = pageInfo.getInteger("rankingTotalHits");
         JSONObject search = jsonObject.getJSONObject("search");
         if (search == null) {
             log.error("search error, result is null, result: {}", rawResult);
-            return Collections.emptyList();
+            return Pair.of(pageCount, Collections.emptyList());
         }
         List<DunkItem> products = search.getJSONArray("products").toJavaList(DunkItem.class);
         for (DunkItem product : products) {
@@ -53,7 +59,7 @@ public class DunkClient {
             product.setCategoryId(supershipLog.getString("categoryId"));
             product.setItemId(supershipLog.getString("itemId"));
         }
-        return products;
+        return Pair.of(pageCount, products);
     }
 
     public void queryPrice(String modelNo) {
