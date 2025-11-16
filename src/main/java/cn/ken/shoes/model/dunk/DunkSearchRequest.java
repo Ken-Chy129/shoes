@@ -27,7 +27,7 @@ public class DunkSearchRequest {
 
     private String keyword;
 
-    private Integer page;
+    private Integer page = 1;
 
-    private Integer perPage;
+    private Integer perPage = 25;
 }

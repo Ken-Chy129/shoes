@@ -2,12 +2,19 @@ package cn.ken.shoes.client;
 
 import cn.ken.shoes.common.DunkApiConstant;
 import cn.ken.shoes.common.PoisonApiConstant;
+import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.util.HttpUtil;
+import com.alibaba.fastjson.JSONObject;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -15,9 +22,11 @@ import java.util.Objects;
  * @author Ken-Chy129
  * @date 2025/11/14
  */
+@Slf4j
+@Component
 public class DunkClient {
 
-    public void search(DunkSearchRequest searchRequest) {
+    public List<DunkItem> search(DunkSearchRequest searchRequest) {
         HttpUrl url = Objects.requireNonNull(HttpUrl.parse(DunkApiConstant.SEARCH))
                 .newBuilder()
                 .addQueryParameter("func", searchRequest.getFunc())
@@ -28,6 +37,23 @@ public class DunkClient {
                 .addQueryParameter("perPage", String.valueOf(searchRequest.getPerPage()))
                 .build();
         String rawResult = HttpUtil.doGet(url);
+        JSONObject jsonObject = JSONObject.parseObject(rawResult);
+        JSONObject search = jsonObject.getJSONObject("search");
+        if (search == null) {
+            log.error("search error, result is null, result: {}", rawResult);
+            return Collections.emptyList();
+        }
+        List<DunkItem> products = search.getJSONArray("products").toJavaList(DunkItem.class);
+        for (DunkItem product : products) {
+            JSONObject supershipLog = product.getSupershipLog();
+            if (supershipLog == null) {
+                continue;
+            }
+            product.setBrandId(supershipLog.getString("brandId"));
+            product.setCategoryId(supershipLog.getString("categoryId"));
+            product.setItemId(supershipLog.getString("itemId"));
+        }
+        return products;
     }
 
     public void queryPrice(String modelNo) {
