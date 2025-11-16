@@ -25,11 +25,11 @@ public class DunkService {
         return Result.buildSuccess(dunkClient.search(request).getValue());
     }
 
-    public Result<List<DunkPriceExcel>> queryPrice(String modelNo) {
-        return Result.buildSuccess(dunkClient.queryPrice(modelNo));
+    public Result<List<DunkPriceExcel>> queryPrice(String modelNo, String category) {
+        return Result.buildSuccess(dunkClient.queryPrice(category, modelNo));
     }
 
-    public Result<List<DunkSalesHistory>> querySalesHistory(String modelNo, Integer sizeId) {
-        return Result.buildSuccess(dunkClient.querySalesHistory(modelNo, sizeId));
+    public Result<List<DunkSalesHistory>> querySalesHistory(String modelNo, Integer sizeId, String category) {
+        return Result.buildSuccess(dunkClient.querySalesHistory(category, modelNo, sizeId));
     }
 }

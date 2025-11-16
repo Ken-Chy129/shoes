@@ -13,6 +13,9 @@ public class DunkPriceExcel {
     @ExcelProperty("型号")
     private String modelNo;
 
+    @ExcelProperty("类别")
+    private String category;
+
     @ExcelProperty("品牌")
     private String brand;
 
@@ -28,6 +31,9 @@ public class DunkPriceExcel {
     @ExcelProperty("尺码CM")
     private String sizeText;
 
+    @ExcelProperty("欧码")
+    private String euSize;
+
     @ExcelProperty("最低价格")
     private Integer lowPrice;
 
@@ -42,4 +48,7 @@ public class DunkPriceExcel {
 
     @ExcelProperty("最近销量")
     private String lastSales;
+
+    @ExcelProperty("得物价格")
+    private Integer poisonPrice;
 }

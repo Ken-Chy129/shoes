@@ -8,6 +8,7 @@ import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
@@ -28,7 +29,6 @@ public class DunkClient {
                 .newBuilder()
                 .addQueryParameter("func", searchRequest.getFunc())
                 .addQueryParameter("refId", searchRequest.getRefId())
-                .addQueryParameter("categoryIds", searchRequest.getCategoryIds())
                 .addQueryParameter("keyword", searchRequest.getKeyword())
                 .addQueryParameter("sortKey", searchRequest.getSortKey())
                 .addQueryParameter("page", String.valueOf(searchRequest.getPage()))
@@ -57,6 +57,7 @@ public class DunkClient {
             String link = product.getLink();
             String[] split = link.split("/");
             product.setModelNo(split[split.length - 1]);
+            product.setCategory(split[split.length - 2]);
             product.setBrandId(supershipLog.getString("brandId"));
             product.setCategoryId(supershipLog.getString("categoryId"));
             product.setItemId(supershipLog.getString("itemId"));
@@ -64,17 +65,50 @@ public class DunkClient {
         return Pair.of(pageCount, products);
     }
 
-    public List<DunkPriceExcel> queryPrice(String modelNo) {
+    public List<DunkPriceExcel> queryPrice(String category, String modelNo) {
         LimiterHelper.limitDunkPrice();
-        String url = DunkApiConstant.PRICE.replace("{modelNo}", modelNo);
+        String url = DunkApiConstant.PRICE
+                .replace("{category}", category)
+                .replace("{modelNo}", modelNo);
         String rawResult = HttpUtil.doGet(url);
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
         if (jsonObject == null) {
             return Collections.emptyList();
         }
+        if ("products".equals(category)) {
+            return extractProductsPrice(modelNo, jsonObject);
+        } else {
+            return extractApparelsPrice(modelNo, jsonObject);
+        }
+    }
+
+    private List<DunkPriceExcel> extractApparelsPrice(String modelNo, JSONObject jsonObject) {
+        JSONArray jsonArray = jsonObject.getJSONArray("sizePrices");
+        if (jsonArray == null) {
+            log.error("extractApparelsPrice error, modeNo:{}, result:{}", modelNo, jsonObject.toJSONString());
+            return Collections.emptyList();
+        }
+        List<DunkPriceExcel> result = new ArrayList<>();
+        for (JSONObject sizePrice : jsonArray.toJavaList(JSONObject.class)) {
+            JSONObject size = sizePrice.getJSONObject("size");
+            DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
+            dunkPriceExcel.setModelNo(modelNo);
+            dunkPriceExcel.setCategory("apparels");
+            dunkPriceExcel.setSize(size.getInteger("id"));
+            dunkPriceExcel.setSizeText(size.getString("localizedName"));
+            dunkPriceExcel.setLowPrice(sizePrice.getInteger("minListingPrice"));
+            dunkPriceExcel.setHighPrice(sizePrice.getInteger("maxOfferPrice"));
+            dunkPriceExcel.setInventory(size.getString("listingItemCountText"));
+            dunkPriceExcel.setBuyCount(size.getString("offeringItemCountText"));
+            result.add(dunkPriceExcel);
+        }
+        return result;
+    }
+
+    private List<DunkPriceExcel> extractProductsPrice(String modelNo, JSONObject jsonObject) {
         String status = jsonObject.getString("status");
         if (!"success".equals(status)) {
-            log.error("queryPrice error, request:{}, result: {}", url, rawResult);
+            log.error("extractProductsPrice error, modelNo:{}, result: {}", modelNo, jsonObject);
             return Collections.emptyList();
         }
         JSONObject data = jsonObject.getJSONObject("data");
@@ -86,6 +120,7 @@ public class DunkClient {
             String sizeText = priceObject.getString("sizeText");
             DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
             dunkPriceExcel.setModelNo(modelNo);
+            dunkPriceExcel.setCategory("shoes");
             dunkPriceExcel.setSize(size);
             dunkPriceExcel.setSizeText(sizeText);
             dunkPriceExcel.setHighPrice(price);
@@ -114,8 +149,10 @@ public class DunkClient {
         return result;
     }
 
-    public List<DunkSalesHistory> querySalesHistory(String modelNo, Integer sizeId) {
-        String baseUrl = DunkApiConstant.SALES_HISTORY.replace("{modelNo}", modelNo);
+    public List<DunkSalesHistory> querySalesHistory(String category, String modelNo, Integer sizeId) {
+        String baseUrl = DunkApiConstant.SALES_HISTORY
+                .replace("{category}", category)
+                .replace("{modelNo}", modelNo);
         HttpUrl url = Objects.requireNonNull(HttpUrl.parse(baseUrl))
                 .newBuilder()
                 .addQueryParameter("size_id", String.valueOf(sizeId))

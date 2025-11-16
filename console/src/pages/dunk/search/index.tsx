@@ -99,7 +99,7 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {queries, sorts, pageCount, searchType} = values;
+            const {queries, sorts, pageCount} = values;
             const sortsStr = sorts.join(',');
 
             // 统计总任务数和完成数
@@ -113,8 +113,7 @@ const SearchPage = () => {
                     platform: "dunk",
                     query: queryItem.keyword,
                     sorts: sortsStr,
-                    pageCount,
-                    searchType
+                    pageCount
                 }, {
                     onSuccess: res => {
                         completedTasks++;
@@ -181,14 +180,6 @@ const SearchPage = () => {
 
     const defaultSorts = sortOptions.map(option => option.value);
 
-    const getSearchTypeText = (category: string) => {
-        const searchTypeMap: Record<string, string> = {
-            sneakers: '鞋类',
-            clothes: '服饰',
-        };
-        return searchTypeMap[category] || category;
-    }
-
     const columns = [
         {
             title: 'ID',
@@ -201,13 +192,6 @@ const SearchPage = () => {
             dataIndex: 'query',
             key: 'query',
             width: '10%',
-        },
-        {
-            title: '搜索类型',
-            dataIndex: 'searchType',
-            key: 'searchType',
-            width: '6%',
-            render: (searchType: string) => getSearchTypeText(searchType)
         },
         {
             title: '排序规则',
@@ -446,19 +430,6 @@ const SearchPage = () => {
                         </>
                     )}
                 </Form.List>
-                <Form.Item
-                    name="searchType"
-                    label="搜索类型"
-                    rules={[{required: true}]}
-                >
-                    <Select
-                        placeholder="请选择搜索类型"
-                        options={[
-                            {label: '鞋类', value: 'sneakers'},
-                            {label: '服饰', value: 'apparels'},
-                        ]}
-                    />
-                </Form.Item>
                 <Form.Item
                     name="sorts"
                     label="排序方式"
