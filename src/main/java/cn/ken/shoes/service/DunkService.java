@@ -20,6 +20,6 @@ public class DunkService {
     private DunkClient dunkClient;
 
     public Result<List<DunkItem>> search(DunkSearchRequest request) {
-        return Result.buildSuccess(dunkClient.search(request));
+        return Result.buildSuccess(dunkClient.search(request).getValue());
     }
 }
