@@ -8,8 +8,10 @@ import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.dunk.DunkItem;
+import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.entity.SearchTaskDO;
+import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.search.SearchTaskRequest;
 import cn.ken.shoes.model.search.SearchTaskVO;
@@ -25,6 +27,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @author Ken-Chy129
@@ -175,14 +178,65 @@ public class SearchService {
     private Pair<Integer, JSONArray> doSearch(String platform, String query, String sort, String searchType, Integer pageIndex) {
         if ("stockx".equals(platform)) {
             Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType);
-            return Pair.of (pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
+            return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
         } else if ("dunk".equals(platform)) {
             DunkSearchRequest dunkSearchRequest = new DunkSearchRequest();
             dunkSearchRequest.setKeyword(query);
             dunkSearchRequest.setSortKey(sort);
             dunkSearchRequest.setPage(pageIndex);
             Pair<Integer, List<DunkItem>> pair = dunkClient.search(dunkSearchRequest);
-            return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
+            List<DunkPriceExcel> dunkPriceExcels = new ArrayList<>();
+            CountDownLatch priceLatch = new CountDownLatch(pair.getValue().size());
+            for (DunkItem dunkItem : pair.getValue()) {
+                Thread.startVirtualThread(() -> {
+                    try {
+                        String modelNo = dunkItem.getModelNo();
+                        List<DunkPriceExcel> priceList = dunkClient.queryPrice(modelNo);
+                        CountDownLatch salesLatch = new CountDownLatch(priceList.size());
+                        for (DunkPriceExcel price : priceList) {
+                            Thread.startVirtualThread(() -> {
+                                try {
+                                    DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
+                                    dunkPriceExcel.setModelNo(modelNo);
+                                    dunkPriceExcel.setBrand(dunkItem.getBrandId());
+                                    dunkPriceExcel.setTitle(dunkItem.getTitle());
+                                    dunkPriceExcel.setSize(price.getSize());
+                                    dunkPriceExcel.setSizeText(price.getSizeText());
+                                    dunkPriceExcel.setLowPrice(price.getLowPrice());
+                                    dunkPriceExcel.setHighPrice(price.getHighPrice());
+                                    dunkPriceExcel.setInventory(price.getInventory());
+                                    dunkPriceExcel.setBuyCount(price.getBuyCount());
+                                    List<DunkSalesHistory> dunkSalesHistories = dunkClient.querySalesHistory(modelNo, price.getSize());
+                                    StringBuilder sb = new StringBuilder();
+                                    for (DunkSalesHistory salesHistory : dunkSalesHistories) {
+                                        sb.append("¥");
+                                        sb.append(salesHistory.getPrice());
+                                        sb.append("@");
+                                        sb.append(salesHistory.getDate());
+                                    }
+                                    dunkPriceExcel.setLastSales(sb.toString());
+                                    dunkPriceExcels.add(dunkPriceExcel);
+                                } finally {
+                                    salesLatch.countDown();
+                                }
+                            });
+                        }
+                        try {
+                            salesLatch.await();
+                        } catch (InterruptedException e) {
+                            log.error(e.getMessage(), e);
+                        }
+                    } finally {
+                        priceLatch.countDown();
+                    }
+                });
+            }
+            try {
+                priceLatch.await();
+            } catch (InterruptedException e) {
+                log.error(e.getMessage(), e);
+            }
+            return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(dunkPriceExcels));
         }
         return Pair.of(0, new JSONArray());
     }
@@ -204,8 +258,11 @@ public class SearchService {
             String euSize = jsonObject.getString("euSize");
             return STR."\{modelNo}:\{euSize}";
         } else {
+            JSONObject jsonObject = (JSONObject) item;
+            String modelNo = jsonObject.getString("modelNo");
+            String sizeText = jsonObject.getString("sizeText");
+            return STR."\{modelNo}:\{sizeText}";
         }
-        return "";
     }
 
     private void saveItemsToExcel(String platform, String filepath, List<JSONObject> items) {
@@ -227,7 +284,12 @@ public class SearchService {
                 WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(StockXPriceExcel.class).build();
                 excelWriter.write(excels, writeSheet);
             } else {
-
+                List<DunkPriceExcel> excels = new ArrayList<>();
+                for (JSONObject jsonObject : items) {
+                    excels.add(jsonObject.toJavaObject(DunkPriceExcel.class));
+                }
+                WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(DunkPriceExcel.class).build();
+                excelWriter.write(excels, writeSheet);
             }
         }
     }

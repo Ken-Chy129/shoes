@@ -2,12 +2,12 @@ package cn.ken.shoes.client;
 
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.common.DunkApiConstant;
-import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.model.dunk.DunkItem;
 import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.util.HttpUtil;
+import cn.ken.shoes.util.LimiterHelper;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.HttpUrl;
@@ -28,6 +28,7 @@ public class DunkClient {
                 .newBuilder()
                 .addQueryParameter("func", searchRequest.getFunc())
                 .addQueryParameter("refId", searchRequest.getRefId())
+                .addQueryParameter("categoryIds", searchRequest.getCategoryIds())
                 .addQueryParameter("keyword", searchRequest.getKeyword())
                 .addQueryParameter("sortKey", searchRequest.getSortKey())
                 .addQueryParameter("page", String.valueOf(searchRequest.getPage()))
@@ -37,14 +38,15 @@ public class DunkClient {
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
         JSONObject pageInfo = jsonObject.getJSONObject("supershipLog");
         if (pageInfo == null) {
-            log.error("search error, result is null, result: {}", rawResult);
+            log.error("search error, result is null, request:{}, result: {}", url.url().getPath(), rawResult);
             return Pair.of(0, Collections.emptyList());
         }
-        Integer pageCount = pageInfo.getInteger("rankingTotalHits");
+        Integer totalHits = pageInfo.getInteger("totalHits");
+        Integer pageCount = (int) Math.ceil((double) totalHits / searchRequest.getPerPage());
         JSONObject search = jsonObject.getJSONObject("search");
         if (search == null) {
-            log.error("search error, result is null, result: {}", rawResult);
-            return Pair.of(pageCount, Collections.emptyList());
+            log.error("search error, result is null, request:{}, result: {}", url.url().getPath(), rawResult);
+            return Pair.of(0, Collections.emptyList());
         }
         List<DunkItem> products = search.getJSONArray("products").toJavaList(DunkItem.class);
         for (DunkItem product : products) {
@@ -63,8 +65,8 @@ public class DunkClient {
     }
 
     public List<DunkPriceExcel> queryPrice(String modelNo) {
-        String url = DunkApiConstant.PRICE
-                .replace("{modelNo}", modelNo);
+        LimiterHelper.limitDunkPrice();
+        String url = DunkApiConstant.PRICE.replace("{modelNo}", modelNo);
         String rawResult = HttpUtil.doGet(url);
         JSONObject jsonObject = JSONObject.parseObject(rawResult);
         if (jsonObject == null) {
@@ -72,7 +74,7 @@ public class DunkClient {
         }
         String status = jsonObject.getString("status");
         if (!"success".equals(status)) {
-            log.error("queryPrice error, result: {}", rawResult);
+            log.error("queryPrice error, request:{}, result: {}", url, rawResult);
             return Collections.emptyList();
         }
         JSONObject data = jsonObject.getJSONObject("data");
@@ -104,8 +106,8 @@ public class DunkClient {
         List<DunkPriceExcel> result = size2PriceMap.values().stream().toList();
         for (DunkPriceExcel dunkPriceExcel : result) {
             Integer size = dunkPriceExcel.getSize();
-            Integer itemCount = listingItemCountMap.getInteger(String.valueOf(size));
-            Integer offeringItemCount = offeringItemCountMap.getInteger(String.valueOf(size));
+            String itemCount = listingItemCountMap.getString(String.valueOf(size));
+            String offeringItemCount = offeringItemCountMap.getString(String.valueOf(size));
             dunkPriceExcel.setInventory(itemCount);
             dunkPriceExcel.setBuyCount(offeringItemCount);
         }
