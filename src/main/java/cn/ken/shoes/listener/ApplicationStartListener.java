@@ -62,14 +62,20 @@ public class ApplicationStartListener implements ApplicationListener<Application
     private void initSizeMap() {
         List<SizeChartDO> sizeChartDOS = sizeChartMapper.selectList(new QueryWrapper<>());
         Map<String, Map<String, List<SizeChartDO>>> brandGenderMap = new HashMap<>();
+        Map<String, Map<String, List<SizeChartDO>>> dunkBrandGenderMap = new HashMap<>();
         for (SizeChartDO sizeChartDO : sizeChartDOS) {
             String brand = sizeChartDO.getBrand();
+            String dunkBrand = sizeChartDO.getDunkBrand();
             String gender = sizeChartDO.getGender();
             Map<String, List<SizeChartDO>> genderMap = brandGenderMap.getOrDefault(brand, new HashMap<>());
             genderMap.computeIfAbsent(gender, k -> new ArrayList<>()).add(sizeChartDO);
             brandGenderMap.put(brand, genderMap);
+            if (dunkBrand != null) {
+                dunkBrandGenderMap.put(dunkBrand, genderMap);
+            }
         }
         ShoesContext.setBrandGenderSizeChartMap(brandGenderMap);
+        ShoesContext.setDunkBrandGenderSizeChartMap(dunkBrandGenderMap);
     }
 
     private void initCustomModel() {

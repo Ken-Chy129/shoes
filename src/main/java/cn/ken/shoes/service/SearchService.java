@@ -2,8 +2,10 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Pair;
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.DunkClient;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.Gender;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.SearchTaskMapper;
@@ -117,7 +119,7 @@ public class SearchService {
 
                 // 处理第一页数据
                 for (Object item : firstPair.getValue()) {
-                    JSONObject jsonObject = enhanceItem(platform, item);
+                    JSONObject jsonObject = enhanceItem(item);
                     String key = getItemKey(platform, item);
                     if (!resultMap.containsKey(key)) {
                         resultMap.put(key, jsonObject);
@@ -132,7 +134,7 @@ public class SearchService {
                 // 处理后续页
                 for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
                     Pair<Integer, JSONArray> pair = doSearch(platform, query, sort.trim(), searchType, i);
-                    if (pair.getKey() == 0 || CollectionUtils.isEmpty(firstPair.getValue())) {
+                    if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
                         log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
                         completedQueries++;
                         progress = (int) ((completedQueries * 100.0) / totalQueries);
@@ -140,8 +142,8 @@ public class SearchService {
                         continue;
                     }
 
-                    for (Object item : firstPair.getValue()) {
-                        JSONObject jsonObject = enhanceItem(platform, item);
+                    for (Object item : pair.getValue()) {
+                        JSONObject jsonObject = enhanceItem(item);
                         String key = getItemKey(platform, item);
                         if (!resultMap.containsKey(key)) {
                             resultMap.put(key, jsonObject);
@@ -192,6 +194,11 @@ public class SearchService {
                     try {
                         String modelNo = dunkItem.getModelNo();
                         List<DunkPriceExcel> priceList = dunkClient.queryPrice(dunkItem.getCategory(), modelNo);
+                        if (CollectionUtils.isEmpty(priceList)) {
+                            log.error("queryPrice error, item:{}", dunkItem);
+                        }
+                        String title = dunkItem.getTitle();
+                        Gender gender = getGender(title);
                         CountDownLatch salesLatch = new CountDownLatch(priceList.size());
                         for (DunkPriceExcel price : priceList) {
                             Thread.startVirtualThread(() -> {
@@ -203,6 +210,7 @@ public class SearchService {
                                     dunkPriceExcel.setTitle(dunkItem.getTitle());
                                     dunkPriceExcel.setSize(price.getSize());
                                     dunkPriceExcel.setSizeText(price.getSizeText());
+                                    dunkPriceExcel.setEuSize(ShoesContext.getDunkEuSize(dunkItem.getBrandId(), gender, price.getSizeText()));
                                     dunkPriceExcel.setLowPrice(price.getLowPrice());
                                     dunkPriceExcel.setHighPrice(price.getHighPrice());
                                     dunkPriceExcel.setInventory(price.getInventory());
@@ -244,13 +252,11 @@ public class SearchService {
         return Pair.of(0, new JSONArray());
     }
 
-    private JSONObject enhanceItem(String platform, Object item) {
+    private JSONObject enhanceItem(Object item) {
         JSONObject jsonObject = (JSONObject) item;
-        if ("stockx".equals(platform)) {
-            String modelNo = jsonObject.getString("modelNo");
-            String euSize = jsonObject.getString("euSize");
-            jsonObject.put("poisonPrice", priceManager.getPoisonPrice(modelNo, euSize));
-        }
+        String modelNo = jsonObject.getString("modelNo");
+        String euSize = jsonObject.getString("euSize");
+        jsonObject.put("poisonPrice", priceManager.getPoisonPrice(modelNo, euSize));
         return jsonObject;
     }
 
@@ -316,5 +322,17 @@ public class SearchService {
         PageResult<List<SearchTaskVO>> result = PageResult.buildSuccess(voList);
         result.setTotal(count);
         return result;
+    }
+
+    private Gender getGender(String title) {
+        if (title.contains("Women's")) {
+            return Gender.WOMENS;
+        } else if (title.contains("GS")) {
+            return Gender.KIDS;
+        } else if (title.contains("PS") || title.contains("TD")) {
+            return Gender.BABY;
+        } else {
+            return Gender.MENS;
+        }
     }
 }
