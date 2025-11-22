@@ -43,4 +43,9 @@ public class SizeChartDO {
      * CM
      */
     private String cmSize;
+
+    /**
+     * dunk品牌
+     */
+    private String dunkBrand;
 }

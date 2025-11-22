@@ -1,6 +1,7 @@
 package cn.ken.shoes;
 
 import cn.hutool.core.util.StrUtil;
+import cn.ken.shoes.common.Gender;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
@@ -13,6 +14,9 @@ public class ShoesContext {
 
     @Getter
     private static Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = new HashMap<>();
+
+    @Getter
+    private static Map<String, Map<String, List<SizeChartDO>>> dunkBrandGenderSizeChartMap = new HashMap<>();
 
     private final static Set<String> THREE_FIVE_MODEL_SET = new HashSet<>();
 
@@ -28,8 +32,29 @@ public class ShoesContext {
         ShoesContext.brandGenderSizeChartMap = brandGenderSizeChartMap;
     }
 
+    public static void setDunkBrandGenderSizeChartMap(Map<String, Map<String, List<SizeChartDO>>> dunkBrandGenderSizeChartMap) {
+        ShoesContext.dunkBrandGenderSizeChartMap = dunkBrandGenderSizeChartMap;
+    }
+
     public static Map<String, List<SizeChartDO>> getBrandSizeChart(String brand) {
         return brandGenderSizeChartMap.get(brand);
+    }
+
+    public static String getDunkEuSize(String brand, Gender gender, String cmSize) {
+        String finalCmSize = cmSize.replace("cm", "");
+        Map<String, List<SizeChartDO>> genderSizeMap = dunkBrandGenderSizeChartMap.get(brand);
+        if (genderSizeMap == null) {
+            return null;
+        }
+        List<SizeChartDO> sizeChartDOS = genderSizeMap.get(gender.name());
+        if (sizeChartDOS == null) {
+            return null;
+        }
+        return sizeChartDOS.stream()
+                .filter(chart -> chart.getCmSize().equals(finalCmSize))
+                .findFirst()
+                .map(SizeChartDO::getEuSize)
+                .orElse(null);
     }
 
     public static List<SizeChartDO> getBrandGenderSizeChart(String brand, String gender) {
