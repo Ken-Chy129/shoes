@@ -13,8 +13,10 @@ import {
     Tag,
     Tooltip
 } from "antd";
+
+const { TextArea } = Input;
 import React, {useEffect, useState, useRef} from "react";
-import {DownloadOutlined, PlusOutlined, MinusCircleOutlined} from "@ant-design/icons";
+import {DownloadOutlined, PlusOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
@@ -99,19 +101,31 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {queries, sorts, pageCount} = values;
+            const {keywords, sorts, pageCount} = values;
             const sortsStr = sorts.join(',');
 
+            // 根据换行符拆分关键词
+            const keywordList = keywords
+                .split('\n')
+                .map((k: string) => k.trim())
+                .filter((k: string) => k.length > 0);
+
+            if (keywordList.length === 0) {
+                message.error('请输入至少一个关键词');
+                setLoading(false);
+                return;
+            }
+
             // 统计总任务数和完成数
-            let totalTasks = queries.length;
+            let totalTasks = keywordList.length;
             let completedTasks = 0;
             let failedTasks = 0;
 
             // 为每个关键词创建任务
-            queries.forEach((queryItem: { keyword: string }, index: number) => {
+            keywordList.forEach((keyword: string) => {
                 doPostRequest(SEARCH_TASK_API.CREATE, {
                     platform: "dunk",
-                    query: queryItem.keyword,
+                    query: keyword,
                     sorts: sortsStr,
                     pageCount
                 }, {
@@ -360,76 +374,38 @@ const SearchPage = () => {
                 layout="vertical"
                 style={{marginTop: 20}}
                 initialValues={{
-                    queries: [{keyword: ''}],
+                    keywords: '',
                     searchType: 'sneakers',
                     sorts: defaultSorts,
                     pageCount: 25
                 }}
             >
-                <Form.List
-                    name="queries"
+                <Form.Item
+                    name="keywords"
+                    label="关键词列表"
                     rules={[
                         {
-                            validator: async (_, queries) => {
-                                if (!queries || queries.length < 1) {
-                                    return Promise.reject(new Error('至少需要添加一个关键词'));
+                            required: true,
+                            message: '请输入关键词'
+                        },
+                        {
+                            validator: async (_, value) => {
+                                if (value) {
+                                    const keywords = value.split('\n').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+                                    if (keywords.length === 0) {
+                                        return Promise.reject(new Error('至少需要输入一个关键词'));
+                                    }
                                 }
                             },
                         },
                     ]}
+                    extra="每行一个关键词,支持多行输入"
                 >
-                    {(fields, {add, remove}, {errors}) => (
-                        <>
-                            <div style={{marginBottom: 8, fontWeight: 500}}>关键词列表</div>
-                            {fields.map((field, index) => (
-                                <Form.Item
-                                    required={false}
-                                    key={field.key}
-                                >
-                                    <Form.Item
-                                        {...field}
-                                        name={[field.name, 'keyword']}
-                                        validateTrigger={['onChange', 'onBlur']}
-                                        rules={[
-                                            {
-                                                required: true,
-                                                whitespace: true,
-                                                message: "请输入关键词或删除此项",
-                                            },
-                                        ]}
-                                        noStyle
-                                    >
-                                        <Input
-                                            placeholder={`关键词 ${index + 1}`}
-                                            style={{
-                                                width: fields.length > 1 ? 'calc(100% - 40px)' : '100%',
-                                                marginRight: fields.length > 1 ? 8 : 0
-                                            }}
-                                        />
-                                    </Form.Item>
-                                    {fields.length > 1 && (
-                                        <MinusCircleOutlined
-                                            className="dynamic-delete-button"
-                                            onClick={() => remove(field.name)}
-                                            style={{fontSize: 20, color: '#ff4d4f', cursor: 'pointer'}}
-                                        />
-                                    )}
-                                </Form.Item>
-                            ))}
-                            <Form.Item>
-                                <Button
-                                    type="dashed"
-                                    onClick={() => add()}
-                                    style={{width: '100%'}}
-                                    icon={<PlusOutlined />}
-                                >
-                                    添加关键词
-                                </Button>
-                                <Form.ErrorList errors={errors} />
-                            </Form.Item>
-                        </>
-                    )}
-                </Form.List>
+                    <TextArea
+                        rows={6}
+                        placeholder="请输入关键词,每行一个&#10;例如:&#10;Air Jordan 1&#10;Nike Dunk&#10;Yeezy 350"
+                    />
+                </Form.Item>
                 <Form.Item
                     name="sorts"
                     label="排序方式"
