@@ -27,6 +27,7 @@ interface SearchTask {
     query: string;
     sorts: string;
     pageCount: number;
+    type: string;
     searchType: string;
     progress: number;
     status: string;
@@ -88,8 +89,9 @@ const SearchPage = () => {
 
     const queryTaskList = (silent = false) => {
         const status = conditionForm.getFieldValue("status");
+        const type = conditionForm.getFieldValue("type");
         const platform = "stockx"
-        doGetRequest(SEARCH_TASK_API.GET_TASKS, {platform, status, pageIndex, pageSize}, {
+        doGetRequest(SEARCH_TASK_API.GET_TASKS, {platform, status, type, pageIndex, pageSize}, {
             onSuccess: res => {
                 setTaskList(res.data);
                 setTotal(res.total);
@@ -133,6 +135,7 @@ const SearchPage = () => {
                         query: keyword,
                         sorts: sortsStr,
                         pageCount,
+                        type: 'keyword',
                         searchType
                     }, {
                         onSuccess: res => {
@@ -187,7 +190,7 @@ const SearchPage = () => {
                         query: modelNo,
                         sorts: 'featured',
                         pageCount: 1,
-                        searchType: 'modelNo'
+                        type: 'modelNo'
                     }, {
                         onSuccess: res => {
                             completedTasks++;
@@ -259,11 +262,18 @@ const SearchPage = () => {
 
     const defaultSorts = sortOptions.map(option => option.value);
 
+    const getTaskTypeText = (type: string) => {
+        const typeMap: Record<string, string> = {
+            keyword: '关键词搜索',
+            modelNo: '货号搜索',
+        };
+        return typeMap[type] || type;
+    }
+
     const getSearchTypeText = (category: string) => {
         const searchTypeMap: Record<string, string> = {
             shoes: '鞋类',
             clothes: '服饰',
-            modelNo: '货号搜索',
         };
         return searchTypeMap[category] || category;
     }
@@ -276,17 +286,30 @@ const SearchPage = () => {
             width: '5%',
         },
         {
-            title: '搜索关键词',
+            title: '搜索内容',
             dataIndex: 'query',
             key: 'query',
             width: '10%',
         },
         {
-            title: '搜索类型',
+            title: '任务类型',
+            dataIndex: 'type',
+            key: 'type',
+            width: '8%',
+            render: (type: string) => getTaskTypeText(type)
+        },
+        {
+            title: '商品类别',
             dataIndex: 'searchType',
             key: 'searchType',
             width: '6%',
-            render: (searchType: string) => getSearchTypeText(searchType)
+            render: (searchType: string, record: SearchTask) => {
+                // 货号搜索不显示商品类别
+                if (record.type === 'modelNo') {
+                    return '-';
+                }
+                return getSearchTypeText(searchType);
+            }
         },
         {
             title: '排序规则',
@@ -389,13 +412,24 @@ const SearchPage = () => {
                     <Form.Item name="status" label="任务状态">
                         <Select
                             style={{width: 160}}
-                            placeholder="请选择字段"
+                            placeholder="请选择状态"
                             allowClear
                             options={[
                                 {label: '待执行', value: 'pending'},
                                 {label: '运行中', value: 'running'},
                                 {label: '运行成功', value: 'success'},
                                 {label: '运行失败', value: 'failed'},
+                            ]}
+                        />
+                    </Form.Item>
+                    <Form.Item name="type" label="任务类型" style={{marginLeft: 16}}>
+                        <Select
+                            style={{width: 160}}
+                            placeholder="请选择类型"
+                            allowClear
+                            options={[
+                                {label: '关键词搜索', value: 'keyword'},
+                                {label: '货号搜索', value: 'modelNo'},
                             ]}
                         />
                     </Form.Item>
@@ -557,7 +591,7 @@ const SearchPage = () => {
                                 },
                             },
                         ]}
-                        extra="每行一个货号,支持多行输入。默认使用精选排序,每个货号爬取1页"
+                        extra="每行一个货号,支持多行输入。"
                     >
                         <TextArea
                             rows={8}

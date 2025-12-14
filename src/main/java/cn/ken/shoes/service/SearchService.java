@@ -61,6 +61,7 @@ public class SearchService {
         searchTask.setQuery(request.getQuery());
         searchTask.setSorts(request.getSorts());
         searchTask.setPageCount(request.getPageCount());
+        searchTask.setType(request.getType());
         searchTask.setSearchType(request.getSearchType());
         searchTask.setProgress(0);
         searchTask.setStatus(SearchTaskDO.StatusEnum.PENDING.getCode());
@@ -93,6 +94,7 @@ public class SearchService {
             String query = searchTask.getQuery();
             String sortsStr = searchTask.getSorts();
             Integer pageCount = searchTask.getPageCount();
+            String type = searchTask.getType();
             String searchType = searchTask.getSearchType();
 
             // 分割sorts字符串为列表
@@ -159,7 +161,7 @@ public class SearchService {
 
             // 生成文件名（使用时间戳避免重复）
             String timestamp = String.valueOf(System.currentTimeMillis());
-            String filename = STR."\{platform}_\{searchType}_\{query}_\{timestamp}";
+            String filename = STR."\{platform}_\{type}_\{query}_\{timestamp}";
             String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
 
             // 保存到Excel
@@ -303,8 +305,8 @@ public class SearchService {
         }
     }
 
-    public PageResult<List<SearchTaskVO>> getSearchTasks(String platform, String status, Integer pageIndex, Integer pageSize) {
-        Long count = searchTaskMapper.count(status);
+    public PageResult<List<SearchTaskVO>> getSearchTasks(String platform, String status, String type, Integer pageIndex, Integer pageSize) {
+        Long count = searchTaskMapper.count(status, type);
         if (count <= 0) {
             return PageResult.buildSuccess();
         }
@@ -316,7 +318,7 @@ public class SearchService {
         }
         int startIndex = (pageIndex - 1) * pageSize;
 
-        List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(platform, status, startIndex, pageSize);
+        List<SearchTaskDO> taskList = searchTaskMapper.selectByCondition(platform, status, type, startIndex, pageSize);
         List<SearchTaskVO> voList = BeanUtil.copyToList(taskList, SearchTaskVO.class);
 
         PageResult<List<SearchTaskVO>> result = PageResult.buildSuccess(voList);

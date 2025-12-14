@@ -34,7 +34,12 @@ public class SearchTaskDO extends BaseDO {
     private Integer pageCount;
 
     /**
-     * 搜索类型: shoes-鞋类, clothes-服饰
+     * 任务类型: keyword-关键词搜索, modelNo-货号搜索
+     */
+    private String type;
+
+    /**
+     * 搜索类型: shoes-鞋类, clothes-服饰 (仅关键词搜索时使用)
      */
     private String searchType;
 

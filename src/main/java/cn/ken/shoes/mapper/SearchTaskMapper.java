@@ -16,13 +16,14 @@ public interface SearchTaskMapper extends BaseMapper<SearchTaskDO> {
      */
     List<SearchTaskDO> selectByCondition(@Param("platform") String platform,
                                           @Param("status") String status,
+                                          @Param("type") String type,
                                           @Param("startIndex") Integer startIndex,
                                           @Param("pageSize") Integer pageSize);
 
     /**
      * 查询任务总数
      */
-    Long count(@Param("status") String status);
+    Long count(@Param("status") String status, @Param("type") String type);
 
     /**
      * 更新任务进度
