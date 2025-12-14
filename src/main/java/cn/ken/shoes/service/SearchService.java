@@ -90,12 +90,31 @@ public class SearchService {
             // 更新任务状态为RUNNING
             searchTaskMapper.updateStartStatus(taskId, SearchTaskDO.StatusEnum.RUNNING.getCode(), new Date());
 
-            String platform = searchTask.getPlatform();
-            String query = searchTask.getQuery();
-            String sortsStr = searchTask.getSorts();
-            Integer pageCount = searchTask.getPageCount();
             String type = searchTask.getType();
-            String searchType = searchTask.getSearchType();
+
+            // 根据 type 执行不同逻辑
+            if ("modelNo".equals(type)) {
+                executeModelNoSearch(taskId, searchTask);
+            } else {
+                executeKeywordSearch(taskId, searchTask);
+            }
+        } catch (Exception e) {
+            log.error("executeSearchTask error, taskId:{}, msg:{}", taskId, e.getMessage(), e);
+            // 更新任务状态为FAILED
+            searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.FAILED.getCode(), new Date(), null);
+        }
+    }
+
+    /**
+     * 执行关键词搜索任务
+     */
+    private void executeKeywordSearch(Long taskId, SearchTaskDO searchTask) {
+        String platform = searchTask.getPlatform();
+        String query = searchTask.getQuery();
+        String sortsStr = searchTask.getSorts();
+        Integer pageCount = searchTask.getPageCount();
+        String type = searchTask.getType();
+        String searchType = searchTask.getSearchType();
 
             // 分割sorts字符串为列表
             List<String> sortsList = Arrays.asList(sortsStr.split(","));
@@ -159,24 +178,92 @@ public class SearchService {
                 }
             }
 
-            // 生成文件名（使用时间戳避免重复）
-            String timestamp = String.valueOf(System.currentTimeMillis());
-            String filename = STR."\{platform}_\{type}_\{query}_\{timestamp}";
-            String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
+        // 生成文件名（使用时间戳避免重复）
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String filename = STR."\{platform}_\{type}_\{query}_\{timestamp}";
+        String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
 
-            // 保存到Excel
-            List<JSONObject> resultList = new ArrayList<>(resultMap.values());
-            saveItemsToExcel(platform, filePath, resultList);
+        // 保存到Excel
+        List<JSONObject> resultList = new ArrayList<>(resultMap.values());
+        saveItemsToExcel(platform, filePath, resultList);
 
-            // 更新任务状态为SUCCESS
-            searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
-            log.info("executeSearchTask success, taskId:{}, query:{}, resultCount:{}", taskId, query, resultList.size());
+        // 更新任务状态为SUCCESS
+        searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
+        log.info("executeKeywordSearch success, taskId:{}, query:{}, resultCount:{}", taskId, query, resultList.size());
+    }
 
-        } catch (Exception e) {
-            log.error("executeSearchTask error, taskId:{}, msg:{}", taskId, e.getMessage(), e);
-            // 更新任务状态为FAILED
+    /**
+     * 执行货号搜索任务
+     */
+    private void executeModelNoSearch(Long taskId, SearchTaskDO searchTask) {
+        String platform = searchTask.getPlatform();
+        String queryStr = searchTask.getQuery();
+        String type = searchTask.getType();
+        String sort = searchTask.getSorts(); // 固定为 "featured"
+
+        // 根据换行符拆分货号
+        List<String> modelNoList = Arrays.stream(queryStr.split("\n"))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .toList();
+
+        if (modelNoList.isEmpty()) {
+            log.error("executeModelNoSearch no modelNo found, taskId:{}", taskId);
             searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.FAILED.getCode(), new Date(), null);
+            return;
         }
+
+        // 使用LinkedHashMap保证去重后保持顺序
+        Map<String, JSONObject> resultMap = new LinkedHashMap<>();
+
+        // 计算总任务数:按货号数量计算
+        int totalModelNos = modelNoList.size();
+        int completedModelNos = 0;
+
+        // 遍历每个货号进行查询(只查询第一页)
+        for (String modelNo : modelNoList) {
+            // 只查询第一页,pageIndex=1,searchType默认为"shoes"
+            Pair<Integer, JSONArray> pair = doSearch(platform, modelNo, sort.trim(), "shoes", 1);
+
+            if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
+                log.warn("executeModelNoSearch no result for modelNo:{}, taskId:{}", modelNo, taskId);
+            } else {
+                // 处理查询结果,只保留与目标货号匹配的数据
+                for (Object item : pair.getValue()) {
+                    JSONObject jsonObject = (JSONObject) item;
+                    String itemModelNo = jsonObject.getString("modelNo");
+
+                    // 过滤:只保留货号匹配的商品
+                    if (itemModelNo != null && itemModelNo.equalsIgnoreCase(modelNo)) {
+                        JSONObject enhancedItem = enhanceItem(item);
+                        String key = getItemKey(platform, item);
+                        if (!resultMap.containsKey(key)) {
+                            resultMap.put(key, enhancedItem);
+                        }
+                    }
+                }
+            }
+
+            // 更新进度:每完成一个货号查询,进度增加
+            completedModelNos++;
+            int progress = (int) ((completedModelNos * 100.0) / totalModelNos);
+            searchTaskMapper.updateProgress(taskId, progress);
+        }
+
+        // 生成文件名(使用时间戳避免重复)
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        // 货号搜索统一文件名格式: stockx_modelNo_{时间戳}
+        String filename = STR."\{platform}_\{type}_\{timestamp}";
+        String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
+
+        // 保存到Excel
+        List<JSONObject> resultList = new ArrayList<>(resultMap.values());
+        saveItemsToExcel(platform, filePath, resultList);
+
+        // 更新任务状态为SUCCESS
+        searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
+        log.info("executeModelNoSearch success, taskId:{}, modelNoCount:{}, resultCount:{}",
+                 taskId, modelNoList.size(), resultList.size());
     }
 
     private Pair<Integer, JSONArray> doSearch(String platform, String query, String sort, String searchType, Integer pageIndex) {

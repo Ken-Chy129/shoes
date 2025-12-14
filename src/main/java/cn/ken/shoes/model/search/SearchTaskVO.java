@@ -26,6 +26,11 @@ public class SearchTaskVO {
     private Integer pageCount;
 
     /**
+     * 任务类型: keyword-关键词搜索, modelNo-货号搜索
+     */
+    private String type;
+
+    /**
      * 搜索类型: shoes-鞋类, clothes-服饰
      */
     private String searchType;
