@@ -7,6 +7,7 @@ import {
     message,
     Modal,
     Progress,
+    Radio,
     Select,
     Space,
     Table,
@@ -47,6 +48,7 @@ const SearchPage = () => {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [searchMode, setSearchMode] = useState<'keyword' | 'modelNo'>('keyword');
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -101,59 +103,117 @@ const SearchPage = () => {
     const createSearchTask = () => {
         createTaskForm.validateFields().then(values => {
             setLoading(true);
-            const {keywords, sorts, pageCount, searchType} = values;
-            const sortsStr = sorts.join(',');
 
-            // 根据换行符拆分关键词
-            const keywordList = keywords
-                .split('\n')
-                .map((k: string) => k.trim())
-                .filter((k: string) => k.length > 0);
+            if (searchMode === 'keyword') {
+                // 关键词搜索模式
+                const {keywords, sorts, pageCount, searchType} = values;
+                const sortsStr = sorts.join(',');
 
-            if (keywordList.length === 0) {
-                message.error('请输入至少一个关键词');
-                setLoading(false);
-                return;
-            }
+                // 根据换行符拆分关键词
+                const keywordList = keywords
+                    .split('\n')
+                    .map((k: string) => k.trim())
+                    .filter((k: string) => k.length > 0);
 
-            // 统计总任务数和完成数
-            let totalTasks = keywordList.length;
-            let completedTasks = 0;
-            let failedTasks = 0;
+                if (keywordList.length === 0) {
+                    message.error('请输入至少一个关键词');
+                    setLoading(false);
+                    return;
+                }
 
-            // 为每个关键词创建任务
-            keywordList.forEach((keyword: string) => {
-                doPostRequest(SEARCH_TASK_API.CREATE, {
-                    platform: "stockx",
-                    query: keyword,
-                    sorts: sortsStr,
-                    pageCount,
-                    searchType
-                }, {
-                    onSuccess: res => {
-                        completedTasks++;
-                        if (completedTasks + failedTasks === totalTasks) {
-                            if (failedTasks === 0) {
-                                message.success(`全部任务创建成功！共创建 ${totalTasks} 个任务`);
-                            } else {
-                                message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                // 统计总任务数和完成数
+                let totalTasks = keywordList.length;
+                let completedTasks = 0;
+                let failedTasks = 0;
+
+                // 为每个关键词创建任务
+                keywordList.forEach((keyword: string) => {
+                    doPostRequest(SEARCH_TASK_API.CREATE, {
+                        platform: "stockx",
+                        query: keyword,
+                        sorts: sortsStr,
+                        pageCount,
+                        searchType
+                    }, {
+                        onSuccess: res => {
+                            completedTasks++;
+                            if (completedTasks + failedTasks === totalTasks) {
+                                if (failedTasks === 0) {
+                                    message.success(`全部任务创建成功！共创建 ${totalTasks} 个任务`);
+                                } else {
+                                    message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                                }
+                                handleCreateModalClose();
+                                queryTaskList();
+                                setLoading(false);
                             }
-                            handleCreateModalClose();
-                            queryTaskList();
-                            setLoading(false);
+                        },
+                        onError: err => {
+                            failedTasks++;
+                            if (completedTasks + failedTasks === totalTasks) {
+                                message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                                handleCreateModalClose();
+                                queryTaskList();
+                                setLoading(false);
+                            }
                         }
-                    },
-                    onError: err => {
-                        failedTasks++;
-                        if (completedTasks + failedTasks === totalTasks) {
-                            message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
-                            handleCreateModalClose();
-                            queryTaskList();
-                            setLoading(false);
-                        }
-                    }
+                    });
                 });
-            });
+            } else {
+                // 货号搜索模式
+                const {modelNumbers} = values;
+
+                // 根据换行符拆分货号
+                const modelNoList = modelNumbers
+                    .split('\n')
+                    .map((m: string) => m.trim())
+                    .filter((m: string) => m.length > 0);
+
+                if (modelNoList.length === 0) {
+                    message.error('请输入至少一个货号');
+                    setLoading(false);
+                    return;
+                }
+
+                // 统计总任务数和完成数
+                let totalTasks = modelNoList.length;
+                let completedTasks = 0;
+                let failedTasks = 0;
+
+                // 为每个货号创建任务
+                modelNoList.forEach((modelNo: string) => {
+                    doPostRequest(SEARCH_TASK_API.CREATE, {
+                        platform: "stockx",
+                        query: modelNo,
+                        sorts: 'featured',
+                        pageCount: 1,
+                        searchType: 'modelNo'
+                    }, {
+                        onSuccess: res => {
+                            completedTasks++;
+                            if (completedTasks + failedTasks === totalTasks) {
+                                if (failedTasks === 0) {
+                                    message.success(`全部任务创建成功！共创建 ${totalTasks} 个任务`);
+                                } else {
+                                    message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                                }
+                                handleCreateModalClose();
+                                queryTaskList();
+                                setLoading(false);
+                            }
+                        },
+                        onError: err => {
+                            failedTasks++;
+                            if (completedTasks + failedTasks === totalTasks) {
+                                message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
+                                handleCreateModalClose();
+                                queryTaskList();
+                                setLoading(false);
+                            }
+                        }
+                    });
+                });
+            }
         }).catch(err => {
             console.error('表单验证失败:', err);
         });
@@ -170,6 +230,7 @@ const SearchPage = () => {
     const handleCreateModalClose = () => {
         setShowCreateModal(false);
         createTaskForm.resetFields();
+        setSearchMode('keyword');
     }
 
     const getStatusTag = (status: string) => {
@@ -202,6 +263,7 @@ const SearchPage = () => {
         const searchTypeMap: Record<string, string> = {
             shoes: '鞋类',
             clothes: '服饰',
+            modelNo: '货号搜索',
         };
         return searchTypeMap[category] || category;
     }
@@ -396,71 +458,113 @@ const SearchPage = () => {
                     keywords: '',
                     searchType: 'shoes',
                     sorts: defaultSorts,
-                    pageCount: 25
+                    pageCount: 25,
+                    modelNumbers: ''
                 }}
             >
-                <Form.Item
-                    name="keywords"
-                    label="关键词列表"
-                    rules={[
-                        {
-                            required: true,
-                            message: '请输入关键词'
-                        },
-                        {
-                            validator: async (_, value) => {
-                                if (value) {
-                                    const keywords = value.split('\n').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
-                                    if (keywords.length === 0) {
-                                        return Promise.reject(new Error('至少需要输入一个关键词'));
-                                    }
-                                }
+                <Form.Item label="搜索模式">
+                    <Radio.Group
+                        value={searchMode}
+                        onChange={(e) => setSearchMode(e.target.value)}
+                    >
+                        <Radio value="keyword">关键词搜索</Radio>
+                        <Radio value="modelNo">货号搜索</Radio>
+                    </Radio.Group>
+                </Form.Item>
+
+                {searchMode === 'keyword' ? (
+                    <>
+                        <Form.Item
+                            name="keywords"
+                            label="关键词列表"
+                            rules={[
+                                {
+                                    required: true,
+                                    message: '请输入关键词'
+                                },
+                                {
+                                    validator: async (_, value) => {
+                                        if (value) {
+                                            const keywords = value.split('\n').map((k: string) => k.trim()).filter((k: string) => k.length > 0);
+                                            if (keywords.length === 0) {
+                                                return Promise.reject(new Error('至少需要输入一个关键词'));
+                                            }
+                                        }
+                                    },
+                                },
+                            ]}
+                            extra="每行一个关键词,支持多行输入"
+                        >
+                            <TextArea
+                                rows={6}
+                                placeholder="请输入关键词,每行一个&#10;例如:&#10;Air Jordan 1&#10;Nike Dunk&#10;Yeezy 350"
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="searchType"
+                            label="搜索类型"
+                            rules={[{required: true}]}
+                        >
+                            <Select
+                                placeholder="请选择搜索类型"
+                                options={[
+                                    {label: '鞋类', value: 'shoes'},
+                                    {label: '服饰', value: 'clothes'},
+                                ]}
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="sorts"
+                            label="排序方式"
+                            rules={[{required: true}]}
+                        >
+                            <Select
+                                mode="multiple"
+                                placeholder="请选择一个或多个排序方式"
+                                options={sortOptions}
+                                maxTagCount="responsive"
+                            />
+                        </Form.Item>
+                        <Form.Item
+                            name="pageCount"
+                            label="爬取页面数量(每页40个商品)"
+                            rules={[{required: true}]}
+                        >
+                            <InputNumber
+                                min={1}
+                                max={100}
+                                style={{width: '100%'}}
+                            />
+                        </Form.Item>
+                    </>
+                ) : (
+                    <Form.Item
+                        name="modelNumbers"
+                        label="货号列表"
+                        rules={[
+                            {
+                                required: true,
+                                message: '请输入货号'
                             },
-                        },
-                    ]}
-                    extra="每行一个关键词,支持多行输入"
-                >
-                    <TextArea
-                        rows={6}
-                        placeholder="请输入关键词,每行一个&#10;例如:&#10;Air Jordan 1&#10;Nike Dunk&#10;Yeezy 350"
-                    />
-                </Form.Item>
-                <Form.Item
-                    name="searchType"
-                    label="搜索类型"
-                    rules={[{required: true}]}
-                >
-                    <Select
-                        placeholder="请选择搜索类型"
-                        options={[
-                            {label: '鞋类', value: 'shoes'},
-                            {label: '服饰', value: 'clothes'},
+                            {
+                                validator: async (_, value) => {
+                                    if (value) {
+                                        const modelNumbers = value.split('\n').map((m: string) => m.trim()).filter((m: string) => m.length > 0);
+                                        if (modelNumbers.length === 0) {
+                                            return Promise.reject(new Error('至少需要输入一个货号'));
+                                        }
+                                    }
+                                },
+                            },
                         ]}
-                    />
-                </Form.Item>
-                <Form.Item
-                    name="sorts"
-                    label="排序方式"
-                    rules={[{required: true}]}
-                >
-                    <Select
-                        mode="multiple"
-                        placeholder="请选择一个或多个排序方式"
-                        options={sortOptions}
-                        maxTagCount="responsive"
-                    />
-                </Form.Item>
-                <Form.Item
-                    name="pageCount"
-                    label="爬取页面数量(每页40个商品)"
-                    rules={[{required: true}]}
-                >
-                    <InputNumber
-                        min={1}
-                        max={100}
-                        style={{width: '100%'}}
-                    />
-                </Form.Item>
+                        extra="每行一个货号,支持多行输入。默认使用精选排序,每个货号爬取1页"
+                    >
+                        <TextArea
+                            rows={8}
+                            placeholder="请输入货号,每行一个&#10;例如:&#10;DZ5485-612&#10;FD0774-200&#10;DM9652-102"
+                        />
+                    </Form.Item>
+                )}
             </Form>
         </Modal>
     </>
