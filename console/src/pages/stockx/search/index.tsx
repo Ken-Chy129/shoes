@@ -178,43 +178,25 @@ const SearchPage = () => {
                     return;
                 }
 
-                // 统计总任务数和完成数
-                let totalTasks = modelNoList.length;
-                let completedTasks = 0;
-                let failedTasks = 0;
-
-                // 为每个货号创建任务
-                modelNoList.forEach((modelNo: string) => {
-                    doPostRequest(SEARCH_TASK_API.CREATE, {
-                        platform: "stockx",
-                        query: modelNo,
-                        sorts: 'featured',
-                        pageCount: 1,
-                        type: 'modelNo'
-                    }, {
-                        onSuccess: res => {
-                            completedTasks++;
-                            if (completedTasks + failedTasks === totalTasks) {
-                                if (failedTasks === 0) {
-                                    message.success(`全部任务创建成功！共创建 ${totalTasks} 个任务`);
-                                } else {
-                                    message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
-                                }
-                                handleCreateModalClose();
-                                queryTaskList();
-                                setLoading(false);
-                            }
-                        },
-                        onError: err => {
-                            failedTasks++;
-                            if (completedTasks + failedTasks === totalTasks) {
-                                message.warning(`任务创建完成：成功 ${completedTasks} 个，失败 ${failedTasks} 个`);
-                                handleCreateModalClose();
-                                queryTaskList();
-                                setLoading(false);
-                            }
-                        }
-                    });
+                // 将所有货号用换行符连接成一个字符串,只创建一个任务
+                const queryString = modelNoList.join('\n');
+                doPostRequest(SEARCH_TASK_API.CREATE, {
+                    platform: "stockx",
+                    query: queryString,
+                    sorts: 'featured',
+                    pageCount: 1,
+                    type: 'modelNo'
+                }, {
+                    onSuccess: res => {
+                        message.success(`货号搜索任务创建成功！共${modelNoList.length}个货号`);
+                        handleCreateModalClose();
+                        queryTaskList();
+                        setLoading(false);
+                    },
+                    onError: err => {
+                        message.error('任务创建失败');
+                        setLoading(false);
+                    }
                 });
             }
         }).catch(err => {
