@@ -11,6 +11,9 @@
             <if test="status != null and status != ''">
                 and status = #{status}
             </if>
+            <if test="type != null and type != ''">
+                and type = #{type}
+            </if>
         </where>
         order by gmt_create desc
         limit #{startIndex}, #{pageSize}
@@ -21,6 +24,9 @@
         <where>
             <if test="status != null and status != ''">
                 and status = #{status}
+            </if>
+            <if test="type != null and type != ''">
+                and type = #{type}
             </if>
         </where>
     </select>

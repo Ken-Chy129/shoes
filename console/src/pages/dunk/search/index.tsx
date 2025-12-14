@@ -86,8 +86,9 @@ const SearchPage = () => {
 
     const queryTaskList = (silent = false) => {
         const status = conditionForm.getFieldValue("status");
+        const type = conditionForm.getFieldValue("type");
         const platform = "dunk"
-        doGetRequest(SEARCH_TASK_API.GET_TASKS, {platform, status, pageIndex, pageSize}, {
+        doGetRequest(SEARCH_TASK_API.GET_TASKS, {platform, status, type, pageIndex, pageSize}, {
             onSuccess: res => {
                 setTaskList(res.data);
                 setTotal(res.total);
@@ -127,7 +128,8 @@ const SearchPage = () => {
                     platform: "dunk",
                     query: keyword,
                     sorts: sortsStr,
-                    pageCount
+                    pageCount,
+                    type: 'keyword'
                 }, {
                     onSuccess: res => {
                         completedTasks++;
