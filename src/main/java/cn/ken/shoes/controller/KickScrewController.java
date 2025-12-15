@@ -99,4 +99,10 @@ public class KickScrewController {
         kickScrewService.queryHotModels();
         return Result.buildSuccess(true);
     }
+
+    @GetMapping("queryPrice")
+    public Result<List<KickScrewPriceDO>> queryPrice(String modelNo) {
+        List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of(modelNo));
+        return Result.buildSuccess(kickScrewPriceDOS);
+    }
 }
