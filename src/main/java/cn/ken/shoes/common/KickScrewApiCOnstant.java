@@ -66,4 +66,9 @@ public class KickScrewApiConstant {
      * 下载订单qr标签
      */
     public static final String DOWNLOAD_QR_LABEL = "https://api.crewsupply.kickscrew.com/sapi/v2/order/label/{orderId}";
+
+    /**
+     * 新版商品搜索
+     */
+    public static final String SEARCH_ITEMS_V2 = "https://www.kickscrew.com/api/marqo/search";
 }
