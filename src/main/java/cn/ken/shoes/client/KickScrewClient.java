@@ -36,6 +36,34 @@ public class KickScrewClient {
 
     private static final Integer PAGE_SIZE = 30;
 
+    public List<KickScrewItemDO> searchItems(String brand) {
+        JSONObject requestBody = new JSONObject();
+        String filter = STR."brand:(\{brand}) AND (product_type:(Sneakers) OR product_type:(Shoes))";
+        requestBody.put("filter", filter);
+        requestBody.put("offset", 1);
+        requestBody.put("limit", 1000);
+        requestBody.put("q", "*");
+        String rawResult = HttpUtil.doPost(KickScrewApiConstant.SEARCH_ITEMS_V2, requestBody.toJSONString(), getHeaders());
+        if (StrUtil.isBlank(rawResult)) {
+            return Collections.emptyList();
+        }
+        JSONObject jsonResult = JSON.parseObject(rawResult);
+        List<JSONObject> hits = jsonResult.getJSONArray("hits").toJavaList(JSONObject.class);
+        List<KickScrewItemDO> result = new ArrayList<>();
+        for (JSONObject hit : hits) {
+            KickScrewItemDO kickScrewItemDO = new KickScrewItemDO();
+            kickScrewItemDO.setModelNo(hit.getString("model_no"));
+            kickScrewItemDO.setProductType(hit.getString("product_type"));
+            kickScrewItemDO.setBrand(hit.getString("brand"));
+            kickScrewItemDO.setGender(hit.getString("gender"));
+            kickScrewItemDO.setHandle(hit.getString("handle"));
+            kickScrewItemDO.setReleaseYear(hit.getInteger("release_year"));
+            kickScrewItemDO.setImage(hit.getString("variantImageUrl"));
+            result.add(kickScrewItemDO);
+        }
+        return result;
+    }
+
     public void downloadQrLabel(String orderId) {
         HttpUtil.downloadFile(KickScrewApiConstant.DOWNLOAD_QR_LABEL.replace("{orderId}", orderId),
                 Headers.of(
