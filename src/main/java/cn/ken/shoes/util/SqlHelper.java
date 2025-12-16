@@ -33,6 +33,21 @@ public class SqlHelper implements ApplicationContextAware {
 //        log.info("SqlHelper|batch finish, target:{}, actual:{}", entityList.size(), cnt);
     }
 
+    public static <T> int batchWithResult(List<T> entityList, Function<T, Integer> function) {
+        if (CollectionUtils.isEmpty(entityList)) {
+            return 0;
+        }
+        int cnt = 0;
+        try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH, false)) {
+            for (T entity : entityList) {
+                cnt += function.apply(entity);
+            }
+            sqlSession.commit();
+        }
+        return cnt;
+//        log.info("SqlHelper|batch finish, target:{}, actual:{}", entityList.size(), cnt);
+    }
+
     @Override
     public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
         sqlSessionFactory = applicationContext.getBean(SqlSessionFactory.class);

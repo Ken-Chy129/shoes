@@ -216,16 +216,23 @@ public class KickScrewService {
 
     @SneakyThrows
     public void updateItems() {
+        long time = System.currentTimeMillis();
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
+        int brandCnt = 0;
         for (BrandDO brandDO : brandDOList) {
             try {
                 String brandName = brandDO.getName();
                 List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.searchItems(brandName);
-                SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+                if (!kickScrewItemDOS.isEmpty()) {
+                    brandCnt++;
+                }
+                int successCnt = SqlHelper.batchWithResult(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+                log.info("updateItems, brand:{}, cnt:{}, newItemCnt:{}", brandName, kickScrewItemDOS.size(), successCnt);
             } catch (Exception e) {
                 log.error("updateItems error, msg:{}", e.getMessage());
             }
         }
+        log.info("updateItems finish, allBrandCnt:{}, brandWithResultCnt:{}, cost:{}", brandDOList.size(), brandCnt, TimeUtil.getCostMin(time));
     }
 
     /**

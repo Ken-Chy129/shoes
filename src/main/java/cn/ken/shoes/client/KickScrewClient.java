@@ -41,17 +41,22 @@ public class KickScrewClient {
         String filter = STR."brand:(\{brand}) AND (product_type:(Sneakers) OR product_type:(Shoes))";
         requestBody.put("filter", filter);
         requestBody.put("offset", 1);
-        requestBody.put("limit", 1000);
+        requestBody.put("limit", 999);
         requestBody.put("q", "*");
         String rawResult = HttpUtil.doPost(KickScrewApiConstant.SEARCH_ITEMS_V2, requestBody.toJSONString(), getHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return Collections.emptyList();
         }
         JSONObject jsonResult = JSON.parseObject(rawResult);
+        if (!jsonResult.containsKey("hits")) {
+            log.error("searchItems error no hits, result:{}", rawResult);
+            return Collections.emptyList();
+        }
         List<JSONObject> hits = jsonResult.getJSONArray("hits").toJavaList(JSONObject.class);
         List<KickScrewItemDO> result = new ArrayList<>();
         for (JSONObject hit : hits) {
             KickScrewItemDO kickScrewItemDO = new KickScrewItemDO();
+            kickScrewItemDO.setTitle(hit.getString("productTitle"));
             kickScrewItemDO.setModelNo(hit.getString("model_no"));
             kickScrewItemDO.setProductType(hit.getString("product_type"));
             kickScrewItemDO.setBrand(hit.getString("brand"));
