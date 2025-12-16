@@ -218,9 +218,13 @@ public class KickScrewService {
     public void updateItems() {
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
         for (BrandDO brandDO : brandDOList) {
-            String brandName = brandDO.getName();
-            List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.searchItems(brandName);
-            SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+            try {
+                String brandName = brandDO.getName();
+                List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.searchItems(brandName);
+                SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+            } catch (Exception e) {
+                log.error("updateItems error, msg:{}", e.getMessage());
+            }
         }
     }
 
