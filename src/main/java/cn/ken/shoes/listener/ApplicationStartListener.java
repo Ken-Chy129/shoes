@@ -9,6 +9,7 @@ import cn.ken.shoes.mapper.SpecialPriceMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
+import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
@@ -30,6 +31,9 @@ public class ApplicationStartListener implements ApplicationListener<Application
     private PoisonService poisonService;
 
     @Resource
+    private KickScrewService kickScrewService;
+
+    @Resource
     private SizeChartMapper sizeChartMapper;
 
     @Resource
@@ -46,6 +50,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
         initSizeMap();
         initCustomModel();
         initSpecialPrice();
+        // 异步不断更新kc商品
+        asyncUpdateKcItems();
         while (true) {
             try {
                 Thread.sleep(5 * 60 * 1000);
@@ -57,6 +63,19 @@ public class ApplicationStartListener implements ApplicationListener<Application
                 log.error(e.getMessage(), e);
             }
         }
+    }
+
+    private void asyncUpdateKcItems() {
+        Thread.startVirtualThread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(5 * 60 * 1000);
+                } catch (InterruptedException e) {
+                    log.error(e.getMessage(), e);
+                }
+                kickScrewService.updateItems();
+            }
+        }).start();
     }
 
     private void initSizeMap() {
