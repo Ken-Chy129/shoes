@@ -69,13 +69,13 @@ public class ApplicationStartListener implements ApplicationListener<Application
         Thread.startVirtualThread(() -> {
             while (true) {
                 try {
+                    kickScrewService.updateItems();
                     Thread.sleep(5 * 60 * 1000);
                 } catch (InterruptedException e) {
                     log.error(e.getMessage(), e);
                 }
-                kickScrewService.updateItems();
             }
-        }).start();
+        });
     }
 
     private void initSizeMap() {
