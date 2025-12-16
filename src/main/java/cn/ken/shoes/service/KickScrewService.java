@@ -214,6 +214,16 @@ public class KickScrewService {
         }
     }
 
+    @SneakyThrows
+    public void updateItems() {
+        List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
+        for (BrandDO brandDO : brandDOList) {
+            String brandName = brandDO.getName();
+            List<KickScrewItemDO> kickScrewItemDOS = kickScrewClient.searchItems(brandName);
+            SqlHelper.batch(kickScrewItemDOS, item -> kickScrewItemMapper.insertIgnore(item));
+        }
+    }
+
     /**
      * 指定货号刷新价格
      */
