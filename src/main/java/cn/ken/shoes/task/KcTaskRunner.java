@@ -32,7 +32,6 @@ public class KcTaskRunner extends Thread {
                     continue;
                 } else {
                     LockHelper.lockKcItem();
-                    kickScrewService.refreshItems(true);
                     kickScrewService.refreshPriceV2();
                     LockHelper.unlockKcItem();
                 }
