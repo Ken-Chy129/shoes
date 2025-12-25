@@ -37,6 +37,9 @@ public class PoisonClient {
     @Value("${poison.token}")
     private String token;
 
+    @Value("${poison.tokenV2}")
+    private String tokenV2;
+
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
         if (modelNo == null) {
             return Collections.emptyList();
@@ -57,7 +60,7 @@ public class PoisonClient {
         int times = 0;
         String result;
         do {
-            result = doQueryPriceByModelNoV2(modelNo);
+            result = doQueryPriceByModelNo(PoisonApiConstant.PRICE_BY_MODEL_NO_V2, modelNo, tokenV2);
             times++;
         } while (result == null && times <= 3);
         if (result == null) {
@@ -106,7 +109,7 @@ public class PoisonClient {
         int times = 0;
         String result;
         do {
-            result = doQueryPriceByModelNo(modelNo);
+            result = doQueryPriceByModelNo(PoisonApiConstant.PRICE_BY_MODEL_NO, modelNo, token);
             times++;
         } while (result == null && times <= 3);
         if (result == null) {
@@ -152,17 +155,11 @@ public class PoisonClient {
         return poisonPriceDOList;
     }
 
-    private String doQueryPriceByModelNo(String modelNo) {
+    private String doQueryPriceByModelNo(String baseUrl, String modelNo, String token) {
         LimiterHelper.limitPoisonPrice();
-        String url = PoisonApiConstant.PRICE_BY_MODEL_NO
+        String url = baseUrl
                 .replace("{modelNo}", modelNo)
                 .replace("{token}", token);
-        return HttpUtil.doGet(url, false);
-    }
-
-    private String doQueryPriceByModelNoV2(String modelNo) {
-        LimiterHelper.limitPoisonPrice();
-        String url = PoisonApiConstant.PRICE_BY_MODEL_NO_V2.replace("{modelNo}", modelNo);
         return HttpUtil.doGet(url, false);
     }
 
