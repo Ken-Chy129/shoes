@@ -35,5 +35,5 @@ public class PoisonApiConstant {
     /**
      * 新版货号查价格
      */
-    public static final String PRICE_BY_MODEL_NO_V2 = "http://center.8866.life:9981/getpricedict?token=sa13594454158B576D72A6EAA3F0&sku={modelNo}";
+    public static final String PRICE_BY_MODEL_NO_V2 = "http://center.8866.life:9981/getpricedict?token={token}&sku={modelNo}";
 }
