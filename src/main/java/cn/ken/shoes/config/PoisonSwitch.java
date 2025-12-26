@@ -45,7 +45,7 @@ public class PoisonSwitch {
      */
     public static Boolean OPEN_ALL_THREE_FIVE = false;
 
-    public static Boolean USE_V2_API = true;
+    public static Boolean USE_V2_API = false;
 
     /**
      * 保存配置到文件
