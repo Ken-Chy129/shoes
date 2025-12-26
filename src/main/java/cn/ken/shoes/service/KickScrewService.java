@@ -283,17 +283,16 @@ public class KickScrewService {
     }
 
     public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
-        int uploadCnt = 0;
+        List<KickScrewUploadItem> toUpload = new ArrayList<>();
         try {
             Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
             if (CollectionUtils.isEmpty(modelNos)) {
                 return 0;
             }
-            List<KickScrewUploadItem> toUpload = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 if (TaskSwitch.STOP_KC_TASK) {
                     log.info("kc task terminated");
-                    return uploadCnt;
+                    return toUpload.size();
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
@@ -314,12 +313,14 @@ public class KickScrewService {
                 kickScrewUploadItem.setPrice(kickScrewPriceDO.getPrice() - 1);
                 toUpload.add(kickScrewUploadItem);
             }
-            uploadCnt += toUpload.size();
+            if (toUpload.isEmpty()) {
+                return 0;
+            }
             kickScrewClient.batchUploadItems(toUpload);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
-        return uploadCnt;
+        return toUpload.size();
     }
 
 
