@@ -2,8 +2,10 @@ package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.mapper.SpecialPriceMapper;
+import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 import cn.ken.shoes.util.SqlHelper;
 import com.alibaba.fastjson.JSONObject;
@@ -22,6 +24,14 @@ public class PoisonController {
 
     @Resource
     private SpecialPriceMapper specialPriceMapper;
+
+    @Resource
+    private PoisonClient poisonClient;
+
+    @GetMapping("batchQueryPrice")
+    public Result<List<PoisonPriceDO>> batchQueryPrice(String query) {
+        return Result.buildSuccess(poisonClient.batchQueryPrice(List.of(query)));
+    }
 
     @GetMapping("querySpecialPrice")
     public Result<List<String>> querySpecialPrice() {
