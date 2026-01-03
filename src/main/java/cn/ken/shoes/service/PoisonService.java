@@ -19,6 +19,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -71,20 +73,8 @@ public class PoisonService {
         List<List<String>> partition = Lists.partition(modelNos, 20);
         int i = 1;
         for (List<String> modelNumbers : partition) {
-            CountDownLatch latch = new CountDownLatch(modelNumbers.size());
-            for (String modelNumber : modelNumbers) {
-                Thread.startVirtualThread(() -> {
-                    try {
-                        List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNumber);
-                        priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
-                    } catch (Exception e) {
-                        log.error("refreshAllPrice error", e);
-                    } finally {
-                        latch.countDown();
-                    }
-                });
-            }
-            latch.await();
+            List<PoisonPriceDO> poisonPriceDOList = poisonClient.batchQueryPrice(modelNumbers);
+//            priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
             log.info("finish refreshAllPrice-{}, cnt:{}", i++, modelNumbers.size());
         }
         LockHelper.unlockPoisonPrice();
