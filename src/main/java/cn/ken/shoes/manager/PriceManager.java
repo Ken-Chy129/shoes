@@ -19,6 +19,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -93,6 +94,45 @@ public class PriceManager {
 
     public void importPrice(Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap) {
         CACHE.putAll(modelNoPriceMap);
+    }
+
+    /**
+     * 批量预加载缺失的价格到缓存
+     * 1. 遍历货号集合，找出缓存中不存在的货号
+     * 2. 批量调用接口查询缺失货号的价格
+     * 3. 更新缓存（包括设置空缓存，避免重复查询）
+     */
+    public void preloadMissingPrices(Set<String> modelNos) {
+        if (modelNos == null || modelNos.isEmpty()) {
+            return;
+        }
+        // 找出缓存中不存在的货号
+        Set<String> missingModelNos = modelNos.stream()
+                .filter(modelNo -> CACHE.getIfPresent(modelNo) == null)
+                .collect(Collectors.toSet());
+        if (missingModelNos.isEmpty()) {
+            return;
+        }
+        log.info("preloadMissingPrices, total:{}, missing:{}", modelNos.size(), missingModelNos.size());
+        // 批量查询缺失货号的价格
+        List<PoisonPriceDO> poisonPriceDOList = poisonClient.batchQueryPrice(new ArrayList<>(missingModelNos));
+        // 按货号分组并更新缓存
+        Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap = poisonPriceDOList.stream()
+                .collect(Collectors.groupingBy(
+                        PoisonPriceDO::getModelNo,
+                        Collectors.toMap(
+                                PoisonPriceDO::getEuSize,
+                                Function.identity()
+                        )
+                ));
+        CACHE.putAll(modelNoPriceMap);
+        // 对于查询后仍然没有价格的货号，设置空缓存，避免每次重新查询
+        Set<String> foundModelNos = modelNoPriceMap.keySet();
+        for (String modelNo : missingModelNos) {
+            if (!foundModelNos.contains(modelNo)) {
+                CACHE.put(modelNo, Map.of());
+            }
+        }
     }
 
     public void dumpPrice() {

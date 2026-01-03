@@ -74,7 +74,15 @@ public class PoisonService {
         int i = 1;
         for (List<String> modelNumbers : partition) {
             List<PoisonPriceDO> poisonPriceDOList = poisonClient.batchQueryPrice(modelNumbers);
-//            priceManager.putModelNoPrice(modelNumber, poisonPriceDOList);
+            Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap = poisonPriceDOList.stream()
+                    .collect(Collectors.groupingBy(
+                            PoisonPriceDO::getModelNo,
+                            Collectors.toMap(
+                                    PoisonPriceDO::getEuSize,
+                                    Function.identity()
+                            )
+                    ));
+            priceManager.importPrice(modelNoPriceMap);
             log.info("finish refreshAllPrice-{}, cnt:{}", i++, modelNumbers.size());
         }
         LockHelper.unlockPoisonPrice();
@@ -86,12 +94,14 @@ public class PoisonService {
     public void importPriceToCache() {
         poisonPriceMapper.deleteExpire();
         List<PoisonPriceDO> poisonPriceDOList = poisonPriceMapper.selectList(new QueryWrapper<>());
-        Map<String, Map<String, PoisonPriceDO>> toImportMap = new HashMap<>();
-        for (PoisonPriceDO poisonPriceDO : poisonPriceDOList) {
-            String modelNo = poisonPriceDO.getModelNo();
-            String euSize = poisonPriceDO.getEuSize();
-            toImportMap.computeIfAbsent(modelNo, _ -> new HashMap<>()).put(euSize, poisonPriceDO);
-        }
+        Map<String, Map<String, PoisonPriceDO>> toImportMap = poisonPriceDOList.stream()
+                .collect(Collectors.groupingBy(
+                        PoisonPriceDO::getModelNo,
+                        Collectors.toMap(
+                                PoisonPriceDO::getEuSize,
+                                Function.identity()
+                        )
+                ));
         priceManager.importPrice(toImportMap);
         log.info("finish importPriceToCache, size:{}", toImportMap.size());
     }
