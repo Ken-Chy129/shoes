@@ -1,6 +1,7 @@
 package cn.ken.shoes.client;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.PoisonItemDO;
@@ -16,6 +17,7 @@ import okhttp3.Headers;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -39,6 +41,59 @@ public class PoisonClient {
 
     @Value("${poison.tokenV2}")
     private String tokenV2;
+
+    public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
+        if (CollectionUtils.isEmpty(modelNos)) {
+            return Collections.emptyList();
+        }
+        // 重试
+        int times = 0;
+        String result;
+        do {
+            LimiterHelper.limitPoisonPrice();
+            JSONObject params = new JSONObject();
+            params.put("artno_list", modelNos);
+            params.put("token", token);
+            result = HttpUtil.doPost(PoisonApiConstant.BATCH_PRICE, params.toJSONString());
+            times++;
+        } while (result == null && times <= 3);
+        if (result == null) {
+            log.error("batchQueryPrice error, no result:{}", modelNos);
+            return Collections.emptyList();
+        }
+        JSONObject jsonObject = JSON.parseObject(result);
+        Integer code = jsonObject.getInteger("code");
+        if (code != 200) {
+            log.error("batchQueryPrice error, result: {}", result);
+            return Collections.emptyList();
+        }
+        List<JSONObject> skuList = jsonObject.getJSONArray("sku_list").toJavaList(JSONObject.class);
+        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+        for (JSONObject sku : skuList) {
+            Date time = sku.getDate("update_time");
+            LocalDate update = LocalDate.ofInstant(time.toInstant(), ZoneId.systemDefault());
+            LocalDate threeDayAgo = LocalDate.now().minusDays(3);
+            if (update.isBefore(threeDayAgo)) {
+                log.error("batchQueryPrice data is too old, sku:{}", sku);
+                continue;
+            }
+            String modelNo = sku.getString("article_number");
+            List<JSONObject> priceList = sku.getJSONArray("data").toJavaList(JSONObject.class);
+            for (JSONObject priceData : priceList) {
+                Integer minprice = priceData.getInteger("minprice");
+                if (minprice == null || minprice <= 0 || minprice > 100 * PoisonSwitch.MAX_PRICE) {
+                    continue;
+                }
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(priceData.getString("size"));
+                poisonPriceDO.setPrice(minprice / 100);
+                poisonPriceDO.setUpdateTime(time);
+                poisonPriceDOList.add(poisonPriceDO);
+            }
+        }
+        return poisonPriceDOList;
+    }
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
         if (modelNo == null) {

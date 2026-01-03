@@ -36,4 +36,9 @@ public class PoisonApiConstant {
      * 新版货号查价格
      */
     public static final String PRICE_BY_MODEL_NO_V2 = "http://center.8866.life:9981/getpricedict?token={token}&sku={modelNo}";
+
+    /**
+     * 批量查询价格
+     */
+    public static final String BATCH_PRICE = "http://134.175.182.182:6699/api/dewu/redis/batchprice_token";
 }
