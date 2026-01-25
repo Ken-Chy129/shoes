@@ -11,6 +11,8 @@ public class LockHelper {
 
     private static final ReentrantLock POISON_PRICE_LOCK = new ReentrantLock();
 
+    private static final ReentrantLock STOCKX_ITEM_LOCK = new ReentrantLock();
+
     public static Boolean CLEAN_OLD = true;
 
     public static void setKcItemStatus(boolean status) {
@@ -45,5 +47,17 @@ public class LockHelper {
 
     public static void unlockPoisonPrice() {
         POISON_PRICE_LOCK.unlock();
+    }
+
+    public static boolean isStockXItemLock() {
+        return STOCKX_ITEM_LOCK.isLocked();
+    }
+
+    public static void lockStockXItem() {
+        STOCKX_ITEM_LOCK.lock();
+    }
+
+    public static void unlockStockXItem() {
+        STOCKX_ITEM_LOCK.unlock();
     }
 }

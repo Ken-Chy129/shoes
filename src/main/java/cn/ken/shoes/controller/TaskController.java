@@ -28,12 +28,18 @@ public class TaskController {
     public Result<JSONObject> querySetting() {
         JSONObject jsonObject = new JSONObject();
         jsonObject.put("kcTaskInterval", TaskSwitch.KC_TASK_INTERVAL);
+        jsonObject.put("stockxTaskInterval", TaskSwitch.STOCK_TASK_INTERVAL);
         return Result.buildSuccess(jsonObject);
     }
 
     @PostMapping("updateSetting")
     public Result<Boolean> updateSetting(@RequestBody JSONObject jsonObject) {
-        TaskSwitch.KC_TASK_INTERVAL = jsonObject.getLong("kcTaskInterval");
+        if (jsonObject.containsKey("kcTaskInterval")) {
+            TaskSwitch.KC_TASK_INTERVAL = jsonObject.getLong("kcTaskInterval");
+        }
+        if (jsonObject.containsKey("stockxTaskInterval")) {
+            TaskSwitch.STOCK_TASK_INTERVAL = jsonObject.getLong("stockxTaskInterval");
+        }
         return Result.buildSuccess(true);
     }
 }
