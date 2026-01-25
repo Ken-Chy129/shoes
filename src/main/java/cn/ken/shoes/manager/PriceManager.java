@@ -54,7 +54,8 @@ public class PriceManager {
                 .collect(
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                Function.identity()
+                                Function.identity(),
+                                (existing, replacement) -> existing
                         )
                 );
     }
@@ -86,7 +87,8 @@ public class PriceManager {
                 .collect(
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                poisonPriceDO -> poisonPriceDO
+                                poisonPriceDO -> poisonPriceDO,
+                                (existing, replacement) -> existing
                         )
                 );
         CACHE.put(modelNo, sizePriceMap);
@@ -122,7 +124,8 @@ public class PriceManager {
                         PoisonPriceDO::getModelNo,
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                Function.identity()
+                                Function.identity(),
+                                (existing, replacement) -> existing
                         )
                 ));
         CACHE.putAll(modelNoPriceMap);

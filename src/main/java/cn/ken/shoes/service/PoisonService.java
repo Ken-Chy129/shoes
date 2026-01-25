@@ -79,7 +79,8 @@ public class PoisonService {
                             PoisonPriceDO::getModelNo,
                             Collectors.toMap(
                                     PoisonPriceDO::getEuSize,
-                                    Function.identity()
+                                    Function.identity(),
+                                    (existing, replacement) -> existing
                             )
                     ));
             priceManager.importPrice(modelNoPriceMap);
@@ -99,7 +100,8 @@ public class PoisonService {
                         PoisonPriceDO::getModelNo,
                         Collectors.toMap(
                                 PoisonPriceDO::getEuSize,
-                                Function.identity()
+                                Function.identity(),
+                                (existing, replacement) -> existing
                         )
                 ));
         priceManager.importPrice(toImportMap);
