@@ -42,11 +42,6 @@ export default [
         component: './kc/brand'
       },
       {
-        path: '/kc/model',
-        layout: true,
-        component: './kc/model'
-      },
-      {
         path: '/kc/order',
         layout: true,
         component: "./kc/order"
@@ -103,6 +98,11 @@ export default [
         path: '/task/history',
         layout: true,
         component: './task/history'
+      },
+      {
+        path: '/task/model',
+        layout: true,
+        component: './task/model'
       },
     ]
   },
