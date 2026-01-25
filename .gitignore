@@ -37,3 +37,4 @@ build/
 /file/
 /downloads/
 /src/main/resources/config/
+.claude/

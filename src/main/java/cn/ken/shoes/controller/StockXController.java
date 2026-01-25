@@ -3,11 +3,13 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.service.StockXService;
+import cn.ken.shoes.task.StockXTaskRunner;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
@@ -27,9 +29,12 @@ public class StockXController {
     @Resource
     private SearchTaskMapper searchTaskMapper;
 
+    @Resource
+    private StockXTaskRunner stockXTaskRunner;
+
     @GetMapping("queryItems")
-    public Result<List<StockXPriceDO>> queryItems(String brand) {
-        return Result.buildSuccess(stockXClient.queryHotItemsByBrandWithPrice(brand, 1));
+    public Result<List<StockXPriceDO>> queryItems(String brand, Integer pageIndex) {
+        return Result.buildSuccess(stockXClient.queryHotItemsByBrandWithPrice(brand, pageIndex));
     }
 
     @GetMapping("queryItemsV2")
@@ -58,7 +63,7 @@ public class StockXController {
 
     @GetMapping("querySellingItems")
     public Result<JSONObject> querySellingItems() {
-        return Result.buildSuccess(stockXClient.querySellingItems(null, "HM9606-400"));
+        return Result.buildSuccess(stockXClient.querySellingItems(1, "HM9606-400"));
     }
 
     @GetMapping("refreshBrand")
@@ -86,6 +91,26 @@ public class StockXController {
     @PostMapping("extendAllItems")
     public Result<Void> extendAllItems() {
         Thread.startVirtualThread(() -> stockXService.extendAllItems());
+        return Result.buildSuccess();
+    }
+
+    @PostMapping("startTask")
+    public Result<Void> startTask() {
+        TaskSwitch.STOP_STOCK_TASK = false;
+        if (!stockXTaskRunner.isInit()) {
+            stockXTaskRunner.start();
+        }
+        return Result.buildSuccess();
+    }
+
+    @GetMapping("queryTaskStatus")
+    public Result<Boolean> queryTaskStatus() {
+        return Result.buildSuccess(!TaskSwitch.STOP_STOCK_TASK);
+    }
+
+    @PostMapping("stopTask")
+    public Result<Void> stopTask() {
+        TaskSwitch.STOP_STOCK_TASK = true;
         return Result.buildSuccess();
     }
 }
