@@ -98,9 +98,10 @@ public class StockXService {
                 try {
                     List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
                     Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
-                    // 过滤掉已存在的商品
+                    // 过滤掉已存在的商品和禁爬货号（FLAWS）
                     List<StockXPriceDO> filteredList = stockXPriceDOList.stream()
                             .filter(item -> !existingItemKeys.contains(STR."\{item.getModelNo()}:\{item.getEuSize()}"))
+                            .filter(item -> !ShoesContext.isFlawsModel(item.getModelNo(), item.getEuSize()))
                             .toList();
                     // 4.比价和上架
                     cnt += compareWithPoisonAndChangePrice(filteredList);

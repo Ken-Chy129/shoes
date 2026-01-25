@@ -96,13 +96,15 @@ public class ShoesContext {
     }
 
     public static void addNotCompareModel(CustomModelDO customModelDO) {
-        String modelNo = customModelDO.getModelNo();
-        String euSize = customModelDO.getEuSize();
-        NOT_COMPARE_MODEL_SET.add(STR."\{modelNo}:\{euSize}");
+        String key = customModelDO.getModelNo();
+        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
+            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
+        }
+        NOT_COMPARE_MODEL_SET.add(key);
     }
 
     public static boolean isNotCompareModel(String modelNo, String euSize) {
-        return NOT_COMPARE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+        return NOT_COMPARE_MODEL_SET.contains(modelNo) || NOT_COMPARE_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
     }
 
     // 无价

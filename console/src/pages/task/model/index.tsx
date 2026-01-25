@@ -16,11 +16,14 @@ import {SETTING_API} from "@/services/shoes";
 const ModelPage = () => {
     const [mustCrawlModelNos, setMustCrawlModelNos] = useState('');
     const [forbiddenCrawlModelNos, setForbiddenCrawlModelNos] = useState('');
+    const [notCompareModelNos, setNotCompareModelNos] = useState('');
     const forbiddenType = 4;
+    const notCompareType = 2;
 
     useEffect(() => {
         queryMustCrawlModelNos();
         queryForbiddenCrawlModelNos();
+        queryNotCompareModelNos();
     }, []);
 
 
@@ -58,6 +61,23 @@ const ModelPage = () => {
         });
     }
 
+    const queryNotCompareModelNos = () => {
+        doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: notCompareType}, {
+            onSuccess: res => {
+                setNotCompareModelNos(res.data);
+            }
+        });
+    }
+
+    const updateNotCompareModelNos = () => {
+        const modelNos = notCompareModelNos;
+        doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: notCompareType}, {
+            onSuccess: _ => {
+                message.success("修改成功").then();
+            }
+        });
+    }
+
     return <>
         <Card title={"必爬货号"}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
@@ -84,6 +104,22 @@ const ModelPage = () => {
                     <Button
                         key="push"
                         onClick={updateForbiddenCrawlModelNos}
+                    >
+                        修改
+                    </Button>
+                </div>
+            </div>
+        </Card>
+
+        <Card title={"不比价货号"} style={{ marginTop: 10 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
+                <Input.TextArea rows={15} value={notCompareModelNos} onChange={e => setNotCompareModelNos(e.target.value)}/>
+
+                {/* 按钮容器，使用 flex-end 实现右对齐 */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                    <Button
+                        key="push"
+                        onClick={updateNotCompareModelNos}
                     >
                         修改
                     </Button>

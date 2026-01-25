@@ -207,10 +207,8 @@ public class SettingController {
             CustomModelDO customModelDO = new CustomModelDO();
             customModelDO.setType(type.getCode());
             String[] split = model.split(":");
-            if (split.length != 2) {
-                customModelDO.setModelNo(model);
-            } else {
-                customModelDO.setModelNo(split[0]);
+            customModelDO.setModelNo(split[0]);
+            if (split.length == 2) {
                 customModelDO.setEuSize(split[1]);
             }
             return customModelDO;
