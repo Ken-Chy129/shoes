@@ -79,9 +79,8 @@ public class StockXService {
     public int refreshPrices() {
         // 1.下架不赢利的商品
         long now = System.currentTimeMillis();
-//        Map<String, Pair<String, Integer>> retainItemsMap = clearNoBenefitItems();
-        Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
-        log.info("finish clearNoBenefitItems, retainItemsMap size:{}, cost:{}", retainItemsMap.size(), TimeUtil.getCostMin(now));
+        Set<String> existingItemKeys = clearNoBenefitItems();
+        log.info("finish clearNoBenefitItems, existingItemKeys size:{}, cost:{}", existingItemKeys.size(), TimeUtil.getCostMin(now));
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
@@ -99,8 +98,12 @@ public class StockXService {
                 try {
                     List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
                     Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
+                    // 过滤掉已存在的商品
+                    List<StockXPriceDO> filteredList = stockXPriceDOList.stream()
+                            .filter(item -> !existingItemKeys.contains(STR."\{item.getModelNo()}:\{item.getEuSize()}"))
+                            .toList();
                     // 4.比价和上架
-                    cnt += compareWithPoisonAndChangePrice(retainItemsMap, stockXPriceDOList);
+                    cnt += compareWithPoisonAndChangePrice(filteredList);
                 } catch (Exception e) {
                     log.error("refreshPrices error, msg:{}", e.getMessage(), e);
                 }
@@ -113,13 +116,13 @@ public class StockXService {
     }
 
     /**
-     * 下架不赢利的商品，返回仍在上架的商品
+     * 下架不赢利的商品，返回查询到的所有商品key
      */
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    private Map<String, Pair<String, Integer>> clearNoBenefitItems() {
+    private Set<String> clearNoBenefitItems() {
         int pageNumber = 1;
         boolean hasMore;
-        Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
+        Set<String> allItemKeys = new HashSet<>();
         do {
             long startTime = System.currentTimeMillis();
             JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
@@ -131,6 +134,7 @@ public class StockXService {
                     .collect(Collectors.toSet());
             priceManager.preloadMissingPrices(modelNos);
             List<String> toDelete = new ArrayList<>();
+            List<Pair<String, Integer>> toCreate = new ArrayList<>();
             for (JSONObject item : items) {
                 String styleId = item.getString("styleId");
                 String euSize = item.getString("euSize");
@@ -138,42 +142,61 @@ public class StockXService {
                     log.info("clearNoBenefitItems no styleId or euSize, modelNo:{}, euSize:{}", styleId, euSize);
                     continue;
                 }
+                // 记录所有查询到的商品
+                allItemKeys.add(STR."\{styleId}:\{euSize}");
                 if (ShoesContext.isNotCompareModel(styleId, euSize)) {
                     // 不压价下架的商品
                     continue;
                 }
                 Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+                if (poisonPrice == null) {
+                    // 得物无价，下架
+                    toDelete.add(item.getString("id"));
+                    continue;
+                }
                 Integer amount = item.getInteger("amount");
+                Integer lowestAskAmount = item.getInteger("lowestAskAmount");
+                Boolean isExpired = item.getBoolean("isExpired");
                 String id = item.getString("id");
-                // 得物无价或无盈利，下架该商品
+                String variantId = item.getString("variantId");
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
+                // 如果过期，或者没过期但价格不是最低价
+                if (Boolean.TRUE.equals(isExpired) || !Objects.equals(amount, lowestAskAmount)) {
+                    // 下架，之后判断最低价-1是否盈利，如果盈利则上架
                     toDelete.add(id);
+                    if (lowestAskAmount != null && lowestAskAmount > 1) {
+                        int newPrice = lowestAskAmount - 1;
+                        if (ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
+                            toCreate.add(Pair.of(variantId, newPrice));
+                        }
+                    }
                 } else {
-                    retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
+                    // 没过期且是最低价，判断是否盈利，如果不盈利则下架
+                    if (!ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
+                        toDelete.add(id);
+                    }
                 }
             }
             stockXClient.deleteItems(toDelete);
-            log.info("clearNoBenefitItems end, page:{}, toDelete:{}, cost:{}", pageNumber, toDelete.size(), TimeUtil.getCostMin(startTime));
+            stockXClient.createListingV2(toCreate);
+            log.info("clearNoBenefitItems end, page:{}, toDelete:{}, toCreate:{}, cost:{}", pageNumber, toDelete.size(), toCreate.size(), TimeUtil.getCostMin(startTime));
             hasMore = jsonObject.getBoolean("hasMore");
             pageNumber++;
         } while (hasMore);
-        return retainItemsMap;
+        return allItemKeys;
     }
 
-    public int compareWithPoisonAndChangePrice(Map<String, Pair<String, Integer>> retainItemsMap, List<StockXPriceDO> stockXPriceDOS) {
+    public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {
         int uploadCnt = 0, poisonNoPriceCnt = 0, noBenefitCnt = 0, tooExpensiveCnt = 0, stockXNoPriceCnt = 0;
         // 预加载得物价格
         Set<String> modelNos = stockXPriceDOS.stream().map(StockXPriceDO::getModelNo).collect(Collectors.toSet());
         priceManager.preloadMissingPrices(modelNos);
         try {
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
-            List<String> toRemove = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
                 String modelNo = stockXPriceDO.getModelNo();
                 String euSize = stockXPriceDO.getEuSize();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
-                String key = STR."\{modelNo}:\{euSize}";
                 if (poisonPrice == null) {
                     poisonNoPriceCnt++;
                     continue;
@@ -182,28 +205,23 @@ public class StockXService {
                     tooExpensiveCnt++;
                     continue;
                 }
-                if (getStockXPrice(stockXPriceDO) == null) {
+                Integer stockxPrice = stockXPriceDO.getLowestAskAmount();
+                if (stockxPrice == null) {
                     stockXNoPriceCnt++;
                     continue;
                 }
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                if (!ShoesUtil.canStockxEarn(poisonPrice, getStockXPrice(stockXPriceDO), minExpectProfit)) {
+                if (!ShoesUtil.canStockxEarn(poisonPrice, stockxPrice - 1, minExpectProfit)) {
                     noBenefitCnt++;
                     continue;
                 }
-                // 如果当前已经上架了该商品，则需要进行下架操作
-                if (retainItemsMap.containsKey(key)) {
-                    toRemove.add(retainItemsMap.get(key).getKey());
-                }
-                toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), getStockXPrice(stockXPriceDO)));
+                toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), stockxPrice - 1));
             }
             uploadCnt += toCreate.size();
-            // 下架重复商品
-            stockXClient.deleteItems(toRemove);
             // 上架
             stockXClient.createListingV2(toCreate);
-            log.info("总量：{}, 下架数量：{}， 上架数量：{}，得物无价数量：{}，绿叉无价数量：{}，得物太贵数量：{}，不盈利数量：{}",
-                    stockXPriceDOS.size(), toRemove.size(), toCreate.size(),
+            log.info("总量：{}, 上架数量：{}，得物无价数量：{}，绿叉无价数量：{}，得物太贵数量：{}，不盈利数量：{}",
+                    stockXPriceDOS.size(), toCreate.size(),
                     poisonNoPriceCnt, stockXNoPriceCnt, tooExpensiveCnt, noBenefitCnt
             );
         } catch (Exception e) {
