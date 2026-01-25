@@ -116,8 +116,17 @@ public class PriceManager {
             return;
         }
         log.info("preloadMissingPrices, total:{}, missing:{}", modelNos.size(), missingModelNos.size());
-        // 批量查询缺失货号的价格
-        List<PoisonPriceDO> poisonPriceDOList = poisonClient.batchQueryPrice(new ArrayList<>(missingModelNos));
+        // 批量查询缺失货号的价格，每200个一批
+        List<String> missingList = new ArrayList<>(missingModelNos);
+        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+        int batchSize = 200;
+        for (int i = 0; i < missingList.size(); i += batchSize) {
+            List<String> batch = missingList.subList(i, Math.min(i + batchSize, missingList.size()));
+            List<PoisonPriceDO> batchResult = poisonClient.batchQueryPrice(batch);
+            if (batchResult != null) {
+                poisonPriceDOList.addAll(batchResult);
+            }
+        }
         // 按货号分组并更新缓存
         Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap = poisonPriceDOList.stream()
                 .collect(Collectors.groupingBy(
