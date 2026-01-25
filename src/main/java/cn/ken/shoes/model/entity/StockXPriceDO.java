@@ -20,4 +20,6 @@ public class StockXPriceDO {
     private Integer earnMoreAmount;
 
     private Integer sellNowAmount;
+
+    private Integer lowestAskAmount;
 }
