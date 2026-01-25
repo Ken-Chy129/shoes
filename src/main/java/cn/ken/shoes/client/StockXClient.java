@@ -159,24 +159,27 @@ public class StockXClient {
         }
     }
 
-    public JSONObject querySellingItems(String after, String query) {
-        JSONObject jsonObject = queryPro(buildItemsSellingQueryRequest(after, query));
+    public JSONObject querySellingItems(Integer pageNumber, String query) {
+        JSONObject jsonObject = queryPro(buildItemsSellingQueryRequest(pageNumber, query));
         if (jsonObject == null) {
             return null;
         }
         JSONObject result = new JSONObject();
-        JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
-        JSONObject pageInfo = ask.getJSONObject("pageInfo");
+        JSONObject sellerListings = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("sellerListings");
+        JSONObject pageInfo = sellerListings.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
         result.put("endCursor", pageInfo.getString("endCursor"));
         List<JSONObject> items = new ArrayList<>();
         result.put("items", items);
-        for (JSONObject edge : ask.getJSONArray("edges").toJavaList(JSONObject.class)) {
+        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
             JSONObject node = edge.getJSONObject("node");
             JSONObject item = new JSONObject();
             item.put("id", node.getString("id"));
             item.put("amount", node.getInteger("amount"));
             JSONObject productVariant = node.getJSONObject("productVariant");
+            if (productVariant == null) {
+                continue;
+            }
             item.put("styleId", productVariant.getJSONObject("product").getString("styleId"));
             productVariant.getJSONObject("sizeChart")
                     .getJSONArray("displayOptions")
@@ -190,22 +193,20 @@ public class StockXClient {
         return result;
     }
 
-    public void deleteItems(List<Pair<String, Integer>> itemList) {
-        if (itemList.isEmpty()) {
+    public void deleteItems(List<String> idList) {
+        if (idList.isEmpty()) {
             return;
         }
         JSONObject body = new JSONObject();
-        body.put("operationName", "DeleteAsks");
+        body.put("operationName", "BulkDeleteSellerListings");
         JSONObject variables = new JSONObject();
-        body.put("variables", variables);
-        List<Map<String, Object>> data = new ArrayList<>();
-        variables.put("items", data);
-        for (Pair<String, Integer> item : itemList) {
-            String id = item.getKey();
-            Integer amount = item.getValue();
-            data.add(Map.of("id", id, "amount", amount, "expires", expireTime, "currencyCode", "USD"));
+        List<Map<String, String>> input = new ArrayList<>();
+        for (String id : idList) {
+            input.add(Map.of("id", id));
         }
-        body.put("query", "mutation DeleteAsks($items: [BulkDeleteAskInput]) {\n  deleteAsks(input: {items: $items}) {\n    result\n    __typename\n  }\n}");
+        variables.put("input", input);
+        body.put("variables", variables);
+        body.put("query", "mutation BulkDeleteSellerListings($input: [DeleteListingBatchInput]) {\n  deleteBatchListings(input: $input) {\n    id\n    status\n    completedAt\n    createdAt\n    updatedAt\n  }\n}");
         JSONObject jsonObject = queryPro(body.toJSONString());
         log.info("deleteItems, result:{}", jsonObject);
     }
@@ -412,7 +413,7 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryHotItemsByBrandWithPrice(String brand, Integer pageIndex) {
-        JSONObject jsonObject = queryPro(buildItemQueryRequest(brand, pageIndex));
+        JSONObject jsonObject = queryCustomer(buildItemQueryRequest(brand, pageIndex));
         if (jsonObject == null) {
             return Collections.emptyList();
         }
@@ -824,23 +825,58 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildItemsSellingQueryRequest(String after, String query) {
+    private String buildItemsSellingQueryRequest(Integer pageNumber, String query) {
         JSONObject requestJson = new JSONObject();
-        requestJson.put("operationName", "ViewerAsks");
-        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  productVariant {\n    id\n    sizeChart {\n      displayOptions {\n        size\n       }\n      }\n    product {\n      id\n      urlKey\n      styleId\n     }\n    }\n}");
+        requestJson.put("operationName", "SellerListings");
+        requestJson.put("query", "query SellerListings($query: String, $filters: SellerListingFilters, $sort: SellerListingSortField, $order: AscDescOrderInput, $pageSize: Int, $pageNumber: Int) {\n" +
+                "  viewer {\n" +
+                "    sellerListings(\n" +
+                "      query: $query\n" +
+                "      filters: $filters\n" +
+                "      sort: $sort\n" +
+                "      order: $order\n" +
+                "      pageSize: $pageSize\n" +
+                "      pageNumber: $pageNumber\n" +
+                "    ) {\n" +
+                "      pageInfo {\n" +
+                "        hasNextPage\n" +
+                "        endCursor\n" +
+                "        totalCount\n" +
+                "      }\n" +
+                "      edges {\n" +
+                "        node {\n" +
+                "          id\n" +
+                "          amount\n" +
+                "          productVariant {\n" +
+                "            id\n" +
+                "            sizeChart {\n" +
+                "              displayOptions {\n" +
+                "                size\n" +
+                "              }\n" +
+                "            }\n" +
+                "            product {\n" +
+                "              id\n" +
+                "              urlKey\n" +
+                "              styleId\n" +
+                "            }\n" +
+                "          }\n" +
+                "        }\n" +
+                "      }\n" +
+                "    }\n" +
+                "  }\n" +
+                "}");
         JSONObject variables = new JSONObject();
-        variables.put("pageSize", 1000);
-        variables.put("sort", "LISTED_AT");
-        variables.put("order", "DESC");
-        variables.put("skipFlexEligible", true);
-        variables.put("skipGuidance", false);
-        variables.put("query", query);
-        if (StrUtil.isNotBlank(after)) {
-            variables.put("after", after);
+        variables.put("pageSize", 100);
+        variables.put("sort", "CREATED_AT");
+        variables.put("order", "ASC");
+        variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
+        if (StrUtil.isNotBlank(query)) {
+            variables.put("query", query);
         }
         JSONObject filters = new JSONObject();
-        filters.put("statesList", Map.of("in", List.of(400)));
+        filters.put("spreadCurrency", "USD");
         filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
+        filters.put("listingStatus", Map.of("in", List.of("ACTIVE")));
         variables.put("filters", filters);
         requestJson.put("variables", variables);
         return requestJson.toJSONString();
@@ -897,7 +933,8 @@ public class StockXClient {
                 "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) chrome/124.0.0.0 safari/537.36",
                 "sec-ch-ua", "\"Chromium\";v=\"124\",\"Google Chrome\";v=\"124\",\"Not-A.Brand\";v=\"99\"",
                 "apollographql-client-name", "Iron",
-                "Connection", "close"
+                "Connection", "close",
+                "Authorization", getAuthorization()
         );
     }
 

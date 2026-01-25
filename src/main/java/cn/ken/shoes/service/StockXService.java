@@ -30,6 +30,7 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -77,22 +78,24 @@ public class StockXService {
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPrices() {
         // 1.下架不赢利的商品
-        Map<String, Pair<String, Integer>> retainItemsMap = clearNoBenefitItems();
-        log.info("finish clearNoBenefitItems");
+        long now = System.currentTimeMillis();
+//        Map<String, Pair<String, Integer>> retainItemsMap = clearNoBenefitItems();
+        Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
+        log.info("finish clearNoBenefitItems, retainItemsMap size:{}, cost:{}", retainItemsMap.size(), TimeUtil.getCostMin(now));
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
         // 3.查询要比价的商品和价格
         int allCnt = 0, cnt = 0;
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
         for (BrandDO brandDO : brandDOList) {
-            long now = System.currentTimeMillis();
+            now = System.currentTimeMillis();
             if (!brandDO.getNeedCrawl()) {
                 continue;
             }
             String brand = brandDO.getName();
             int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
             int crawlPage = (int) Math.ceil(crawlCnt / 50.0);
-            for (int i = 1; i <= crawlPage; i++) {
+            for (int i = 1; i <= crawlPage && i <= 20; i++) {
                 try {
                     List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
                     Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
@@ -114,14 +117,20 @@ public class StockXService {
      */
     @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     private Map<String, Pair<String, Integer>> clearNoBenefitItems() {
-        String afterName = null;
+        int pageNumber = 1;
         boolean hasMore;
         Map<String, Pair<String, Integer>> retainItemsMap = new HashMap<>();
         do {
             long startTime = System.currentTimeMillis();
-            JSONObject jsonObject = stockXClient.querySellingItems(afterName, null);
+            JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
             List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-            List<Pair<String, Integer>> toDelete = new ArrayList<>();
+            // 预加载得物价格
+            Set<String> modelNos = items.stream()
+                    .map(item -> item.getString("styleId"))
+                    .filter(StrUtil::isNotBlank)
+                    .collect(Collectors.toSet());
+            priceManager.preloadMissingPrices(modelNos);
+            List<String> toDelete = new ArrayList<>();
             for (JSONObject item : items) {
                 String styleId = item.getString("styleId");
                 String euSize = item.getString("euSize");
@@ -139,24 +148,27 @@ public class StockXService {
                 // 得物无价或无盈利，下架该商品
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
                 if (poisonPrice == null || !ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
-                    toDelete.add(Pair.of(id, amount));
+                    toDelete.add(id);
                 } else {
                     retainItemsMap.put(STR."\{styleId}:\{euSize}", Pair.of(id, amount));
                 }
             }
             stockXClient.deleteItems(toDelete);
-            log.info("clearNoBenefitItems end, toDelete:{}, cost:{}", toDelete.size(), TimeUtil.getCostMin(startTime));
+            log.info("clearNoBenefitItems end, page:{}, toDelete:{}, cost:{}", pageNumber, toDelete.size(), TimeUtil.getCostMin(startTime));
             hasMore = jsonObject.getBoolean("hasMore");
-            afterName = jsonObject.getString("endCursor");
+            pageNumber++;
         } while (hasMore);
         return retainItemsMap;
     }
 
     public int compareWithPoisonAndChangePrice(Map<String, Pair<String, Integer>> retainItemsMap, List<StockXPriceDO> stockXPriceDOS) {
         int uploadCnt = 0, poisonNoPriceCnt = 0, noBenefitCnt = 0, tooExpensiveCnt = 0, stockXNoPriceCnt = 0;
+        // 预加载得物价格
+        Set<String> modelNos = stockXPriceDOS.stream().map(StockXPriceDO::getModelNo).collect(Collectors.toSet());
+        priceManager.preloadMissingPrices(modelNos);
         try {
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
-            List<Pair<String, Integer>> toRemove = new ArrayList<>();
+            List<String> toRemove = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
                 String modelNo = stockXPriceDO.getModelNo();
                 String euSize = stockXPriceDO.getEuSize();
@@ -181,7 +193,7 @@ public class StockXService {
                 }
                 // 如果当前已经上架了该商品，则需要进行下架操作
                 if (retainItemsMap.containsKey(key)) {
-                    toRemove.add(retainItemsMap.get(key));
+                    toRemove.add(retainItemsMap.get(key).getKey());
                 }
                 toCreate.add(new Pair<>(stockXPriceDO.getVariantId(), getStockXPrice(stockXPriceDO)));
             }
