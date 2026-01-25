@@ -8,6 +8,9 @@ enum TASK_API {
     RUN_KC = '/api/kc/startTask',
     QUERY_KC_TASK_STATUS = '/api/kc/queryTaskStatus',
     STOP_KC = '/api/kc/stopTask',
+    RUN_STOCKX = '/api/stockx/startTask',
+    QUERY_STOCKX_TASK_STATUS = '/api/stockx/queryTaskStatus',
+    STOP_STOCKX = '/api/stockx/stopTask',
 }
 
 export {TASK_API}
