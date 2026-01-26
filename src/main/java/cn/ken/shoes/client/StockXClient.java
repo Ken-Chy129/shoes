@@ -914,8 +914,8 @@ public class StockXClient {
                 "}");
         JSONObject variables = new JSONObject();
         variables.put("pageSize", 100);
-        variables.put("sort", "CREATED_AT");
-        variables.put("order", "ASC");
+        variables.put("sort", StockXSwitch.TASK_LISTING_SORT);
+        variables.put("order", StockXSwitch.TASK_LISTING_ORDER);
         variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
         variables.put("currencyCode", "USD");
         variables.put("country", "HK");
