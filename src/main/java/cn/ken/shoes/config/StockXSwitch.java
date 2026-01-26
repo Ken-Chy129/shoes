@@ -14,10 +14,10 @@ public class StockXSwitch {
     // ==================== 任务配置 ====================
 
     // 压价线程数
-    public static int TASK_PRICE_DOWN_THREAD_COUNT = 1;
+    public static int TASK_PRICE_DOWN_THREAD_COUNT = 6;
 
     // 每分钟压价数
-    public static int TASK_PRICE_DOWN_PER_MINUTE = 60;
+    public static int TASK_PRICE_DOWN_PER_MINUTE = 200;
 
     // 压价排序字段：CREATED_AT, ITEM_TITLE, BID_ASK_SPREAD, PRICE, LOWEST_ASK, HIGHEST_BID, SIZE, UPDATED_AT
     public static String TASK_LISTING_SORT = "CREATED_AT";

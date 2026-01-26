@@ -32,7 +32,7 @@ public class StockXPriceDownTaskRunner extends Thread {
                     continue;
                 } else {
                     LockHelper.lockStockXItem();
-                    stockXService.clearNoBenefitItems();
+                    stockXService.priceDown();
                     LockHelper.unlockStockXItem();
                 }
                 Thread.sleep(TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL);
