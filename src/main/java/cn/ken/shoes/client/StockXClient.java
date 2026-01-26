@@ -54,7 +54,7 @@ public class StockXClient {
     @Value("${stockx.authorization}")
     private String authorization;
 
-    private final String expireTime = "2026-04-06T23:22:45+0800";
+    private final String expireTime = "2027-01-06T23:22:45+0800";
 
     public JSONObject queryOrders(String after) {
         JSONObject jsonObject = queryPro(buildOrder(after));
@@ -219,6 +219,28 @@ public class StockXClient {
         body.put("query", "mutation BulkDeleteSellerListings($input: [DeleteListingBatchInput]) {\n  deleteBatchListings(input: $input) {\n    id\n    status\n    completedAt\n    createdAt\n    updatedAt\n  }\n}");
         JSONObject jsonObject = queryPro(body.toJSONString());
         log.info("deleteItems, result:{}", jsonObject);
+    }
+
+    /**
+     * 更新卖家listing价格
+     * @param id listing的id
+     * @param amount 新价格
+     * @return 更新结果，包含id、status、error等信息
+     */
+    public JSONObject updateSellerListing(String id, String amount) {
+        JSONObject body = new JSONObject();
+        body.put("operationName", "UpdateSellerListing");
+        JSONObject variables = new JSONObject();
+        variables.put("id", id);
+        variables.put("currency", "USD");
+        variables.put("amount", amount);
+        variables.put("expiresAt", expireTime);
+        variables.put("checkoutTraceId", UUID.randomUUID().toString());
+        body.put("variables", variables);
+        body.put("query", "mutation UpdateSellerListing($id: String!, $currency: CurrencyCode, $amount: String, $active: Boolean, $expiresAt: ISODate, $actionContext: AskActionContext, $matchCandidateId: String, $checkoutTraceId: String) {\n  updateSellerListing(\n    input: {id: $id, currency: $currency, active: $active, amount: $amount, expiresAt: $expiresAt, actionContext: $actionContext, matchCandidateId: $matchCandidateId, checkoutTraceId: $checkoutTraceId}\n  ) {\n    id\n    status\n    createdAt\n    updatedAt\n    error\n    __typename\n  }\n}");
+        JSONObject jsonObject = queryPro(body.toJSONString());
+        log.info("updateSellerListing, id:{}, amount:{}, result:{}", id, amount, jsonObject);
+        return jsonObject;
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
