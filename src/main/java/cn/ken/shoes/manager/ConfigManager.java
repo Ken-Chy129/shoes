@@ -81,29 +81,41 @@ public class ConfigManager {
 
     public void loadStockXConfig() {
         Properties properties = configService.loadConfig(STOCKX_CONFIG_FILE);
-        
+
         String sortType = configService.getProperty(properties, "sort.type", "FEATURED");
         String priceType = configService.getProperty(properties, "price.type", "SELL_FASTER");
-        
+
         try {
             StockXSwitch.SORT_TYPE = StockXSortEnum.valueOf(sortType);
         } catch (IllegalArgumentException e) {
             StockXSwitch.SORT_TYPE = StockXSortEnum.FEATURED;
         }
-        
+
         try {
             StockXSwitch.PRICE_TYPE = StockXPriceEnum.valueOf(priceType);
         } catch (IllegalArgumentException e) {
             StockXSwitch.PRICE_TYPE = StockXPriceEnum.SELL_FASTER;
         }
+
+        // 任务配置
+        StockXSwitch.TASK_PRICE_DOWN_THREAD_COUNT = configService.getIntProperty(properties, "task.price.down.thread.count", 1);
+        StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE = configService.getIntProperty(properties, "task.price.down.per.minute", 60);
+        StockXSwitch.TASK_LISTING_SORT = configService.getProperty(properties, "task.listing.sort", "CREATED_AT");
+        StockXSwitch.TASK_LISTING_ORDER = configService.getProperty(properties, "task.listing.order", "DESC");
     }
 
     public void saveStockXConfig() {
         Properties properties = new Properties();
-        
+
         properties.setProperty("sort.type", StockXSwitch.SORT_TYPE.name());
         properties.setProperty("price.type", StockXSwitch.PRICE_TYPE.name());
-        
+
+        // 任务配置
+        properties.setProperty("task.price.down.thread.count", String.valueOf(StockXSwitch.TASK_PRICE_DOWN_THREAD_COUNT));
+        properties.setProperty("task.price.down.per.minute", String.valueOf(StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE));
+        properties.setProperty("task.listing.sort", StockXSwitch.TASK_LISTING_SORT);
+        properties.setProperty("task.listing.order", StockXSwitch.TASK_LISTING_ORDER);
+
         configService.saveConfig(STOCKX_CONFIG_FILE, properties);
     }
 

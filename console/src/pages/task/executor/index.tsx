@@ -2,21 +2,33 @@ import {
     Button, Card,
     Form,
     Input,
+    InputNumber,
     message,
+    Select,
+    Divider,
 } from "antd";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
 
+interface SortOption {
+    value: string;
+    label: string;
+}
+
 const TaskExecutorPage = () => {
     const [taskForm] = Form.useForm();
+    const [configForm] = Form.useForm();
     const [kcTaskStatus, setKcTaskStatus] = useState<boolean>(false);
     const [stockxListingTaskStatus, setStockxListingTaskStatus] = useState<boolean>(false);
     const [stockxPriceDownTaskStatus, setStockxPriceDownTaskStatus] = useState<boolean>(false);
+    const [sortOptions, setSortOptions] = useState<SortOption[]>([]);
 
     useEffect(() => {
         queryAllTaskStatus();
         queryAllTaskInterval();
+        queryStockXConfig();
+        querySortOptions();
     }, []);
 
     // ==================== 统一查询方法 ====================
@@ -63,6 +75,47 @@ const TaskExecutorPage = () => {
         const interval = taskForm.getFieldValue(fieldName) * 1000;
         doPostRequest(`${TASK_API.INTERVAL}?taskType=${taskType}&interval=${interval}`, {}, {
             onSuccess: _ => message.success("配置已更新").then()
+        });
+    }
+
+    // ==================== StockX 任务配置 ====================
+
+    const queryStockXConfig = () => {
+        doGetRequest(TASK_API.STOCKX_CONFIG, {}, {
+            onSuccess: res => {
+                const { listingSort, listingOrder } = res.data;
+                configForm.setFieldsValue({
+                    priceDownThreadCount: res.data.priceDownThreadCount,
+                    priceDownPerMinute: res.data.priceDownPerMinute,
+                    // 合并 sort 和 order 为一个值
+                    listingSortOption: `${listingSort}_${listingOrder}`,
+                });
+            }
+        });
+    }
+
+    const querySortOptions = () => {
+        doGetRequest(TASK_API.STOCKX_SORT_OPTIONS, {}, {
+            onSuccess: res => setSortOptions(res.data)
+        });
+    }
+
+    const updateStockXConfig = () => {
+        const values = configForm.getFieldsValue();
+        // 拆分 sortOption 为 sort 和 order
+        const sortOption = values.listingSortOption || "CREATED_AT_DESC";
+        const lastUnderscoreIndex = sortOption.lastIndexOf('_');
+        const listingSort = sortOption.substring(0, lastUnderscoreIndex);
+        const listingOrder = sortOption.substring(lastUnderscoreIndex + 1);
+
+        const config = {
+            priceDownThreadCount: values.priceDownThreadCount,
+            priceDownPerMinute: values.priceDownPerMinute,
+            listingSort,
+            listingOrder,
+        };
+        doPostRequest(TASK_API.STOCKX_CONFIG, config, {
+            onSuccess: _ => message.success("配置已保存").then()
         });
     }
 
@@ -116,6 +169,24 @@ const TaskExecutorPage = () => {
         </Card>
         <br/>
         <Card title={"StockX"}>
+            {/* 任务配置区域 */}
+            <Form form={configForm} layout="inline">
+                <Form.Item label={"压价线程数"} name="priceDownThreadCount">
+                    <InputNumber min={1} max={10} style={{width: 80}}/>
+                </Form.Item>
+                <Form.Item label={"每分钟压价数"} name="priceDownPerMinute">
+                    <InputNumber min={1} max={200} style={{width: 80}}/>
+                </Form.Item>
+                <Form.Item label={"压价排序"} name="listingSortOption">
+                    <Select style={{width: 180}} options={sortOptions}/>
+                </Form.Item>
+                <Form.Item>
+                    <Button type="primary" onClick={updateStockXConfig}>保存配置</Button>
+                </Form.Item>
+            </Form>
+
+            <Divider/>
+
             <Form form={taskForm}>
                 {/* 上架任务 */}
                 <div style={{marginBottom: 16}}>

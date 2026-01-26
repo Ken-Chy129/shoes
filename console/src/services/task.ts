@@ -11,6 +11,9 @@ enum TASK_API {
     STOP = '/api/task/stop',
     STATUS = '/api/task/status',
     INTERVAL = '/api/task/interval',
+    // StockX任务配置
+    STOCKX_CONFIG = '/api/task/stockx/config',
+    STOCKX_SORT_OPTIONS = '/api/task/stockx/sortOptions',
 }
 
 export {TASK_API, TASK_TYPE}
