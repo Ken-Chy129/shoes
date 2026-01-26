@@ -119,8 +119,8 @@ public class StockXService {
     /**
      * 下架不赢利的商品，返回查询到的所有商品key
      */
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
-    private Set<String> clearNoBenefitItems() {
+    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
+    public Set<String> clearNoBenefitItems() {
         int pageNumber = 1;
         boolean hasMore;
         Set<String> allItemKeys = new HashSet<>();
