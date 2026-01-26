@@ -1,16 +1,16 @@
-import { request } from '@umijs/max';
-
+// 任务类型常量
+const TASK_TYPE = {
+    KC: 'kc',
+    STOCKX_LISTING: 'stockx_listing',
+    STOCKX_PRICE_DOWN: 'stockx_price_down',
+};
 
 enum TASK_API {
     PAGE = '/api/task/page',
-    QUERY_TASK_SETTING = '/api/task/querySetting',
-    UPDATE_TASK_SETTING = '/api/task/updateSetting',
-    RUN_KC = '/api/kc/startTask',
-    QUERY_KC_TASK_STATUS = '/api/kc/queryTaskStatus',
-    STOP_KC = '/api/kc/stopTask',
-    RUN_STOCKX = '/api/stockx/startTask',
-    QUERY_STOCKX_TASK_STATUS = '/api/stockx/queryTaskStatus',
-    STOP_STOCKX = '/api/stockx/stopTask',
+    START = '/api/task/start',
+    STOP = '/api/task/stop',
+    STATUS = '/api/task/status',
+    INTERVAL = '/api/task/interval',
 }
 
-export {TASK_API}
+export {TASK_API, TASK_TYPE}

@@ -9,12 +9,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
+ * StockX压价任务执行器
  * @author Ken-Chy129
- * @date 2025/5/19
  */
 @Slf4j
 @Component
-public class StockXTaskRunner extends Thread {
+public class StockXPriceDownTaskRunner extends Thread {
 
     @Getter
     private boolean isInit = false;
@@ -27,15 +27,15 @@ public class StockXTaskRunner extends Thread {
         isInit = true;
         while (true) {
             try {
-                if (TaskSwitch.STOP_STOCK_LISTING_TASK) {
+                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK) {
                     Thread.sleep(TaskSwitch.STOP_INTERVAL);
                     continue;
                 } else {
                     LockHelper.lockStockXItem();
-                    stockXService.refreshPrices();
+                    stockXService.clearNoBenefitItems();
                     LockHelper.unlockStockXItem();
                 }
-                Thread.sleep(TaskSwitch.STOCK_LISTING_TASK_INTERVAL);
+                Thread.sleep(TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL);
             } catch (InterruptedException e) {
                 log.error(e.getMessage(), e);
             }
