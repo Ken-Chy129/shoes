@@ -8,6 +8,7 @@ import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.SearchTaskMapper;
@@ -30,6 +31,9 @@ import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -117,74 +121,149 @@ public class StockXService {
     }
 
     /**
-     * 下架不赢利的商品，返回查询到的所有商品key
+     * 压价任务：对在售商品进行压价或下架
+     * 每查询一页就处理一页：并发压价 + 批量下架
+     * @return 查询到的所有商品key
      */
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.CLEAR_NO_BENEFIT_ITEMS, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
-    public Set<String> clearNoBenefitItems() {
+    public Set<String> priceDown() {
+        long taskStartTime = System.currentTimeMillis();
         int pageNumber = 1;
         boolean hasMore;
         Set<String> allItemKeys = new HashSet<>();
-        do {
-            long startTime = System.currentTimeMillis();
-            JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
-            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-            // 预加载得物价格
-            Set<String> modelNos = items.stream()
-                    .map(item -> item.getString("styleId"))
-                    .filter(StrUtil::isNotBlank)
-                    .collect(Collectors.toSet());
-            priceManager.preloadMissingPrices(modelNos);
-            List<String> toDelete = new ArrayList<>();
-            List<Pair<String, Integer>> toCreate = new ArrayList<>();
-            for (JSONObject item : items) {
-                String styleId = item.getString("styleId");
-                String euSize = item.getString("euSize");
-                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
-                    log.info("clearNoBenefitItems no styleId or euSize, modelNo:{}, euSize:{}", styleId, euSize);
-                    continue;
+        int totalPriceDown = 0, totalDelete = 0;
+
+        // 创建线程池，整个任务共用
+        int threadCount = StockXSwitch.TASK_PRICE_DOWN_THREAD_COUNT;
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+
+        try {
+            do {
+                long startTime = System.currentTimeMillis();
+                JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
+                if (jsonObject == null) {
+                    log.error("priceDown querySellingItems failed, page:{}", pageNumber);
+                    break;
                 }
-                // 记录所有查询到的商品
-                allItemKeys.add(STR."\{styleId}:\{euSize}");
-                if (ShoesContext.isNotCompareModel(styleId, euSize)) {
-                    // 不压价下架的商品
-                    continue;
-                }
-                Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
-                if (poisonPrice == null) {
-                    // 得物无价，下架
-                    toDelete.add(item.getString("id"));
-                    continue;
-                }
-                Integer amount = item.getInteger("amount");
-                Integer lowestAskAmount = item.getInteger("lowestAskAmount");
-                Boolean isExpired = item.getBoolean("isExpired");
-                String id = item.getString("id");
-                String variantId = item.getString("variantId");
-                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                // 如果过期，或者没过期但价格不是最低价
-                if (Boolean.TRUE.equals(isExpired) || !Objects.equals(amount, lowestAskAmount)) {
-                    // 下架，之后判断最低价-1是否盈利，如果盈利则上架
-                    toDelete.add(id);
-                    if (lowestAskAmount != null && lowestAskAmount > 1) {
-                        int newPrice = lowestAskAmount - 1;
-                        if (ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
-                            toCreate.add(Pair.of(variantId, newPrice));
+                List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+                // 预加载得物价格
+                Set<String> modelNos = items.stream()
+                        .map(item -> item.getString("styleId"))
+                        .filter(StrUtil::isNotBlank)
+                        .collect(Collectors.toSet());
+                priceManager.preloadMissingPrices(modelNos);
+
+                // 当前页需要压价的商品
+                List<Pair<String, Integer>> toPriceDown = new ArrayList<>();
+                // 当前页需要下架的商品
+                List<String> toDelete = new ArrayList<>();
+
+                for (JSONObject item : items) {
+                    String styleId = item.getString("styleId");
+                    String euSize = item.getString("euSize");
+                    if (StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
+                        log.info("priceDown no styleId or euSize, modelNo:{}, euSize:{}", styleId, euSize);
+                        continue;
+                    }
+                    // 记录所有查询到的商品
+                    allItemKeys.add(STR."\{styleId}:\{euSize}");
+                    if (ShoesContext.isNotCompareModel(styleId, euSize)) {
+                        // 不压价下架的商品
+                        continue;
+                    }
+                    Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+                    if (poisonPrice == null) {
+                        // 得物无价，下架
+                        toDelete.add(item.getString("id"));
+                        continue;
+                    }
+                    Integer amount = item.getInteger("amount");
+                    Integer lowestAskAmount = item.getInteger("lowestAskAmount");
+                    Boolean isExpired = item.getBoolean("isExpired");
+                    String id = item.getString("id");
+                    Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+
+                    // 如果过期，需要下架
+                    if (Boolean.TRUE.equals(isExpired)) {
+                        toDelete.add(id);
+                        continue;
+                    }
+
+                    // 没过期，判断是否需要压价或下架
+                    if (!Objects.equals(amount, lowestAskAmount)) {
+                        // 价格不是最低价，需要压价
+                        if (lowestAskAmount != null && lowestAskAmount > 1) {
+                            int newPrice = lowestAskAmount - 1;
+                            if (ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
+                                // 可以盈利，调用压价接口
+                                toPriceDown.add(Pair.of(id, newPrice));
+                            } else {
+                                // 压价后不盈利，下架
+                                toDelete.add(id);
+                            }
+                        } else {
+                            // 没有最低价信息，下架
+                            toDelete.add(id);
+                        }
+                    } else {
+                        // 已经是最低价，判断是否盈利
+                        if (!ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
+                            toDelete.add(id);
                         }
                     }
-                } else {
-                    // 没过期且是最低价，判断是否盈利，如果不盈利则下架
-                    if (!ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit)) {
-                        toDelete.add(id);
+                }
+
+                // 当前页：并发调用压价接口
+                if (!toPriceDown.isEmpty()) {
+                    CountDownLatch latch = new CountDownLatch(toPriceDown.size());
+                    for (Pair<String, Integer> priceDownItem : toPriceDown) {
+                        executor.submit(() -> {
+                            try {
+                                LimiterHelper.limitStockxPriceDown();
+                                stockXClient.updateSellerListing(priceDownItem.getKey(), String.valueOf(priceDownItem.getValue()));
+                            } catch (Exception e) {
+                                log.error("priceDown updateSellerListing failed, id:{}, price:{}, error:{}", priceDownItem.getKey(), priceDownItem.getValue(), e.getMessage());
+                            } finally {
+                                latch.countDown();
+                            }
+                        });
+                    }
+                    try {
+                        latch.await();
+                    } catch (InterruptedException e) {
+                        log.error("priceDown await interrupted", e);
+                        Thread.currentThread().interrupt();
                     }
                 }
-            }
-            stockXClient.deleteItems(toDelete);
-            stockXClient.createListingV2(toCreate);
-            log.info("clearNoBenefitItems end, page:{}, toDelete:{}, toCreate:{}, cost:{}", pageNumber, toDelete.size(), toCreate.size(), TimeUtil.getCostMin(startTime));
-            hasMore = jsonObject.getBoolean("hasMore");
-            pageNumber++;
-        } while (hasMore);
+
+                // 当前页：批量下架
+                if (!toDelete.isEmpty()) {
+                    stockXClient.deleteItems(toDelete);
+                }
+
+                totalPriceDown += toPriceDown.size();
+                totalDelete += toDelete.size();
+                log.info("priceDown page:{}, items:{}, priceDown:{}, delete:{}, cost:{}",
+                        pageNumber, items.size(), toPriceDown.size(), toDelete.size(), TimeUtil.getCostMin(startTime));
+
+                hasMore = jsonObject.getBoolean("hasMore");
+                pageNumber++;
+            } while (hasMore);
+        } finally {
+            executor.shutdown();
+        }
+
+        log.info("priceDown task finished, allItemKeys:{}, totalPriceDown:{}, totalDelete:{}, totalCost:{}",
+                allItemKeys.size(), totalPriceDown, totalDelete, TimeUtil.getCostMin(taskStartTime));
         return allItemKeys;
+    }
+
+    /**
+     * 下架不赢利的商品，返回查询到的所有商品key
+     * @deprecated 使用 {@link #priceDown()} 代替
+     */
+    @Deprecated
+    public Set<String> clearNoBenefitItems() {
+        return priceDown();
     }
 
     public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {

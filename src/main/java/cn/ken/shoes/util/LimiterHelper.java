@@ -1,6 +1,7 @@
 package cn.ken.shoes.util;
 
 
+import cn.ken.shoes.config.StockXSwitch;
 import com.google.common.util.concurrent.RateLimiter;
 
 public class LimiterHelper {
@@ -12,6 +13,10 @@ public class LimiterHelper {
     private static final RateLimiter STOCKX_SECOND_LIMITER = RateLimiter.create(1);
     private static final RateLimiter DUNK_PRICE_LIMITER = RateLimiter.create(1);
     private static final RateLimiter DUNK_SALES_LIMITER = RateLimiter.create(10);
+
+    // StockX压价限流器，支持动态配置
+    private static volatile RateLimiter STOCKX_PRICE_DOWN_LIMITER = RateLimiter.create(StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE / 60.0);
+    private static volatile int lastPriceDownPerMinute = StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE;
 
     public static void limitPoisonItem() {
         POISON_ITEM_LIMITER.acquire();
@@ -37,5 +42,21 @@ public class LimiterHelper {
 
     public static void listDunkSales() {
         DUNK_SALES_LIMITER.acquire();
+    }
+
+    /**
+     * StockX压价接口限流，支持动态配置
+     */
+    public static void limitStockxPriceDown() {
+        // 检查配置是否变更，如果变更则重新创建限流器
+        if (lastPriceDownPerMinute != StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE) {
+            synchronized (LimiterHelper.class) {
+                if (lastPriceDownPerMinute != StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE) {
+                    STOCKX_PRICE_DOWN_LIMITER = RateLimiter.create(StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE / 60.0);
+                    lastPriceDownPerMinute = StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE;
+                }
+            }
+        }
+        STOCKX_PRICE_DOWN_LIMITER.acquire();
     }
 }
