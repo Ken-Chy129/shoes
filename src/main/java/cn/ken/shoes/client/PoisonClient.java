@@ -86,7 +86,7 @@ public class PoisonClient {
                 }
                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                 poisonPriceDO.setModelNo(modelNo);
-                poisonPriceDO.setEuSize(priceData.getString("size"));
+                poisonPriceDO.setEuSize(extractSize(priceData.getString("size")));
                 poisonPriceDO.setPrice(minprice / 100);
                 poisonPriceDO.setUpdateTime(time);
                 poisonPriceDOList.add(poisonPriceDO);
@@ -282,6 +282,23 @@ public class PoisonClient {
         params.put("sign", sign);
         params.put("timestamp", timestamp);
         params.put("app_key", appKey);
+    }
+
+    /**
+     * 从size字符串中提取尺码数字
+     * 例如："灰色 35.5" -> "35.5"，"35.5" -> "35.5"
+     */
+    private String extractSize(String size) {
+        if (size == null || size.isEmpty()) {
+            return size;
+        }
+        // 匹配尺码数字，支持整数和小数，如 35、35.5、36 1/3
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\d+(\\.\\d+|\\s*\\d*/\\d*)?");
+        java.util.regex.Matcher matcher = pattern.matcher(size);
+        if (matcher.find()) {
+            return matcher.group().trim();
+        }
+        return size;
     }
 
     @Data
