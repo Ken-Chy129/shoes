@@ -2,11 +2,11 @@ package cn.ken.shoes.service;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Pair;
-import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.DunkClient;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.Gender;
 import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.common.PlatformEnum;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.model.dunk.DunkItem;
@@ -17,6 +17,8 @@ import cn.ken.shoes.model.excel.DunkPriceExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.search.SearchTaskRequest;
 import cn.ken.shoes.model.search.SearchTaskVO;
+import cn.ken.shoes.util.GenderUtil;
+import cn.ken.shoes.util.SizeConvertUtil;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
@@ -287,7 +289,7 @@ public class SearchService {
                             log.error("queryPrice error, item:{}", dunkItem);
                         }
                         String title = dunkItem.getTitle();
-                        Gender gender = getGender(title);
+                        Gender gender = GenderUtil.extractGender(PlatformEnum.DUNK, title);
                         CountDownLatch salesLatch = new CountDownLatch(priceList.size());
                         for (DunkPriceExcel price : priceList) {
                             Thread.startVirtualThread(() -> {
@@ -299,7 +301,7 @@ public class SearchService {
                                     dunkPriceExcel.setTitle(dunkItem.getTitle());
                                     dunkPriceExcel.setSize(price.getSize());
                                     dunkPriceExcel.setSizeText(price.getSizeText());
-                                    dunkPriceExcel.setEuSize(ShoesContext.getDunkEuSize(dunkItem.getBrandId(), gender, price.getSizeText()));
+                                    dunkPriceExcel.setEuSize(SizeConvertUtil.getDunkEuSize(dunkItem.getBrandId(), gender, price.getSizeText()));
                                     dunkPriceExcel.setLowPrice(price.getLowPrice());
                                     dunkPriceExcel.setHighPrice(price.getHighPrice());
                                     dunkPriceExcel.setInventory(price.getInventory());
@@ -413,15 +415,4 @@ public class SearchService {
         return result;
     }
 
-    private Gender getGender(String title) {
-        if (title.contains("Women's")) {
-            return Gender.WOMENS;
-        } else if (title.contains("GS")) {
-            return Gender.KIDS;
-        } else if (title.contains("PS") || title.contains("TD")) {
-            return Gender.BABY;
-        } else {
-            return Gender.MENS;
-        }
-    }
 }

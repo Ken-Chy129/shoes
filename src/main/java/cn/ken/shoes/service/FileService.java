@@ -1,6 +1,5 @@
 package cn.ken.shoes.service;
 
-import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.CommonConfig;
@@ -15,6 +14,7 @@ import cn.ken.shoes.model.excel.ModelExcel;
 import cn.ken.shoes.model.excel.PriceExcel;
 import cn.ken.shoes.model.excel.SizeChartExcel;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SizeConvertUtil;
 import cn.ken.shoes.util.SqlHelper;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
@@ -55,7 +55,7 @@ public class FileService {
 
     public void doWriteSizeCharExcel() {
         try (ExcelWriter excelWriter = EasyExcel.write(CommonConfig.DOWNLOAD_PATH + CommonConfig.SIZE_CHART_NAME).build()) {
-            Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = ShoesContext.getBrandGenderSizeChartMap();
+            Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = SizeConvertUtil.getBrandGenderSizeChartMap();
             int i = 0;
             for (var entry : brandGenderSizeChartMap.entrySet()) {
                 String brand = entry.getKey().replaceAll("[\\\\/?*$]", "_");

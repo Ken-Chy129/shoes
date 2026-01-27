@@ -11,6 +11,8 @@ import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.service.PoisonService;
+import cn.ken.shoes.util.BrandUtil;
+import cn.ken.shoes.util.SizeConvertUtil;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -18,10 +20,7 @@ import org.springframework.boot.context.event.ApplicationStartedEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 @Slf4j
 @Component
@@ -80,21 +79,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
 
     private void initSizeMap() {
         List<SizeChartDO> sizeChartDOS = sizeChartMapper.selectList(new QueryWrapper<>());
-        Map<String, Map<String, List<SizeChartDO>>> brandGenderMap = new HashMap<>();
-        Map<String, Map<String, List<SizeChartDO>>> dunkBrandGenderMap = new HashMap<>();
-        for (SizeChartDO sizeChartDO : sizeChartDOS) {
-            String brand = sizeChartDO.getBrand();
-            String dunkBrand = sizeChartDO.getDunkBrand();
-            String gender = sizeChartDO.getGender();
-            Map<String, List<SizeChartDO>> genderMap = brandGenderMap.getOrDefault(brand, new HashMap<>());
-            genderMap.computeIfAbsent(gender, k -> new ArrayList<>()).add(sizeChartDO);
-            brandGenderMap.put(brand, genderMap);
-            if (dunkBrand != null) {
-                dunkBrandGenderMap.put(dunkBrand, genderMap);
-            }
-        }
-        ShoesContext.setBrandGenderSizeChartMap(brandGenderMap);
-        ShoesContext.setDunkBrandGenderSizeChartMap(dunkBrandGenderMap);
+        SizeConvertUtil.initCache(sizeChartDOS);
+        BrandUtil.initCache(sizeChartDOS);
     }
 
     private void initCustomModel() {
