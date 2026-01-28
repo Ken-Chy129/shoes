@@ -55,7 +55,7 @@ public class FileService {
 
     public void doWriteSizeCharExcel() {
         try (ExcelWriter excelWriter = EasyExcel.write(CommonConfig.DOWNLOAD_PATH + CommonConfig.SIZE_CHART_NAME).build()) {
-            Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = SizeConvertUtil.getBrandGenderSizeChartMap();
+            Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = SizeConvertUtil.getKcSizeCache();
             int i = 0;
             for (var entry : brandGenderSizeChartMap.entrySet()) {
                 String brand = entry.getKey().replaceAll("[\\\\/?*$]", "_");

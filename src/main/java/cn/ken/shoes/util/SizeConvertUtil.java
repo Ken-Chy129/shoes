@@ -3,6 +3,7 @@ package cn.ken.shoes.util;
 import cn.ken.shoes.common.Gender;
 import cn.ken.shoes.common.PlatformEnum;
 import cn.ken.shoes.model.entity.SizeChartDO;
+import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
@@ -20,9 +21,9 @@ import java.util.regex.Pattern;
 public class SizeConvertUtil {
 
     /**
-     * 缓存Map，key: brand:gender:usSize，value: euSize
+     * 缓存Map，key: stockxBrand:gender:usSize，value: euSize
      */
-    private static final Map<String, String> SIZE_CONVERT_CACHE = new HashMap<>();
+    private static final Map<String, String> STOCKX_SIZE_CACHE = new HashMap<>();
 
     /**
      * Dunk品牌尺码缓存，key: dunkBrand:gender:cmSize，value: euSize
@@ -32,7 +33,8 @@ public class SizeConvertUtil {
     /**
      * 品牌-性别-尺码对照表缓存
      */
-    private static Map<String, Map<String, List<SizeChartDO>>> brandGenderSizeChartMap = new HashMap<>();
+    @Getter
+    private static final Map<String, Map<String, List<SizeChartDO>>> KC_SIZE_CACHE = new HashMap<>();
 
     /**
      * 匹配尺码数字的正则（支持整数、小数、分数格式）
@@ -47,12 +49,13 @@ public class SizeConvertUtil {
      * @param sizeChartList 尺码对照表数据
      */
     public static void initCache(List<SizeChartDO> sizeChartList) {
-        SIZE_CONVERT_CACHE.clear();
+        STOCKX_SIZE_CACHE.clear();
         DUNK_SIZE_CACHE.clear();
-        brandGenderSizeChartMap.clear();
+        KC_SIZE_CACHE.clear();
 
         for (SizeChartDO sizeChart : sizeChartList) {
-            String brand = sizeChart.getBrand();
+            String kcBrand = sizeChart.getBrand();
+            String stockxBrand = sizeChart.getStockxBrand();
             String dunkBrand = sizeChart.getDunkBrand();
             String gender = sizeChart.getGender();
             String euSize = sizeChart.getEuSize();
@@ -60,29 +63,29 @@ public class SizeConvertUtil {
             String cmSize = sizeChart.getCmSize();
 
             // 构建 brandGenderSizeChartMap
-            brandGenderSizeChartMap
-                    .computeIfAbsent(brand, k -> new HashMap<>())
+            KC_SIZE_CACHE
+                    .computeIfAbsent(kcBrand, k -> new HashMap<>())
                     .computeIfAbsent(gender, k -> new ArrayList<>())
                     .add(sizeChart);
 
             // 通用 usSize
             if (usSize != null && !usSize.isEmpty()) {
-                String key = buildKey(brand, gender, usSize);
-                SIZE_CONVERT_CACHE.put(key, euSize);
+                String key = buildKey(stockxBrand, gender, usSize);
+                STOCKX_SIZE_CACHE.put(key, euSize);
             }
 
             // 男款 usSize
             String menUSSize = sizeChart.getMenUSSize();
             if (menUSSize != null && !menUSSize.isEmpty()) {
-                String key = buildKey(brand, Gender.MENS.name(), menUSSize);
-                SIZE_CONVERT_CACHE.putIfAbsent(key, euSize);
+                String key = buildKey(stockxBrand, Gender.MENS.name(), menUSSize);
+                STOCKX_SIZE_CACHE.putIfAbsent(key, euSize);
             }
 
             // 女款 usSize
             String womenUSSize = sizeChart.getWomenUSSize();
             if (womenUSSize != null && !womenUSSize.isEmpty()) {
-                String key = buildKey(brand, Gender.WOMENS.name(), womenUSSize);
-                SIZE_CONVERT_CACHE.putIfAbsent(key, euSize);
+                String key = buildKey(stockxBrand, Gender.WOMENS.name(), womenUSSize);
+                STOCKX_SIZE_CACHE.putIfAbsent(key, euSize);
             }
 
             // Dunk品牌 cmSize -> euSize
@@ -113,7 +116,7 @@ public class SizeConvertUtil {
         if (matcher.find()) {
             String sizeNumber = matcher.group(1).trim();
             String key = buildKey(brand, gender.name(), sizeNumber);
-            return SIZE_CONVERT_CACHE.get(key);
+            return STOCKX_SIZE_CACHE.get(key);
         }
 
         return null;
@@ -134,40 +137,6 @@ public class SizeConvertUtil {
         String finalCmSize = cmSize.replace("cm", "").trim();
         String key = buildKey(dunkBrand, gender.name(), finalCmSize);
         return DUNK_SIZE_CACHE.get(key);
-    }
-
-    /**
-     * 获取品牌-性别对应的尺码对照表
-     *
-     * @param brand  品牌名
-     * @param gender 性别
-     * @return 尺码对照表列表
-     */
-    public static List<SizeChartDO> getBrandGenderSizeChart(String brand, String gender) {
-        Map<String, List<SizeChartDO>> genderMap = brandGenderSizeChartMap.get(brand);
-        if (genderMap == null) {
-            return null;
-        }
-        return genderMap.get(gender);
-    }
-
-    /**
-     * 获取品牌对应的尺码对照表（按性别分组）
-     *
-     * @param brand 品牌名
-     * @return 性别 -> 尺码对照表 的映射
-     */
-    public static Map<String, List<SizeChartDO>> getBrandSizeChart(String brand) {
-        return brandGenderSizeChartMap.get(brand);
-    }
-
-    /**
-     * 获取完整的品牌-性别-尺码对照表缓存
-     *
-     * @return 品牌 -> (性别 -> 尺码对照表) 的映射
-     */
-    public static Map<String, Map<String, List<SizeChartDO>>> getBrandGenderSizeChartMap() {
-        return brandGenderSizeChartMap;
     }
 
     /**
