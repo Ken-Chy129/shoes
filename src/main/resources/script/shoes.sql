@@ -133,7 +133,8 @@ CREATE TABLE size_chart
     women_us_size VARCHAR(16) NULL COMMENT '女款美码尺码',
     uk_size       VARCHAR(16) NULL COMMENT '英码尺码',
     cm_size       VARCHAR(16) NULL COMMENT '厘米尺码',
-    dunk_brand    VARCHAR(64) NULL COMMENT 'Dunk品牌特殊标识'
+    dunk_brand    VARCHAR(64) NULL COMMENT 'Dunk品牌特殊标识',
+    stockx_brand  VARCHAR(64) NULL COMMENT 'StockX品牌标识'
 ) COMMENT '尺码对照表';
 
 -- -------------------------------------------

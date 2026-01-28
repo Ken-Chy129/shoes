@@ -48,4 +48,9 @@ public class SizeChartDO {
      * dunk品牌
      */
     private String dunkBrand;
+
+    /**
+     * StockX品牌标识
+     */
+    private String stockxBrand;
 }

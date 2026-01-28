@@ -28,6 +28,9 @@ public class SizeChartExcel {
     @ExcelProperty("厘米")
     private String cmSize;
 
+    @ExcelProperty("StockX品牌")
+    private String stockxBrand;
+
     public static SizeChartExcel from(SizeChartDO sizeChartDO) {
         SizeChartExcel sizeChartExcel = new SizeChartExcel();
         sizeChartExcel.setGender(sizeChartDO.getGender());
@@ -37,6 +40,7 @@ public class SizeChartExcel {
         sizeChartExcel.setWomenUSSize(sizeChartDO.getWomenUSSize());
         sizeChartExcel.setUkSize(sizeChartDO.getUkSize());
         sizeChartExcel.setCmSize(sizeChartDO.getCmSize());
+        sizeChartExcel.setStockxBrand(sizeChartDO.getStockxBrand());
         return sizeChartExcel;
     }
 }
