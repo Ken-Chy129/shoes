@@ -16,7 +16,7 @@ public class BrandUtil {
     /**
      * 品牌名缓存
      */
-    private static final Set<String> BRAND_CACHE = new HashSet<>();
+    private static final Set<String> STOCKX_BRAND_CACHE = new HashSet<>();
 
     /**
      * 品牌名映射（特殊处理，如 Jordan -> Nike）
@@ -32,11 +32,11 @@ public class BrandUtil {
      * @param sizeChartList 尺码对照表数据
      */
     public static void initCache(List<SizeChartDO> sizeChartList) {
-        BRAND_CACHE.clear();
+        STOCKX_BRAND_CACHE.clear();
         for (SizeChartDO sizeChart : sizeChartList) {
-            String brand = sizeChart.getBrand();
+            String brand = sizeChart.getStockxBrand();
             if (brand != null && !brand.isEmpty()) {
-                BRAND_CACHE.add(brand);
+                STOCKX_BRAND_CACHE.add(brand);
             }
         }
     }
@@ -48,7 +48,7 @@ public class BrandUtil {
      * @param productName 商品名称
      * @return 品牌名，找不到返回null
      */
-    public static String extractBrand(String productName) {
+    public static String extractStockXBrand(String productName) {
         if (productName == null || productName.isEmpty()) {
             return null;
         }
@@ -66,7 +66,7 @@ public class BrandUtil {
             prefix.append(words[i]);
 
             String currentPrefix = prefix.toString();
-            if (BRAND_CACHE.contains(currentPrefix)) {
+            if (STOCKX_BRAND_CACHE.contains(currentPrefix)) {
                 return applyAlias(currentPrefix);
             }
         }
@@ -89,7 +89,7 @@ public class BrandUtil {
      *
      * @return 品牌名集合的副本
      */
-    public static Set<String> getAllBrands() {
-        return new HashSet<>(BRAND_CACHE);
+    public static Set<String> getAllStockXBrands() {
+        return new HashSet<>(STOCKX_BRAND_CACHE);
     }
 }
