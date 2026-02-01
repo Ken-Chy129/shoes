@@ -178,13 +178,15 @@ public class StockXService {
                     }
                     Integer amount = item.getInteger("amount");
                     Integer lowestAskAmount = item.getInteger("lowestAskAmount");
+                    if (amount == null || lowestAskAmount == null) {
+                        continue;
+                    }
                     String id = item.getString("id");
                     Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
 
-                    // 不管过不过期都判断是否需要压价，没利润就下架
-                    if (!Objects.equals(amount, lowestAskAmount)) {
-                        // 价格不是最低价，需要压价
-                        if (lowestAskAmount != null && lowestAskAmount > 1) {
+                    // 大于最低价或者已经过期，需要压价
+                    if (amount > lowestAskAmount || item.getBoolean("isExpired")) {
+                        if (lowestAskAmount > 1) {
                             int newPrice = lowestAskAmount - 1;
                             if (ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
                                 // 可以盈利，调用压价接口

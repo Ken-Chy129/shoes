@@ -175,16 +175,19 @@ public class StockXClient {
         result.put("items", items);
         for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
             JSONObject node = edge.getJSONObject("node");
-            JSONObject item = new JSONObject();
-            item.put("id", node.getString("id"));
-            item.put("amount", node.getInteger("amount"));
-            item.put("isExpired", node.getBoolean("isExpired"));
             JSONObject productVariant = node.getJSONObject("productVariant");
             if (productVariant == null) {
                 continue;
             }
+            JSONObject item = new JSONObject();
+            item.put("id", node.getString("id"));
+            item.put("amount", node.getInteger("amount"));
+            item.put("isExpired", node.getBoolean("isExpired"));
             item.put("variantId", productVariant.getString("id"));
             item.put("styleId", productVariant.getJSONObject("product").getString("styleId"));
+            JSONObject product = productVariant.getJSONObject("product");
+            String productName = product.getString("model");
+            item.put("productName", productName);
             // 尝试从 sizeChart 中解析 EU 尺码
             Optional<String> euSizeFromChart = Optional.ofNullable(productVariant.getJSONObject("sizeChart"))
                     .map(sc -> sc.getJSONArray("displayOptions"))
@@ -197,12 +200,10 @@ public class StockXClient {
                 item.put("euSize", euSizeFromChart.get());
             } else {
                 // 备用方案：从 traits 中获取 size，从 product 中获取 name，通过品牌和尺码转换得到 euSize
-                JSONObject product = productVariant.getJSONObject("product");
                 String usSize = Optional.ofNullable(productVariant.getJSONObject("traits"))
                         .map(traits -> traits.getString("size"))
                         .orElse(null);
-                if (usSize != null && product != null) {
-                    String productName = product.getString("model");
+                if (usSize != null) {
                     String primaryCategory = product.getString("primaryCategory");
                     // 优先从商品名称提取品牌，其次使用 primaryCategory
                     String brand = BrandUtil.extractStockXBrand(productName);
