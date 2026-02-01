@@ -17,6 +17,12 @@ public class SizeChartController {
     @Resource
     private SizeChartMapper sizeChartMapper;
 
+    @GetMapping("brands")
+    public Result<List<String>> brands() {
+        List<String> brands = sizeChartMapper.selectDistinctBrands();
+        return Result.buildSuccess(brands);
+    }
+
     @GetMapping("list")
     public PageResult<List<SizeChartDO>> list(
             @RequestParam(required = false) String brand,

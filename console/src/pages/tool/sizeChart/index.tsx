@@ -45,10 +45,27 @@ const SizeChartPage = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [modalType, setModalType] = useState<'add' | 'edit'>('add');
     const [currentRecord, setCurrentRecord] = useState<SizeChartItem | null>(null);
+    const [brandOptions, setBrandOptions] = useState<{label: string, value: string}[]>([]);
+
+    useEffect(() => {
+        fetchBrands();
+    }, []);
 
     useEffect(() => {
         fetchData();
     }, [pageIndex, pageSize]);
+
+    const fetchBrands = () => {
+        doGetRequest(SIZE_CHART_API.BRANDS, {}, {
+            onSuccess: res => {
+                const options = (res.data || []).map((brand: string) => ({
+                    label: brand,
+                    value: brand
+                }));
+                setBrandOptions(options);
+            }
+        });
+    };
 
     const fetchData = () => {
         const brand = queryForm.getFieldValue("brand") || '';
@@ -217,7 +234,13 @@ const SizeChartPage = () => {
             <Card title="尺码表管理">
                 <Form form={queryForm} layout="inline" style={{marginBottom: 16}}>
                     <Form.Item name="brand" label="品牌">
-                        <Input placeholder="请输入品牌" allowClear style={{width: 150}}/>
+                        <Select
+                            placeholder="请选择品牌"
+                            allowClear
+                            showSearch
+                            style={{width: 150}}
+                            options={brandOptions}
+                        />
                     </Form.Item>
                     <Form.Item name="gender" label="性别">
                         <Select
@@ -277,9 +300,14 @@ const SizeChartPage = () => {
                     <Form.Item
                         name="brand"
                         label="品牌"
-                        rules={[{required: true, message: '请输入品牌'}]}
+                        rules={[{required: true, message: '请选择品牌'}]}
                     >
-                        <Input placeholder="请输入品牌" disabled={modalType === 'edit'}/>
+                        <Select
+                            placeholder="请选择品牌"
+                            showSearch
+                            disabled={modalType === 'edit'}
+                            options={brandOptions}
+                        />
                     </Form.Item>
                     <Form.Item
                         name="gender"
