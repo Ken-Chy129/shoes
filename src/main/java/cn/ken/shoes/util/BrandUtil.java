@@ -58,13 +58,15 @@ public class BrandUtil {
             return null;
         }
 
-        StringBuilder prefix = new StringBuilder();
-        for (int i = 0; i < words.length; i++) {
-            if (i > 0) {
-                prefix.append(" ");
+        // 从长到短匹配，优先匹配最长的品牌名
+        for (int len = words.length; len > 0; len--) {
+            StringBuilder prefix = new StringBuilder();
+            for (int i = 0; i < len; i++) {
+                if (i > 0) {
+                    prefix.append(" ");
+                }
+                prefix.append(words[i]);
             }
-            prefix.append(words[i]);
-
             String currentPrefix = prefix.toString();
             if (STOCKX_BRAND_CACHE.contains(currentPrefix)) {
                 return applyAlias(currentPrefix);

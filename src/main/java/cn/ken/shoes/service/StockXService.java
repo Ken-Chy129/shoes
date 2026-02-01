@@ -178,17 +178,10 @@ public class StockXService {
                     }
                     Integer amount = item.getInteger("amount");
                     Integer lowestAskAmount = item.getInteger("lowestAskAmount");
-                    Boolean isExpired = item.getBoolean("isExpired");
                     String id = item.getString("id");
                     Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
 
-                    // 如果过期，需要下架
-                    if (Boolean.TRUE.equals(isExpired)) {
-                        toDelete.add(id);
-                        continue;
-                    }
-
-                    // 没过期，判断是否需要压价或下架
+                    // 不管过不过期都判断是否需要压价，没利润就下架
                     if (!Objects.equals(amount, lowestAskAmount)) {
                         // 价格不是最低价，需要压价
                         if (lowestAskAmount != null && lowestAskAmount > 1) {
