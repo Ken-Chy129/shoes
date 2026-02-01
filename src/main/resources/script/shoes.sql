@@ -125,16 +125,17 @@ CREATE INDEX idx_status       ON search_task (status);
 -- -------------------------------------------
 CREATE TABLE size_chart
 (
-    brand         VARCHAR(64) NULL COMMENT '品牌名称',
-    gender        VARCHAR(16) NULL COMMENT '性别：men/women/kids',
-    eu_size       VARCHAR(16) NULL COMMENT '欧码尺码',
-    us_size       VARCHAR(16) NULL COMMENT '美码尺码（通用）',
+    brand         VARCHAR(64) NOT NULL COMMENT '品牌名称',
+    gender        VARCHAR(16) NOT NULL COMMENT '性别：men/women/kids',
+    eu_size       VARCHAR(16) NOT NULL COMMENT '欧码尺码',
+    us_size       VARCHAR(16) NOT NULL COMMENT '美码尺码（通用）',
     men_us_size   VARCHAR(16) NULL COMMENT '男款美码尺码',
     women_us_size VARCHAR(16) NULL COMMENT '女款美码尺码',
     uk_size       VARCHAR(16) NULL COMMENT '英码尺码',
     cm_size       VARCHAR(16) NULL COMMENT '厘米尺码',
     dunk_brand    VARCHAR(64) NULL COMMENT 'Dunk品牌特殊标识',
-    stockx_brand  VARCHAR(64) NULL COMMENT 'StockX品牌标识'
+    stockx_brand  VARCHAR(64) NULL COMMENT 'StockX品牌标识',
+    UNIQUE KEY uk_brand_gender_size (brand, gender, eu_size, us_size)
 ) COMMENT '尺码对照表';
 
 -- -------------------------------------------

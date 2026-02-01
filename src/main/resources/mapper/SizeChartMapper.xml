@@ -2,5 +2,58 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.SizeChartMapper">
 
+    <select id="count" resultType="java.lang.Long">
+        SELECT COUNT(*)
+        FROM size_chart
+        <where>
+            <if test="brand != null and brand != ''">
+                AND brand = #{brand}
+            </if>
+            <if test="gender != null and gender != ''">
+                AND gender = #{gender}
+            </if>
+        </where>
+    </select>
+
+    <select id="selectPage" resultType="cn.ken.shoes.model.entity.SizeChartDO">
+        SELECT brand, gender, eu_size, us_size, men_us_size, women_us_size, uk_size, cm_size, dunk_brand, stockx_brand
+        FROM size_chart
+        <where>
+            <if test="brand != null and brand != ''">
+                AND brand = #{brand}
+            </if>
+            <if test="gender != null and gender != ''">
+                AND gender = #{gender}
+            </if>
+        </where>
+        ORDER BY brand, gender, eu_size
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <update id="updateByOldKey">
+        UPDATE size_chart
+        SET brand = #{req.brand},
+            gender = #{req.gender},
+            eu_size = #{req.euSize},
+            us_size = #{req.usSize},
+            men_us_size = #{req.menUSSize},
+            women_us_size = #{req.womenUSSize},
+            uk_size = #{req.ukSize},
+            cm_size = #{req.cmSize},
+            dunk_brand = #{req.dunkBrand},
+            stockx_brand = #{req.stockxBrand}
+        WHERE brand = #{req.oldBrand}
+          AND gender = #{req.oldGender}
+          AND eu_size = #{req.oldEuSize}
+          AND us_size = #{req.oldUsSize}
+    </update>
+
+    <delete id="deleteByKey">
+        DELETE FROM size_chart
+        WHERE brand = #{brand}
+          AND gender = #{gender}
+          AND eu_size = #{euSize}
+          AND us_size = #{usSize}
+    </delete>
 
 </mapper>

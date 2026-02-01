@@ -191,7 +191,7 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
             },
             {
               name: "尺码表",
-              path: "/tool/1"
+              path: "/tool/sizeChart"
             },
           ]
         },
