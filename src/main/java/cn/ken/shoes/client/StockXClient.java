@@ -11,9 +11,11 @@ import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.SizeConvertUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
@@ -183,13 +185,38 @@ public class StockXClient {
             }
             item.put("variantId", productVariant.getString("id"));
             item.put("styleId", productVariant.getJSONObject("product").getString("styleId"));
-            productVariant.getJSONObject("sizeChart")
-                    .getJSONArray("displayOptions")
-                    .toJavaList(JSONObject.class)
-                    .stream()
-                    .filter(option -> option.getString("size").startsWith("EU"))
-                    .findFirst()
-                    .ifPresent(euOption -> item.put("euSize", ShoesUtil.getShoesSizeFrom(euOption.getString("size"))));
+            // 尝试从 sizeChart 中解析 EU 尺码
+            Optional<String> euSizeFromChart = Optional.ofNullable(productVariant.getJSONObject("sizeChart"))
+                    .map(sc -> sc.getJSONArray("displayOptions"))
+                    .map(arr -> arr.toJavaList(JSONObject.class))
+                    .flatMap(list -> list.stream()
+                            .filter(option -> option.getString("size").startsWith("EU"))
+                            .findFirst()
+                            .map(euOption -> ShoesUtil.getShoesSizeFrom(euOption.getString("size"))));
+            if (euSizeFromChart.isPresent()) {
+                item.put("euSize", euSizeFromChart.get());
+            } else {
+                // 备用方案：从 traits 中获取 size，从 product 中获取 name，通过品牌和尺码转换得到 euSize
+                JSONObject product = productVariant.getJSONObject("product");
+                String usSize = Optional.ofNullable(productVariant.getJSONObject("traits"))
+                        .map(traits -> traits.getString("size"))
+                        .orElse(null);
+                if (usSize != null && product != null) {
+                    String productName = product.getString("model");
+                    String primaryCategory = product.getString("primaryCategory");
+                    // 优先从商品名称提取品牌，其次使用 primaryCategory
+                    String brand = BrandUtil.extractStockXBrand(productName);
+                    if (brand == null) {
+                        brand = BrandUtil.extractStockXBrand(primaryCategory);
+                    }
+                    if (brand != null) {
+                        String euSize = SizeConvertUtil.getStockXEuSize(brand, usSize);
+                        if (euSize != null) {
+                            item.put("euSize", euSize);
+                        }
+                    }
+                }
+            }
             // 获取 askServiceLevels.standard.lowest.amount
             Optional.ofNullable(productVariant.getJSONObject("market"))
                     .map(m -> m.getJSONObject("state"))
@@ -885,6 +912,9 @@ public class StockXClient {
                 "          isExpired\n" +
                 "          productVariant {\n" +
                 "            id\n" +
+                "            traits {\n" +
+                "              size\n" +
+                "            }\n" +
                 "            sizeChart {\n" +
                 "              displayOptions {\n" +
                 "                size\n" +
@@ -903,8 +933,10 @@ public class StockXClient {
                 "            }\n" +
                 "            product {\n" +
                 "              id\n" +
+                "              model\n" +
                 "              urlKey\n" +
                 "              styleId\n" +
+                "              primaryCategory\n" +
                 "            }\n" +
                 "          }\n" +
                 "        }\n" +
