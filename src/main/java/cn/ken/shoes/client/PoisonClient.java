@@ -74,7 +74,7 @@ public class PoisonClient {
             LocalDate update = LocalDate.ofInstant(time.toInstant(), ZoneId.systemDefault());
             LocalDate threeDayAgo = LocalDate.now().minusDays(3);
             if (update.isBefore(threeDayAgo)) {
-                log.error("batchQueryPrice data is too old, sku:{}", sku);
+//                log.error("batchQueryPrice data is too old, sku:{}", sku);
                 continue;
             }
             String modelNo = sku.getString("article_number");
