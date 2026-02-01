@@ -115,6 +115,11 @@ export default [
         layout: true,
         component: './tool/price'
       },
+      {
+        path: '/tool/sizeChart',
+        layout: true,
+        component: './tool/sizeChart'
+      },
     ]
   },
   {

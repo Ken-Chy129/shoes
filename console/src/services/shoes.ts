@@ -36,4 +36,11 @@ enum POISON_API {
     REFRESH_PRICE = '/api/poison/refreshPrice',
 }
 
-export {PRICE_API, SETTING_API, KC_API, POISON_API}
+enum SIZE_CHART_API {
+    LIST = '/api/sizeChart/list',
+    ADD = '/api/sizeChart/add',
+    UPDATE = '/api/sizeChart/update',
+    DELETE = '/api/sizeChart/delete',
+}
+
+export {PRICE_API, SETTING_API, KC_API, POISON_API, SIZE_CHART_API}
