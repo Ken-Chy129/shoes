@@ -23,7 +23,7 @@ public class GenderUtil {
         } else if (platform == PlatformEnum.STOCKX) {
             if (content.contains("Y")) {
                 return Gender.KIDS;
-            } else if (content.contains("C")) {
+            } else if (content.contains("C") || content.contains("K")) {
                 return Gender.BABY;
             } else if (content.contains("W")) {
                 return Gender.WOMENS;

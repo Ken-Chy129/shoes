@@ -10,8 +10,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * 尺码转换工具类
@@ -35,12 +33,6 @@ public class SizeConvertUtil {
      */
     @Getter
     private static final Map<String, Map<String, List<SizeChartDO>>> KC_SIZE_CACHE = new HashMap<>();
-
-    /**
-     * 匹配尺码数字的正则（支持整数、小数、分数格式）
-     * 例如：10、10.5、10 1/2
-     */
-    private static final Pattern SIZE_NUMBER_PATTERN = Pattern.compile("([\\d]+(?:\\.\\d+|\\s*\\d*/\\d*)?)");
 
     /**
      * 初始化尺码转换缓存
@@ -111,15 +103,16 @@ public class SizeConvertUtil {
         // 提取性别
         Gender gender = GenderUtil.extractGender(PlatformEnum.STOCKX, size);
 
-        // 提取码数
-        Matcher matcher = SIZE_NUMBER_PATTERN.matcher(size);
-        if (matcher.find()) {
-            String sizeNumber = matcher.group(1).trim();
-            String key = buildKey(brand, gender.name(), sizeNumber);
-            return STOCKX_SIZE_CACHE.get(key);
+
+        String key = buildKey(brand, gender.name(), size);
+        String euSize = STOCKX_SIZE_CACHE.get(key);
+
+        if (euSize == null && gender == Gender.BABY) {
+            String kidsKey = buildKey(brand, Gender.KIDS.name(), size);
+            return STOCKX_SIZE_CACHE.get(kidsKey);
         }
 
-        return null;
+        return euSize;
     }
 
     /**
