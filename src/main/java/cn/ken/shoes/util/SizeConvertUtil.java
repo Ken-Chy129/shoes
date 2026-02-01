@@ -107,6 +107,7 @@ public class SizeConvertUtil {
         String key = buildKey(brand, gender.name(), size);
         String euSize = STOCKX_SIZE_CACHE.get(key);
 
+        // 因为K和C对应Baby和Kids不好区分，这里提取性别时默认返回Baby，然后再兜底从Kids查询
         if (euSize == null && gender == Gender.BABY) {
             String kidsKey = buildKey(brand, Gender.KIDS.name(), size);
             return STOCKX_SIZE_CACHE.get(kidsKey);
