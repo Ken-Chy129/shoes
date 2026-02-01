@@ -37,6 +37,7 @@ enum POISON_API {
 }
 
 enum SIZE_CHART_API {
+    BRANDS = '/api/sizeChart/brands',
     LIST = '/api/sizeChart/list',
     ADD = '/api/sizeChart/add',
     UPDATE = '/api/sizeChart/update',

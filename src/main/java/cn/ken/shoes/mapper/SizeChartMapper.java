@@ -11,6 +11,8 @@ import java.util.List;
 @Mapper
 public interface SizeChartMapper extends BaseMapper<SizeChartDO> {
 
+    List<String> selectDistinctBrands();
+
     Long count(@Param("brand") String brand, @Param("gender") String gender);
 
     List<SizeChartDO> selectPage(@Param("brand") String brand,
