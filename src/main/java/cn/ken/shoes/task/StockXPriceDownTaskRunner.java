@@ -33,22 +33,6 @@ public class StockXPriceDownTaskRunner extends Thread {
         isInit = true;
         while (true) {
             try {
-                // 检查取消标志，取消后终止任务
-                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
-                    log.info("StockX压价任务已取消，终止执行");
-                    Long taskId = TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID;
-                    if (taskId != null) {
-                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
-                    }
-                    // 重置状态
-                    TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = false;
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = null;
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
-                    isInit = false;
-                    // 终止线程
-                    return;
-                }
-
                 // 增加轮次计数
                 TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND++;
                 Long taskId = TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID;
@@ -65,6 +49,21 @@ public class StockXPriceDownTaskRunner extends Thread {
                     LockHelper.unlockStockXItem();
                 }
                 log.info("StockX压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND, TimeUtil.getCostMin(startTime));
+
+                // 检查取消标志，取消后终止任务
+                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                    log.info("StockX压价任务已取消，终止执行");
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+                    }
+                    // 重置状态
+                    TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = false;
+                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = null;
+                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
+                    isInit = false;
+                    // 终止线程
+                    return;
+                }
 
                 Thread.sleep(TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL);
             } catch (InterruptedException e) {
