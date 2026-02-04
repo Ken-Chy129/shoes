@@ -77,44 +77,45 @@ public class StockXService {
     }
 
     @SneakyThrows
-    public int refreshPrices() {
-        // 1.下架不赢利的商品
-        long now = System.currentTimeMillis();
-        Set<String> existingItemKeys = priceDown();
-        log.info("finish clearNoBenefitItems, existingItemKeys size:{}, cost:{}", existingItemKeys.size(), TimeUtil.getCostMin(now));
-        // 2.清空绿叉价格
-        stockXPriceMapper.delete(new QueryWrapper<>());
-        // 3.查询要比价的商品和价格
-        int allCnt = 0, cnt = 0;
-        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
-        for (BrandDO brandDO : brandDOList) {
-            now = System.currentTimeMillis();
-            if (!brandDO.getNeedCrawl()) {
-                continue;
-            }
-            String brand = brandDO.getName();
-            int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
-            int crawlPage = (int) Math.ceil(crawlCnt / 50.0);
-            for (int i = 1; i <= crawlPage && i <= 20; i++) {
-                try {
-                    List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
-                    Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
-                    // 过滤掉已存在的商品和禁爬货号（FLAWS）
-                    List<StockXPriceDO> filteredList = stockXPriceDOList.stream()
-                            .filter(item -> !existingItemKeys.contains(STR."\{item.getModelNo()}:\{item.getEuSize()}"))
-                            .filter(item -> !ShoesContext.isFlawsModel(item.getModelNo(), item.getEuSize()))
-                            .toList();
-                    // 4.比价和上架
-                    cnt += compareWithPoisonAndChangePrice(filteredList);
-                } catch (Exception e) {
-                    log.error("refreshPrices error, msg:{}", e.getMessage(), e);
-                }
-            }
-            log.info("finish refreshPrice, brand:{}, cnt:{}, cost:{}", brand, cnt, TimeUtil.getCostMin(now));
-            allCnt += cnt;
-            cnt = 0;
-        }
-        return allCnt;
+    public void refreshPrices() {
+        // todo: 暂未实现
+//        // 1.下架不赢利的商品
+//        long now = System.currentTimeMillis();
+//        Set<String> existingItemKeys = priceDown();
+//        log.info("finish clearNoBenefitItems, existingItemKeys size:{}, cost:{}", existingItemKeys.size(), TimeUtil.getCostMin(now));
+//        // 2.清空绿叉价格
+//        stockXPriceMapper.delete(new QueryWrapper<>());
+//        // 3.查询要比价的商品和价格
+//        int allCnt = 0, cnt = 0;
+//        List<BrandDO> brandDOList = brandMapper.selectByPlatform("stockx");
+//        for (BrandDO brandDO : brandDOList) {
+//            now = System.currentTimeMillis();
+//            if (!brandDO.getNeedCrawl()) {
+//                continue;
+//            }
+//            String brand = brandDO.getName();
+//            int crawlCnt = Math.min(brandDO.getCrawlCnt(), brandDO.getTotal());
+//            int crawlPage = (int) Math.ceil(crawlCnt / 50.0);
+//            for (int i = 1; i <= crawlPage && i <= 20; i++) {
+//                try {
+//                    List<StockXPriceDO> stockXPriceDOList = stockXClient.queryHotItemsByBrandWithPrice(brand, i);
+//                    Thread.startVirtualThread(() -> SqlHelper.batch(stockXPriceDOList, stockXPriceDO -> stockXPriceMapper.insertIgnore(stockXPriceDO)));
+//                    // 过滤掉已存在的商品和禁爬货号（FLAWS）
+//                    List<StockXPriceDO> filteredList = stockXPriceDOList.stream()
+//                            .filter(item -> !existingItemKeys.contains(STR."\{item.getModelNo()}:\{item.getEuSize()}"))
+//                            .filter(item -> !ShoesContext.isFlawsModel(item.getModelNo(), item.getEuSize()))
+//                            .toList();
+//                    // 4.比价和上架
+//                    cnt += compareWithPoisonAndChangePrice(filteredList);
+//                } catch (Exception e) {
+//                    log.error("refreshPrices error, msg:{}", e.getMessage(), e);
+//                }
+//            }
+//            log.info("finish refreshPrice, brand:{}, cnt:{}, cost:{}", brand, cnt, TimeUtil.getCostMin(now));
+//            allCnt += cnt;
+//            cnt = 0;
+//        }
+//        return allCnt;
     }
 
     /**
