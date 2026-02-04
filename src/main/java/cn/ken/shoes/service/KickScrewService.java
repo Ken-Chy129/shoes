@@ -254,9 +254,10 @@ public class KickScrewService {
         refreshHotItems(clearOld);
     }
 
-    public int refreshPriceV2() {
-        if (TaskSwitch.STOP_KC_TASK) {
-            return 0;
+    public void refreshPriceV2() {
+        // 检查暂停或取消状态
+        if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+            return;
         }
         // 下架不盈利的商品
         clearNoBenefitItem();
@@ -268,15 +269,15 @@ public class KickScrewService {
         int uploadCnt = 0;
         // 查询价格并上架盈利商品
         for (List<String> modelNos : partition) {
-            if (TaskSwitch.STOP_KC_TASK) {
-                log.info("kc task terminated");
-                return uploadCnt;
+            // 检查暂停或取消状态
+            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                log.info("KC任务已暂停或取消，终止执行");
+                return;
             }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
             Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
             uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS);
         }
-        return uploadCnt;
     }
 
     public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
@@ -289,8 +290,9 @@ public class KickScrewService {
             // 先遍历缓存查询有哪些货号没有价格，没有的批量调用接口查询一次，并更新缓存（查询后没有的货号设置空缓存，避免每次重新查询）
             priceManager.preloadMissingPrices(modelNos);
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
-                if (TaskSwitch.STOP_KC_TASK) {
-                    log.info("kc task terminated");
+                // 检查暂停或取消状态
+                if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                    log.info("KC任务已暂停或取消，终止执行");
                     return toUpload.size();
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
@@ -315,6 +317,11 @@ public class KickScrewService {
             if (toUpload.isEmpty()) {
                 return 0;
             }
+            // 检查暂停或取消状态，跳过上架操作
+            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                log.info("KC任务已暂停或取消，跳过上架操作");
+                return 0;
+            }
             kickScrewClient.batchUploadItems(toUpload);
         } catch (Exception e) {
             log.error(e.getMessage(), e);
@@ -326,12 +333,22 @@ public class KickScrewService {
     public void clearNoBenefitItem() {
         int cnt = kickScrewClient.queryStockCnt();
         for (int i = 0; i < cnt; i++) {
+            // 检查暂停或取消状态
+            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                log.info("KC任务已暂停或取消，终止下架操作");
+                return;
+            }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryStockList(i, 100);
             if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
                 continue;
             }
             List<KickScrewPriceDO> toDelete = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                // 检查暂停或取消状态
+                if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                    log.info("KC任务已暂停或取消，终止下架操作");
+                    return;
+                }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
                 if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
@@ -345,6 +362,11 @@ public class KickScrewService {
                     // 得物无价或无盈利，下架该商品
                     toDelete.add(kickScrewPriceDO);
                 }
+            }
+            // 检查暂停或取消状态，跳过删除操作
+            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                log.info("KC任务已暂停或取消，跳过删除操作");
+                return;
             }
             kickScrewClient.deleteList(toDelete);
         }
