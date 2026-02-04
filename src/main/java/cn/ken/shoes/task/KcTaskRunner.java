@@ -33,22 +33,6 @@ public class KcTaskRunner extends Thread {
         isInit = true;
         while (true) {
             try {
-                // 检查取消标志，取消后终止任务
-                if (TaskSwitch.CANCEL_KC_TASK) {
-                    log.info("KC任务已取消，终止执行");
-                    Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
-                    if (taskId != null) {
-                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
-                    }
-                    // 重置状态
-                    TaskSwitch.CANCEL_KC_TASK = false;
-                    TaskSwitch.CURRENT_KC_TASK_ID = null;
-                    TaskSwitch.CURRENT_KC_ROUND = 0;
-                    isInit = false;
-                    // 终止线程
-                    return;
-                }
-
                 // 增加轮次计数
                 TaskSwitch.CURRENT_KC_ROUND++;
                 Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
@@ -65,6 +49,21 @@ public class KcTaskRunner extends Thread {
                     LockHelper.unlockKcItem();
                 }
                 log.info("KC任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_ROUND, TimeUtil.getCostMin(startTime));
+
+                // 检查取消标志，取消后终止任务
+                if (TaskSwitch.CANCEL_KC_TASK) {
+                    log.info("KC任务已取消，终止执行");
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+                    }
+                    // 重置状态
+                    TaskSwitch.CANCEL_KC_TASK = false;
+                    TaskSwitch.CURRENT_KC_TASK_ID = null;
+                    TaskSwitch.CURRENT_KC_ROUND = 0;
+                    isInit = false;
+                    // 终止线程
+                    return;
+                }
 
                 Thread.sleep(TaskSwitch.KC_TASK_INTERVAL);
             } catch (InterruptedException e) {
