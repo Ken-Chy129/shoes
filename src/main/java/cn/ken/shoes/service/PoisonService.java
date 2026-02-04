@@ -1,12 +1,10 @@
 package cn.ken.shoes.service;
 
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.*;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
-import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.SqlHelper;
@@ -63,7 +61,6 @@ public class PoisonService {
     }
 
     @SneakyThrows
-    @Task(platform = TaskDO.PlatformEnum.POISON, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshAllPrice() {
         // 互斥操作，一次只能进行一次全量价格更新
         LockHelper.lockPoisonPrice();

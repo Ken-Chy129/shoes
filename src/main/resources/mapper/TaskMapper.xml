@@ -4,7 +4,7 @@
 
     <select id="selectTask" resultType="cn.ken.shoes.model.entity.TaskDO">
         select * from task
-        where platform = #{platform} and task_type = #{type} and operate_type = #{operateType} and status = #{status}
+        where platform = #{platform} and task_type = #{type} and status = #{status}
     </select>
 
     <select id="selectByCondition" resultType="cn.ken.shoes.model.entity.TaskDO">
@@ -15,9 +15,6 @@
             </if>
             <if test="taskType != null and taskType != ''">
                 and task_type = #{taskType}
-            </if>
-            <if test="operateType != null and operateType != ''">
-                and operate_type = #{operateType}
             </if>
             <if test="startTime != null">
                 and start_time > #{startTime}
@@ -38,6 +35,11 @@
         where id = #{id}
     </update>
 
+    <update id="updateTaskRound">
+        update task set round = #{round}
+        where id = #{id}
+    </update>
+
     <select id="count" resultType="java.lang.Long">
         select count(*) from task
         <where>
@@ -46,9 +48,6 @@
             </if>
             <if test="taskType != null and taskType != ''">
                 and task_type = #{taskType}
-            </if>
-            <if test="operateType != null and operateType != ''">
-                and operate_type = #{operateType}
             </if>
             <if test="startTime != null">
                 and start_time > #{startTime}

@@ -52,6 +52,16 @@ public class TaskController {
         return Result.buildSuccess();
     }
 
+    @PostMapping("cancel")
+    public Result<Void> cancelTask(@RequestParam String taskType) {
+        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
+        if (type == null) {
+            return Result.buildError("无效的任务类型: " + taskType);
+        }
+        taskExecutorManager.cancelTask(type);
+        return Result.buildSuccess();
+    }
+
     @GetMapping("status")
     public Result<Boolean> queryTaskStatus(@RequestParam String taskType) {
         TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
@@ -68,6 +78,24 @@ public class TaskController {
             return Result.buildError("无效的任务类型: " + taskType);
         }
         return Result.buildSuccess(taskExecutorManager.getTaskInterval(type));
+    }
+
+    @GetMapping("currentTaskId")
+    public Result<Long> getCurrentTaskId(@RequestParam String taskType) {
+        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
+        if (type == null) {
+            return Result.buildError("无效的任务类型: " + taskType);
+        }
+        return Result.buildSuccess(taskExecutorManager.getCurrentTaskId(type));
+    }
+
+    @GetMapping("currentRound")
+    public Result<Integer> getCurrentRound(@RequestParam String taskType) {
+        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
+        if (type == null) {
+            return Result.buildError("无效的任务类型: " + taskType);
+        }
+        return Result.buildSuccess(taskExecutorManager.getCurrentRound(type));
     }
 
     @PostMapping("interval")

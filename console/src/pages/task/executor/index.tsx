@@ -71,6 +71,13 @@ const TaskExecutorPage = () => {
         });
     }
 
+    const cancelTask = (taskType: string, onFinally: () => void) => {
+        doPostRequest(`${TASK_API.CANCEL}?taskType=${taskType}`, {}, {
+            onSuccess: _ => message.success("已取消").then(),
+            onFinally
+        });
+    }
+
     const updateTaskInterval = (taskType: string, fieldName: string) => {
         const interval = taskForm.getFieldValue(fieldName) * 1000;
         doPostRequest(`${TASK_API.INTERVAL}?taskType=${taskType}&interval=${interval}`, {}, {
@@ -129,6 +136,10 @@ const TaskExecutorPage = () => {
         }
     }
 
+    const handleKcCancel = () => {
+        cancelTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
+    }
+
     // ==================== StockX 上架任务 ====================
 
     const handleStockxListingTask = () => {
@@ -137,6 +148,10 @@ const TaskExecutorPage = () => {
         } else {
             startTask(TASK_TYPE.STOCKX_LISTING, () => queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus));
         }
+    }
+
+    const handleStockxListingCancel = () => {
+        cancelTask(TASK_TYPE.STOCKX_LISTING, () => queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus));
     }
 
     // ==================== StockX 压价任务 ====================
@@ -149,11 +164,15 @@ const TaskExecutorPage = () => {
         }
     }
 
+    const handleStockxPriceDownCancel = () => {
+        cancelTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
+    }
+
     return <>
         <Card title={"KC"}>
             <Form form={taskForm} style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div>
-                    <div style={{display: "flex"}}>
+                    <div style={{display: "flex", alignItems: "center"}}>
                         <Form.Item label={"任务间隔"} name="kcTaskInterval">
                             <Input/>
                         </Form.Item>
@@ -162,6 +181,9 @@ const TaskExecutorPage = () => {
                         </Form.Item>
                         <Form.Item style={{marginLeft: 30}}>
                             <Button type="primary" onClick={handleKcTask}>{kcTaskStatus ? "暂停改价" : "开启改价"}</Button>
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 15}}>
+                            <Button danger onClick={handleKcCancel}>取消任务</Button>
                         </Form.Item>
                     </div>
                 </div>
@@ -191,7 +213,7 @@ const TaskExecutorPage = () => {
                 {/* 上架任务 */}
                 <div style={{marginBottom: 16}}>
                     <div style={{fontWeight: "bold", marginBottom: 8}}>上架</div>
-                    <div style={{display: "flex"}}>
+                    <div style={{display: "flex", alignItems: "center"}}>
                         <Form.Item label={"任务间隔"} name="stockxListingTaskInterval">
                             <Input/>
                         </Form.Item>
@@ -203,12 +225,15 @@ const TaskExecutorPage = () => {
                                 {stockxListingTaskStatus ? "暂停上架" : "开启上架"}
                             </Button>
                         </Form.Item>
+                        <Form.Item style={{marginLeft: 15}}>
+                            <Button danger onClick={handleStockxListingCancel}>取消任务</Button>
+                        </Form.Item>
                     </div>
                 </div>
                 {/* 压价任务 */}
                 <div>
                     <div style={{fontWeight: "bold", marginBottom: 8}}>压价</div>
-                    <div style={{display: "flex"}}>
+                    <div style={{display: "flex", alignItems: "center"}}>
                         <Form.Item label={"任务间隔"} name="stockxPriceDownTaskInterval">
                             <Input/>
                         </Form.Item>
@@ -219,6 +244,9 @@ const TaskExecutorPage = () => {
                             <Button type="primary" onClick={handleStockxPriceDownTask}>
                                 {stockxPriceDownTaskStatus ? "暂停压价" : "开启压价"}
                             </Button>
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 15}}>
+                            <Button danger onClick={handleStockxPriceDownCancel}>取消任务</Button>
                         </Form.Item>
                     </div>
                 </div>

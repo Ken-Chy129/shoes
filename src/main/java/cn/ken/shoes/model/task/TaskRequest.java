@@ -13,8 +13,6 @@ public class TaskRequest extends PageRequest {
 
     private String taskType;
 
-    private String operateType;
-
     @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private Date startTime;
 

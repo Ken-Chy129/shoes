@@ -1,8 +1,11 @@
 package cn.ken.shoes.task;
 
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.util.LockHelper;
+import cn.ken.shoes.util.TimeUtil;
 import jakarta.annotation.Resource;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
@@ -22,22 +25,62 @@ public class KcTaskRunner extends Thread {
     @Resource
     private KickScrewService kickScrewService;
 
+    @Resource
+    private TaskMapper taskMapper;
+
     @Override
     public void run() {
         isInit = true;
         while (true) {
             try {
+                // 检查取消标志，取消后终止任务
+                if (TaskSwitch.CANCEL_KC_TASK) {
+                    log.info("KC任务已取消，终止执行");
+                    Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+                    }
+                    // 重置状态
+                    TaskSwitch.CANCEL_KC_TASK = false;
+                    TaskSwitch.CURRENT_KC_TASK_ID = null;
+                    TaskSwitch.CURRENT_KC_ROUND = 0;
+                    isInit = false;
+                    // 终止线程
+                    return;
+                }
+
                 if (TaskSwitch.STOP_KC_TASK) {
                     Thread.sleep(TaskSwitch.STOP_INTERVAL);
                     continue;
-                } else {
-                    LockHelper.lockKcItem();
+                }
+
+                // 增加轮次计数
+                TaskSwitch.CURRENT_KC_ROUND++;
+                Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+                if (taskId != null) {
+                    taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_ROUND);
+                }
+                log.info("KC任务开始执行第{}轮", TaskSwitch.CURRENT_KC_ROUND);
+
+                long startTime = System.currentTimeMillis();
+                LockHelper.lockKcItem();
+                try {
                     kickScrewService.refreshPriceV2();
+                } finally {
                     LockHelper.unlockKcItem();
                 }
+                log.info("KC任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_ROUND, TimeUtil.getCostMin(startTime));
+
                 Thread.sleep(TaskSwitch.KC_TASK_INTERVAL);
             } catch (InterruptedException e) {
                 log.error(e.getMessage(), e);
+            } catch (Exception e) {
+                log.error("KC任务执行异常: {}", e.getMessage(), e);
+                // 更新任务状态为失败
+                Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+                if (taskId != null) {
+                    taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                }
             }
         }
     }

@@ -17,8 +17,6 @@ public class TaskDO {
 
     private String taskType;
 
-    private String operateType;
-
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date startTime;
 
@@ -33,9 +31,9 @@ public class TaskDO {
     private String status;
 
     /**
-     * 扩展属性，json
+     * 执行轮次
      */
-    private String attributes;
+    private Integer round;
 
     @Getter
     public enum TaskTypeEnum {
@@ -71,7 +69,8 @@ public class TaskDO {
         RUNNING("运行中", "running"),
         SUCCESS("执行成功", "success"),
         FAILED("执行失败", "failed"),
-        TERMINATED("执行终止", "terminated"),
+        STOP("已暂停", "stop"),
+        CANCEL("已取消", "cancel"),
         ;
 
         private final String name;
@@ -84,55 +83,6 @@ public class TaskDO {
 
         public static TaskStatusEnum from(String code) {
             for (TaskStatusEnum value : TaskStatusEnum.values()) {
-                if (value.code.equals(code)) {
-                    return value;
-                }
-            }
-            return null;
-        }
-    }
-
-    @Getter
-    public enum OperateStatusEnum {
-        MANUALLY("人工执行", "manually"),
-        SYSTEM("系统触发", "system"),
-        ;
-
-        private final String name;
-        private final String code;
-
-        OperateStatusEnum(String name, String code) {
-            this.name = name;
-            this.code = code;
-        }
-
-        public static OperateStatusEnum from(String code) {
-            for (OperateStatusEnum value : OperateStatusEnum.values()) {
-                if (value.code.equals(code)) {
-                    return value;
-                }
-            }
-            return null;
-        }
-    }
-
-    @Getter
-    public enum PlatformEnum {
-        POISON("得物", "poison"),
-        KC("KickScrew", "kickscrew"),
-        STOCKX("绿叉", "stockx"),
-        ;
-
-        private final String name;
-        private final String code;
-
-        PlatformEnum(String name, String code) {
-            this.name = name;
-            this.code = code;
-        }
-
-        public static PlatformEnum from(String code) {
-            for (PlatformEnum value : PlatformEnum.values()) {
                 if (value.code.equals(code)) {
                     return value;
                 }

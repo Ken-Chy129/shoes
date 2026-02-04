@@ -183,10 +183,33 @@ CREATE TABLE task
     id           BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
     platform     VARCHAR(16) NOT NULL COMMENT '平台标识：kickscrew/stockx/poison',
     task_type    VARCHAR(32) NOT NULL COMMENT '任务类型：price_sync/item_crawl等',
-    operate_type VARCHAR(16) NOT NULL COMMENT '操作类型：auto-自动，manual-手动',
     start_time   DATETIME    NULL     COMMENT '任务开始时间',
     end_time     DATETIME    NULL     COMMENT '任务结束时间',
     cost         VARCHAR(32) NULL     COMMENT '任务耗时',
-    status       VARCHAR(16) NOT NULL COMMENT '任务状态：pending/running/success/failed',
-    attributes   TEXT        NULL     COMMENT '扩展属性（JSON格式）'
+    status       VARCHAR(16) NOT NULL COMMENT '任务状态：running/success/failed/stop/cancel',
+    round        INT         DEFAULT 0 COMMENT '执行轮次'
 ) COMMENT '任务执行记录表';
+
+-- -------------------------------------------
+-- 任务明细表：存储任务操作的商品详情
+-- -------------------------------------------
+CREATE TABLE task_item
+(
+    id             BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
+    task_id        BIGINT       NOT NULL COMMENT '关联任务ID',
+    title          VARCHAR(255) NULL     COMMENT '标题',
+    listing_id     VARCHAR(64)  NULL     COMMENT '上架ID',
+    product_id     VARCHAR(64)  NULL     COMMENT '商品ID',
+    style_id       VARCHAR(64)  NULL     COMMENT '货号',
+    size           VARCHAR(16)  NULL     COMMENT '尺码',
+    eu_size        VARCHAR(16)  NULL     COMMENT 'EU码',
+    current_price  DECIMAL(10,2) NULL    COMMENT '当前售价',
+    lowest_price   DECIMAL(10,2) NULL    COMMENT '最低价',
+    poison_price   DECIMAL(10,2) NULL    COMMENT '毒价格',
+    poison_35_price DECIMAL(10,2) NULL   COMMENT '毒3.5价格',
+    profit_35      DECIMAL(10,2) NULL    COMMENT '3.5利润',
+    profit_rate_35 DECIMAL(10,4) NULL    COMMENT '3.5利润率',
+    operate_result VARCHAR(255) NULL     COMMENT '操作结果',
+    operate_time   DATETIME     NULL     COMMENT '操作时间',
+    INDEX idx_task_id (task_id)
+) COMMENT '任务明细表';

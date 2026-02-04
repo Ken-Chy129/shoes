@@ -1,7 +1,6 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.ShoesContext;
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.common.SizeEnum;
 import cn.ken.shoes.config.ItemQueryConfig;
@@ -248,7 +247,6 @@ public class KickScrewService {
         }
     }
 
-    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_ITEMS, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public void refreshItems(boolean clearOld) {
         // 1.爬取品牌和商品数量
         refreshBrand();
@@ -256,7 +254,6 @@ public class KickScrewService {
         refreshHotItems(clearOld);
     }
 
-    @Task(platform = TaskDO.PlatformEnum.KC, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPriceV2() {
         if (TaskSwitch.STOP_KC_TASK) {
             return 0;
