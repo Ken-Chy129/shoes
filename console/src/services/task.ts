@@ -8,7 +8,6 @@ const TASK_TYPE = {
 enum TASK_API {
     PAGE = '/api/task/page',
     START = '/api/task/start',
-    STOP = '/api/task/stop',
     CANCEL = '/api/task/cancel',
     STATUS = '/api/task/status',
     INTERVAL = '/api/task/interval',

@@ -49,11 +49,6 @@ public class KcTaskRunner extends Thread {
                     return;
                 }
 
-                if (TaskSwitch.STOP_KC_TASK) {
-                    Thread.sleep(TaskSwitch.STOP_INTERVAL);
-                    continue;
-                }
-
                 // 增加轮次计数
                 TaskSwitch.CURRENT_KC_ROUND++;
                 Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;

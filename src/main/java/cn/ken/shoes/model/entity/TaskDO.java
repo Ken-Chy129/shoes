@@ -69,7 +69,6 @@ public class TaskDO {
         RUNNING("运行中", "running"),
         SUCCESS("执行成功", "success"),
         FAILED("执行失败", "failed"),
-        STOP("已暂停", "stop"),
         CANCEL("已取消", "cancel"),
         ;
 
