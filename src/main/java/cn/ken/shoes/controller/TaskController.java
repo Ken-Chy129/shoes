@@ -42,16 +42,6 @@ public class TaskController {
         return Result.buildSuccess();
     }
 
-    @PostMapping("stop")
-    public Result<Void> stopTask(@RequestParam String taskType) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        taskExecutorManager.stopTask(type);
-        return Result.buildSuccess();
-    }
-
     @PostMapping("cancel")
     public Result<Void> cancelTask(@RequestParam String taskType) {
         TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);

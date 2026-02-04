@@ -64,16 +64,9 @@ const TaskExecutorPage = () => {
         });
     }
 
-    const stopTask = (taskType: string, onFinally: () => void) => {
-        doPostRequest(`${TASK_API.STOP}?taskType=${taskType}`, {}, {
-            onSuccess: _ => message.success("已暂停").then(),
-            onFinally
-        });
-    }
-
     const cancelTask = (taskType: string, onFinally: () => void) => {
         doPostRequest(`${TASK_API.CANCEL}?taskType=${taskType}`, {}, {
-            onSuccess: _ => message.success("已取消").then(),
+            onSuccess: _ => message.success("已终止").then(),
             onFinally
         });
     }
@@ -128,12 +121,8 @@ const TaskExecutorPage = () => {
 
     // ==================== KC 任务 ====================
 
-    const handleKcTask = () => {
-        if (kcTaskStatus) {
-            stopTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
-        } else {
-            startTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
-        }
+    const handleKcStart = () => {
+        startTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
     }
 
     const handleKcCancel = () => {
@@ -156,12 +145,8 @@ const TaskExecutorPage = () => {
 
     // ==================== StockX 压价任务 ====================
 
-    const handleStockxPriceDownTask = () => {
-        if (stockxPriceDownTaskStatus) {
-            stopTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
-        } else {
-            startTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
-        }
+    const handleStockxPriceDownStart = () => {
+        startTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
     }
 
     const handleStockxPriceDownCancel = () => {
@@ -180,10 +165,10 @@ const TaskExecutorPage = () => {
                             <Button onClick={() => updateTaskInterval(TASK_TYPE.KC, "kcTaskInterval")}>修改配置</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 30}}>
-                            <Button type="primary" onClick={handleKcTask}>{kcTaskStatus ? "暂停改价" : "开启改价"}</Button>
+                            <Button type="primary" onClick={handleKcStart} disabled={kcTaskStatus}>开启改价</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleKcCancel} disabled={!kcTaskStatus}>取消任务</Button>
+                            <Button danger onClick={handleKcCancel} disabled={!kcTaskStatus}>终止任务</Button>
                         </Form.Item>
                     </div>
                 </div>
@@ -241,12 +226,10 @@ const TaskExecutorPage = () => {
                             <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval")}>修改配置</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 30}}>
-                            <Button type="primary" onClick={handleStockxPriceDownTask}>
-                                {stockxPriceDownTaskStatus ? "暂停压价" : "开启压价"}
-                            </Button>
+                            <Button type="primary" onClick={handleStockxPriceDownStart} disabled={stockxPriceDownTaskStatus}>开启压价</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleStockxPriceDownCancel} disabled={!stockxPriceDownTaskStatus}>取消任务</Button>
+                            <Button danger onClick={handleStockxPriceDownCancel} disabled={!stockxPriceDownTaskStatus}>终止任务</Button>
                         </Form.Item>
                     </div>
                 </div>

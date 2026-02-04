@@ -36,7 +36,6 @@ public class TaskExecutorManager {
     public void startTask(TaskTypeEnum taskType) {
         switch (taskType) {
             case KC -> {
-                TaskSwitch.STOP_KC_TASK = false;
                 TaskSwitch.CANCEL_KC_TASK = false;
                 if (!kcTaskRunner.isInit()) {
                     // 创建任务记录
@@ -52,7 +51,6 @@ public class TaskExecutorManager {
                 }
             }
             case STOCKX_LISTING -> {
-                TaskSwitch.STOP_STOCK_LISTING_TASK = false;
                 TaskSwitch.CANCEL_STOCK_LISTING_TASK = false;
                 if (!stockXTaskRunner.isInit()) {
                     Long taskId = createTask("stockx", taskType.getCode());
@@ -66,7 +64,6 @@ public class TaskExecutorManager {
                 }
             }
             case STOCKX_PRICE_DOWN -> {
-                TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK = false;
                 TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = false;
                 if (!stockXPriceDownTaskRunner.isInit()) {
                     Long taskId = createTask("stockx", taskType.getCode());
@@ -83,28 +80,8 @@ public class TaskExecutorManager {
     }
 
     /**
-     * 暂停任务（可恢复）
-     */
-    public void stopTask(TaskTypeEnum taskType) {
-        switch (taskType) {
-            case KC -> {
-                TaskSwitch.STOP_KC_TASK = true;
-                updateTaskStatus(TaskSwitch.CURRENT_KC_TASK_ID, TaskDO.TaskStatusEnum.STOP.getCode());
-            }
-            case STOCKX_LISTING -> {
-                TaskSwitch.STOP_STOCK_LISTING_TASK = true;
-                updateTaskStatus(TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID, TaskDO.TaskStatusEnum.STOP.getCode());
-            }
-            case STOCKX_PRICE_DOWN -> {
-                TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK = true;
-                updateTaskStatus(TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID, TaskDO.TaskStatusEnum.STOP.getCode());
-            }
-        }
-    }
-
-    /**
-     * 取消任务（不可恢复，需要重新启动才能继续）
-     * 只设置取消标志，TaskRunner 会在检测到标志后终止线程并更新状态
+     * 取消任务（终止任务执行）
+     * 设置取消标志，TaskRunner 会在检测到标志后终止线程并更新状态
      */
     public void cancelTask(TaskTypeEnum taskType) {
         switch (taskType) {
@@ -116,13 +93,13 @@ public class TaskExecutorManager {
 
     /**
      * 查询任务状态
-     * @return true表示运行中，false表示已停止
+     * @return true表示运行中，false表示已终止
      */
     public boolean queryTaskStatus(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC -> !TaskSwitch.STOP_KC_TASK;
-            case STOCKX_LISTING -> !TaskSwitch.STOP_STOCK_LISTING_TASK;
-            case STOCKX_PRICE_DOWN -> !TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK;
+            case KC -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_TASK;
+            case STOCKX_LISTING -> stockXTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_LISTING_TASK;
+            case STOCKX_PRICE_DOWN -> stockXPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK;
         };
     }
 

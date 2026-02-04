@@ -49,11 +49,6 @@ public class StockXPriceDownTaskRunner extends Thread {
                     return;
                 }
 
-                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK) {
-                    Thread.sleep(TaskSwitch.STOP_INTERVAL);
-                    continue;
-                }
-
                 // 增加轮次计数
                 TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND++;
                 Long taskId = TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID;

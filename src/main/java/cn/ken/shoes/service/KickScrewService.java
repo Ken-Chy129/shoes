@@ -256,7 +256,7 @@ public class KickScrewService {
 
     public void refreshPriceV2() {
         // 检查暂停或取消状态
-        if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+        if (TaskSwitch.CANCEL_KC_TASK) {
             return;
         }
         // 下架不盈利的商品
@@ -270,7 +270,7 @@ public class KickScrewService {
         // 查询价格并上架盈利商品
         for (List<String> modelNos : partition) {
             // 检查暂停或取消状态
-            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，终止执行");
                 return;
             }
@@ -291,7 +291,7 @@ public class KickScrewService {
             priceManager.preloadMissingPrices(modelNos);
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态
-                if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                if (TaskSwitch.CANCEL_KC_TASK) {
                     log.info("KC任务已暂停或取消，终止执行");
                     return toUpload.size();
                 }
@@ -318,7 +318,7 @@ public class KickScrewService {
                 return 0;
             }
             // 检查暂停或取消状态，跳过上架操作
-            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，跳过上架操作");
                 return 0;
             }
@@ -334,7 +334,7 @@ public class KickScrewService {
         int cnt = kickScrewClient.queryStockCnt();
         for (int i = 0; i < cnt; i++) {
             // 检查暂停或取消状态
-            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，终止下架操作");
                 return;
             }
@@ -345,7 +345,7 @@ public class KickScrewService {
             List<KickScrewPriceDO> toDelete = new ArrayList<>();
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态
-                if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+                if (TaskSwitch.CANCEL_KC_TASK) {
                     log.info("KC任务已暂停或取消，终止下架操作");
                     return;
                 }
@@ -364,7 +364,7 @@ public class KickScrewService {
                 }
             }
             // 检查暂停或取消状态，跳过删除操作
-            if (TaskSwitch.STOP_KC_TASK || TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，跳过删除操作");
                 return;
             }

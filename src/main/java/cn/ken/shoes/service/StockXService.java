@@ -137,7 +137,7 @@ public class StockXService {
         try {
             do {
                 // 检查暂停或取消状态
-                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
                     log.info("StockX压价任务已暂停或取消，终止执行");
                     break;
                 }
@@ -163,7 +163,7 @@ public class StockXService {
 
                 for (JSONObject item : items) {
                     // 检查暂停或取消状态
-                    if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                    if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
                         log.info("StockX压价任务已暂停或取消，终止处理当前页");
                         break;
                     }
@@ -224,7 +224,7 @@ public class StockXService {
                 }
 
                 // 检查暂停或取消状态，跳过压价和下架操作
-                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
                     log.info("StockX压价任务已暂停或取消，跳过压价和下架操作");
                     break;
                 }
@@ -236,7 +236,7 @@ public class StockXService {
                         executor.submit(() -> {
                             try {
                                 // 在每个压价操作前检查状态
-                                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
                                     return;
                                 }
                                 LimiterHelper.limitStockxPriceDown();
@@ -257,7 +257,7 @@ public class StockXService {
                 }
 
                 // 检查暂停或取消状态，跳过下架操作
-                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
                     log.info("StockX压价任务已暂停或取消，跳过下架操作");
                     break;
                 }

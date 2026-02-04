@@ -49,11 +49,6 @@ public class StockXTaskRunner extends Thread {
                     return;
                 }
 
-                if (TaskSwitch.STOP_STOCK_LISTING_TASK) {
-                    Thread.sleep(TaskSwitch.STOP_INTERVAL);
-                    continue;
-                }
-
                 // 增加轮次计数
                 TaskSwitch.CURRENT_STOCK_LISTING_ROUND++;
                 Long taskId = TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;

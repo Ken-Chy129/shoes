@@ -113,7 +113,6 @@ const TaskHistoryPage = () => {
                     'running': {text: '运行中', color: 'blue'},
                     'success': {text: '执行成功', color: 'green'},
                     'failed': {text: '执行失败', color: 'red'},
-                    'stop': {text: '已暂停', color: 'orange'},
                     'cancel': {text: '已取消', color: 'gray'},
                 };
                 const statusInfo = statusMap[status] || {text: status, color: 'default'};
@@ -185,7 +184,6 @@ const TaskHistoryPage = () => {
                                 {label: '运行中', value: "running"},
                                 {label: '执行成功', value: "success"},
                                 {label: '执行失败', value: "failed"},
-                                {label: '已暂停', value: "stop"},
                                 {label: '已取消', value: "cancel"},
                             ]
                         }
