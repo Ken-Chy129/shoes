@@ -3,7 +3,6 @@ package cn.ken.shoes.service;
 import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
-import cn.ken.shoes.annotation.Task;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
@@ -55,7 +54,6 @@ public class StockXService {
     @Resource
     private SearchTaskMapper searchTaskMapper;
 
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.EXTEND_ORDER, operateStatus = TaskDO.OperateStatusEnum.MANUALLY)
     public void extendAllItems() {
         boolean hasMore;
         String afterName = null;
@@ -79,7 +77,6 @@ public class StockXService {
     }
 
     @SneakyThrows
-    @Task(platform = TaskDO.PlatformEnum.STOCKX, taskType = TaskDO.TaskTypeEnum.REFRESH_ALL_PRICES, operateStatus = TaskDO.OperateStatusEnum.SYSTEM)
     public int refreshPrices() {
         // 1.下架不赢利的商品
         long now = System.currentTimeMillis();
