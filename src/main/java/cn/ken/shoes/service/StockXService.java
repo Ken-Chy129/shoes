@@ -4,9 +4,9 @@ import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
-import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -136,6 +136,12 @@ public class StockXService {
 
         try {
             do {
+                // 检查暂停或取消状态
+                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                    log.info("StockX压价任务已暂停或取消，终止执行");
+                    break;
+                }
+
                 long startTime = System.currentTimeMillis();
                 JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
                 if (jsonObject == null) {
@@ -156,6 +162,12 @@ public class StockXService {
                 List<String> toDelete = new ArrayList<>();
 
                 for (JSONObject item : items) {
+                    // 检查暂停或取消状态
+                    if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                        log.info("StockX压价任务已暂停或取消，终止处理当前页");
+                        break;
+                    }
+
                     String styleId = item.getString("styleId");
                     String euSize = item.getString("euSize");
                     if (StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
@@ -211,12 +223,22 @@ public class StockXService {
                     }
                 }
 
+                // 检查暂停或取消状态，跳过压价和下架操作
+                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                    log.info("StockX压价任务已暂停或取消，跳过压价和下架操作");
+                    break;
+                }
+
                 // 当前页：并发调用压价接口
                 if (!toPriceDown.isEmpty()) {
                     CountDownLatch latch = new CountDownLatch(toPriceDown.size());
                     for (Pair<String, Integer> priceDownItem : toPriceDown) {
                         executor.submit(() -> {
                             try {
+                                // 在每个压价操作前检查状态
+                                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                                    return;
+                                }
                                 LimiterHelper.limitStockxPriceDown();
                                 stockXClient.updateSellerListing(priceDownItem.getKey(), String.valueOf(priceDownItem.getValue()));
                             } catch (Exception e) {
@@ -232,6 +254,12 @@ public class StockXService {
                         log.error("priceDown await interrupted", e);
                         Thread.currentThread().interrupt();
                     }
+                }
+
+                // 检查暂停或取消状态，跳过下架操作
+                if (TaskSwitch.STOP_STOCK_PRICE_DOWN_TASK || TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
+                    log.info("StockX压价任务已暂停或取消，跳过下架操作");
+                    break;
                 }
 
                 // 当前页：批量下架
