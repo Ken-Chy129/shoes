@@ -80,7 +80,7 @@ public class StockXService {
     public int refreshPrices() {
         // 1.下架不赢利的商品
         long now = System.currentTimeMillis();
-        Set<String> existingItemKeys = clearNoBenefitItems();
+        Set<String> existingItemKeys = priceDown();
         log.info("finish clearNoBenefitItems, existingItemKeys size:{}, cost:{}", existingItemKeys.size(), TimeUtil.getCostMin(now));
         // 2.清空绿叉价格
         stockXPriceMapper.delete(new QueryWrapper<>());
@@ -247,15 +247,6 @@ public class StockXService {
         log.info("priceDown task finished, allItemKeys:{}, totalPriceDown:{}, totalDelete:{}, totalCost:{}",
                 allItemKeys.size(), totalPriceDown, totalDelete, TimeUtil.getCostMin(taskStartTime));
         return allItemKeys;
-    }
-
-    /**
-     * 下架不赢利的商品，返回查询到的所有商品key
-     * @deprecated 使用 {@link #priceDown()} 代替
-     */
-    @Deprecated
-    public Set<String> clearNoBenefitItems() {
-        return priceDown();
     }
 
     public int compareWithPoisonAndChangePrice(List<StockXPriceDO> stockXPriceDOS) {

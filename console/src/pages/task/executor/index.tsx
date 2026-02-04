@@ -183,7 +183,7 @@ const TaskExecutorPage = () => {
                             <Button type="primary" onClick={handleKcTask}>{kcTaskStatus ? "暂停改价" : "开启改价"}</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleKcCancel}>取消任务</Button>
+                            <Button danger onClick={handleKcCancel} disabled={!kcTaskStatus}>取消任务</Button>
                         </Form.Item>
                     </div>
                 </div>
@@ -226,7 +226,7 @@ const TaskExecutorPage = () => {
                             </Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleStockxListingCancel}>取消任务</Button>
+                            <Button danger onClick={handleStockxListingCancel} disabled={!stockxListingTaskStatus}>取消任务</Button>
                         </Form.Item>
                     </div>
                 </div>
@@ -246,7 +246,7 @@ const TaskExecutorPage = () => {
                             </Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleStockxPriceDownCancel}>取消任务</Button>
+                            <Button danger onClick={handleStockxPriceDownCancel} disabled={!stockxPriceDownTaskStatus}>取消任务</Button>
                         </Form.Item>
                     </div>
                 </div>
