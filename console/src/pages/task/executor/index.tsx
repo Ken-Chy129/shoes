@@ -54,7 +54,7 @@ const TaskExecutorPage = () => {
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
     }
 
-    const queryTaskStatus = (taskType: string, setStatus: (status: boolean) => void, setTaskId?: (id: number | null) => void) => {
+    const queryTaskStatus = (taskType: string, setStatus: (status: boolean) => void, setTaskId?: (id: string | null) => void) => {
         doGetRequest(TASK_API.STATUS, {taskType}, {
             onSuccess: res => {
                 setStatus(res.data);
@@ -68,7 +68,7 @@ const TaskExecutorPage = () => {
         });
     }
 
-    const queryCurrentTaskId = (taskType: string, setTaskId: (id: number | null) => void) => {
+    const queryCurrentTaskId = (taskType: string, setTaskId: (id: string | null) => void) => {
         doGetRequest(TASK_API.CURRENT_TASK_ID, {taskType}, {
             onSuccess: res => setTaskId(res.data)
         });
