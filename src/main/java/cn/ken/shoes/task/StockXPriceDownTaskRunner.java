@@ -48,11 +48,15 @@ public class StockXPriceDownTaskRunner extends Thread {
                 } finally {
                     LockHelper.unlockStockXItem();
                 }
-                log.info("StockX压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND, TimeUtil.getCostMin(startTime));
+                String cost = TimeUtil.getCostMin(startTime);
+                log.info("StockX压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND, cost);
+                if (taskId != null) {
+                    taskMapper.updateTaskCost(taskId, cost);
+                }
 
-                detectCancelTask(taskId);
+                if (detectCancelTask(taskId)) return;
                 Thread.sleep(TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL);
-                detectCancelTask(taskId);
+                if (detectCancelTask(taskId)) return;
             } catch (InterruptedException e) {
                 log.error(e.getMessage(), e);
             } catch (Exception e) {
@@ -65,9 +69,11 @@ public class StockXPriceDownTaskRunner extends Thread {
         }
     }
 
-    // 检查取消标志，取消后终止任务
-    private void detectCancelTask(Long taskId) {
-        // 检查取消标志，取消后终止任务
+    /**
+     * 检查取消标志，取消后终止任务
+     * @return true 表示任务已取消
+     */
+    private boolean detectCancelTask(Long taskId) {
         if (TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK) {
             log.info("StockX压价任务已取消，终止执行");
             if (taskId != null) {
@@ -78,8 +84,8 @@ public class StockXPriceDownTaskRunner extends Thread {
             TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = null;
             TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
             isInit = false;
-            // 终止线程
-            return;
+            return true;
         }
+        return false;
     }
 }

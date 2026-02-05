@@ -48,24 +48,15 @@ public class KcTaskRunner extends Thread {
                 } finally {
                     LockHelper.unlockKcItem();
                 }
-                log.info("KC任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_ROUND, TimeUtil.getCostMin(startTime));
-
-                // 检查取消标志，取消后终止任务
-                if (TaskSwitch.CANCEL_KC_TASK) {
-                    log.info("KC任务已取消，终止执行");
-                    if (taskId != null) {
-                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
-                    }
-                    // 重置状态
-                    TaskSwitch.CANCEL_KC_TASK = false;
-                    TaskSwitch.CURRENT_KC_TASK_ID = null;
-                    TaskSwitch.CURRENT_KC_ROUND = 0;
-                    isInit = false;
-                    // 终止线程
-                    return;
+                String cost = TimeUtil.getCostMin(startTime);
+                log.info("KC任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_ROUND, cost);
+                if (taskId != null) {
+                    taskMapper.updateTaskCost(taskId, cost);
                 }
 
+                if (detectCancelTask(taskId)) return;
                 Thread.sleep(TaskSwitch.KC_TASK_INTERVAL);
+                if (detectCancelTask(taskId)) return;
             } catch (InterruptedException e) {
                 log.error(e.getMessage(), e);
             } catch (Exception e) {
@@ -77,5 +68,25 @@ public class KcTaskRunner extends Thread {
                 }
             }
         }
+    }
+
+    /**
+     * 检查取消标志，取消后终止任务
+     * @return true 表示任务已取消
+     */
+    private boolean detectCancelTask(Long taskId) {
+        if (TaskSwitch.CANCEL_KC_TASK) {
+            log.info("KC任务已取消，终止执行");
+            if (taskId != null) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            }
+            // 重置状态
+            TaskSwitch.CANCEL_KC_TASK = false;
+            TaskSwitch.CURRENT_KC_TASK_ID = null;
+            TaskSwitch.CURRENT_KC_ROUND = 0;
+            isInit = false;
+            return true;
+        }
+        return false;
     }
 }
