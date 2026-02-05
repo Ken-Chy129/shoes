@@ -5,8 +5,8 @@ import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
 interface TaskItemRecord {
-    id: number;
-    taskId: number;
+    id: string;
+    taskId: string;
     round: number;
     title: string;
     listingId: string;
@@ -26,8 +26,9 @@ interface TaskItemRecord {
 
 interface TaskItemModalProps {
     visible: boolean;
-    taskId: number | null;
+    taskId: string | null;
     onClose: () => void;
+    defaultAutoRefresh?: boolean;
 }
 
 const OPERATE_RESULT_OPTIONS = [
@@ -42,13 +43,13 @@ const OPERATE_RESULT_OPTIONS = [
     {label: '取消', value: '取消'},
 ];
 
-const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose}) => {
+const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false}) => {
     const [taskItems, setTaskItems] = useState<TaskItemRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(20);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
-    const [autoRefresh, setAutoRefresh] = useState(false);
+    const [autoRefresh, setAutoRefresh] = useState(defaultAutoRefresh);
 
     // 筛选条件
     const [filterRound, setFilterRound] = useState<string>('');
@@ -61,6 +62,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
     useEffect(() => {
         if (visible && taskId) {
             queryTaskItems();
+            // 打开时根据 defaultAutoRefresh 设置自动刷新
+            setAutoRefresh(defaultAutoRefresh);
         }
     }, [visible, taskId, pageIndex, pageSize]);
 

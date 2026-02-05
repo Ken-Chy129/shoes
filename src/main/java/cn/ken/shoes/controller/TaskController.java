@@ -71,12 +71,13 @@ public class TaskController {
     }
 
     @GetMapping("currentTaskId")
-    public Result<Long> getCurrentTaskId(@RequestParam String taskType) {
+    public Result<String> getCurrentTaskId(@RequestParam String taskType) {
         TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
         if (type == null) {
             return Result.buildError("无效的任务类型: " + taskType);
         }
-        return Result.buildSuccess(taskExecutorManager.getCurrentTaskId(type));
+        Long taskId = taskExecutorManager.getCurrentTaskId(type);
+        return Result.buildSuccess(taskId != null ? String.valueOf(taskId) : null);
     }
 
     @GetMapping("currentRound")

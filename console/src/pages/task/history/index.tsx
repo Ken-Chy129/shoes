@@ -20,7 +20,7 @@ import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 
 interface TaskRecord {
-    id: number;
+    id: string;
     platform: string;
     taskType: string;
     startTime: string;
@@ -40,7 +40,7 @@ const TaskHistoryPage = () => {
     const [total, setTotal] = useState(0);
 
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
-    const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
+    const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
     useEffect(() => {
         queryTaskList();
