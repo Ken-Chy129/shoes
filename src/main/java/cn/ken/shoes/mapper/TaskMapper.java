@@ -16,6 +16,8 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
 
     void updateTaskRound(Long id, Integer round);
 
+    void updateTaskCost(Long id, String cost);
+
     Long count(TaskRequest request);
 
     List<TaskDO> selectByCondition(TaskRequest request);

@@ -51,6 +51,11 @@
         where id = #{id}
     </update>
 
+    <update id="updateTaskCost">
+        update task set cost = #{cost}
+        where id = #{id}
+    </update>
+
     <select id="count" resultType="java.lang.Long">
         select count(*) from task
         <where>
