@@ -10,6 +10,7 @@ import {
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
+import TaskItemModal from "@/pages/task/components/TaskItemModal";
 
 interface SortOption {
     value: string;
@@ -24,6 +25,14 @@ const TaskExecutorPage = () => {
     const [stockxPriceDownTaskStatus, setStockxPriceDownTaskStatus] = useState<boolean>(false);
     const [sortOptions, setSortOptions] = useState<SortOption[]>([]);
 
+    // 当前任务ID (使用string避免精度丢失)
+    const [kcCurrentTaskId, setKcCurrentTaskId] = useState<string | null>(null);
+    const [stockxPriceDownCurrentTaskId, setStockxPriceDownCurrentTaskId] = useState<string | null>(null);
+
+    // 任务明细弹窗
+    const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
+    const [currentViewTaskId, setCurrentViewTaskId] = useState<string | null>(null);
+
     useEffect(() => {
         queryAllTaskStatus();
         queryAllTaskInterval();
@@ -34,9 +43,9 @@ const TaskExecutorPage = () => {
     // ==================== 统一查询方法 ====================
 
     const queryAllTaskStatus = () => {
-        queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus);
+        queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId);
         // queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus);
-        queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus);
+        queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId);
     }
 
     const queryAllTaskInterval = () => {
@@ -45,9 +54,23 @@ const TaskExecutorPage = () => {
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
     }
 
-    const queryTaskStatus = (taskType: string, setStatus: (status: boolean) => void) => {
+    const queryTaskStatus = (taskType: string, setStatus: (status: boolean) => void, setTaskId?: (id: number | null) => void) => {
         doGetRequest(TASK_API.STATUS, {taskType}, {
-            onSuccess: res => setStatus(res.data)
+            onSuccess: res => {
+                setStatus(res.data);
+                // 如果任务正在运行，查询当前任务ID
+                if (res.data && setTaskId) {
+                    queryCurrentTaskId(taskType, setTaskId);
+                } else if (setTaskId) {
+                    setTaskId(null);
+                }
+            }
+        });
+    }
+
+    const queryCurrentTaskId = (taskType: string, setTaskId: (id: number | null) => void) => {
+        doGetRequest(TASK_API.CURRENT_TASK_ID, {taskType}, {
+            onSuccess: res => setTaskId(res.data)
         });
     }
 
@@ -122,11 +145,18 @@ const TaskExecutorPage = () => {
     // ==================== KC 任务 ====================
 
     const handleKcStart = () => {
-        startTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
+        startTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId));
     }
 
     const handleKcCancel = () => {
-        cancelTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus));
+        cancelTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId));
+    }
+
+    const handleViewKcTaskDetail = () => {
+        if (kcCurrentTaskId) {
+            setCurrentViewTaskId(kcCurrentTaskId);
+            setTaskItemModalVisible(true);
+        }
     }
 
     // ==================== StockX 上架任务 ====================
@@ -146,11 +176,18 @@ const TaskExecutorPage = () => {
     // ==================== StockX 压价任务 ====================
 
     const handleStockxPriceDownStart = () => {
-        startTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
+        startTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId));
     }
 
     const handleStockxPriceDownCancel = () => {
-        cancelTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus));
+        cancelTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId));
+    }
+
+    const handleViewStockxPriceDownTaskDetail = () => {
+        if (stockxPriceDownCurrentTaskId) {
+            setCurrentViewTaskId(stockxPriceDownCurrentTaskId);
+            setTaskItemModalVisible(true);
+        }
     }
 
     return <>
@@ -170,6 +207,11 @@ const TaskExecutorPage = () => {
                         <Form.Item style={{marginLeft: 15}}>
                             <Button danger onClick={handleKcCancel} disabled={!kcTaskStatus}>终止任务</Button>
                         </Form.Item>
+                        {kcTaskStatus && kcCurrentTaskId && (
+                            <Form.Item style={{marginLeft: 15}}>
+                                <Button type="link" onClick={handleViewKcTaskDetail}>查看明细</Button>
+                            </Form.Item>
+                        )}
                     </div>
                 </div>
             </Form>
@@ -231,10 +273,22 @@ const TaskExecutorPage = () => {
                         <Form.Item style={{marginLeft: 15}}>
                             <Button danger onClick={handleStockxPriceDownCancel} disabled={!stockxPriceDownTaskStatus}>终止任务</Button>
                         </Form.Item>
+                        {stockxPriceDownTaskStatus && stockxPriceDownCurrentTaskId && (
+                            <Form.Item style={{marginLeft: 15}}>
+                                <Button type="link" onClick={handleViewStockxPriceDownTaskDetail}>查看明细</Button>
+                            </Form.Item>
+                        )}
                     </div>
                 </div>
             </Form>
         </Card>
+
+        <TaskItemModal
+            visible={taskItemModalVisible}
+            taskId={currentViewTaskId}
+            onClose={() => setTaskItemModalVisible(false)}
+            defaultAutoRefresh={true}
+        />
     </>
 }
 
