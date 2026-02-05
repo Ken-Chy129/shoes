@@ -2,7 +2,26 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.TaskItemMapper">
 
-    <select id="selectByTaskId" resultType="cn.ken.shoes.model.entity.TaskItemDO">
+    <resultMap id="taskItemResultMap" type="cn.ken.shoes.model.entity.TaskItemDO">
+        <id property="id" column="id"/>
+        <result property="taskId" column="task_id"/>
+        <result property="title" column="title"/>
+        <result property="listingId" column="listing_id"/>
+        <result property="productId" column="product_id"/>
+        <result property="styleId" column="style_id"/>
+        <result property="size" column="size"/>
+        <result property="euSize" column="eu_size"/>
+        <result property="currentPrice" column="current_price"/>
+        <result property="lowestPrice" column="lowest_price"/>
+        <result property="poisonPrice" column="poison_price"/>
+        <result property="poison35Price" column="poison_35_price"/>
+        <result property="profit35" column="profit_35"/>
+        <result property="profitRate35" column="profit_rate_35"/>
+        <result property="operateResult" column="operate_result"/>
+        <result property="operateTime" column="operate_time"/>
+    </resultMap>
+
+    <select id="selectByTaskId" resultMap="taskItemResultMap">
         SELECT * FROM task_item
         WHERE task_id = #{taskId}
         ORDER BY operate_time DESC

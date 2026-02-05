@@ -2,12 +2,23 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="cn.ken.shoes.mapper.TaskMapper">
 
-    <select id="selectTask" resultType="cn.ken.shoes.model.entity.TaskDO">
+    <resultMap id="taskResultMap" type="cn.ken.shoes.model.entity.TaskDO">
+        <id property="id" column="id"/>
+        <result property="platform" column="platform"/>
+        <result property="taskType" column="task_type"/>
+        <result property="startTime" column="start_time"/>
+        <result property="endTime" column="end_time"/>
+        <result property="cost" column="cost"/>
+        <result property="status" column="status"/>
+        <result property="round" column="round"/>
+    </resultMap>
+
+    <select id="selectTask" resultMap="taskResultMap">
         select * from task
         where platform = #{platform} and task_type = #{type} and status = #{status}
     </select>
 
-    <select id="selectByCondition" resultType="cn.ken.shoes.model.entity.TaskDO">
+    <select id="selectByCondition" resultMap="taskResultMap">
         select * from task
         <where>
             <if test="platform != null and platform != ''">

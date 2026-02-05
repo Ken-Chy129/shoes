@@ -3,6 +3,8 @@ package cn.ken.shoes.model.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
 import lombok.Data;
 
 import java.math.BigDecimal;
@@ -15,11 +17,13 @@ import java.util.Date;
 @TableName("task_item")
 public class TaskItemDO {
 
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long id;
 
     /**
      * 关联任务ID
      */
+    @JsonSerialize(using = ToStringSerializer.class)
     private Long taskId;
 
     /**
