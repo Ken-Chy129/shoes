@@ -17,6 +17,7 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
     Long countByTaskId(@Param("taskId") Long taskId);
 
     List<TaskItemDO> selectByCondition(@Param("taskId") Long taskId,
+                                       @Param("round") Integer round,
                                        @Param("operateResult") String operateResult,
                                        @Param("styleId") String styleId,
                                        @Param("euSize") String euSize,
@@ -24,6 +25,7 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
                                        @Param("pageSize") Integer pageSize);
 
     Long countByCondition(@Param("taskId") Long taskId,
+                          @Param("round") Integer round,
                           @Param("operateResult") String operateResult,
                           @Param("styleId") String styleId,
                           @Param("euSize") String euSize);

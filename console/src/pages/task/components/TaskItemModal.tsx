@@ -1,11 +1,13 @@
 import React, {useEffect, useState} from "react";
-import {Modal, Table, message} from "antd";
+import {Modal, Table, Input, Select, Space, Button} from "antd";
+import {SearchOutlined, ReloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
 interface TaskItemRecord {
     id: number;
     taskId: number;
+    round: number;
     title: string;
     listingId: string;
     productId: string;
@@ -28,12 +30,29 @@ interface TaskItemModalProps {
     onClose: () => void;
 }
 
+const OPERATE_RESULT_OPTIONS = [
+    {label: '全部', value: ''},
+    {label: '待处理', value: '待处理'},
+    {label: '压价成功', value: '压价成功'},
+    {label: '压价失败', value: '压价失败'},
+    {label: '下架成功', value: '下架成功'},
+    {label: '下架失败', value: '下架失败'},
+    {label: '跳过', value: '跳过'},
+    {label: '保持', value: '保持'},
+    {label: '取消', value: '取消'},
+];
+
 const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose}) => {
     const [taskItems, setTaskItems] = useState<TaskItemRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
-    const [pageSize, setPageSize] = useState(10);
+    const [pageSize, setPageSize] = useState(20);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
+
+    // 筛选条件
+    const [filterRound, setFilterRound] = useState<string>('');
+    const [filterOperateResult, setFilterOperateResult] = useState<string>('');
+    const [filterStyleId, setFilterStyleId] = useState<string>('');
 
     useEffect(() => {
         if (visible && taskId) {
@@ -44,7 +63,12 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
     const queryTaskItems = () => {
         if (!taskId) return;
         setLoading(true);
-        doGetRequest(TASK_API.TASK_ITEM_PAGE, {taskId, pageIndex, pageSize}, {
+        const params: any = {taskId, pageIndex, pageSize};
+        if (filterRound) params.round = filterRound;
+        if (filterOperateResult) params.operateResult = filterOperateResult;
+        if (filterStyleId) params.styleId = filterStyleId;
+
+        doGetRequest(TASK_API.TASK_ITEM_PAGE, params, {
             onSuccess: res => {
                 setTaskItems(res.data || []);
                 setTotal(res.total || 0);
@@ -53,65 +77,85 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
         });
     }
 
+    const handleSearch = () => {
+        setPageIndex(1);
+        queryTaskItems();
+    }
+
+    const handleReset = () => {
+        setFilterRound('');
+        setFilterOperateResult('');
+        setFilterStyleId('');
+        setPageIndex(1);
+        // 重置后立即查询
+        setTimeout(() => queryTaskItems(), 0);
+    }
+
     const columns = [
+        {
+            title: '轮次',
+            dataIndex: 'round',
+            key: 'round',
+            width: 50,
+        },
         {
             title: '标题',
             dataIndex: 'title',
             key: 'title',
-            width: 200,
+            width: 160,
             ellipsis: true,
         },
         {
             title: '货号',
             dataIndex: 'styleId',
             key: 'styleId',
-            width: 120,
+            width: 110,
         },
         {
             title: '尺码',
             dataIndex: 'size',
             key: 'size',
-            width: 80,
+            width: 50,
         },
         {
             title: 'EU码',
             dataIndex: 'euSize',
             key: 'euSize',
-            width: 80,
+            width: 50,
         },
         {
             title: '当前价',
             dataIndex: 'currentPrice',
             key: 'currentPrice',
-            width: 100,
+            width: 70,
             render: (price: number) => price ? `$${price}` : '-',
         },
         {
             title: '最低价',
             dataIndex: 'lowestPrice',
             key: 'lowestPrice',
-            width: 100,
+            width: 70,
             render: (price: number) => price ? `$${price}` : '-',
         },
         {
             title: '毒价格',
             dataIndex: 'poisonPrice',
             key: 'poisonPrice',
-            width: 100,
+            width: 70,
             render: (price: number) => price ? `¥${price}` : '-',
         },
         {
-            title: '毒3.5价格',
+            title: '3.5价格',
             dataIndex: 'poison35Price',
             key: 'poison35Price',
-            width: 100,
+            width: 70,
             render: (price: number) => price ? `¥${price}` : '-',
         },
         {
-            title: '3.5利润',
+            title: '利润',
             dataIndex: 'profit35',
             key: 'profit35',
-            width: 100,
+            width: 70,
             render: (profit: number) => {
                 if (profit === null || profit === undefined) return '-';
                 const color = profit >= 0 ? 'green' : 'red';
@@ -119,10 +163,10 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
             },
         },
         {
-            title: '3.5利润率',
+            title: '利润率',
             dataIndex: 'profitRate35',
             key: 'profitRate35',
-            width: 100,
+            width: 70,
             render: (rate: number) => {
                 if (rate === null || rate === undefined) return '-';
                 const color = rate >= 0 ? 'green' : 'red';
@@ -133,13 +177,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
             title: '操作结果',
             dataIndex: 'operateResult',
             key: 'operateResult',
-            width: 120,
+            width: 140,
+            ellipsis: true,
         },
         {
             title: '操作时间',
             dataIndex: 'operateTime',
             key: 'operateTime',
-            width: 160,
+            width: 150,
         },
     ];
 
@@ -147,6 +192,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
         setPageIndex(1);
         setTaskItems([]);
         setTotal(0);
+        setFilterRound('');
+        setFilterOperateResult('');
+        setFilterStyleId('');
         onClose();
     }
 
@@ -156,13 +204,42 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
             open={visible}
             onCancel={handleClose}
             footer={null}
-            width={1400}
+            width={1200}
         >
+            <Space style={{marginBottom: 16}} wrap>
+                <Input
+                    placeholder="轮次"
+                    value={filterRound}
+                    onChange={e => setFilterRound(e.target.value)}
+                    style={{width: 60}}
+                    type="number"
+                />
+                <Select
+                    placeholder="操作结果"
+                    value={filterOperateResult}
+                    onChange={setFilterOperateResult}
+                    style={{width: 120}}
+                    options={OPERATE_RESULT_OPTIONS}
+                    allowClear
+                />
+                <Input
+                    placeholder="货号"
+                    value={filterStyleId}
+                    onChange={e => setFilterStyleId(e.target.value)}
+                    style={{width: 130}}
+                />
+                <Button type="primary" icon={<SearchOutlined/>} onClick={handleSearch}>
+                    搜索
+                </Button>
+                <Button icon={<ReloadOutlined/>} onClick={handleReset}>
+                    重置
+                </Button>
+            </Space>
             <Table
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: 1300}}
+                scroll={{x: 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,
