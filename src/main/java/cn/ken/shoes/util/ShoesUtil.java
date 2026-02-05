@@ -94,16 +94,23 @@ public class ShoesUtil {
     }
 
     public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit) {
+        double earn = getStockxEarn(poisonPrice, stockXPrice);
+        return earn >= minExpectProfit;
+    }
+
+    /**
+     * 计算 StockX 利润
+     * @param poisonPrice 得物价格
+     * @param stockXPrice StockX 售价
+     * @return 利润（人民币）
+     */
+    public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice) {
         // 转账手续费
         double transferFee = stockXPrice * 0.03;
         // 商家手续费
         double merchantFee = Math.max(stockXPrice * 0.07, 5.79);
         double getFromPlatform = (stockXPrice - transferFee - merchantFee) * PriceSwitch.EXCHANGE_RATE;
-        double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
-        if (earn < minExpectProfit) {
-            return false;
-        }
-        return true;
+        return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
     public static Integer getThreeFivePrice(Integer normalPrice) {
