@@ -1,5 +1,5 @@
-import React, {useEffect, useState} from "react";
-import {Modal, Table, Input, Select, Space, Button} from "antd";
+import React, {useEffect, useState, useRef} from "react";
+import {Modal, Table, Input, Select, Space, Button, Switch} from "antd";
 import {SearchOutlined, ReloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
@@ -48,17 +48,41 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
     const [pageSize, setPageSize] = useState(20);
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
+    const [autoRefresh, setAutoRefresh] = useState(false);
 
     // 筛选条件
     const [filterRound, setFilterRound] = useState<string>('');
     const [filterOperateResult, setFilterOperateResult] = useState<string>('');
     const [filterStyleId, setFilterStyleId] = useState<string>('');
 
+    // 用于存储定时器
+    const timerRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         if (visible && taskId) {
             queryTaskItems();
         }
     }, [visible, taskId, pageIndex, pageSize]);
+
+    // 自动刷新逻辑
+    useEffect(() => {
+        if (autoRefresh && visible && taskId) {
+            timerRef.current = setInterval(() => {
+                queryTaskItems();
+            }, 5000);
+        } else {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        }
+        return () => {
+            if (timerRef.current) {
+                clearInterval(timerRef.current);
+                timerRef.current = null;
+            }
+        };
+    }, [autoRefresh, visible, taskId, pageIndex, pageSize, filterRound, filterOperateResult, filterStyleId]);
 
     const queryTaskItems = () => {
         if (!taskId) return;
@@ -195,6 +219,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
         setFilterRound('');
         setFilterOperateResult('');
         setFilterStyleId('');
+        setAutoRefresh(false);
         onClose();
     }
 
@@ -206,35 +231,41 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose})
             footer={null}
             width={1200}
         >
-            <Space style={{marginBottom: 16}} wrap>
-                <Input
-                    placeholder="轮次"
-                    value={filterRound}
-                    onChange={e => setFilterRound(e.target.value)}
-                    style={{width: 60}}
-                    type="number"
-                />
-                <Select
-                    placeholder="操作结果"
-                    value={filterOperateResult}
-                    onChange={setFilterOperateResult}
-                    style={{width: 120}}
-                    options={OPERATE_RESULT_OPTIONS}
-                    allowClear
-                />
-                <Input
-                    placeholder="货号"
-                    value={filterStyleId}
-                    onChange={e => setFilterStyleId(e.target.value)}
-                    style={{width: 130}}
-                />
-                <Button type="primary" icon={<SearchOutlined/>} onClick={handleSearch}>
-                    搜索
-                </Button>
-                <Button icon={<ReloadOutlined/>} onClick={handleReset}>
-                    重置
-                </Button>
-            </Space>
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+                <Space wrap>
+                    <Input
+                        placeholder="轮次"
+                        value={filterRound}
+                        onChange={e => setFilterRound(e.target.value)}
+                        style={{width: 80}}
+                        type="number"
+                    />
+                    <Select
+                        placeholder="操作结果"
+                        value={filterOperateResult}
+                        onChange={setFilterOperateResult}
+                        style={{width: 120}}
+                        options={OPERATE_RESULT_OPTIONS}
+                        allowClear
+                    />
+                    <Input
+                        placeholder="货号"
+                        value={filterStyleId}
+                        onChange={e => setFilterStyleId(e.target.value)}
+                        style={{width: 130}}
+                    />
+                    <Button type="primary" icon={<SearchOutlined/>} onClick={handleSearch}>
+                        搜索
+                    </Button>
+                    <Button icon={<ReloadOutlined/>} onClick={handleReset}>
+                        重置
+                    </Button>
+                </Space>
+                <Space>
+                    <span>自动刷新</span>
+                    <Switch checked={autoRefresh} onChange={setAutoRefresh}/>
+                </Space>
+            </div>
             <Table
                 columns={columns}
                 dataSource={taskItems}
