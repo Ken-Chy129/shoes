@@ -38,6 +38,9 @@
         SELECT * FROM task_item
         <where>
             task_id = #{taskId}
+            <if test="round != null">
+                AND round = #{round}
+            </if>
             <if test="operateResult != null and operateResult != ''">
                 AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
             </if>
@@ -56,6 +59,9 @@
         SELECT COUNT(*) FROM task_item
         <where>
             task_id = #{taskId}
+            <if test="round != null">
+                AND round = #{round}
+            </if>
             <if test="operateResult != null and operateResult != ''">
                 AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
             </if>
