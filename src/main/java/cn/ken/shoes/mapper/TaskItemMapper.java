@@ -16,6 +16,18 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
 
     Long countByTaskId(@Param("taskId") Long taskId);
 
+    List<TaskItemDO> selectByCondition(@Param("taskId") Long taskId,
+                                       @Param("operateResult") String operateResult,
+                                       @Param("styleId") String styleId,
+                                       @Param("euSize") String euSize,
+                                       @Param("startIndex") Integer startIndex,
+                                       @Param("pageSize") Integer pageSize);
+
+    Long countByCondition(@Param("taskId") Long taskId,
+                          @Param("operateResult") String operateResult,
+                          @Param("styleId") String styleId,
+                          @Param("euSize") String euSize);
+
     /**
      * 批量更新操作结果
      */

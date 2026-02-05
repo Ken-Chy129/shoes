@@ -163,6 +163,7 @@ public class StockXService {
 
                     TaskItemDO taskItemDO = new TaskItemDO();
                     taskItemDO.setTaskId(taskId);
+                    taskItemDO.setRound(TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND);
                     taskItemDO.setTitle(item.getString("productName"));
                     taskItemDO.setListingId(listingId);
                     taskItemDO.setProductId(item.getString("variantId"));

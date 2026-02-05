@@ -27,6 +27,11 @@ public class TaskItemDO {
     private Long taskId;
 
     /**
+     * 执行轮次
+     */
+    private Integer round;
+
+    /**
      * 商品标题
      */
     private String title;
