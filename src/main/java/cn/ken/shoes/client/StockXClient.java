@@ -188,6 +188,10 @@ public class StockXClient {
             JSONObject product = productVariant.getJSONObject("product");
             String productName = product.getString("model");
             item.put("productName", productName);
+            String size = Optional.ofNullable(productVariant.getJSONObject("traits"))
+                    .map(traits -> traits.getString("size"))
+                    .orElse(null);
+            item.put("size", size);
             // 尝试从 sizeChart 中解析 EU 尺码
             Optional<String> euSizeFromChart = Optional.ofNullable(productVariant.getJSONObject("sizeChart"))
                     .map(sc -> sc.getJSONArray("displayOptions"))
@@ -199,11 +203,8 @@ public class StockXClient {
             if (euSizeFromChart.isPresent()) {
                 item.put("euSize", euSizeFromChart.get());
             } else {
-                // 备用方案：从 traits 中获取 size，从 product 中获取 name，通过品牌和尺码转换得到 euSize
-                String usSize = Optional.ofNullable(productVariant.getJSONObject("traits"))
-                        .map(traits -> traits.getString("size"))
-                        .orElse(null);
-                if (usSize != null) {
+                // 备用方案：从 product 中获取 name，通过品牌和尺码转换得到 euSize
+                if (size != null) {
                     String primaryCategory = product.getString("primaryCategory");
                     // 优先从商品名称提取品牌，其次使用 primaryCategory
                     String brand = BrandUtil.extractStockXBrand(productName);
@@ -211,7 +212,7 @@ public class StockXClient {
                         brand = BrandUtil.extractStockXBrand(primaryCategory);
                     }
                     if (brand != null) {
-                        String euSize = SizeConvertUtil.getStockXEuSize(brand, usSize);
+                        String euSize = SizeConvertUtil.getStockXEuSize(brand, size);
                         if (euSize != null) {
                             item.put("euSize", euSize);
                         }
@@ -231,9 +232,9 @@ public class StockXClient {
         return result;
     }
 
-    public void deleteItems(List<String> idList) {
+    public boolean deleteItems(List<String> idList) {
         if (idList.isEmpty()) {
-            return;
+            return false;
         }
         JSONObject body = new JSONObject();
         body.put("operationName", "BulkDeleteSellerListings");
@@ -247,6 +248,7 @@ public class StockXClient {
         body.put("query", "mutation BulkDeleteSellerListings($input: [DeleteListingBatchInput]) {\n  deleteBatchListings(input: $input) {\n    id\n    status\n    completedAt\n    createdAt\n    updatedAt\n  }\n}");
         JSONObject jsonObject = queryPro(body.toJSONString());
         log.info("deleteItems, result:{}", jsonObject);
+        return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
     }
 
     /**
@@ -255,7 +257,7 @@ public class StockXClient {
      * @param amount 新价格
      * @return 更新结果，包含id、status、error等信息
      */
-    public JSONObject updateSellerListing(String id, String amount) {
+    public boolean updateSellerListing(String id, String amount) {
         JSONObject body = new JSONObject();
         body.put("operationName", "UpdateSellerListing");
         JSONObject variables = new JSONObject();
@@ -268,7 +270,7 @@ public class StockXClient {
         body.put("query", "mutation UpdateSellerListing($id: String!, $currency: CurrencyCode, $amount: String, $active: Boolean, $expiresAt: ISODate, $actionContext: AskActionContext, $matchCandidateId: String, $checkoutTraceId: String) {\n  updateSellerListing(\n    input: {id: $id, currency: $currency, active: $active, amount: $amount, expiresAt: $expiresAt, actionContext: $actionContext, matchCandidateId: $matchCandidateId, checkoutTraceId: $checkoutTraceId}\n  ) {\n    id\n    status\n    createdAt\n    updatedAt\n    error\n    __typename\n  }\n}");
         JSONObject jsonObject = queryPro(body.toJSONString());
         log.info("updateSellerListing, id:{}, amount:{}, result:{}", id, amount, jsonObject);
-        return jsonObject;
+        return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("updateSellerListing");
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
