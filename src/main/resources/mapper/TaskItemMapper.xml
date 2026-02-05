@@ -5,6 +5,7 @@
     <resultMap id="taskItemResultMap" type="cn.ken.shoes.model.entity.TaskItemDO">
         <id property="id" column="id"/>
         <result property="taskId" column="task_id"/>
+        <result property="round" column="round"/>
         <result property="title" column="title"/>
         <result property="listingId" column="listing_id"/>
         <result property="productId" column="product_id"/>
@@ -31,6 +32,40 @@
     <select id="countByTaskId" resultType="java.lang.Long">
         SELECT COUNT(*) FROM task_item
         WHERE task_id = #{taskId}
+    </select>
+
+    <select id="selectByCondition" resultMap="taskItemResultMap">
+        SELECT * FROM task_item
+        <where>
+            task_id = #{taskId}
+            <if test="operateResult != null and operateResult != ''">
+                AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
+            </if>
+            <if test="styleId != null and styleId != ''">
+                AND style_id LIKE CONCAT('%', #{styleId}, '%')
+            </if>
+            <if test="euSize != null and euSize != ''">
+                AND eu_size = #{euSize}
+            </if>
+        </where>
+        ORDER BY operate_time DESC
+        LIMIT #{startIndex}, #{pageSize}
+    </select>
+
+    <select id="countByCondition" resultType="java.lang.Long">
+        SELECT COUNT(*) FROM task_item
+        <where>
+            task_id = #{taskId}
+            <if test="operateResult != null and operateResult != ''">
+                AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
+            </if>
+            <if test="styleId != null and styleId != ''">
+                AND style_id LIKE CONCAT('%', #{styleId}, '%')
+            </if>
+            <if test="euSize != null and euSize != ''">
+                AND eu_size = #{euSize}
+            </if>
+        </where>
     </select>
 
     <update id="batchUpdateResult">

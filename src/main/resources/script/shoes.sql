@@ -197,6 +197,7 @@ CREATE TABLE task_item
 (
     id             BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '主键ID',
     task_id        BIGINT       NOT NULL COMMENT '关联任务ID',
+    round          INT          DEFAULT 0 COMMENT '执行轮次',
     title          VARCHAR(255) NULL     COMMENT '标题',
     listing_id     VARCHAR(64)  NULL     COMMENT '上架ID',
     product_id     VARCHAR(64)  NULL     COMMENT '商品ID',
