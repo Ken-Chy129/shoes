@@ -303,7 +303,7 @@ public class StockXService {
                                     updateTaskItemResult(taskItemId, "取消-任务已终止");
                                     return;
                                 }
-                                LimiterHelper.limitStockxPriceDown();
+                                LimiterHelper.limitStockxApi();
                                 if (stockXClient.updateSellerListing(listingId, String.valueOf(newPrice))) {
                                     updateTaskItemResult(taskItemId, "压价成功");
                                 } else {
@@ -449,6 +449,7 @@ public class StockXService {
                         .toList();
 
                 if (!listingIds.isEmpty()) {
+                    LimiterHelper.limitStockxApi();
                     boolean success = stockXClient.deleteItems(listingIds);
                     if (success) {
                         totalDeleted += listingIds.size();
