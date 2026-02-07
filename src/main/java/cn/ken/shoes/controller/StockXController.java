@@ -84,4 +84,11 @@ public class StockXController {
         Thread.startVirtualThread(() -> stockXService.extendAllItems());
         return Result.buildSuccess();
     }
+
+    @PostMapping("delistAllItems")
+    public Result<Void> delistAllItems() {
+        Thread.startVirtualThread(() -> stockXService.delistAllItems());
+        return Result.buildSuccess();
+    }
+
 }

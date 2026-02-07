@@ -417,4 +417,51 @@ public class StockXService {
         updateItem.setOperateTime(new Date());
         taskItemMapper.updateById(updateItem);
     }
+
+    /**
+     * 下架所有StockX商品
+     * 分页查询当前上架的商品，然后批量下架
+     */
+    public void delistAllItems() {
+        long startTime = System.currentTimeMillis();
+        int pageNumber = 1;
+        boolean hasMore;
+        int totalDeleted = 0;
+
+        do {
+            JSONObject jsonObject = stockXClient.querySellingItems(pageNumber, null);
+            if (jsonObject == null) {
+                log.error("delistAllItems querySellingItems failed, page:{}", pageNumber);
+                break;
+            }
+
+            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+            if (items.isEmpty()) {
+                log.info("delistAllItems no items found on page:{}", pageNumber);
+                break;
+            }
+
+            // 提取所有 listing id
+            List<String> listingIds = items.stream()
+                    .map(item -> item.getString("id"))
+                    .filter(StrUtil::isNotBlank)
+                    .toList();
+
+            if (!listingIds.isEmpty()) {
+                boolean success = stockXClient.deleteItems(listingIds);
+                if (success) {
+                    totalDeleted += listingIds.size();
+                    log.info("delistAllItems page:{}, deleted:{} items", pageNumber, listingIds.size());
+                } else {
+                    log.error("delistAllItems failed on page:{}", pageNumber);
+                }
+            }
+
+            hasMore = jsonObject.getBoolean("hasMore");
+            // 注意：因为每次删除后，下一页的数据会前移，所以始终查询第1页
+            // pageNumber 保持为1，直到没有更多数据
+        } while (hasMore);
+
+        log.info("delistAllItems finished, totalDeleted:{}, cost:{}", totalDeleted, TimeUtil.getCostMin(startTime));
+    }
 }

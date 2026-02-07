@@ -1,7 +1,7 @@
 import {
     Button, Card,
     Form,
-    Input, message,
+    Input, message, Popconfirm,
     Table,
 } from "antd";
 import React, {useEffect, useState} from "react";
@@ -73,6 +73,12 @@ const SettingPage = () => {
         })
     }
 
+    const delistAllItems = () => {
+        doPostRequest(ORDER_API.DELIST_ALL, {}, {
+            onSuccess: _ => message.success("开始全量下架").then()
+        })
+    }
+
     return <>
         <Card title={"订单列表"} style={{marginTop: 10}}>
             <Form form={conditionForm}
@@ -90,6 +96,19 @@ const SettingPage = () => {
                         <Button type="primary" htmlType="submit" onClick={extendAllItems}>
                             批量订单延期
                         </Button>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 30}}>
+                        <Popconfirm
+                            title="全量下架"
+                            description="确定要下架所有StockX商品吗？此操作不可撤销。"
+                            onConfirm={delistAllItems}
+                            okText="确定"
+                            cancelText="取消"
+                        >
+                            <Button danger>
+                                全量下架
+                            </Button>
+                        </Popconfirm>
                     </Form.Item>
                 </div>
             </Form>
