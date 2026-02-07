@@ -96,7 +96,7 @@ public class StockXClient {
     }
 
     public JSONObject queryToDeal(String after) {
-        JSONObject jsonObject = queryPro(buildItemsToDealQueryRequest(after));
+        JSONObject jsonObject = queryPro(buildOrder(after));
         if (jsonObject == null) {
             return null;
         }
@@ -125,13 +125,15 @@ public class StockXClient {
         return result;
     }
 
-    public void extendItem(String chainId) {
+    public void extendItem(String chainId, String orderId) {
         JSONObject body = new JSONObject();
         body.put("operationName", "ExtendShipDate");
         JSONObject variables = new JSONObject();
         body.put("variables", variables);
         variables.put("chainId", chainId);
-        body.put("query", "mutation ExtendShipDate($chainId: String) {\n  requestSellerShippingExtension(\n    input: {chainId: $chainId}\n  ) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
+        variables.put("orderId", orderId);
+        variables.put("note", "Seller self-serve shipping extension");
+        body.put("query", "mutation ExtendShipDate($chainId: String, $orderId: String) {\n  requestSellerShippingExtension(\n    input: {chainId: $chainId, orderId: $orderId}\n  ) {\n    approved\n    shipByDateExtendedTo\n    __typename\n  }\n}");
         queryPro(body.toJSONString());
     }
 
@@ -844,48 +846,32 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildItemsToDealQueryRequest(String after) {
-        JSONObject requestJson = new JSONObject();
-        requestJson.put("operationName", "ViewerAsks");
-        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        }\n      edges {\n        node {\n          ...AskAttributes\n          }\n        }\n      }\n    }\n}\n\nfragment AskAttributes on Ask {\n  id\n  shippingExtensionRequested\n  orderNumber\n}");
-        JSONObject variables = new JSONObject();
-        variables.put("country", "HK");
-        variables.put("market", "HK");
-        variables.put("pageSize", 500);
-        variables.put("sort", "LISTED_AT");
-        variables.put("order", "DESC");
-        variables.put("skipFlexEligible", true);
-        variables.put("skipGuidance", false);
-        if (StrUtil.isNotBlank(after)) {
-            variables.put("after", after);
-        }
-        JSONObject filters = new JSONObject();
-        filters.put("statesList", Map.of("in", List.of(410, 411, 415)));
-        filters.put("inventoryType", Map.of("in", List.of("STANDARD", "CUSTODIAL")));
-        variables.put("filters", filters);
-        variables.put("state", "PENDING");
-        requestJson.put("variables", variables);
-        return requestJson.toJSONString();
-    }
-
     private String buildOrder(String after) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "ViewerAsks");
-        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput, $country: String!, $market: String!, $skipGuidance: Boolean = true, $skipFlexEligible: Boolean = true, $includeHasAttributedAd: Boolean = false) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      includeHasAttributedAd: $includeHasAttributedAd\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        __typename\n      }\n      edges {\n        node {\n          ...AskAttributes\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  created\n  bidAskSpread\n  currentCurrency\n  expires\n  soldOn\n  orderNumber\n  state\n  dateToShipBy\n  authCenter\n  inventoryType\n  associatedAutomation {\n    status\n    id\n    fields {\n      price\n      __typename\n    }\n    __typename\n  }\n  pricingGuidance(country: $country, market: $market) @skip(if: $skipGuidance) {\n    marketConsensusGuidance {\n      standardSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      flexSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  shipment {\n    id\n    bulk\n    deleted\n    displayId\n    trackingNumber\n    trackingUrl\n    deliveryDate\n    commercialInvoiceUrl\n    documents {\n      sellerShippingInstructions\n      sellerShippingInstructionsThermal\n      __typename\n    }\n    __typename\n  }\n  productVariant {\n    id\n    isFlexEligible @skip(if: $skipFlexEligible)\n    traits {\n      size\n      sizeDescriptor\n      __typename\n    }\n    sizeChart {\n      displayOptions {\n        size\n        __typename\n      }\n      baseType\n      __typename\n    }\n    market(currencyCode: $currencyCode) {\n      state(country: $country, market: $market) {\n        bidInventoryTypes {\n          standard {\n            highest {\n              amount\n              chainId\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        askServiceLevels {\n          standard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          expressStandard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    product {\n      id\n      name\n      styleId\n      model\n      title\n      productCategory\n      contentGroup\n      browseVerticals\n      primaryCategory\n      minimumBid(currencyCode: $currencyCode)\n      traits {\n        name\n        value\n        __typename\n      }\n      taxInformation {\n        id\n        code\n        __typename\n      }\n      media {\n        thumbUrl\n        __typename\n      }\n      sizeDescriptor\n      hazardousMaterial {\n        lithiumIonBucket\n        __typename\n      }\n      lockSelling\n      listingType\n      __typename\n    }\n    __typename\n  }\n  hasAttributedAd\n  __typename\n}");
+        requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput, $country: String!, $market: String!, $skipGuidance: Boolean = true, $skipFlexEligible: Boolean = true, $includeHasAttributedAd: Boolean = false) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      includeHasAttributedAd: $includeHasAttributedAd\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        __typename\n      }\n      edges {\n        node {\n          ...AskAttributes\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  created\n  bidAskSpread\n  currentCurrency\n  expires\n  soldOn\n  orderNumber\n  state\n  dateToShipBy\n  authCenter\n  inventoryType\n  shippingExtensionRequested\n  associatedAutomation {\n    status\n    id\n    fields {\n      price\n      __typename\n    }\n    __typename\n  }\n  pricingGuidance(country: $country, market: $market) @skip(if: $skipGuidance) {\n    marketConsensusGuidance {\n      standardSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      flexSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  shipment {\n    id\n    bulk\n    deleted\n    displayId\n    trackingNumber\n    trackingUrl\n    deliveryDate\n    commercialInvoiceUrl\n    documents {\n      sellerShippingInstructions\n      sellerShippingInstructionsThermal\n      __typename\n    }\n    __typename\n  }\n  productVariant {\n    id\n    isFlexEligible @skip(if: $skipFlexEligible)\n    traits {\n      size\n      sizeDescriptor\n      __typename\n    }\n    sizeChart {\n      displayOptions {\n        size\n        __typename\n      }\n      baseType\n      __typename\n    }\n    market(currencyCode: $currencyCode) {\n      state(country: $country, market: $market) {\n        bidInventoryTypes {\n          standard {\n            highest {\n              amount\n              chainId\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        askServiceLevels {\n          standard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          expressStandard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    product {\n      id\n      name\n      styleId\n      model\n      title\n      productCategory\n      contentGroup\n      browseVerticals\n      primaryCategory\n      minimumBid(currencyCode: $currencyCode)\n      traits {\n        name\n        value\n        __typename\n      }\n      taxInformation {\n        id\n        code\n        __typename\n      }\n      media {\n        thumbUrl\n        __typename\n      }\n      sizeDescriptor\n      hazardousMaterial {\n        lithiumIonBucket\n        __typename\n      }\n      lockSelling\n      listingType\n      __typename\n    }\n    __typename\n  }\n  hasAttributedAd\n  __typename\n}");
         JSONObject variables = new JSONObject();
         variables.put("country", "HK");
         variables.put("market", "HK");
-        variables.put("pageSize", 1000);
-        variables.put("sort", "LISTED_AT");
+        variables.put("pageSize", 30);
+        variables.put("sort", "MATCHED_AT");
         variables.put("order", "DESC");
         variables.put("skipFlexEligible", true);
-        variables.put("skipGuidance", false);
+        variables.put("skipGuidance", true);
+        variables.put("includeHasAttributedAd", true);
+        variables.put("query", "");
         if (StrUtil.isNotBlank(after)) {
             variables.put("after", after);
         }
         JSONObject filters = new JSONObject();
+        filters.put("vertical", Map.of("in", List.of()));
+        filters.put("shipmentId", Map.of("in", List.of()));
+        filters.put("lowestAsk", new JSONObject());
+        filters.put("expired", new JSONObject());
+        filters.put("includeBulkShipmentItems", new JSONObject());
         filters.put("statesList", Map.of("in", List.of(410, 411, 415)));
-        filters.put("inventoryType", Map.of("in", List.of("STANDARD", "CUSTODIAL")));
+        filters.put("productId", Map.of("in", List.of()));
+        filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
         variables.put("filters", filters);
         variables.put("state", "PENDING");
         requestJson.put("variables", variables);

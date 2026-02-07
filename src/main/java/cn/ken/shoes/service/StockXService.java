@@ -62,7 +62,7 @@ public class StockXService {
             }
             List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
             for (JSONObject node : nodes) {
-                stockXClient.extendItem(node.getString("id"));
+                stockXClient.extendItem(node.getString("id"), node.getString("orderNumber"));
             }
             hasMore = jsonObject.getBoolean("hasMore");
             afterName = jsonObject.getString("endCursor");
