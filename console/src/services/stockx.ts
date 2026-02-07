@@ -1,6 +1,7 @@
 
 enum ORDER_API {
     EXTEND_ALL = '/api/stockx/extendAllItems',
+    DELIST_ALL = '/api/stockx/delistAllItems',
 }
 
 enum STOCKX_API {
