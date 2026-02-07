@@ -81,7 +81,7 @@ public class PoisonService {
                             )
                     ));
             priceManager.importPrice(modelNoPriceMap);
-            log.info("finish refreshAllPrice-{}, cnt:{}", i++, modelNumbers.size());
+//            log.info("finish refreshAllPrice-{}, cnt:{}", i++, modelNumbers.size());
         }
         LockHelper.unlockPoisonPrice();
     }
