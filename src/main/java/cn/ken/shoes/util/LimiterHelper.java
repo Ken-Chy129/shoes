@@ -55,10 +55,10 @@ public class LimiterHelper {
     }
 
     /**
-     * StockX压价接口限流，支持动态配置
+     * StockX接口限流，支持动态配置
      * 使用Bucket4j实现分钟级限流，支持突发请求
      */
-    public static void limitStockxPriceDown() {
+    public static void limitStockxApi() {
         // 检查配置是否变更，如果变更则重新创建限流器
         if (lastPriceDownPerMinute != StockXSwitch.TASK_PRICE_DOWN_PER_MINUTE) {
             synchronized (LimiterHelper.class) {
