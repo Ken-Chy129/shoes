@@ -1,22 +1,17 @@
 import {
     Button,
     Card,
-    Form,
     Input,
     message,
-    Modal,
-    Select,
-    Space,
-    Table
 } from "antd";
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useCallback} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
 const ModelPage = () => {
-    const [mustCrawlModelNos, setMustCrawlModelNos] = useState('');
-    const [forbiddenCrawlModelNos, setForbiddenCrawlModelNos] = useState('');
-    const [notCompareModelNos, setNotCompareModelNos] = useState('');
+    const mustCrawlRef = useRef<any>(null);
+    const forbiddenCrawlRef = useRef<any>(null);
+    const notCompareRef = useRef<any>(null);
     const forbiddenType = 4;
     const notCompareType = 2;
 
@@ -26,17 +21,18 @@ const ModelPage = () => {
         queryNotCompareModelNos();
     }, []);
 
-
     const queryMustCrawlModelNos = () => {
         doGetRequest(SETTING_API.QUERY_MUST_CRAWL_MODEL_NOS, {}, {
             onSuccess: res => {
-                setMustCrawlModelNos(res.data);
+                if (mustCrawlRef.current) {
+                    mustCrawlRef.current.resizableTextArea.textArea.value = res.data || '';
+                }
             }
         });
     }
 
     const updateMustCrawlModelNos = () => {
-        const modelNos = mustCrawlModelNos;
+        const modelNos = mustCrawlRef.current?.resizableTextArea?.textArea?.value || '';
         doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {modelNos}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
@@ -47,13 +43,15 @@ const ModelPage = () => {
     const queryForbiddenCrawlModelNos = () => {
         doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: forbiddenType}, {
             onSuccess: res => {
-                setForbiddenCrawlModelNos(res.data);
+                if (forbiddenCrawlRef.current) {
+                    forbiddenCrawlRef.current.resizableTextArea.textArea.value = res.data || '';
+                }
             }
         });
     }
 
     const updateForbiddenCrawlModelNos = () => {
-        const modelNos = forbiddenCrawlModelNos;
+        const modelNos = forbiddenCrawlRef.current?.resizableTextArea?.textArea?.value || '';
         doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: forbiddenType}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
@@ -64,13 +62,15 @@ const ModelPage = () => {
     const queryNotCompareModelNos = () => {
         doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: notCompareType}, {
             onSuccess: res => {
-                setNotCompareModelNos(res.data);
+                if (notCompareRef.current) {
+                    notCompareRef.current.resizableTextArea.textArea.value = res.data || '';
+                }
             }
         });
     }
 
     const updateNotCompareModelNos = () => {
-        const modelNos = notCompareModelNos;
+        const modelNos = notCompareRef.current?.resizableTextArea?.textArea?.value || '';
         doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: notCompareType}, {
             onSuccess: _ => {
                 message.success("修改成功").then();
@@ -81,9 +81,8 @@ const ModelPage = () => {
     return <>
         <Card title={"必爬货号"}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea rows={15} value={mustCrawlModelNos} onChange={e => setMustCrawlModelNos(e.target.value)} />
+                <Input.TextArea ref={mustCrawlRef} rows={15} />
 
-                {/* 按钮容器，使用 flex-end 实现右对齐 */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
                     <Button
                         key="push"
@@ -97,9 +96,8 @@ const ModelPage = () => {
 
         <Card title={"禁爬货号"} style={{ marginTop: 10 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea rows={15} value={forbiddenCrawlModelNos} onChange={e => setForbiddenCrawlModelNos(e.target.value)}/>
+                <Input.TextArea ref={forbiddenCrawlRef} rows={15} />
 
-                {/* 按钮容器，使用 flex-end 实现右对齐 */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
                     <Button
                         key="push"
@@ -113,9 +111,8 @@ const ModelPage = () => {
 
         <Card title={"不比价货号"} style={{ marginTop: 10 }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea rows={15} value={notCompareModelNos} onChange={e => setNotCompareModelNos(e.target.value)}/>
+                <Input.TextArea ref={notCompareRef} rows={15} />
 
-                {/* 按钮容器，使用 flex-end 实现右对齐 */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
                     <Button
                         key="push"

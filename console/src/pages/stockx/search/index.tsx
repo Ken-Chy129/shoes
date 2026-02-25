@@ -493,6 +493,7 @@ const SearchPage = () => {
                         <Form.Item
                             name="keywords"
                             label="关键词列表"
+                            validateTrigger="onBlur"
                             rules={[
                                 {
                                     required: true,
@@ -557,6 +558,7 @@ const SearchPage = () => {
                     <Form.Item
                         name="modelNumbers"
                         label="货号列表"
+                        validateTrigger="onBlur"
                         rules={[
                             {
                                 required: true,
