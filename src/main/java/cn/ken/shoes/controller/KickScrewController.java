@@ -61,7 +61,7 @@ public class KickScrewController {
 
     @GetMapping("stock")
     public Result<List<KickScrewPriceDO>> queryStockList() {
-        return Result.buildSuccess(kickScrewClient.queryStockList(0, 10));
+        return Result.buildSuccess(kickScrewClient.queryStockList(0, 10000));
     }
 
     @GetMapping("deleteList")
@@ -80,5 +80,38 @@ public class KickScrewController {
     public Result<List<KickScrewPriceDO>> queryPrice(String modelNo) {
         List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(List.of(modelNo));
         return Result.buildSuccess(kickScrewPriceDOS);
+    }
+
+    /**
+     * 自动压价：将所有不是最低价的商品价格设置为最低价-1
+     */
+    @GetMapping("autoMatch")
+    public Result<String> autoMatch() {
+        String result = kickScrewClient.autoMatch();
+        return Result.buildSuccess(result);
+    }
+
+    /**
+     * 查询当前上架商品列表
+     */
+    @GetMapping("listings")
+    public Result<List<KickScrewPriceDO>> queryListings(Integer offset, Integer limit) {
+        if (offset == null) {
+            offset = 0;
+        }
+        if (limit == null) {
+            limit = 100;
+        }
+        List<KickScrewPriceDO> listings = kickScrewClient.queryListings(offset, limit);
+        return Result.buildSuccess(listings);
+    }
+
+    /**
+     * 查询上架商品总数
+     */
+    @GetMapping("listings/total")
+    public Result<Integer> queryListingsTotal() {
+        int total = kickScrewClient.queryListingsTotal();
+        return Result.buildSuccess(total);
     }
 }
