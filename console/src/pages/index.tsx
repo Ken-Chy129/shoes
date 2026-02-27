@@ -6,6 +6,7 @@ import {SETTING_API} from "@/services/shoes";
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
     const [kcForm] = Form.useForm();
+    const [kcTokenForm] = Form.useForm();
     const [stockxForm] = Form.useForm();
 
     useEffect(() => {
@@ -26,6 +27,7 @@ const SettingPage = () => {
         });
         queryToken();
         queryStockxSetting();
+        queryKcToken();
     }, []);
 
     const updatePoisonSetting = () => {
@@ -128,6 +130,24 @@ const SettingPage = () => {
         })
     }
 
+    const queryKcToken = () => {
+        doGetRequest(SETTING_API.QUERY_KC_TOKEN, {}, {
+            onSuccess: res => {
+                kcTokenForm.setFieldValue("accessToken", res.data);
+            }
+        })
+    }
+
+    const updateKcToken = () => {
+        const accessToken = kcTokenForm.getFieldValue("accessToken");
+        doPostRequest(SETTING_API.UPDATE_KC_TOKEN, {accessToken}, {
+            onSuccess: _ => {
+                message.success("设置成功").then(_ => {});
+                queryKcToken();
+            }
+        })
+    }
+
     return <>
         <Card title={"通用配置"}>
             <Form form={kcForm}
@@ -219,6 +239,19 @@ const SettingPage = () => {
         </Card>
         <br/>
         <Card title={"kc配置"}>
+            <Form form={kcTokenForm}
+                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
+                <div style={{display: "flex"}}>
+                    <Form.Item name="accessToken" label="令牌">
+                        <Input/>
+                    </Form.Item>
+                    <Form.Item style={{marginLeft: 50}}>
+                        <Button type="primary" htmlType="submit" onClick={updateKcToken}>
+                            手动设置令牌
+                        </Button>
+                    </Form.Item>
+                </div>
+            </Form>
             <Form form={kcForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>

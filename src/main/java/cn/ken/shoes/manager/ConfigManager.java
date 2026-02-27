@@ -20,6 +20,7 @@ public class ConfigManager {
     private static final String PRICE_CONFIG_FILE = "price-config.properties";
     private static final String STOCKX_CONFIG_FILE = "stockx-config.properties";
     private static final String STOCKX_OAUTH_CONFIG_FILE = "stockx-oauth-config.properties";
+    private static final String KICKSCREW_OAUTH_CONFIG_FILE = "kickscrew-oauth-config.properties";
 
     @PostConstruct
     public void initConfigs() {
@@ -27,6 +28,7 @@ public class ConfigManager {
         loadPriceConfig();
         loadStockXConfig();
         loadStockXOAuthConfig();
+        loadKickScrewOAuthConfig();
     }
 
     public void loadPoisonConfig() {
@@ -130,7 +132,7 @@ public class ConfigManager {
 
     public void saveStockXOAuthConfig() {
         Properties properties = new Properties();
-        
+
         if (StockXConfig.CONFIG.getAccessToken() != null) {
             properties.setProperty("access.token", StockXConfig.CONFIG.getAccessToken());
         }
@@ -143,7 +145,20 @@ public class ConfigManager {
         if (StockXConfig.CONFIG.getExpireTime() != null) {
             properties.setProperty("expire.time", StockXConfig.CONFIG.getExpireTime());
         }
-        
+
         configService.saveConfig(STOCKX_OAUTH_CONFIG_FILE, properties);
+    }
+
+    public void loadKickScrewOAuthConfig() {
+        Properties properties = configService.loadConfig(KICKSCREW_OAUTH_CONFIG_FILE);
+        KickScrewConfig.CONFIG.setAccessToken(configService.getProperty(properties, "access.token", null));
+    }
+
+    public void saveKickScrewOAuthConfig() {
+        Properties properties = new Properties();
+        if (KickScrewConfig.CONFIG.getAccessToken() != null) {
+            properties.setProperty("access.token", KickScrewConfig.CONFIG.getAccessToken());
+        }
+        configService.saveConfig(KICKSCREW_OAUTH_CONFIG_FILE, properties);
     }
 }

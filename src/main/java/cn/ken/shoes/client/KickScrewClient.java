@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.KickScrewApiConstant;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.config.CommonConfig;
+import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
@@ -447,10 +448,24 @@ public class KickScrewClient {
     }
 
     /**
+     * 获取带有authorization的请求头（用于新版API）
+     */
+    private Headers getAuthHeaders() {
+        String accessToken = KickScrewConfig.CONFIG.getAccessToken();
+        if (StrUtil.isNotBlank(accessToken)) {
+            return Headers.of(
+                    "x-api-key", apiKey,
+                    "Authorization", accessToken
+            );
+        }
+        return getHeaders();
+    }
+
+    /**
      * 自动压价：将所有不是最低价的商品价格设置为最低价-1
      */
     public String autoMatch() {
-        String result = HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getHeaders());
+        String result = HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getAuthHeaders());
         if (StrUtil.isBlank(result)) {
             return "请求失败";
         }
@@ -462,7 +477,7 @@ public class KickScrewClient {
      */
     public List<KickScrewPriceDO> queryListings(int offset, int limit) {
         String url = KickScrewApiConstant.QUERY_LISTINGS + "?offset=" + offset + "&limit=" + limit;
-        String rawResult = HttpUtil.doGet(url, getHeaders());
+        String rawResult = HttpUtil.doGet(url, getAuthHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return Collections.emptyList();
         }
@@ -513,7 +528,7 @@ public class KickScrewClient {
      */
     public int queryListingsTotal() {
         String url = KickScrewApiConstant.QUERY_LISTINGS + "?offset=0&limit=1";
-        String rawResult = HttpUtil.doGet(url, getHeaders());
+        String rawResult = HttpUtil.doGet(url, getAuthHeaders());
         if (StrUtil.isBlank(rawResult)) {
             return 0;
         }
