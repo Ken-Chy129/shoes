@@ -47,6 +47,7 @@ const SearchPage = () => {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
     const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -164,6 +165,33 @@ const SearchPage = () => {
         window.open(`http://localhost:8080${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${taskId}`);
     }
 
+    const batchDownload = () => {
+        const successTasks = taskList.filter(
+            task => selectedRowKeys.includes(task.id) && task.status === 'success' && task.filePath
+        );
+        if (successTasks.length === 0) {
+            message.warning('请选择已完成的任务');
+            return;
+        }
+        message.success(`开始下载 ${successTasks.length} 个文件`);
+        successTasks.forEach((task, index) => {
+            setTimeout(() => {
+                const link = document.createElement('a');
+                link.href = `http://localhost:8080${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${task.id}`;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }, index * 500);
+        });
+    }
+
+    const rowSelection = {
+        selectedRowKeys,
+        onChange: (keys: React.Key[]) => setSelectedRowKeys(keys),
+        columnWidth: 48,
+    };
+
     const handleCreateModalOpen = () => {
         setShowCreateModal(true);
     }
@@ -201,19 +229,19 @@ const SearchPage = () => {
             title: 'ID',
             dataIndex: 'id',
             key: 'id',
-            width: '5%',
+            width: 60,
         },
         {
             title: '搜索关键词',
             dataIndex: 'query',
             key: 'query',
-            width: '10%',
+            width: 120,
         },
         {
             title: '排序规则',
             dataIndex: 'sorts',
             key: 'sorts',
-            width: '12%',
+            width: 150,
             render: (sorts: string) => {
                 const sortArray = sorts.split(',');
                 return (
@@ -234,13 +262,13 @@ const SearchPage = () => {
             title: '爬取页面数',
             dataIndex: 'pageCount',
             key: 'pageCount',
-            width: '6%',
+            width: 80,
         },
         {
             title: '进度',
             dataIndex: 'progress',
             key: 'progress',
-            width: '10%',
+            width: 120,
             render: (progress: number, record: SearchTask) => (
                 <Progress
                     percent={progress}
@@ -255,25 +283,25 @@ const SearchPage = () => {
             title: '状态',
             dataIndex: 'status',
             key: 'status',
-            width: '7%',
+            width: 80,
             render: (status: string) => getStatusTag(status)
         },
         {
             title: '开始时间',
             dataIndex: 'startTime',
             key: 'startTime',
-            width: '10%',
+            width: 150,
         },
         {
             title: '结束时间',
             dataIndex: 'endTime',
             key: 'endTime',
-            width: '10%',
+            width: 150,
         },
         {
             title: '操作',
             key: 'action',
-            width: '8%',
+            width: 80,
             render: (text: string, record: SearchTask) => (
                 <Space>
                     {record.status === 'success' && record.filePath && (
@@ -333,11 +361,23 @@ const SearchPage = () => {
                             重置
                         </Button>
                     </Form.Item>
+                    <Form.Item style={{marginLeft: 10}}>
+                        <Button
+                            type="primary"
+                            icon={<DownloadOutlined />}
+                            disabled={selectedRowKeys.length === 0}
+                            onClick={batchDownload}
+                        >
+                            批量下载 {selectedRowKeys.length > 0 && `(${selectedRowKeys.length})`}
+                        </Button>
+                    </Form.Item>
                 </div>
             </Form>
             <Table
+                rowSelection={rowSelection}
                 columns={columns}
                 dataSource={taskList}
+                scroll={{ x: 1000 }}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,
