@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.*;
+import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
@@ -86,6 +87,18 @@ public class SettingController {
         PriceSwitch.KC_GET_RATE = priceSetting.getKcGetRate();
         PriceSwitch.KC_SERVICE_FEE = priceSetting.getKcServiceFee();
         PriceSwitch.saveConfig();
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("kc/getAuthorization")
+    public Result<String> getKcAuthorization() {
+        return Result.buildSuccess(KickScrewConfig.CONFIG.getAccessToken());
+    }
+
+    @PostMapping("kc/updateAuthorization")
+    public Result<Boolean> updateKcAuthorization(@RequestBody JSONObject jsonObject) {
+        KickScrewConfig.CONFIG.setAccessToken(jsonObject.getString("accessToken"));
+        KickScrewConfig.saveOAuthConfig();
         return Result.buildSuccess(true);
     }
 

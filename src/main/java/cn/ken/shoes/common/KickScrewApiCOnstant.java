@@ -71,4 +71,14 @@ public class KickScrewApiConstant {
      * 新版商品搜索
      */
     public static final String SEARCH_ITEMS_V2 = "https://www.kickscrew.com/api/marqo/search";
+
+    /**
+     * B端自动压价（将不是最低价的商品价格设置为最低价-1）
+     */
+    public static final String AUTO_MATCH = "https://api.crewsupply.kickscrew.com/latest/listings/auto-match";
+
+    /**
+     * B端查询当前上架商品列表
+     */
+    public static final String QUERY_LISTINGS = "https://api.crewsupply.kickscrew.com/latest/listings";
 }
