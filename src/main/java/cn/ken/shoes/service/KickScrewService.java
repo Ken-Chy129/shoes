@@ -331,14 +331,16 @@ public class KickScrewService {
 
 
     public void clearNoBenefitItem() {
-        int cnt = kickScrewClient.queryStockCnt();
-        for (int i = 0; i < cnt; i++) {
+        int total = kickScrewClient.queryListingsTotal();
+        int pageSize = 10000;
+        int pages = (int) Math.ceil(total / (double) pageSize);
+        for (int i = 0; i < pages; i++) {
             // 检查暂停或取消状态
             if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，终止下架操作");
                 return;
             }
-            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryStockList(i, 100);
+            List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryListings(i * pageSize, pageSize);
             if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
                 continue;
             }

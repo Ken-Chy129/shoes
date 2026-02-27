@@ -38,7 +38,7 @@ public class PriceManager {
 
     private final LoadingCache<String, Map<String, PoisonPriceDO>> CACHE = CacheBuilder.newBuilder()
                 .maximumSize(100000) // 设置最大容量
-                .expireAfterWrite(20, TimeUnit.HOURS) // 设置写入后过期时间
+                .expireAfterWrite(12, TimeUnit.HOURS) // 设置写入后过期时间
                 .build(new CacheLoader<>() {
                     @NonNull
                     @Override
