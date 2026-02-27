@@ -446,4 +446,83 @@ public class KickScrewClient {
         return Headers.of("x-api-key", apiKey);
     }
 
+    /**
+     * 自动压价：将所有不是最低价的商品价格设置为最低价-1
+     */
+    public String autoMatch() {
+        String result = HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getHeaders());
+        if (StrUtil.isBlank(result)) {
+            return "请求失败";
+        }
+        return result;
+    }
+
+    /**
+     * 查询当前上架商品列表
+     */
+    public List<KickScrewPriceDO> queryListings(int offset, int limit) {
+        String url = KickScrewApiConstant.QUERY_LISTINGS + "?offset=" + offset + "&limit=" + limit;
+        String rawResult = HttpUtil.doGet(url, getHeaders());
+        if (StrUtil.isBlank(rawResult)) {
+            return Collections.emptyList();
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        if (result.getJSONArray("listings") == null) {
+            log.error("queryListings error, no listings, result:{}", rawResult);
+            return Collections.emptyList();
+        }
+        List<JSONObject> listings = result.getJSONArray("listings").toJavaList(JSONObject.class);
+        List<KickScrewPriceDO> priceList = new ArrayList<>();
+        for (JSONObject listing : listings) {
+            KickScrewPriceDO priceDO = new KickScrewPriceDO();
+            // 解析modelNo
+            JSONObject product = listing.getJSONObject("product");
+            if (product != null) {
+                priceDO.setModelNo(product.getString("modelNumber"));
+            }
+            // 解析价格
+            JSONObject price = listing.getJSONObject("price");
+            if (price != null) {
+                priceDO.setPrice(price.getInteger("amount"));
+            }
+            // 解析最低价
+            JSONObject lowestPrice = listing.getJSONObject("lowestPrice");
+            if (lowestPrice != null) {
+                priceDO.setLowestPrice(lowestPrice.getInteger("amount"));
+            }
+            // 解析是否最低价
+            priceDO.setIsLowestPrice(listing.getBoolean("isLowestPrice"));
+            // 解析EU尺码
+            JSONObject size = listing.getJSONObject("size");
+            if (size != null) {
+                List<JSONObject> sizeItems = size.getJSONArray("items").toJavaList(JSONObject.class);
+                for (JSONObject sizeItem : sizeItems) {
+                    if ("EU".equals(sizeItem.getString("system"))) {
+                        priceDO.setEuSize(sizeItem.getString("code"));
+                        break;
+                    }
+                }
+            }
+            priceList.add(priceDO);
+        }
+        return priceList;
+    }
+
+    /**
+     * 查询上架商品总数
+     */
+    public int queryListingsTotal() {
+        String url = KickScrewApiConstant.QUERY_LISTINGS + "?offset=0&limit=1";
+        String rawResult = HttpUtil.doGet(url, getHeaders());
+        if (StrUtil.isBlank(rawResult)) {
+            return 0;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        JSONObject meta = result.getJSONObject("meta");
+        if (meta != null && meta.getJSONObject("pagination") != null) {
+            return meta.getJSONObject("pagination").getIntValue("total");
+        }
+        return 0;
+    }
+
 }

@@ -1,6 +1,7 @@
 package cn.ken.shoes.model.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
@@ -19,4 +20,16 @@ public class KickScrewPriceDO {
     private String euSize;
 
     private Integer price;
+
+    /**
+     * 平台最低价
+     */
+    @TableField(exist = false)
+    private Integer lowestPrice;
+
+    /**
+     * 是否为最低价
+     */
+    @TableField(exist = false)
+    private Boolean isLowestPrice;
 }
