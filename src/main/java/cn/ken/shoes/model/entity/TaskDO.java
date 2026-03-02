@@ -73,6 +73,7 @@ public class TaskDO {
         SUCCESS("执行成功", "success"),
         FAILED("执行失败", "failed"),
         CANCEL("已取消", "cancel"),
+        SHELVED("已搁置", "shelved"),
         ;
 
         private final String name;

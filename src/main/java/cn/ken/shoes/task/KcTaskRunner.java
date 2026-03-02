@@ -47,6 +47,12 @@ public class KcTaskRunner extends Thread {
                 LockHelper.unlockKcItem();
             }
             String cost = TimeUtil.getCostMin(startTime);
+
+            // 检查是否被取消
+            if (detectCancelTask(taskId, cost)) {
+                return;
+            }
+
             log.info("KC上架任务执行完成，耗时:{}", cost);
             if (taskId != null) {
                 taskMapper.updateTaskCost(taskId, cost);
@@ -63,6 +69,26 @@ public class KcTaskRunner extends Thread {
             TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
             isInit = false;
         }
+    }
+
+    /**
+     * 检测任务是否被取消
+     * @return true表示任务已取消，需要终止执行
+     */
+    private boolean detectCancelTask(Long taskId, String cost) {
+        if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
+            log.info("KC上架任务已取消，终止执行");
+            if (taskId != null) {
+                if (cost != null) {
+                    taskMapper.updateTaskCost(taskId, cost);
+                }
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            }
+            // 重置取消标志
+            TaskSwitch.CANCEL_KC_LISTING_TASK = false;
+            return true;
+        }
+        return false;
     }
 
 }
