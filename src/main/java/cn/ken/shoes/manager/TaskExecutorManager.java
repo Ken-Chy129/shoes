@@ -174,6 +174,9 @@ public class TaskExecutorManager {
      * 创建任务记录
      */
     private Long createTask(String platform, String taskType) {
+        // 将历史同类型运行中的任务状态更新为已搁置
+        taskMapper.shelveHistoryTasks(platform, taskType);
+
         TaskDO taskDO = new TaskDO();
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);

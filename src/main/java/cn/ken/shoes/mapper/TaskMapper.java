@@ -21,4 +21,9 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
     Long count(TaskRequest request);
 
     List<TaskDO> selectByCondition(TaskRequest request);
+
+    /**
+     * 将同平台同类型的历史运行中任务状态更新为已搁置
+     */
+    void shelveHistoryTasks(String platform, String taskType);
 }

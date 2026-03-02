@@ -76,4 +76,9 @@
             </if>
         </where>
     </select>
+
+    <update id="shelveHistoryTasks">
+        update task set status = 'shelved', end_time = now()
+        where platform = #{platform} and task_type = #{taskType} and status = 'running'
+    </update>
 </mapper>
