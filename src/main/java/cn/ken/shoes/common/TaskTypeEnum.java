@@ -10,7 +10,7 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum TaskTypeEnum {
 
-    KC("kc", "KC改价任务"),
+    KC_LISTING("kc_listing", "KC上架任务"),
     KC_PRICE_DOWN("kc_price_down", "KC压价任务"),
     STOCKX_LISTING("stockx_listing", "StockX上架任务"),
     STOCKX_PRICE_DOWN("stockx_price_down", "StockX压价任务"),

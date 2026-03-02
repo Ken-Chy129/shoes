@@ -6,11 +6,11 @@ package cn.ken.shoes.config;
  */
 public class TaskSwitch {
 
-    // ==================== KC任务 ====================
-    public static boolean CANCEL_KC_TASK = false;
-    public static long KC_TASK_INTERVAL = 60 * 1000;
-    public static Long CURRENT_KC_TASK_ID = null;
-    public static int CURRENT_KC_ROUND = 0;
+    // ==================== KC上架任务 ====================
+    public static boolean CANCEL_KC_LISTING_TASK = false;
+    public static long KC_LISTING_TASK_INTERVAL = 60 * 1000;
+    public static Long CURRENT_KC_LISTING_TASK_ID = null;
+    public static int CURRENT_KC_LISTING_ROUND = 0;
 
     // ==================== KC压价任务 ====================
     public static boolean CANCEL_KC_PRICE_DOWN_TASK = false;

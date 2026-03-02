@@ -248,10 +248,10 @@ public class KickScrewService {
         }
     }
 
-    public void upload() {
+    public void listing() {
         long time = System.currentTimeMillis();
-        Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
-        int round = TaskSwitch.CURRENT_KC_ROUND;
+        Long taskId = TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
+        int round = TaskSwitch.CURRENT_KC_LISTING_ROUND;
 
         // 1.爬取品牌和商品数量
         refreshBrand();
@@ -267,7 +267,7 @@ public class KickScrewService {
         // 查询价格并上架盈利商品
         for (List<String> modelNos : partition) {
             // 检查暂停或取消状态
-            if (TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
                 log.info("KC任务已暂停或取消，终止执行");
                 return;
             }
@@ -323,7 +323,7 @@ public class KickScrewService {
     public void priceDown() {
         long time = System.currentTimeMillis();
         // 检查暂停或取消状态
-        if (TaskSwitch.CANCEL_KC_TASK) {
+        if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
             return;
         }
         // 下架不盈利的商品
@@ -351,7 +351,7 @@ public class KickScrewService {
 
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态
-                if (TaskSwitch.CANCEL_KC_TASK) {
+                if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
                     log.info("KC任务已暂停或取消，终止执行");
                     return toUpload.size();
                 }
@@ -426,7 +426,7 @@ public class KickScrewService {
                 return 0;
             }
             // 检查暂停或取消状态，跳过上架操作
-            if (TaskSwitch.CANCEL_KC_TASK) {
+            if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
                 log.info("KC任务已暂停或取消，跳过上架操作");
                 return 0;
             }

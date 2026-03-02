@@ -45,7 +45,7 @@ const TaskExecutorPage = () => {
     // ==================== 统一查询方法 ====================
 
     const queryAllTaskStatus = () => {
-        queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId);
+        queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId);
         queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
         // queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus);
         queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId);
@@ -148,11 +148,11 @@ const TaskExecutorPage = () => {
     // ==================== KC 任务 ====================
 
     const handleKcStart = () => {
-        startTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId));
+        startTask(TASK_TYPE.KC_LISTING, () => queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId));
     }
 
     const handleKcCancel = () => {
-        cancelTask(TASK_TYPE.KC, () => queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId));
+        cancelTask(TASK_TYPE.KC_LISTING, () => queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId));
     }
 
     const handleViewKcTaskDetail = () => {

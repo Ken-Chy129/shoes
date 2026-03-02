@@ -39,19 +39,19 @@ public class TaskExecutorManager {
      */
     public void startTask(TaskTypeEnum taskType) {
         switch (taskType) {
-            case KC -> {
-                TaskSwitch.CANCEL_KC_TASK = false;
+            case KC_LISTING -> {
+                TaskSwitch.CANCEL_KC_LISTING_TASK = false;
                 if (!kcTaskRunner.isInit()) {
                     // 创建任务记录
                     Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_ROUND = 0;
+                    TaskSwitch.CURRENT_KC_LISTING_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
                     kcTaskRunner.start();
-                } else if (TaskSwitch.CURRENT_KC_TASK_ID == null) {
+                } else if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID == null) {
                     // 任务已运行但没有任务ID，创建新任务
                     Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_ROUND = 0;
+                    TaskSwitch.CURRENT_KC_LISTING_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
                 }
             }
             case KC_PRICE_DOWN -> {
@@ -102,7 +102,7 @@ public class TaskExecutorManager {
      */
     public void cancelTask(TaskTypeEnum taskType) {
         switch (taskType) {
-            case KC -> TaskSwitch.CANCEL_KC_TASK = true;
+            case KC_LISTING -> TaskSwitch.CANCEL_KC_LISTING_TASK = true;
             case KC_PRICE_DOWN -> TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = true;
             case STOCKX_LISTING -> TaskSwitch.CANCEL_STOCK_LISTING_TASK = true;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = true;
@@ -115,7 +115,7 @@ public class TaskExecutorManager {
      */
     public boolean queryTaskStatus(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_TASK;
+            case KC_LISTING -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_LISTING_TASK;
             case KC_PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
             case STOCKX_LISTING -> stockXTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_LISTING_TASK;
             case STOCKX_PRICE_DOWN -> stockXPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK;
@@ -127,7 +127,7 @@ public class TaskExecutorManager {
      */
     public Long getCurrentTaskId(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC -> TaskSwitch.CURRENT_KC_TASK_ID;
+            case KC_LISTING -> TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
             case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
             case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID;
@@ -139,7 +139,7 @@ public class TaskExecutorManager {
      */
     public int getCurrentRound(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC -> TaskSwitch.CURRENT_KC_ROUND;
+            case KC_LISTING -> TaskSwitch.CURRENT_KC_LISTING_ROUND;
             case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
             case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_ROUND;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND;
@@ -151,7 +151,7 @@ public class TaskExecutorManager {
      */
     public long getTaskInterval(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC -> TaskSwitch.KC_TASK_INTERVAL;
+            case KC_LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL;
             case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
             case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL;
             case STOCKX_PRICE_DOWN -> TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL;
@@ -163,7 +163,7 @@ public class TaskExecutorManager {
      */
     public void setTaskInterval(TaskTypeEnum taskType, long interval) {
         switch (taskType) {
-            case KC -> TaskSwitch.KC_TASK_INTERVAL = interval;
+            case KC_LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL = interval;
             case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
             case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL = interval;
             case STOCKX_PRICE_DOWN -> TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL = interval;

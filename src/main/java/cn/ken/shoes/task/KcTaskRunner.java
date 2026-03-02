@@ -31,18 +31,18 @@ public class KcTaskRunner extends Thread {
     @Override
     public void run() {
         isInit = true;
-        Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+        Long taskId = TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
         try {
-            TaskSwitch.CURRENT_KC_ROUND = 1;
+            TaskSwitch.CURRENT_KC_LISTING_ROUND = 1;
             if (taskId != null) {
-                taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_ROUND);
+                taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_LISTING_ROUND);
             }
             log.info("KC上架任务开始执行");
 
             long startTime = System.currentTimeMillis();
             LockHelper.lockKcItem();
             try {
-                kickScrewService.upload();
+                kickScrewService.listing();
             } finally {
                 LockHelper.unlockKcItem();
             }
@@ -59,8 +59,8 @@ public class KcTaskRunner extends Thread {
             }
         } finally {
             // 任务完成后重置状态
-            TaskSwitch.CURRENT_KC_TASK_ID = null;
-            TaskSwitch.CURRENT_KC_ROUND = 0;
+            TaskSwitch.CURRENT_KC_LISTING_TASK_ID = null;
+            TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
             isInit = false;
         }
     }
