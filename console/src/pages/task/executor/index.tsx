@@ -21,12 +21,14 @@ const TaskExecutorPage = () => {
     const [taskForm] = Form.useForm();
     const [configForm] = Form.useForm();
     const [kcTaskStatus, setKcTaskStatus] = useState<boolean>(false);
+    const [kcPriceDownTaskStatus, setKcPriceDownTaskStatus] = useState<boolean>(false);
     // const [stockxListingTaskStatus, setStockxListingTaskStatus] = useState<boolean>(false);
     const [stockxPriceDownTaskStatus, setStockxPriceDownTaskStatus] = useState<boolean>(false);
     const [sortOptions, setSortOptions] = useState<SortOption[]>([]);
 
     // 当前任务ID (使用string避免精度丢失)
     const [kcCurrentTaskId, setKcCurrentTaskId] = useState<string | null>(null);
+    const [kcPriceDownCurrentTaskId, setKcPriceDownCurrentTaskId] = useState<string | null>(null);
     const [stockxPriceDownCurrentTaskId, setStockxPriceDownCurrentTaskId] = useState<string | null>(null);
 
     // 任务明细弹窗
@@ -44,12 +46,14 @@ const TaskExecutorPage = () => {
 
     const queryAllTaskStatus = () => {
         queryTaskStatus(TASK_TYPE.KC, setKcTaskStatus, setKcCurrentTaskId);
+        queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
         // queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus);
         queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId);
     }
 
     const queryAllTaskInterval = () => {
         queryTaskInterval(TASK_TYPE.KC, "kcTaskInterval");
+        queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
         // queryTaskInterval(TASK_TYPE.STOCKX_LISTING, "stockxListingTaskInterval");
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
     }
@@ -159,6 +163,23 @@ const TaskExecutorPage = () => {
         }
     }
 
+    // ==================== KC 压价任务 ====================
+
+    const handleKcPriceDownStart = () => {
+        startTask(TASK_TYPE.KC_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
+    }
+
+    const handleKcPriceDownCancel = () => {
+        cancelTask(TASK_TYPE.KC_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
+    }
+
+    const handleViewKcPriceDownTaskDetail = () => {
+        if (kcPriceDownCurrentTaskId) {
+            setCurrentViewTaskId(kcPriceDownCurrentTaskId);
+            setTaskItemModalVisible(true);
+        }
+    }
+
     // ==================== StockX 上架任务 ====================
 
     // const handleStockxListingTask = () => {
@@ -192,8 +213,9 @@ const TaskExecutorPage = () => {
 
     return <>
         <Card title={"KC"}>
-            <Form form={taskForm} style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div>
+            <Form form={taskForm}>
+                <div style={{marginBottom: 16}}>
+                    <div style={{fontWeight: "bold", marginBottom: 8}}>改价</div>
                     <div style={{display: "flex", alignItems: "center"}}>
                         <Form.Item label={"任务间隔"} name="kcTaskInterval">
                             <Input/>
@@ -210,6 +232,29 @@ const TaskExecutorPage = () => {
                         {kcTaskStatus && kcCurrentTaskId && (
                             <Form.Item style={{marginLeft: 15}}>
                                 <Button type="link" onClick={handleViewKcTaskDetail}>查看明细</Button>
+                            </Form.Item>
+                        )}
+                    </div>
+                </div>
+                <Divider/>
+                <div>
+                    <div style={{fontWeight: "bold", marginBottom: 8}}>压价</div>
+                    <div style={{display: "flex", alignItems: "center"}}>
+                        <Form.Item label={"任务间隔"} name="kcPriceDownTaskInterval">
+                            <Input/>
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 30}}>
+                            <Button onClick={() => updateTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval")}>修改配置</Button>
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 30}}>
+                            <Button type="primary" onClick={handleKcPriceDownStart} disabled={kcPriceDownTaskStatus}>开启压价</Button>
+                        </Form.Item>
+                        <Form.Item style={{marginLeft: 15}}>
+                            <Button danger onClick={handleKcPriceDownCancel} disabled={!kcPriceDownTaskStatus}>终止任务</Button>
+                        </Form.Item>
+                        {kcPriceDownTaskStatus && kcPriceDownCurrentTaskId && (
+                            <Form.Item style={{marginLeft: 15}}>
+                                <Button type="link" onClick={handleViewKcPriceDownTaskDetail}>查看明细</Button>
                             </Form.Item>
                         )}
                     </div>

@@ -1,6 +1,7 @@
 // 任务类型常量
 const TASK_TYPE = {
     KC: 'kc',
+    KC_PRICE_DOWN: 'kc_price_down',
     STOCKX_LISTING: 'stockx_listing',
     STOCKX_PRICE_DOWN: 'stockx_price_down',
 };
