@@ -23,7 +23,7 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
     List<TaskDO> selectByCondition(TaskRequest request);
 
     /**
-     * 将同平台同类型的历史运行中任务状态更新为已搁置
+     * 将所有运行中的任务状态更新为已搁置（排除当前有效的任务ID列表）
      */
-    void shelveHistoryTasks(String platform, String taskType);
+    void shelveHistoryTasks(List<Long> validTaskIds);
 }

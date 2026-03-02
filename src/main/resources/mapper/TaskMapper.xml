@@ -79,6 +79,12 @@
 
     <update id="shelveHistoryTasks">
         update task set status = 'shelved', end_time = now()
-        where platform = #{platform} and task_type = #{taskType} and status = 'running'
+        where status = 'running'
+        <if test="list != null and list.size() > 0">
+            and id not in
+            <foreach collection="list" item="id" open="(" separator="," close=")">
+                #{id}
+            </foreach>
+        </if>
     </update>
 </mapper>
