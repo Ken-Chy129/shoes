@@ -252,6 +252,7 @@ public class KickScrewService {
         refreshBrand();
         // 2.根据配置爬取指定品牌和数量的热门商品
         refreshHotItems(clearOld);
+        // todo：
     }
 
     public void refreshPriceV2() {
@@ -278,6 +279,18 @@ public class KickScrewService {
             Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
             uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS);
         }
+    }
+
+    public void priceDown() {
+        long time = System.currentTimeMillis();
+        // 检查暂停或取消状态
+        if (TaskSwitch.CANCEL_KC_TASK) {
+            return;
+        }
+        // 下架不盈利的商品
+        int deleteCnt = clearNoBenefitItem();
+        String s = kickScrewClient.autoMatch();
+        log.info("priceDown finish, deleteCnt: {}, cost:{}", deleteCnt, TimeUtil.getCostMin(time));
     }
 
     public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
@@ -330,7 +343,8 @@ public class KickScrewService {
     }
 
 
-    public void clearNoBenefitItem() {
+    public int clearNoBenefitItem() {
+        int deleteCnt = 0;
         int total = kickScrewClient.queryListingsTotal();
         int pageSize = 10000;
         int pages = (int) Math.ceil(total / (double) pageSize);
@@ -338,7 +352,7 @@ public class KickScrewService {
             // 检查暂停或取消状态
             if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，终止下架操作");
-                return;
+                return deleteCnt;
             }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryListings(i * pageSize, pageSize);
             if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
@@ -349,7 +363,7 @@ public class KickScrewService {
                 // 检查暂停或取消状态
                 if (TaskSwitch.CANCEL_KC_TASK) {
                     log.info("KC任务已暂停或取消，终止下架操作");
-                    return;
+                    return deleteCnt;
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
@@ -368,9 +382,11 @@ public class KickScrewService {
             // 检查暂停或取消状态，跳过删除操作
             if (TaskSwitch.CANCEL_KC_TASK) {
                 log.info("KC任务已暂停或取消，跳过删除操作");
-                return;
+                return deleteCnt;
             }
+            deleteCnt += toDelete.size();
             kickScrewClient.deleteList(toDelete);
         }
+        return deleteCnt;
     }
 }
