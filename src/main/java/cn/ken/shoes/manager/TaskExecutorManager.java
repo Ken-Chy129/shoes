@@ -11,7 +11,9 @@ import cn.ken.shoes.task.StockXTaskRunner;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
 /**
  * 任务执行管理器
@@ -174,9 +176,6 @@ public class TaskExecutorManager {
      * 创建任务记录
      */
     private Long createTask(String platform, String taskType) {
-        // 将历史同类型运行中的任务状态更新为已搁置
-        taskMapper.shelveHistoryTasks(platform, taskType);
-
         TaskDO taskDO = new TaskDO();
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);
@@ -184,7 +183,38 @@ public class TaskExecutorManager {
         taskDO.setStartTime(new Date());
         taskDO.setRound(0);
         taskMapper.insert(taskDO);
+
+        // 收集当前内存中所有有效的任务ID（包括刚创建的）
+        List<Long> validTaskIds = collectValidTaskIds(taskDO.getId());
+        // 将不在有效ID列表中的运行中任务状态更新为已搁置
+        taskMapper.shelveHistoryTasks(validTaskIds);
+
         return taskDO.getId();
+    }
+
+    /**
+     * 收集当前内存中所有有效的任务ID
+     */
+    private List<Long> collectValidTaskIds(Long newTaskId) {
+        List<Long> validIds = new ArrayList<>();
+        // 添加刚创建的任务ID
+        if (newTaskId != null) {
+            validIds.add(newTaskId);
+        }
+        // 添加内存中各类型的当前任务ID
+        if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_KC_LISTING_TASK_ID);
+        }
+        if (TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID);
+        }
+        if (TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID);
+        }
+        if (TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID);
+        }
+        return validIds;
     }
 
     /**
