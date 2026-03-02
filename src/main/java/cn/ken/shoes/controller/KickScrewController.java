@@ -23,18 +23,6 @@ public class KickScrewController {
     @Resource
     private KickScrewClient kickScrewClient;
 
-
-    /**
-     * 刷新商品，重新爬取品牌和热门商品
-     */
-    @GetMapping("refreshItems")
-    public Result<Void> refreshItems() {
-        Thread.startVirtualThread(() -> {
-            kickScrewService.refreshItems(false);
-        });
-        return Result.buildSuccess();
-    }
-
     /**
      * 刷新品牌信息
      */
@@ -86,9 +74,9 @@ public class KickScrewController {
      * 自动压价：将所有不是最低价的商品价格设置为最低价-1
      */
     @GetMapping("autoMatch")
-    public Result<String> autoMatch() {
-        String result = kickScrewClient.autoMatch();
-        return Result.buildSuccess(result);
+    public Result<Void> autoMatch() {
+        kickScrewClient.autoMatch();
+        return Result.buildSuccess();
     }
 
     /**

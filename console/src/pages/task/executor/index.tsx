@@ -52,7 +52,6 @@ const TaskExecutorPage = () => {
     }
 
     const queryAllTaskInterval = () => {
-        queryTaskInterval(TASK_TYPE.KC, "kcTaskInterval");
         queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
         // queryTaskInterval(TASK_TYPE.STOCKX_LISTING, "stockxListingTaskInterval");
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
@@ -215,16 +214,10 @@ const TaskExecutorPage = () => {
         <Card title={"KC"}>
             <Form form={taskForm}>
                 <div style={{marginBottom: 16}}>
-                    <div style={{fontWeight: "bold", marginBottom: 8}}>改价</div>
+                    <div style={{fontWeight: "bold", marginBottom: 8}}>上架</div>
                     <div style={{display: "flex", alignItems: "center"}}>
-                        <Form.Item label={"任务间隔"} name="kcTaskInterval">
-                            <Input/>
-                        </Form.Item>
-                        <Form.Item style={{marginLeft: 30}}>
-                            <Button onClick={() => updateTaskInterval(TASK_TYPE.KC, "kcTaskInterval")}>修改配置</Button>
-                        </Form.Item>
-                        <Form.Item style={{marginLeft: 30}}>
-                            <Button type="primary" onClick={handleKcStart} disabled={kcTaskStatus}>开启改价</Button>
+                        <Form.Item style={{marginLeft: 0}}>
+                            <Button type="primary" onClick={handleKcStart} disabled={kcTaskStatus}>开启上架</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 15}}>
                             <Button danger onClick={handleKcCancel} disabled={!kcTaskStatus}>终止任务</Button>

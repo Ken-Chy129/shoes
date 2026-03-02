@@ -464,12 +464,8 @@ public class KickScrewClient {
     /**
      * 自动压价：将所有不是最低价的商品价格设置为最低价-1
      */
-    public String autoMatch() {
-        String result = HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getAuthHeaders());
-        if (StrUtil.isBlank(result)) {
-            return "请求失败";
-        }
-        return result;
+    public void autoMatch() {
+        HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getAuthHeaders());
     }
 
     /**
