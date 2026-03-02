@@ -176,6 +176,11 @@ public class TaskExecutorManager {
      * 创建任务记录
      */
     private Long createTask(String platform, String taskType) {
+        // 先搁置历史遗留的运行中任务（不在当前内存有效ID列表中的）
+        List<Long> validTaskIds = collectValidTaskIds();
+        taskMapper.shelveHistoryTasks(validTaskIds);
+
+        // 再创建新任务
         TaskDO taskDO = new TaskDO();
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);
@@ -184,24 +189,14 @@ public class TaskExecutorManager {
         taskDO.setRound(0);
         taskMapper.insert(taskDO);
 
-        // 收集当前内存中所有有效的任务ID（包括刚创建的）
-        List<Long> validTaskIds = collectValidTaskIds(taskDO.getId());
-        // 将不在有效ID列表中的运行中任务状态更新为已搁置
-        taskMapper.shelveHistoryTasks(validTaskIds);
-
         return taskDO.getId();
     }
 
     /**
      * 收集当前内存中所有有效的任务ID
      */
-    private List<Long> collectValidTaskIds(Long newTaskId) {
+    private List<Long> collectValidTaskIds() {
         List<Long> validIds = new ArrayList<>();
-        // 添加刚创建的任务ID
-        if (newTaskId != null) {
-            validIds.add(newTaskId);
-        }
-        // 添加内存中各类型的当前任务ID
         if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID != null) {
             validIds.add(TaskSwitch.CURRENT_KC_LISTING_TASK_ID);
         }
