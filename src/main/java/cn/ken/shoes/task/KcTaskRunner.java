@@ -31,62 +31,38 @@ public class KcTaskRunner extends Thread {
     @Override
     public void run() {
         isInit = true;
-        while (true) {
-            try {
-                // 增加轮次计数
-                TaskSwitch.CURRENT_KC_ROUND++;
-                Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_ROUND);
-                }
-                log.info("KC任务开始执行第{}轮", TaskSwitch.CURRENT_KC_ROUND);
-
-                long startTime = System.currentTimeMillis();
-                LockHelper.lockKcItem();
-                try {
-                    kickScrewService.refreshPriceV2();
-                } finally {
-                    LockHelper.unlockKcItem();
-                }
-                String cost = TimeUtil.getCostMin(startTime);
-                log.info("KC任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_ROUND, cost);
-                if (taskId != null) {
-                    taskMapper.updateTaskCost(taskId, cost);
-                }
-
-                if (detectCancelTask(taskId)) return;
-                Thread.sleep(TaskSwitch.KC_TASK_INTERVAL);
-                if (detectCancelTask(taskId)) return;
-            } catch (InterruptedException e) {
-                log.error(e.getMessage(), e);
-            } catch (Exception e) {
-                log.error("KC任务执行异常: {}", e.getMessage(), e);
-                // 更新任务状态为失败
-                Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
-                }
-            }
-        }
-    }
-
-    /**
-     * 检查取消标志，取消后终止任务
-     * @return true 表示任务已取消
-     */
-    private boolean detectCancelTask(Long taskId) {
-        if (TaskSwitch.CANCEL_KC_TASK) {
-            log.info("KC任务已取消，终止执行");
+        Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+        try {
+            TaskSwitch.CURRENT_KC_ROUND = 1;
             if (taskId != null) {
-                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+                taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_ROUND);
             }
-            // 重置状态
-            TaskSwitch.CANCEL_KC_TASK = false;
+            log.info("KC上架任务开始执行");
+
+            long startTime = System.currentTimeMillis();
+            LockHelper.lockKcItem();
+            try {
+                kickScrewService.upload();
+            } finally {
+                LockHelper.unlockKcItem();
+            }
+            String cost = TimeUtil.getCostMin(startTime);
+            log.info("KC上架任务执行完成，耗时:{}", cost);
+            if (taskId != null) {
+                taskMapper.updateTaskCost(taskId, cost);
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            }
+        } catch (Exception e) {
+            log.error("KC上架任务执行异常: {}", e.getMessage(), e);
+            if (taskId != null) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+            }
+        } finally {
+            // 任务完成后重置状态
             TaskSwitch.CURRENT_KC_TASK_ID = null;
             TaskSwitch.CURRENT_KC_ROUND = 0;
             isInit = false;
-            return true;
         }
-        return false;
     }
+
 }

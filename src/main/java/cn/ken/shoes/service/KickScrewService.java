@@ -54,6 +54,9 @@ public class KickScrewService {
     @Resource
     private ShoesService shoesService;
 
+    @Resource
+    private TaskItemMapper taskItemMapper;
+
     private static final Integer PAGE_SIZE = 1_000;
 
     /**
@@ -177,11 +180,9 @@ public class KickScrewService {
     }
 
     @SneakyThrows
-    public void refreshHotItems(boolean clearOld) {
+    public void refreshHotItems() {
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
-        if (clearOld) {
-            kickScrewItemMapper.deleteAll();
-        }
+        kickScrewItemMapper.deleteAll();
         for (BrandDO brandDO : brandDOList) {
             Boolean needCrawl = brandDO.getNeedCrawl();
             if (Boolean.FALSE.equals(needCrawl)) {
@@ -247,25 +248,20 @@ public class KickScrewService {
         }
     }
 
-    public void refreshItems(boolean clearOld) {
+    public void upload() {
+        long time = System.currentTimeMillis();
+        Long taskId = TaskSwitch.CURRENT_KC_TASK_ID;
+        int round = TaskSwitch.CURRENT_KC_ROUND;
+
         // 1.爬取品牌和商品数量
         refreshBrand();
         // 2.根据配置爬取指定品牌和数量的热门商品
-        refreshHotItems(clearOld);
-        // todo：
-    }
-
-    public void refreshPriceV2() {
-        // 检查暂停或取消状态
-        if (TaskSwitch.CANCEL_KC_TASK) {
-            return;
-        }
-        // 下架不盈利的商品
-        clearNoBenefitItem();
+        refreshHotItems();
+        log.info("upload get item, cost:{}", TimeUtil.getCostMin(time));
         // 清空kc价格
         kickScrewPriceMapper.delete(new QueryWrapper<>());
         // 查询要比价的货号
-        List<String> modelNoList = shoesService.queryAllModels();
+        List<String> modelNoList = queryAllModels();
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         int uploadCnt = 0;
         // 查询价格并上架盈利商品
@@ -277,8 +273,51 @@ public class KickScrewService {
             }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryLowestPrice(modelNos);
             Thread.startVirtualThread(() -> SqlHelper.batch(kickScrewPriceDOS, price -> kickScrewPriceMapper.insertIgnore(price)));
-            uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS);
+
+            // 为每个货号+尺码创建 TaskItem 记录
+            Map<String, Long> priceKeyToTaskItemIdMap = new HashMap<>();
+            if (taskId != null) {
+                for (KickScrewPriceDO priceDO : kickScrewPriceDOS) {
+                    TaskItemDO taskItemDO = new TaskItemDO();
+                    taskItemDO.setTaskId(taskId);
+                    taskItemDO.setRound(round);
+                    taskItemDO.setStyleId(priceDO.getModelNo());
+                    taskItemDO.setEuSize(priceDO.getEuSize());
+                    taskItemDO.setCurrentPrice(priceDO.getPrice() != null ? java.math.BigDecimal.valueOf(priceDO.getPrice()) : null);
+                    taskItemDO.setOperateTime(new Date());
+                    taskItemDO.setOperateResult("待处理");
+                    taskItemMapper.insert(taskItemDO);
+                    String key = priceDO.getModelNo() + "_" + priceDO.getEuSize();
+                    priceKeyToTaskItemIdMap.put(key, taskItemDO.getId());
+                }
+            }
+
+            uploadCnt += compareWithPoisonAndChangePrice(kickScrewPriceDOS, priceKeyToTaskItemIdMap);
         }
+        log.info("upload finish, uploadCnt:{}, cost:{}", uploadCnt, TimeUtil.getCostMin(time));
+    }
+
+    public List<String> queryAllModels() {
+        List<String> result = new ArrayList<>();
+        // kc热门商品
+        List<String> hotModelNos = kickScrewItemMapper.selectAllModelNos();
+        result.addAll(hotModelNos);
+        // 必爬商品
+        List<String> mustCrawlModelNos = mustCrawlMapper.selectAllModelNos();
+        result.addAll(mustCrawlModelNos);
+        result = result.stream().distinct().collect(Collectors.toList());
+        // 移除瑕疵商品
+        result.removeIf(ShoesContext::isFlawsModel);
+        // 移除无价商品
+        result.removeIf(ShoesContext::isNoPrice);
+        log.info("queryAllModels, hotModelSize:{}, mustCrawlModelSize:{}, flawsModelSize:{}, noPriceModelSize:{}, finalModelSize:{}",
+                hotModelNos.size(),
+                mustCrawlModelNos.size(),
+                ShoesContext.getFlawsModelSet().size(),
+                ShoesContext.getNoPriceModelSet().size(),
+                result.size()
+        );
+        return result;
     }
 
     public void priceDown() {
@@ -289,12 +328,19 @@ public class KickScrewService {
         }
         // 下架不盈利的商品
         int deleteCnt = clearNoBenefitItem();
-        String s = kickScrewClient.autoMatch();
+        kickScrewClient.autoMatch();
         log.info("priceDown finish, deleteCnt: {}, cost:{}", deleteCnt, TimeUtil.getCostMin(time));
     }
 
-    public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS) {
+    public int compareWithPoisonAndChangePrice(List<KickScrewPriceDO> kickScrewPriceDOS, Map<String, Long> priceKeyToTaskItemIdMap) {
         List<KickScrewUploadItem> toUpload = new ArrayList<>();
+        List<Long> uploadTaskItemIds = new ArrayList<>();
+        // 按原因分类的跳过记录
+        List<Long> noPoisonPriceIds = new ArrayList<>();
+        List<Long> exceedMaxPriceIds = new ArrayList<>();
+        List<Long> noKcPriceIds = new ArrayList<>();
+        List<Long> noProfitIds = new ArrayList<>();
+
         try {
             Set<String> modelNos = kickScrewPriceDOS.stream().map(KickScrewPriceDO::getModelNo).collect(Collectors.toSet());
             if (CollectionUtils.isEmpty(modelNos)) {
@@ -302,6 +348,7 @@ public class KickScrewService {
             }
             // 先遍历缓存查询有哪些货号没有价格，没有的批量调用接口查询一次，并更新缓存（查询后没有的货号设置空缓存，避免每次重新查询）
             priceManager.preloadMissingPrices(modelNos);
+
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态
                 if (TaskSwitch.CANCEL_KC_TASK) {
@@ -310,13 +357,43 @@ public class KickScrewService {
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
+                String key = modelNo + "_" + euSize;
+                Long taskItemId = priceKeyToTaskItemIdMap.get(key);
+
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
-                if (poisonPrice == null || poisonPrice > PoisonSwitch.MAX_PRICE || kickScrewPriceDO.getPrice() == null) {
+
+                // 更新 TaskItem 的得物价格信息
+                if (taskItemId != null && poisonPrice != null) {
+                    TaskItemDO updateItem = new TaskItemDO();
+                    updateItem.setId(taskItemId);
+                    updateItem.setPoisonPrice(java.math.BigDecimal.valueOf(poisonPrice));
+                    taskItemMapper.updateById(updateItem);
+                }
+
+                if (poisonPrice == null) {
+                    if (taskItemId != null) {
+                        noPoisonPriceIds.add(taskItemId);
+                    }
+                    continue;
+                }
+                if (poisonPrice > PoisonSwitch.MAX_PRICE) {
+                    if (taskItemId != null) {
+                        exceedMaxPriceIds.add(taskItemId);
+                    }
+                    continue;
+                }
+                if (kickScrewPriceDO.getPrice() == null) {
+                    if (taskItemId != null) {
+                        noKcPriceIds.add(taskItemId);
+                    }
                     continue;
                 }
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
                 boolean canEarn = ShoesUtil.canKcEarn(poisonPrice, kickScrewPriceDO.getPrice(), minExpectProfit);
                 if (!canEarn) {
+                    if (taskItemId != null) {
+                        noProfitIds.add(taskItemId);
+                    }
                     continue;
                 }
                 KickScrewUploadItem kickScrewUploadItem = new KickScrewUploadItem();
@@ -326,7 +403,25 @@ public class KickScrewService {
                 kickScrewUploadItem.setQty(1);
                 kickScrewUploadItem.setPrice(kickScrewPriceDO.getPrice() - 1);
                 toUpload.add(kickScrewUploadItem);
+                if (taskItemId != null) {
+                    uploadTaskItemIds.add(taskItemId);
+                }
             }
+
+            // 更新跳过记录的状态（按原因分类）
+            if (!noPoisonPriceIds.isEmpty()) {
+                taskItemMapper.batchUpdateResult(noPoisonPriceIds, "无须上架-无得物价格");
+            }
+            if (!exceedMaxPriceIds.isEmpty()) {
+                taskItemMapper.batchUpdateResult(exceedMaxPriceIds, "无须上架-超过最高价");
+            }
+            if (!noKcPriceIds.isEmpty()) {
+                taskItemMapper.batchUpdateResult(noKcPriceIds, "无须上架-无KC价格");
+            }
+            if (!noProfitIds.isEmpty()) {
+                taskItemMapper.batchUpdateResult(noProfitIds, "无须上架-无盈利");
+            }
+
             if (toUpload.isEmpty()) {
                 return 0;
             }
@@ -336,6 +431,11 @@ public class KickScrewService {
                 return 0;
             }
             kickScrewClient.batchUploadItems(toUpload);
+
+            // 更新上架成功的记录状态
+            if (!uploadTaskItemIds.isEmpty()) {
+                taskItemMapper.batchUpdateResult(uploadTaskItemIds, "上架成功");
+            }
         } catch (Exception e) {
             log.error(e.getMessage(), e);
         }
@@ -348,27 +448,60 @@ public class KickScrewService {
         int total = kickScrewClient.queryListingsTotal();
         int pageSize = 10000;
         int pages = (int) Math.ceil(total / (double) pageSize);
+        Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
+        int round = TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
+
         for (int i = 0; i < pages; i++) {
             // 检查暂停或取消状态
-            if (TaskSwitch.CANCEL_KC_TASK) {
-                log.info("KC任务已暂停或取消，终止下架操作");
+            if (TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK) {
+                log.info("KC压价任务已暂停或取消，终止下架操作");
                 return deleteCnt;
             }
             List<KickScrewPriceDO> kickScrewPriceDOS = kickScrewClient.queryListings(i * pageSize, pageSize);
             if (CollectionUtils.isEmpty(kickScrewPriceDOS)) {
                 continue;
             }
+
+            // 为所有商品创建 TaskItem 记录，初始状态为"待处理"
+            Map<KickScrewPriceDO, Long> priceToTaskItemIdMap = new HashMap<>();
+            if (taskId != null) {
+                for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
+                    String modelNo = kickScrewPriceDO.getModelNo();
+                    String euSize = kickScrewPriceDO.getEuSize();
+                    Integer price = kickScrewPriceDO.getPrice();
+                    Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
+
+                    TaskItemDO taskItemDO = new TaskItemDO();
+                    taskItemDO.setTaskId(taskId);
+                    taskItemDO.setRound(round);
+                    taskItemDO.setStyleId(modelNo);
+                    taskItemDO.setEuSize(euSize);
+                    taskItemDO.setCurrentPrice(price != null ? java.math.BigDecimal.valueOf(price) : null);
+                    taskItemDO.setPoisonPrice(poisonPrice != null ? java.math.BigDecimal.valueOf(poisonPrice) : null);
+                    taskItemDO.setOperateTime(new Date());
+                    taskItemDO.setOperateResult("待处理");
+                    taskItemMapper.insert(taskItemDO);
+                    priceToTaskItemIdMap.put(kickScrewPriceDO, taskItemDO.getId());
+                }
+            }
+
             List<KickScrewPriceDO> toDelete = new ArrayList<>();
+            List<Long> noNeedDeleteIds = new ArrayList<>();
+
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态
-                if (TaskSwitch.CANCEL_KC_TASK) {
-                    log.info("KC任务已暂停或取消，终止下架操作");
+                if (TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK) {
+                    log.info("KC压价任务已暂停或取消，终止下架操作");
                     return deleteCnt;
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
                 if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
                     // 不压价下架的商品
+                    Long taskItemId = priceToTaskItemIdMap.get(kickScrewPriceDO);
+                    if (taskItemId != null) {
+                        noNeedDeleteIds.add(taskItemId);
+                    }
                     continue;
                 }
                 Integer price = kickScrewPriceDO.getPrice();
@@ -377,15 +510,39 @@ public class KickScrewService {
                 if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, price + 1, minExpectProfit)) {
                     // 得物无价或无盈利，下架该商品
                     toDelete.add(kickScrewPriceDO);
+                } else {
+                    // 有盈利，无须下架
+                    Long taskItemId = priceToTaskItemIdMap.get(kickScrewPriceDO);
+                    if (taskItemId != null) {
+                        noNeedDeleteIds.add(taskItemId);
+                    }
                 }
             }
+
             // 检查暂停或取消状态，跳过删除操作
-            if (TaskSwitch.CANCEL_KC_TASK) {
-                log.info("KC任务已暂停或取消，跳过删除操作");
+            if (TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK) {
+                log.info("KC压价任务已暂停或取消，跳过删除操作");
                 return deleteCnt;
             }
+
             deleteCnt += toDelete.size();
             kickScrewClient.deleteList(toDelete);
+
+            // 更新 TaskItem 状态
+            if (taskId != null) {
+                // 下架成功的商品
+                List<Long> deleteSuccessIds = toDelete.stream()
+                        .map(priceToTaskItemIdMap::get)
+                        .filter(Objects::nonNull)
+                        .toList();
+                if (!deleteSuccessIds.isEmpty()) {
+                    taskItemMapper.batchUpdateResult(deleteSuccessIds, "下架成功");
+                }
+                // 无须下架的商品
+                if (!noNeedDeleteIds.isEmpty()) {
+                    taskItemMapper.batchUpdateResult(noNeedDeleteIds, "无须下架");
+                }
+            }
         }
         return deleteCnt;
     }
