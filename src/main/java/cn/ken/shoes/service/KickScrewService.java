@@ -184,6 +184,11 @@ public class KickScrewService {
         List<BrandDO> brandDOList = brandMapper.selectByPlatform("kc");
         kickScrewItemMapper.deleteAll();
         for (BrandDO brandDO : brandDOList) {
+            // 检查取消状态
+            if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
+                log.info("KC任务已取消，终止refreshHotItems");
+                return;
+            }
             Boolean needCrawl = brandDO.getNeedCrawl();
             if (Boolean.FALSE.equals(needCrawl)) {
                 continue;
@@ -196,6 +201,10 @@ public class KickScrewService {
                 final int pageIndex = i;
                 Thread.ofVirtual().name("refreshHotItems-" + brandName).start(() -> {
                     try {
+                        // 虚拟线程内也检查取消状态
+                        if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
+                            return;
+                        }
                         LimiterHelper.limitKcItem();
                         KickScrewAlgoliaRequest request = new KickScrewAlgoliaRequest();
                         request.setBrands(List.of(brandName));
@@ -257,6 +266,10 @@ public class KickScrewService {
         refreshBrand();
         // 2.根据配置爬取指定品牌和数量的热门商品
         refreshHotItems();
+        if (TaskSwitch.CANCEL_KC_LISTING_TASK) {
+            log.info("KC任务已暂停或取消，终止执行");
+            return;
+        }
         log.info("upload get item, cost:{}", TimeUtil.getCostMin(time));
         // 清空kc价格
         kickScrewPriceMapper.delete(new QueryWrapper<>());
