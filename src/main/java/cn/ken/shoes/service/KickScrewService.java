@@ -520,7 +520,19 @@ public class KickScrewService {
                 Integer price = kickScrewPriceDO.getPrice();
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(modelNo, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, price + 1, minExpectProfit)) {
+
+                // 计算需要判断盈利的价格
+                Integer priceToCheck;
+                if (Boolean.TRUE.equals(kickScrewPriceDO.getIsLowestPrice())) {
+                    // 当前是最低价，判断当前价格是否盈利
+                    priceToCheck = price;
+                } else {
+                    // 当前不是最低价，判断最低价-1是否盈利
+                    Integer lowestPrice = kickScrewPriceDO.getLowestPrice();
+                    priceToCheck = (lowestPrice != null) ? lowestPrice - 1 : price;
+                }
+
+                if (poisonPrice == null || !ShoesUtil.canKcEarn(poisonPrice, priceToCheck, minExpectProfit)) {
                     // 得物无价或无盈利，下架该商品
                     toDelete.add(kickScrewPriceDO);
                 } else {
