@@ -64,9 +64,9 @@ public class ConfigManager {
     public void loadPriceConfig() {
         Properties properties = configService.loadConfig(PRICE_CONFIG_FILE);
         
-        PriceSwitch.EXCHANGE_RATE = configService.getDoubleProperty(properties, "exchange.rate", 7.3d);
+        PriceSwitch.EXCHANGE_RATE = configService.getDoubleProperty(properties, "exchange.rate", 6.8d);
         PriceSwitch.FREIGHT = configService.getIntProperty(properties, "freight", 25);
-        PriceSwitch.KC_GET_RATE = configService.getDoubleProperty(properties, "kc.get.rate", 0.89d);
+        PriceSwitch.KC_GET_RATE = configService.getDoubleProperty(properties, "kc.get.rate", 0.88d);
         PriceSwitch.KC_SERVICE_FEE = configService.getIntProperty(properties, "kc.service.fee", 18);
     }
 

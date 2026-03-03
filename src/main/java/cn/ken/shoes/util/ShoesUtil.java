@@ -59,14 +59,14 @@ public class ShoesUtil {
     }
 
     /**
-     * 比价，获取上架的价格
+     * 判断当前kc价格是否盈利
      * @param poisonPrice 得物价格
      * @param kcPrice kc的价格
      * @param minExpectProfit 预期最小盈利
-     * @return 如果kc价格-1有盈利，则修改为kc价格-1，否则返回null
+     * @return 当前kc价格是否盈利
      */
     public static boolean canKcEarn(Integer poisonPrice, Integer kcPrice, Integer minExpectProfit) {
-        double getFromPlatform = ((kcPrice - 1.0) * PriceSwitch.KC_GET_RATE - PriceSwitch.KC_SERVICE_FEE) * PriceSwitch.EXCHANGE_RATE;
+        double getFromPlatform = (kcPrice * PriceSwitch.KC_GET_RATE - PriceSwitch.KC_SERVICE_FEE) * PriceSwitch.EXCHANGE_RATE;
         double earn = getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
         if (earn < minExpectProfit) {
             return false;
