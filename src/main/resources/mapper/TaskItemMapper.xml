@@ -83,4 +83,8 @@
         </foreach>
     </update>
 
+    <delete id="deleteByTaskId">
+        DELETE FROM task_item WHERE task_id = #{taskId}
+    </delete>
+
 </mapper>

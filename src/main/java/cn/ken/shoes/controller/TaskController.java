@@ -30,6 +30,12 @@ public class TaskController {
         return taskService.queryTasksByCondition(request);
     }
 
+    @DeleteMapping("delete")
+    public Result<Void> deleteTask(@RequestParam Long taskId) {
+        taskService.deleteTask(taskId);
+        return Result.buildSuccess();
+    }
+
     // ==================== 统一任务管理接口 ====================
 
     @PostMapping("start")

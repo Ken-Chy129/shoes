@@ -4,6 +4,7 @@ import {
     Input,
     message,
     Modal,
+    Popconfirm,
     Radio,
     Select,
     Space,
@@ -72,6 +73,15 @@ const TaskHistoryPage = () => {
         setTaskItemModalVisible(true);
     }
 
+    const handleDeleteTask = (record: TaskRecord) => {
+        doDeleteRequest(TASK_API.DELETE, {taskId: record.id}, {
+            onSuccess: () => {
+                message.success("删除成功");
+                queryTaskList();
+            }
+        });
+    }
+
     const columns = [
         {
             title: '平台',
@@ -128,11 +138,24 @@ const TaskHistoryPage = () => {
         {
             title: '操作',
             key: 'action',
-            width: '10%',
+            width: '15%',
             render: (_: any, record: TaskRecord) => (
-                <Button type="link" onClick={() => handleRowClick(record)}>
-                    查看明细
-                </Button>
+                <Space>
+                    <Button type="link" onClick={() => handleRowClick(record)}>
+                        查看明细
+                    </Button>
+                    <Popconfirm
+                        title="确认删除"
+                        description="确定要删除该任务及其所有明细数据吗？"
+                        onConfirm={() => handleDeleteTask(record)}
+                        okText="确定"
+                        cancelText="取消"
+                    >
+                        <Button type="link" danger>
+                            删除
+                        </Button>
+                    </Popconfirm>
+                </Space>
             ),
         }
     ];
