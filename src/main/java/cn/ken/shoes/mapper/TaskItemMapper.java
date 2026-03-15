@@ -34,4 +34,9 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
      * 批量更新操作结果
      */
     void batchUpdateResult(@Param("ids") List<Long> ids, @Param("operateResult") String operateResult);
+
+    /**
+     * 根据任务ID删除所有明细
+     */
+    void deleteByTaskId(@Param("taskId") Long taskId);
 }

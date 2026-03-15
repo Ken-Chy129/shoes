@@ -1,11 +1,13 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.task.TaskRequest;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Optional;
@@ -15,6 +17,9 @@ public class TaskService {
 
     @Resource
     private TaskMapper taskMapper;
+
+    @Resource
+    private TaskItemMapper taskItemMapper;
 
     public PageResult<List<TaskDO>> queryTasksByCondition(TaskRequest request) {
         Long count = taskMapper.count(request);
@@ -29,5 +34,13 @@ public class TaskService {
         PageResult<List<TaskDO>> result = PageResult.buildSuccess(taskDOS);
         result.setTotal(count);
         return result;
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteTask(Long taskId) {
+        // 先删除任务明细
+        taskItemMapper.deleteByTaskId(taskId);
+        // 再删除任务
+        taskMapper.deleteById(taskId);
     }
 }
