@@ -3,8 +3,11 @@ import {
     Card,
     Input,
     message,
+    Upload,
+    Space,
 } from "antd";
-import React, {useEffect, useRef, useCallback} from "react";
+import {UploadOutlined} from "@ant-design/icons";
+import React, {useEffect, useRef} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
@@ -38,6 +41,22 @@ const ModelPage = () => {
                 message.success("修改成功").then();
             }
         });
+    }
+
+    const handleFileUpload = (file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target?.result as string;
+            if (content && mustCrawlRef.current) {
+                const currentValue = mustCrawlRef.current.resizableTextArea.textArea.value || '';
+                const newLines = content.split(/\r?\n/).filter(line => line.trim());
+                const newValue = currentValue ? currentValue + '\n' + newLines.join('\n') : newLines.join('\n');
+                mustCrawlRef.current.resizableTextArea.textArea.value = newValue;
+                message.success(`导入 ${newLines.length} 条货号`);
+            }
+        };
+        reader.readAsText(file);
+        return false; // 阻止默认上传行为
     }
 
     const queryForbiddenCrawlModelNos = () => {
@@ -84,12 +103,21 @@ const ModelPage = () => {
                 <Input.TextArea ref={mustCrawlRef} rows={15} />
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                    <Button
-                        key="push"
-                        onClick={updateMustCrawlModelNos}
-                    >
-                        修改
-                    </Button>
+                    <Space>
+                        <Upload
+                            accept=".txt"
+                            showUploadList={false}
+                            beforeUpload={handleFileUpload}
+                        >
+                            <Button icon={<UploadOutlined />}>导入TXT</Button>
+                        </Upload>
+                        <Button
+                            key="push"
+                            onClick={updateMustCrawlModelNos}
+                        >
+                            修改
+                        </Button>
+                    </Space>
                 </div>
             </div>
         </Card>
