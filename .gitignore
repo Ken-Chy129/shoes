@@ -38,3 +38,4 @@ build/
 /downloads/
 /src/main/resources/config/
 .claude/
+docker-compose.yml
