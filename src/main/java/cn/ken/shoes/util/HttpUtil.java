@@ -1,7 +1,8 @@
 package cn.ken.shoes.util;
 
-import cn.hutool.core.util.StrUtil;
+import cn.ken.shoes.config.ProxyConfig;
 import com.alibaba.fastjson.JSON;
+import com.google.common.util.concurrent.RateLimiter;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
 
@@ -19,34 +20,52 @@ public class HttpUtil {
 
     private static final Random RANDOM = new Random();
 
-//    private static final OkHttpClient proxyClient = new OkHttpClient()
-//            .newBuilder()
-//            .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress("hostname", 20818)))
-//            .proxyAuthenticator((route, response) -> {
-//                String credential = Credentials.basic("username", "password");
-//                return response.request().newBuilder().header("Proxy-Authorization", credential).build();
-//            })
-//            .build();
+    /**
+     * 代理请求限流器，每秒5次
+     */
+    private static final RateLimiter PROXY_LIMITER = RateLimiter.create(5);
 
-    private static final OkHttpClient proxyClient = new OkHttpClient()
-            .newBuilder()
-            .proxy(new Proxy(Proxy.Type.SOCKS, new InetSocketAddress("localhost", 7897)))
-            .build();
+    private static volatile OkHttpClient proxyClient;
 
     private static final OkHttpClient client = new OkHttpClient()
             .newBuilder()
             .build();
 
-    private static OkHttpClient getClient(boolean useProxy) {
-        return useProxy ? proxyClient : client;
+    private static OkHttpClient getProxyClient() {
+        if (proxyClient == null) {
+            synchronized (HttpUtil.class) {
+                if (proxyClient == null) {
+                    ProxyConfig config = ProxyConfig.getInstance();
+                    proxyClient = new OkHttpClient()
+                            .newBuilder()
+                            .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(config.getHost(), config.getPort())))
+                            .proxyAuthenticator((route, response) -> {
+                                String credential = Credentials.basic(config.getUsername(), config.getPassword());
+                                return response.request().newBuilder().header("Proxy-Authorization", credential).build();
+                            })
+                            .build();
+                }
+            }
+        }
+        return proxyClient;
     }
 
-    public static String doGet(String url, Map<String, Object> params) {
-        String queryString = SignUtil.mapToQueryString(params);
-        if (StrUtil.isNotBlank(queryString)) {
-            url += "?" + queryString;
+    private static OkHttpClient getClient(boolean useProxy) {
+        return useProxy ? getProxyClient() : client;
+    }
+
+    public static String doGet(HttpUrl url) {
+        Request request = new Request.Builder().url(url).build();
+        ResponseBody body = null;
+        try (Response response = client.newCall(request).execute()) {
+            body = response.body();
+            if (body != null) {
+                return body.string();
+            }
+        } catch (IOException e) {
+            log.error("doGet error, url:{}, responseBody:{}, error:{}", url, JSON.toJSONString(body), e.getMessage());
         }
-        return doGet(url, Headers.of(), true);
+        return null;
     }
 
     public static String doGet(String url, boolean useProxy) {
@@ -62,6 +81,9 @@ public class HttpUtil {
     }
 
     public static String doGet(String url, Headers headers, boolean useProxy) {
+        if (useProxy) {
+            PROXY_LIMITER.acquire();
+        }
         Request request = new Request.Builder()
                 .url(url)
                 .headers(headers)
@@ -80,6 +102,7 @@ public class HttpUtil {
     }
 
     public static void downloadFile(String url, Headers headers, String path) {
+        PROXY_LIMITER.acquire();
         Request request = new Request.Builder()
                 .url(url)
                 .headers(headers)
@@ -104,6 +127,7 @@ public class HttpUtil {
     }
 
     public static String doPost(String url, String json, Headers headers) {
+        PROXY_LIMITER.acquire();
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
                 .url(url)
@@ -123,6 +147,7 @@ public class HttpUtil {
     }
 
     public static String doPut(String url, String json, Headers headers) {
+        PROXY_LIMITER.acquire();
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
                 .url(url)
@@ -142,6 +167,7 @@ public class HttpUtil {
     }
 
     public static String doDelete(String url, String json, Headers headers) {
+        PROXY_LIMITER.acquire();
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
                 .url(url)

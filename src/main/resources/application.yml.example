@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/shoes
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: your_password
+    hikari:
+      maximum-pool-size: 100
+      connection-timeout: 60000
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+
+poison:
+  url: https://openapi.dewu.com/dop/api/v1
+  appKey: your_app_key
+  appSecret: your_app_secret
+  token: your_token
+  tokenV2: your_token_v2
+
+kc:
+  apiKey: your_api_key
+
+stockx:
+  state: your_state
+  apiKey: your_api_key
+  clientId: your_client_id
+  clientSecret: your_client_secret
+  redirectUri: your_redirect_uri
+  authorization: your_authorization
+
+proxy:
+  host: your_proxy_host
+  port: 15818
+  username: your_proxy_username
+  password: your_proxy_password
