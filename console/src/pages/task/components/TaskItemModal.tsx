@@ -1,6 +1,6 @@
 import React, {useEffect, useState, useRef} from "react";
 import {Modal, Table, Input, Select, Space, Button, Switch} from "antd";
-import {SearchOutlined, ReloadOutlined} from "@ant-design/icons";
+import {SearchOutlined, ReloadOutlined, DownloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
@@ -34,10 +34,13 @@ interface TaskItemModalProps {
 const OPERATE_RESULT_OPTIONS = [
     {label: '全部', value: ''},
     {label: '待处理', value: '待处理'},
+    {label: '上架成功', value: '上架成功'},
+    {label: '上架失败', value: '上架失败'},
     {label: '压价成功', value: '压价成功'},
     {label: '压价失败', value: '压价失败'},
     {label: '下架成功', value: '下架成功'},
     {label: '下架失败', value: '下架失败'},
+    {label: '无须上架-无盈利', value: '无须上架-无盈利'},
     {label: '跳过', value: '跳过'},
     {label: '保持', value: '保持'},
     {label: '取消', value: '取消'},
@@ -116,6 +119,16 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         setPageIndex(1);
         // 重置后立即查询
         setTimeout(() => queryTaskItems(), 0);
+    }
+
+    const handleExport = () => {
+        if (!taskId) return;
+        const params = new URLSearchParams();
+        params.append('taskId', taskId);
+        if (filterRound) params.append('round', filterRound);
+        if (filterOperateResult) params.append('operateResult', filterOperateResult);
+        if (filterStyleId) params.append('styleId', filterStyleId);
+        window.open(`${TASK_API.TASK_ITEM_EXPORT}?${params.toString()}`, '_blank');
     }
 
     const columns = [
@@ -262,6 +275,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     </Button>
                     <Button icon={<ReloadOutlined/>} onClick={handleReset}>
                         重置
+                    </Button>
+                    <Button icon={<DownloadOutlined/>} onClick={handleExport}>
+                        导出
                     </Button>
                 </Space>
                 <Space>

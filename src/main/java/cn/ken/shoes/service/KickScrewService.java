@@ -297,6 +297,7 @@ public class KickScrewService {
                     taskItemDO.setStyleId(priceDO.getModelNo());
                     taskItemDO.setEuSize(priceDO.getEuSize());
                     taskItemDO.setCurrentPrice(priceDO.getPrice() != null ? java.math.BigDecimal.valueOf(priceDO.getPrice()) : null);
+                    taskItemDO.setLowestPrice(priceDO.getPrice() != null ? java.math.BigDecimal.valueOf(priceDO.getPrice()) : null);
                     taskItemDO.setOperateTime(new Date());
                     taskItemDO.setOperateResult("待处理");
                     taskItemMapper.insert(taskItemDO);
@@ -375,11 +376,20 @@ public class KickScrewService {
 
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
 
-                // 更新 TaskItem 的得物价格信息
+                // 更新 TaskItem 的得物价格、利润信息
                 if (taskItemId != null && poisonPrice != null) {
                     TaskItemDO updateItem = new TaskItemDO();
                     updateItem.setId(taskItemId);
                     updateItem.setPoisonPrice(java.math.BigDecimal.valueOf(poisonPrice));
+                    // 计算3.5价格和利润
+                    Integer poison35Price = ShoesUtil.getThreeFivePrice(poisonPrice);
+                    updateItem.setPoison35Price(java.math.BigDecimal.valueOf(poison35Price));
+                    if (kickScrewPriceDO.getPrice() != null) {
+                        double profit = ShoesUtil.getKcEarn(poison35Price, kickScrewPriceDO.getPrice());
+                        updateItem.setProfit35(java.math.BigDecimal.valueOf(profit));
+                        double profitRate = profit / poison35Price;
+                        updateItem.setProfitRate35(java.math.BigDecimal.valueOf(profitRate));
+                    }
                     taskItemMapper.updateById(updateItem);
                 }
 
@@ -490,7 +500,20 @@ public class KickScrewService {
                     taskItemDO.setStyleId(modelNo);
                     taskItemDO.setEuSize(euSize);
                     taskItemDO.setCurrentPrice(price != null ? java.math.BigDecimal.valueOf(price) : null);
+                    taskItemDO.setLowestPrice(kickScrewPriceDO.getLowestPrice() != null ? java.math.BigDecimal.valueOf(kickScrewPriceDO.getLowestPrice()) : null);
                     taskItemDO.setPoisonPrice(poisonPrice != null ? java.math.BigDecimal.valueOf(poisonPrice) : null);
+                    // 计算3.5价格和利润
+                    if (poisonPrice != null) {
+                        Integer poison35Price = ShoesUtil.getThreeFivePrice(poisonPrice);
+                        taskItemDO.setPoison35Price(java.math.BigDecimal.valueOf(poison35Price));
+                        Integer priceToCalc = kickScrewPriceDO.getLowestPrice() != null ? kickScrewPriceDO.getLowestPrice() : price;
+                        if (priceToCalc != null) {
+                            double profit = ShoesUtil.getKcEarn(poison35Price, priceToCalc);
+                            taskItemDO.setProfit35(java.math.BigDecimal.valueOf(profit));
+                            double profitRate = profit / poison35Price;
+                            taskItemDO.setProfitRate35(java.math.BigDecimal.valueOf(profitRate));
+                        }
+                    }
                     taskItemDO.setOperateTime(new Date());
                     taskItemDO.setOperateResult("待处理");
                     taskItemMapper.insert(taskItemDO);

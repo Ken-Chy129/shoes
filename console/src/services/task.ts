@@ -19,6 +19,7 @@ enum TASK_API {
     STOCKX_SORT_OPTIONS = '/api/task/stockx/sortOptions',
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
+    TASK_ITEM_EXPORT = '/api/taskItem/export',
 }
 
 export {TASK_API, TASK_TYPE}

@@ -466,6 +466,7 @@ public class KickScrewClient {
      */
     public void autoMatch() {
         HttpUtil.doPost(KickScrewApiConstant.AUTO_MATCH, "{}", getAuthHeaders());
+        log.info("autoMatch");
     }
 
     /**

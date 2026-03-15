@@ -74,7 +74,7 @@ public class KickScrewController {
      * 自动压价：将所有不是最低价的商品价格设置为最低价-1
      */
     @GetMapping("autoMatch")
-    public Result<Void> autoMatch() {
+    public Result<String> autoMatch() {
         kickScrewClient.autoMatch();
         return Result.buildSuccess();
     }
