@@ -48,7 +48,7 @@ public class TaskExecutorManager {
                     Long taskId = createTask("kickscrew", taskType.getCode());
                     TaskSwitch.CURRENT_KC_LISTING_TASK_ID = taskId;
                     TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
-                    kcTaskRunner.start();
+                    new Thread(kcTaskRunner, "KC-Listing-Task").start();
                 } else if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID == null) {
                     // 任务已运行但没有任务ID，创建新任务
                     Long taskId = createTask("kickscrew", taskType.getCode());
@@ -62,7 +62,7 @@ public class TaskExecutorManager {
                     Long taskId = createTask("kickscrew", taskType.getCode());
                     TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = taskId;
                     TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND = 0;
-                    kcPriceDownTaskRunner.start();
+                    new Thread(kcPriceDownTaskRunner, "KC-PriceDown-Task").start();
                 } else if (TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID == null) {
                     Long taskId = createTask("kickscrew", taskType.getCode());
                     TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = taskId;
@@ -75,7 +75,7 @@ public class TaskExecutorManager {
                     Long taskId = createTask("stockx", taskType.getCode());
                     TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = taskId;
                     TaskSwitch.CURRENT_STOCK_LISTING_ROUND = 0;
-                    stockXTaskRunner.start();
+                    new Thread(stockXTaskRunner, "StockX-Listing-Task").start();
                 } else if (TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID == null) {
                     Long taskId = createTask("stockx", taskType.getCode());
                     TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = taskId;
@@ -88,7 +88,7 @@ public class TaskExecutorManager {
                     Long taskId = createTask("stockx", taskType.getCode());
                     TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = taskId;
                     TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
-                    stockXPriceDownTaskRunner.start();
+                    new Thread(stockXPriceDownTaskRunner, "StockX-PriceDown-Task").start();
                 } else if (TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID == null) {
                     Long taskId = createTask("stockx", taskType.getCode());
                     TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = taskId;
