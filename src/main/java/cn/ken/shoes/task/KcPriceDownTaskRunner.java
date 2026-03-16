@@ -13,10 +13,10 @@ import org.springframework.stereotype.Component;
 
 @Slf4j
 @Component
-public class KcPriceDownTaskRunner extends Thread {
+public class KcPriceDownTaskRunner implements Runnable {
 
     @Getter
-    private boolean isInit = false;
+    private volatile boolean isInit = false;
 
     @Resource
     private KickScrewService kickScrewService;

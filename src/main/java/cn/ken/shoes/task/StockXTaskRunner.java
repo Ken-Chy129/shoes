@@ -17,10 +17,10 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class StockXTaskRunner extends Thread {
+public class StockXTaskRunner implements Runnable {
 
     @Getter
-    private boolean isInit = false;
+    private volatile boolean isInit = false;
 
     @Resource
     private StockXService stockXService;
