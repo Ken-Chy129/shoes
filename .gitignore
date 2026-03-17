@@ -35,6 +35,7 @@ build/
 /src/main/resources/application.yml
 /log/
 /files/
+/file/
 /src/main/resources/config/
 .claude/
 docker-compose.yml
