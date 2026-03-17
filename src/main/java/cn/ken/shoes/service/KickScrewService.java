@@ -144,7 +144,7 @@ public class KickScrewService {
     @SneakyThrows
     public void queryHotModels() {
         List<String> brandDOList = List.of("361 Degrees", "HOKA ONE ONE", "ANTA", "Li-Ning", "Rigorer", "Onitsuka Tiger");
-        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("file/货号.txt")));
+        BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(new FileOutputStream("files/货号.txt")));
         for (String brandName : brandDOList) {
             int crawlCnt = 500;
             int page = (int) Math.ceil(crawlCnt / 50.0);

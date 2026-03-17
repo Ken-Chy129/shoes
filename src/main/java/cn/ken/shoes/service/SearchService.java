@@ -183,7 +183,7 @@ public class SearchService {
         // 生成文件名（使用时间戳避免重复）
         String timestamp = String.valueOf(System.currentTimeMillis());
         String filename = STR."\{platform}_\{type}_\{query}_\{timestamp}";
-        String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
+        String filePath = STR."files/search/\{platform}/\{filename}.xlsx";
 
         // 保存到Excel
         List<JSONObject> resultList = new ArrayList<>(resultMap.values());
@@ -256,7 +256,7 @@ public class SearchService {
         String timestamp = String.valueOf(System.currentTimeMillis());
         // 货号搜索统一文件名格式: stockx_modelNo_{时间戳}
         String filename = STR."\{platform}_\{type}_\{timestamp}";
-        String filePath = STR."file/search/\{platform}/\{filename}.xlsx";
+        String filePath = STR."files/search/\{platform}/\{filename}.xlsx";
 
         // 保存到Excel
         List<JSONObject> resultList = new ArrayList<>(resultMap.values());

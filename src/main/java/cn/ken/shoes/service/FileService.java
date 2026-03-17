@@ -39,7 +39,7 @@ import java.util.stream.Collectors;
 @Service
 public class FileService {
 
-    public static final String FILE_DIR = "file/";
+    public static final String FILE_DIR = "files/";
 
     @Resource
     private PoisonClient poisonClient;
