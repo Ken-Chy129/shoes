@@ -7,7 +7,6 @@ import {
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {ORDER_API} from "@/services/stockx";
-import {API_BASE_URL} from "@/constants/api";
 
 const SettingPage = () => {
     const [conditionForm] = Form.useForm();
@@ -65,7 +64,7 @@ const SettingPage = () => {
     ];
 
     const downloadOrders = () => {
-        window.open(`${API_BASE_URL}/order/stockx/excel`);
+        window.open('/api/order/stockx/excel');
     }
 
     const extendAllItems = () => {

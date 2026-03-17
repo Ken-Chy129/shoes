@@ -8,7 +8,6 @@ import React, {useEffect, useState} from "react";
 import {DownloadOutlined, UploadOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest, doUploadRequest} from "@/util/http";
 import {STOCKX_DOWNLOAD_API, UPLOAD_API} from "@/services/file";
-import {API_BASE_URL} from "@/constants/api";
 
 const SettingPage = () => {
     const [fileUpload] = Form.useForm();
@@ -21,13 +20,13 @@ const SettingPage = () => {
 
 
     const downloadOrders = () => {
-        window.open(`${API_BASE_URL}/order/kc/excel`);
+        window.open('/api/order/kc/excel');
     }
 
     const downloadStockXItems = () => {
         const query = stockxDownload.getFieldValue("query");
         const sortType = stockxDownload.getFieldValue("sortType");
-        window.open(`${API_BASE_URL}/file/downloadItemsForSearch?query=${query}&sortType=${sortType}`)
+        window.open(`/api/file/downloadItemsForSearch?query=${query}&sortType=${sortType}`)
     }
 
     return <>
