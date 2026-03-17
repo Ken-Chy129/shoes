@@ -1,4 +1,6 @@
-const PREFIX = "http://localhost:8080"
+import {API_BASE_URL} from "@/constants/api";
+
+const PREFIX = API_BASE_URL
 
 enum KC_DOWNLOAD_API {
     ORDERS = PREFIX + "/order/kc/excel",

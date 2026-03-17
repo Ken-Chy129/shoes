@@ -5,6 +5,7 @@ import {
     Table,
 } from "antd";
 import React, {useEffect, useState} from "react";
+import {API_BASE_URL} from "@/constants/api";
 
 const SettingPage = () => {
     const [conditionForm] = Form.useForm();
@@ -62,7 +63,7 @@ const SettingPage = () => {
     ];
 
     const downloadOrders = () => {
-        window.open('http://localhost:8080/order/kc/excel');
+        window.open(`${API_BASE_URL}/order/kc/excel`);
     }
 
     return <>

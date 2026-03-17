@@ -21,6 +21,7 @@ import {DownloadOutlined, PlusOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
+import {API_BASE_URL} from "@/constants/api";
 
 interface SearchTask {
     id: number;
@@ -206,7 +207,7 @@ const SearchPage = () => {
     }
 
     const downloadResult = (taskId: number) => {
-        window.open(`http://localhost:8080${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${taskId}`);
+        window.open(`${API_BASE_URL}${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${taskId}`);
     }
 
     const batchDownload = () => {
@@ -221,7 +222,7 @@ const SearchPage = () => {
         successTasks.forEach((task, index) => {
             setTimeout(() => {
                 const link = document.createElement('a');
-                link.href = `http://localhost:8080${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${task.id}`;
+                link.href = `${API_BASE_URL}${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${task.id}`;
                 link.download = '';
                 document.body.appendChild(link);
                 link.click();
