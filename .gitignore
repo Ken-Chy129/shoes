@@ -34,8 +34,7 @@ build/
 /ui/src/.umi/
 /src/main/resources/application.yml
 /log/
-/file/
-/downloads/
+/files/
 /src/main/resources/config/
 .claude/
 docker-compose.yml
