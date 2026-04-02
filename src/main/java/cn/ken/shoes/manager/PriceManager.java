@@ -81,6 +81,9 @@ public class PriceManager {
 
         // 普通货号，直接查询
         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
+        if (poisonPriceDOList == null || poisonPriceDOList.isEmpty()) {
+            return Map.of();
+        }
         return poisonPriceDOList.stream()
                 .collect(
                         Collectors.toMap(
@@ -93,6 +96,9 @@ public class PriceManager {
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
         try {
+            if (modelNo == null || euSize == null) {
+                return null;
+            }
             Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, euSize);
             if (specialPrice != null) {
                 return specialPrice;
