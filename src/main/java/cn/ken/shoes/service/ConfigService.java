@@ -13,22 +13,23 @@ import java.util.Properties;
 public class ConfigService {
 
     private static final String CONFIG_DIR = "config";
-    private static final String RESOURCES_PATH = "src/main/resources";
+    private static final String EXTERNAL_CONFIG_DIR = "files/config";
 
     public Properties loadConfig(String configFileName) {
         Properties properties = new Properties();
-        
+
         try {
-            ClassPathResource resource = new ClassPathResource(CONFIG_DIR + "/" + configFileName);
-            if (resource.exists()) {
-                try (InputStream input = resource.getInputStream()) {
+            // 优先从外部持久化目录读取（Docker volume 挂载）
+            Path externalPath = getConfigPath(configFileName);
+            if (Files.exists(externalPath)) {
+                try (InputStream input = Files.newInputStream(externalPath)) {
                     properties.load(input);
                 }
             } else {
-                System.out.println("Config file not found in classpath: " + configFileName + ", trying file system");
-                Path configPath = getConfigPath(configFileName);
-                if (Files.exists(configPath)) {
-                    try (InputStream input = Files.newInputStream(configPath)) {
+                // 回退到 classpath 读取默认配置
+                ClassPathResource resource = new ClassPathResource(CONFIG_DIR + "/" + configFileName);
+                if (resource.exists()) {
+                    try (InputStream input = resource.getInputStream()) {
                         properties.load(input);
                     }
                 } else {
@@ -38,16 +39,16 @@ public class ConfigService {
         } catch (IOException e) {
             System.err.println("Failed to load config file: " + configFileName + ", error: " + e.getMessage());
         }
-        
+
         return properties;
     }
 
     public void saveConfig(String configFileName, Properties properties) {
         Path configPath = getConfigPath(configFileName);
-        
+
         try {
             Files.createDirectories(configPath.getParent());
-            
+
             try (OutputStream output = Files.newOutputStream(configPath)) {
                 properties.store(output, "Auto-generated configuration file");
             }
@@ -57,7 +58,7 @@ public class ConfigService {
     }
 
     private Path getConfigPath(String configFileName) {
-        return Paths.get(RESOURCES_PATH, CONFIG_DIR, configFileName);
+        return Paths.get(EXTERNAL_CONFIG_DIR, configFileName);
     }
 
     public String getProperty(Properties properties, String key, String defaultValue) {
