@@ -132,6 +132,9 @@ public class SearchService {
             for (String sort : sortsList) {
                 Pair<Integer, JSONArray> firstPair = doSearch(platform, query, sort.trim(), searchType, 1);
                 Integer totalPage = firstPair.getKey();
+                // 修正totalQueries：用实际页数替代预估页数
+                int actualPages = Math.min(pageCount, totalPage);
+                totalQueries -= (pageCount - Math.max(actualPages, 1));
                 if (totalPage == 0 || CollectionUtils.isEmpty(firstPair.getValue())) {
                     log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, 1);
                     completedQueries++;
@@ -395,7 +398,7 @@ public class SearchService {
     }
 
     public PageResult<List<SearchTaskVO>> getSearchTasks(String platform, String status, String type, Integer pageIndex, Integer pageSize) {
-        Long count = searchTaskMapper.count(status, type);
+        Long count = searchTaskMapper.count(platform, status, type);
         if (count <= 0) {
             return PageResult.buildSuccess();
         }
