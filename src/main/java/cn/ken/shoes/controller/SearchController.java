@@ -35,6 +35,15 @@ public class SearchController {
     }
 
     /**
+     * 取消搜索任务
+     */
+    @PostMapping("cancelSearchTask")
+    public Result<Void> cancelSearchTask(@RequestParam Long taskId) {
+        searchService.cancelSearchTask(taskId);
+        return Result.buildSuccess();
+    }
+
+    /**
      * 查询任务列表
      */
     @GetMapping("getSearchTasks")

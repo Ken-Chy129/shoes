@@ -76,6 +76,7 @@ public class SearchTaskDO extends BaseDO {
         RUNNING("执行中", "running"),
         SUCCESS("执行成功", "success"),
         FAILED("执行失败", "failed"),
+        CANCELLED("已取消", "cancelled"),
         ;
 
         private final String name;
