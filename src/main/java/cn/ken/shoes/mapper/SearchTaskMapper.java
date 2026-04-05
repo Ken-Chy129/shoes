@@ -23,7 +23,7 @@ public interface SearchTaskMapper extends BaseMapper<SearchTaskDO> {
     /**
      * 查询任务总数
      */
-    Long count(@Param("status") String status, @Param("type") String type);
+    Long count(@Param("platform") String platform, @Param("status") String status, @Param("type") String type);
 
     /**
      * 更新任务进度
