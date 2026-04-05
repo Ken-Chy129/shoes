@@ -31,6 +31,7 @@ import org.springframework.util.CollectionUtils;
 
 import java.io.File;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -40,6 +41,8 @@ import java.util.concurrent.CountDownLatch;
 @Slf4j
 @Service
 public class SearchService {
+
+    private final Set<Long> cancelledTaskIds = ConcurrentHashMap.newKeySet();
 
     @Resource
     private SearchTaskMapper searchTaskMapper;
@@ -107,6 +110,16 @@ public class SearchService {
         }
     }
 
+    public void cancelSearchTask(Long taskId) {
+        cancelledTaskIds.add(taskId);
+        searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.CANCELLED.getCode(), new Date(), null);
+        log.info("cancelSearchTask, taskId:{}", taskId);
+    }
+
+    private boolean isCancelled(Long taskId) {
+        return cancelledTaskIds.contains(taskId);
+    }
+
     /**
      * 执行关键词搜索任务
      */
@@ -130,7 +143,11 @@ public class SearchService {
 
             // 遍历每个sort进行查询
             for (String sort : sortsList) {
-                Pair<Integer, JSONArray> firstPair = doSearch(platform, query, sort.trim(), searchType, 1);
+                if (isCancelled(taskId)) {
+                    cancelledTaskIds.remove(taskId);
+                    return;
+                }
+                Pair<Integer, JSONArray> firstPair = doSearch(taskId, platform, query, sort.trim(), searchType, 1);
                 Integer totalPage = firstPair.getKey();
                 // 修正totalQueries：用实际页数替代预估页数
                 int actualPages = Math.min(pageCount, totalPage);
@@ -159,7 +176,11 @@ public class SearchService {
 
                 // 处理后续页
                 for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
-                    Pair<Integer, JSONArray> pair = doSearch(platform, query, sort.trim(), searchType, i);
+                    if (isCancelled(taskId)) {
+                        cancelledTaskIds.remove(taskId);
+                        return;
+                    }
+                    Pair<Integer, JSONArray> pair = doSearch(taskId, platform, query, sort.trim(), searchType, i);
                     if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
                         log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
                         completedQueries++;
@@ -227,8 +248,12 @@ public class SearchService {
 
         // 遍历每个货号进行查询(只查询第一页)
         for (String modelNo : modelNoList) {
+            if (isCancelled(taskId)) {
+                cancelledTaskIds.remove(taskId);
+                return;
+            }
             // 只查询第一页,pageIndex=1,searchType默认为"shoes"
-            Pair<Integer, JSONArray> pair = doSearch(platform, modelNo, sort.trim(), "shoes", 1);
+            Pair<Integer, JSONArray> pair = doSearch(taskId, platform, modelNo, sort.trim(), "shoes", 1);
 
             if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
                 log.warn("executeModelNoSearch no result for modelNo:{}, taskId:{}", modelNo, taskId);
@@ -271,7 +296,7 @@ public class SearchService {
                  taskId, modelNoList.size(), resultList.size());
     }
 
-    private Pair<Integer, JSONArray> doSearch(String platform, String query, String sort, String searchType, Integer pageIndex) {
+    private Pair<Integer, JSONArray> doSearch(Long taskId, String platform, String query, String sort, String searchType, Integer pageIndex) {
         if ("stockx".equals(platform)) {
             Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType);
             return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
@@ -281,15 +306,19 @@ public class SearchService {
             dunkSearchRequest.setSortKey(sort);
             dunkSearchRequest.setPage(pageIndex);
             Pair<Integer, List<DunkItem>> pair = dunkClient.search(dunkSearchRequest);
-            List<DunkPriceExcel> dunkPriceExcels = new ArrayList<>();
+            List<DunkPriceExcel> dunkPriceExcels = Collections.synchronizedList(new ArrayList<>());
             CountDownLatch priceLatch = new CountDownLatch(pair.getValue().size());
             for (DunkItem dunkItem : pair.getValue()) {
                 Thread.startVirtualThread(() -> {
                     try {
+                        if (isCancelled(taskId)) {
+                            return;
+                        }
                         String modelNo = dunkItem.getModelNo();
                         List<DunkPriceExcel> priceList = dunkClient.queryPrice(dunkItem.getCategory(), modelNo);
                         if (CollectionUtils.isEmpty(priceList)) {
                             log.error("queryPrice error, item:{}", dunkItem);
+                            return;
                         }
                         String title = dunkItem.getTitle();
                         Gender gender = GenderUtil.extractGender(PlatformEnum.DUNK, title);
@@ -297,6 +326,9 @@ public class SearchService {
                         for (DunkPriceExcel price : priceList) {
                             Thread.startVirtualThread(() -> {
                                 try {
+                                    if (isCancelled(taskId)) {
+                                        return;
+                                    }
                                     DunkPriceExcel dunkPriceExcel = new DunkPriceExcel();
                                     dunkPriceExcel.setModelNo(modelNo);
                                     dunkPriceExcel.setCategory(dunkItem.getCategory());
