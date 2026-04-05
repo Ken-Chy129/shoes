@@ -17,7 +17,7 @@ import {
 
 const { TextArea } = Input;
 import React, {useEffect, useState, useRef} from "react";
-import {DownloadOutlined, PlusOutlined} from "@ant-design/icons";
+import {DownloadOutlined, PlusOutlined, StopOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
@@ -205,6 +205,15 @@ const SearchPage = () => {
         });
     }
 
+    const cancelTask = (taskId: number) => {
+        doPostRequest(`${SEARCH_TASK_API.CANCEL}?taskId=${taskId}`, {}, {
+            onSuccess: () => {
+                message.success('任务已取消');
+                queryTaskList(true);
+            }
+        });
+    }
+
     const downloadResult = (taskId: number) => {
         window.open(`${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${taskId}`);
     }
@@ -252,6 +261,7 @@ const SearchPage = () => {
             running: {color: 'processing', text: '执行中'},
             success: {color: 'success', text: '执行成功'},
             failed: {color: 'error', text: '执行失败'},
+            cancelled: {color: 'warning', text: '已取消'},
         };
         const config = statusConfig[status] || {color: 'default', text: status};
         return <Tag color={config.color}>{config.text}</Tag>;
@@ -385,9 +395,19 @@ const SearchPage = () => {
         {
             title: '操作',
             key: 'action',
-            width: 80,
+            width: 140,
             render: (text: string, record: SearchTask) => (
                 <Space>
+                    {(record.status === 'running' || record.status === 'pending') && (
+                        <Button
+                            danger
+                            size="small"
+                            icon={<StopOutlined />}
+                            onClick={() => cancelTask(record.id)}
+                        >
+                            终止
+                        </Button>
+                    )}
                     {record.status === 'success' && record.filePath && (
                         <Button
                             type="primary"
@@ -429,6 +449,7 @@ const SearchPage = () => {
                                 {label: '运行中', value: 'running'},
                                 {label: '运行成功', value: 'success'},
                                 {label: '运行失败', value: 'failed'},
+                                {label: '已取消', value: 'cancelled'},
                             ]}
                         />
                     </Form.Item>

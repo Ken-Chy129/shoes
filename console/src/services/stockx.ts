@@ -10,6 +10,7 @@ enum STOCKX_API {
 
 enum SEARCH_TASK_API {
     CREATE = '/api/search/createSearchTask',      // 创建搜索任务
+    CANCEL = '/api/search/cancelSearchTask',      // 取消搜索任务
     GET_TASKS = '/api/search/getSearchTasks',     // 查询任务列表
     GET_TASK = '/api/stockx/searchTask',          // 查询单个任务详情
 }
