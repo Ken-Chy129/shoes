@@ -41,4 +41,19 @@ public class PoisonApiConstant {
      * 批量查询价格
      */
     public static final String BATCH_PRICE = "http://134.175.182.182:6699/api/dewu/redis/batchprice_token";
+
+    /**
+     * V3 API - 搜索商品
+     */
+    public static final String V3_SEARCH_PRODUCT = "/api/v1/dewu/searchProduct";
+
+    /**
+     * V3 API - 查询价格
+     */
+    public static final String V3_PRODUCT_PRICE = "/api/v1/dewu/productPrice";
+
+    /**
+     * V3 API - 查询token信息
+     */
+    public static final String V3_TOKEN_INFO = "/api/v1/base/token_info";
 }

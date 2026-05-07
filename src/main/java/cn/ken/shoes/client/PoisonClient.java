@@ -22,6 +22,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
@@ -42,9 +43,20 @@ public class PoisonClient {
     @Value("${poison.tokenV2}")
     private String tokenV2;
 
+    @Value("${poison.v3Url}")
+    private String v3Url;
+
+    @Value("${poison.tokenV3}")
+    private String tokenV3;
+
+    private final ConcurrentHashMap<String, Long> spuIdCache = new ConcurrentHashMap<>();
+
     public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
+        }
+        if (PoisonSwitch.USE_V3_API) {
+            return batchQueryPriceV3(modelNos);
         }
         // 重试
         int times = 0;
@@ -74,7 +86,6 @@ public class PoisonClient {
             LocalDate update = LocalDate.ofInstant(time.toInstant(), ZoneId.systemDefault());
             LocalDate threeDayAgo = LocalDate.now().minusDays(3);
             if (update.isBefore(threeDayAgo)) {
-//                log.error("batchQueryPrice data is too old, sku:{}", sku);
                 continue;
             }
             String modelNo = sku.getString("article_number");
@@ -95,11 +106,22 @@ public class PoisonClient {
         return poisonPriceDOList;
     }
 
+    private List<PoisonPriceDO> batchQueryPriceV3(List<String> modelNos) {
+        List<PoisonPriceDO> allPrices = new ArrayList<>();
+        for (String modelNo : modelNos) {
+            List<PoisonPriceDO> prices = queryPriceByModelNoV3(modelNo);
+            allPrices.addAll(prices);
+        }
+        return allPrices;
+    }
+
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
         if (modelNo == null) {
             return Collections.emptyList();
         }
-        if (PoisonSwitch.USE_V2_API) {
+        if (PoisonSwitch.USE_V3_API) {
+            return queryPriceByModelNoV3(modelNo);
+        } else if (PoisonSwitch.USE_V2_API) {
             return queryPriceByModelNoV2(modelNo);
         } else {
             return queryPriceByModelNoV1(modelNo);
@@ -219,6 +241,9 @@ public class PoisonClient {
     }
 
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
+        if (PoisonSwitch.USE_V3_API) {
+            return queryPriceV3(modelNo, spuId);
+        }
         String url = PoisonApiConstant.PRICE_BY_SPU
                 .replace("{spuId}", String.valueOf(spuId))
                 .replace("{token}", token);
@@ -250,6 +275,151 @@ public class PoisonClient {
             log.error("queryPriceBySpuV2 error, msg:{}, model:{}, spuId:{}", e.getMessage(), modelNo, spuId);
             return Collections.emptyList();
         }
+    }
+
+    // ========== V3 API Methods ==========
+
+    public List<PoisonPriceDO> queryPriceByModelNoV3(String modelNo) {
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
+        Long spuId = spuIdCache.get(modelNo);
+        if (spuId == null) {
+            spuId = searchSpuIdV3(modelNo);
+            if (spuId == null) {
+                ShoesContext.addNoPrice(modelNo);
+                return Collections.emptyList();
+            }
+            spuIdCache.put(modelNo, spuId);
+        }
+        int times = 0;
+        List<PoisonPriceDO> prices;
+        do {
+            prices = queryPriceV3(modelNo, spuId);
+            times++;
+        } while (prices.isEmpty() && times <= 3);
+        return prices;
+    }
+
+    private Long searchSpuIdV3(String keyword) {
+        LimiterHelper.limitPoisonPrice();
+        String searchUrl = v3Url + PoisonApiConstant.V3_SEARCH_PRODUCT + "?keyword=" + keyword;
+        String result = HttpUtil.doGet(searchUrl, buildV3Headers(), false);
+        if (result == null) {
+            log.error("searchSpuIdV3 error, no result, keyword:{}", keyword);
+            return null;
+        }
+        try {
+            JSONObject json = JSON.parseObject(result);
+            Integer code = json.getInteger("code");
+            if (code == null || code != 200) {
+                log.error("searchSpuIdV3 error, result:{}", result);
+                return null;
+            }
+            JSONArray data = json.getJSONArray("data");
+            if (data == null || data.isEmpty()) {
+                return null;
+            }
+            for (int i = 0; i < data.size(); i++) {
+                JSONObject item = data.getJSONObject(i);
+                if (keyword.equalsIgnoreCase(item.getString("articleNumber"))) {
+                    return item.getLong("spuId");
+                }
+            }
+            return data.getJSONObject(0).getLong("spuId");
+        } catch (Exception e) {
+            log.error("searchSpuIdV3 parse error, keyword:{}, msg:{}", keyword, e.getMessage());
+            return null;
+        }
+    }
+
+    private List<PoisonPriceDO> queryPriceV3(String modelNo, Long spuId) {
+        LimiterHelper.limitPoisonPrice();
+        String priceUrl = v3Url + PoisonApiConstant.V3_PRODUCT_PRICE + "?spu_id=" + spuId;
+        String httpResult = HttpUtil.doGet(priceUrl, buildV3Headers(), false);
+        if (httpResult == null) {
+            log.error("queryPriceV3 error, no result, modelNo:{}, spuId:{}", modelNo, spuId);
+            return Collections.emptyList();
+        }
+        try {
+            JSONObject json = JSON.parseObject(httpResult);
+            Integer code = json.getInteger("code");
+            if (code == null || code != 200) {
+                log.error("queryPriceV3 error, modelNo:{}, result:{}", modelNo, httpResult);
+                return Collections.emptyList();
+            }
+            JSONObject data = json.getJSONObject("data");
+            if (data == null) {
+                return Collections.emptyList();
+            }
+            JSONArray skus = data.getJSONArray("skus");
+            if (skus == null || skus.isEmpty()) {
+                return Collections.emptyList();
+            }
+            Date updateTime = data.getDate("update_time");
+            List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+            for (int i = 0; i < skus.size(); i++) {
+                JSONObject sku = skus.getJSONObject(i);
+                Integer price = pickV3Price(sku);
+                if (price == null || price <= 0 || price > 100 * PoisonSwitch.MAX_PRICE) {
+                    continue;
+                }
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(extractSize(sku.getString("size")));
+                poisonPriceDO.setPrice(price / 100);
+                poisonPriceDO.setUpdateTime(updateTime);
+                poisonPriceDOList.add(poisonPriceDO);
+            }
+            return poisonPriceDOList;
+        } catch (Exception e) {
+            log.error("queryPriceV3 parse error, modelNo:{}, spuId:{}, msg:{}", modelNo, spuId, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    public JSONObject queryTokenInfo() {
+        String infoUrl = v3Url + PoisonApiConstant.V3_TOKEN_INFO + "?token=" + tokenV3;
+        String result = HttpUtil.doGet(infoUrl, buildV3Headers(), false);
+        if (result == null) {
+            log.error("queryTokenInfo error, no result");
+            return null;
+        }
+        try {
+            JSONObject json = JSON.parseObject(result);
+            Integer code = json.getInteger("code");
+            if (code == null || code != 200) {
+                log.error("queryTokenInfo error, result:{}", result);
+                return null;
+            }
+            return json.getJSONObject("data");
+        } catch (Exception e) {
+            log.error("queryTokenInfo parse error, msg:{}", e.getMessage());
+            return null;
+        }
+    }
+
+    public void preloadSpuIds(Map<String, Long> modelNoToSpuId) {
+        spuIdCache.putAll(modelNoToSpuId);
+    }
+
+    private Integer pickV3Price(JSONObject sku) {
+        Integer normalPrice = sku.getInteger("normal_price");
+        Integer storagePrice = sku.getInteger("storage_price");
+        boolean hasNormal = normalPrice != null && normalPrice > 0;
+        boolean hasStorage = storagePrice != null && storagePrice > 0;
+        if (hasNormal && hasStorage) {
+            return Math.min(normalPrice, storagePrice);
+        } else if (hasNormal) {
+            return normalPrice;
+        } else if (hasStorage) {
+            return storagePrice;
+        }
+        return null;
+    }
+
+    private Headers buildV3Headers() {
+        return Headers.of("Authorization", tokenV3);
     }
 
     /**

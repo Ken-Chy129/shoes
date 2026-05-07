@@ -33,6 +33,12 @@ public class PoisonController {
         return Result.buildSuccess(poisonClient.batchQueryPrice(List.of(query)));
     }
 
+    @GetMapping("tokenInfo")
+    public Result<JSONObject> tokenInfo() {
+        JSONObject info = poisonClient.queryTokenInfo();
+        return info != null ? Result.buildSuccess(info) : Result.buildError("查询token信息失败");
+    }
+
     @GetMapping("querySpecialPrice")
     public Result<List<String>> querySpecialPrice() {
         List<SpecialPriceDO> specialPriceDOS = specialPriceMapper.selectList(null);

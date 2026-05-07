@@ -86,6 +86,15 @@ public class PoisonService {
         LockHelper.unlockPoisonPrice();
     }
 
+    public void preloadSpuIdsToClient() {
+        List<PoisonItemDO> items = poisonItemMapper.selectList(new QueryWrapper<>());
+        Map<String, Long> mapping = items.stream()
+                .filter(item -> item.getSpuId() != null && item.getArticleNumber() != null)
+                .collect(Collectors.toMap(PoisonItemDO::getArticleNumber, PoisonItemDO::getSpuId, (a, b) -> a));
+        poisonClient.preloadSpuIds(mapping);
+        log.info("preloadSpuIdsToClient done, size:{}", mapping.size());
+    }
+
     /**
      * 将db里的得物价格导入到缓存中
      */
