@@ -316,8 +316,17 @@ public class PoisonClient {
                 log.error("searchSpuIdV3 error, result:{}", result);
                 return null;
             }
-            JSONArray data = json.getJSONArray("data");
-            if (data == null || data.isEmpty()) {
+            Object dataObj = json.get("data");
+            if (dataObj == null) {
+                return null;
+            }
+            JSONArray data;
+            if (dataObj instanceof JSONArray) {
+                data = (JSONArray) dataObj;
+            } else {
+                return null;
+            }
+            if (data.isEmpty()) {
                 return null;
             }
             for (int i = 0; i < data.size(); i++) {
