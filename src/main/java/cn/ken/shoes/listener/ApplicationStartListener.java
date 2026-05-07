@@ -43,6 +43,9 @@ public class ApplicationStartListener implements ApplicationListener<Application
 
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
+        if (PoisonSwitch.USE_V3_API) {
+            poisonService.preloadSpuIdsToClient();
+        }
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
             poisonService.importPriceToCache();
         }
