@@ -4,6 +4,8 @@ const TASK_TYPE = {
     KC_PRICE_DOWN: 'kc_price_down',
     STOCKX_LISTING: 'stockx_listing',
     STOCKX_PRICE_DOWN: 'stockx_price_down',
+    STOCKX_STANDARD_PRICE_DOWN: 'stockx_standard_price_down',
+    STOCKX_CUSTODIAL_PRICE_DOWN: 'stockx_custodial_price_down',
 };
 
 enum TASK_API {
@@ -17,6 +19,8 @@ enum TASK_API {
     // StockX任务配置
     STOCKX_CONFIG = '/api/task/stockx/config',
     STOCKX_SORT_OPTIONS = '/api/task/stockx/sortOptions',
+    STOCKX_UPLOAD_PRICE_DOWN_EXCEL = '/api/task/stockx/uploadPriceDownExcel',
+    STOCKX_PRICE_DOWN_EXCEL_COUNT = '/api/task/stockx/priceDownExcelCount',
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
     TASK_ITEM_EXPORT = '/api/taskItem/export',

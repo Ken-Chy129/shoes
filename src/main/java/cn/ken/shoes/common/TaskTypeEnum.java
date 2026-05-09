@@ -14,6 +14,8 @@ public enum TaskTypeEnum {
     KC_PRICE_DOWN("kc_price_down", "KC压价任务"),
     STOCKX_LISTING("stockx_listing", "StockX上架任务"),
     STOCKX_PRICE_DOWN("stockx_price_down", "StockX压价任务"),
+    STOCKX_STANDARD_PRICE_DOWN("stockx_standard_price_down", "StockX现货压价任务"),
+    STOCKX_CUSTODIAL_PRICE_DOWN("stockx_custodial_price_down", "StockX寄存压价任务"),
     ;
 
     private final String code;

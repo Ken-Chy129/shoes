@@ -1,17 +1,22 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
+import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -157,6 +162,27 @@ public class TaskController {
                 Map.of("value", "UPDATED_AT_ASC", "label", "已更新 - 最旧")
         );
         return Result.buildSuccess(sortOptions);
+    }
+
+    // ==================== StockX Excel 压价 ====================
+
+    @PostMapping("stockx/uploadPriceDownExcel")
+    public Result<Integer> uploadPriceDownExcel(@RequestParam("file") MultipartFile file,
+                                                @RequestParam("inventoryType") String inventoryType) throws IOException {
+        if (!"STANDARD".equals(inventoryType) && !"CUSTODIAL".equals(inventoryType)) {
+            return Result.buildError("无效的库存类型: " + inventoryType);
+        }
+        List<StockXPriceDownInputExcel> list = EasyExcel.read(file.getInputStream())
+                .head(StockXPriceDownInputExcel.class)
+                .sheet()
+                .doReadSync();
+        ShoesContext.loadPriceDownExcel(inventoryType, list);
+        return Result.buildSuccess(ShoesContext.getPriceDownMap(inventoryType).size());
+    }
+
+    @GetMapping("stockx/priceDownExcelCount")
+    public Result<Integer> getPriceDownExcelCount(@RequestParam("inventoryType") String inventoryType) {
+        return Result.buildSuccess(ShoesContext.getPriceDownMap(inventoryType).size());
     }
 
 }

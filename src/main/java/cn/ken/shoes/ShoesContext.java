@@ -5,7 +5,10 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 
+import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
+
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ShoesContext {
 
@@ -18,6 +21,9 @@ public class ShoesContext {
     private final static Set<String> FLAWS_MODEL_SET = new HashSet<>();
 
     private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
+
+    private final static ConcurrentHashMap<String, Integer> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
+    private final static ConcurrentHashMap<String, Integer> CUSTODIAL_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
 
     // 3.5
     public static void clearThreeFiveModelSet() {
@@ -129,5 +135,26 @@ public class ShoesContext {
     public static Integer getSpecialPrice(String modelNo, String euSize) {
         String key = STR."\{modelNo}:\{euSize}";
         return SPECIAL_PRICE_MAP.get(key);
+    }
+
+    // Excel 压价数据
+    public static void loadPriceDownExcel(String inventoryType, List<StockXPriceDownInputExcel> list) {
+        ConcurrentHashMap<String, Integer> map = getPriceDownMap(inventoryType);
+        map.clear();
+        for (StockXPriceDownInputExcel item : list) {
+            if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getEuSize()) && item.getMinPrice() != null) {
+                String key = STR."\{item.getStyleId()}:\{item.getEuSize()}";
+                map.put(key, item.getMinPrice());
+            }
+        }
+    }
+
+    public static Integer getPriceDownMinPrice(String inventoryType, String styleId, String euSize) {
+        String key = STR."\{styleId}:\{euSize}";
+        return getPriceDownMap(inventoryType).get(key);
+    }
+
+    public static ConcurrentHashMap<String, Integer> getPriceDownMap(String inventoryType) {
+        return "CUSTODIAL".equals(inventoryType) ? CUSTODIAL_PRICE_DOWN_MAP : STANDARD_PRICE_DOWN_MAP;
     }
 }
