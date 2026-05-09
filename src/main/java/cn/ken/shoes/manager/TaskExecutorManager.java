@@ -6,7 +6,9 @@ import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.task.KcPriceDownTaskRunner;
 import cn.ken.shoes.task.KcTaskRunner;
+import cn.ken.shoes.task.StockXCustodialPriceDownTaskRunner;
 import cn.ken.shoes.task.StockXPriceDownTaskRunner;
+import cn.ken.shoes.task.StockXStandardPriceDownTaskRunner;
 import cn.ken.shoes.task.StockXTaskRunner;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -32,6 +34,12 @@ public class TaskExecutorManager {
 
     @Resource
     private StockXPriceDownTaskRunner stockXPriceDownTaskRunner;
+
+    @Resource
+    private StockXStandardPriceDownTaskRunner stockXStandardPriceDownTaskRunner;
+
+    @Resource
+    private StockXCustodialPriceDownTaskRunner stockXCustodialPriceDownTaskRunner;
 
     @Resource
     private TaskMapper taskMapper;
@@ -95,6 +103,32 @@ public class TaskExecutorManager {
                     TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
                 }
             }
+            case STOCKX_STANDARD_PRICE_DOWN -> {
+                TaskSwitch.CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK = false;
+                if (!stockXStandardPriceDownTaskRunner.isInit()) {
+                    Long taskId = createTask("stockx", taskType.getCode());
+                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
+                    new Thread(stockXStandardPriceDownTaskRunner, "StockX-Standard-PriceDown-Task").start();
+                } else if (TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID == null) {
+                    Long taskId = createTask("stockx", taskType.getCode());
+                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
+                }
+            }
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> {
+                TaskSwitch.CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK = false;
+                if (!stockXCustodialPriceDownTaskRunner.isInit()) {
+                    Long taskId = createTask("stockx", taskType.getCode());
+                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
+                    new Thread(stockXCustodialPriceDownTaskRunner, "StockX-Custodial-PriceDown-Task").start();
+                } else if (TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID == null) {
+                    Long taskId = createTask("stockx", taskType.getCode());
+                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = taskId;
+                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
+                }
+            }
         }
     }
 
@@ -108,6 +142,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = true;
             case STOCKX_LISTING -> TaskSwitch.CANCEL_STOCK_LISTING_TASK = true;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = true;
+            case STOCKX_STANDARD_PRICE_DOWN -> TaskSwitch.CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK = true;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> TaskSwitch.CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK = true;
         }
     }
 
@@ -121,6 +157,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
             case STOCKX_LISTING -> stockXTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_LISTING_TASK;
             case STOCKX_PRICE_DOWN -> stockXPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK;
+            case STOCKX_STANDARD_PRICE_DOWN -> stockXStandardPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> stockXCustodialPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK;
         };
     }
 
@@ -133,6 +171,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
             case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID;
+            case STOCKX_STANDARD_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID;
         };
     }
 
@@ -145,6 +185,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
             case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_ROUND;
             case STOCKX_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND;
+            case STOCKX_STANDARD_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND;
         };
     }
 
@@ -157,6 +199,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
             case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL;
             case STOCKX_PRICE_DOWN -> TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL;
+            case STOCKX_STANDARD_PRICE_DOWN -> TaskSwitch.STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> TaskSwitch.STOCK_CUSTODIAL_PRICE_DOWN_TASK_INTERVAL;
         };
     }
 
@@ -169,6 +213,8 @@ public class TaskExecutorManager {
             case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
             case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL = interval;
             case STOCKX_PRICE_DOWN -> TaskSwitch.STOCK_PRICE_DOWN_TASK_INTERVAL = interval;
+            case STOCKX_STANDARD_PRICE_DOWN -> TaskSwitch.STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL = interval;
+            case STOCKX_CUSTODIAL_PRICE_DOWN -> TaskSwitch.STOCK_CUSTODIAL_PRICE_DOWN_TASK_INTERVAL = interval;
         }
     }
 
@@ -208,6 +254,12 @@ public class TaskExecutorManager {
         }
         if (TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID != null) {
             validIds.add(TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID);
+        }
+        if (TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID);
+        }
+        if (TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID != null) {
+            validIds.add(TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID);
         }
         return validIds;
     }

@@ -34,6 +34,10 @@ public class StockXConfig {
 
     public static final String GRAPHQL = "https://gateway.stockx.com/api/graphql";
 
+    public static final String BATCH_UPDATE_LISTING = "https://api.stockx.com/v2/selling/batch/update-listing";
+
+    public static final String BATCH_UPDATE_LISTING_STATUS = "https://api.stockx.com/v2/selling/batch/update-listing/{batchId}";
+
     /**
      * 保存OAuth配置到文件
      */

@@ -29,4 +29,16 @@ public class TaskSwitch {
     public static long STOCK_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
     public static Long CURRENT_STOCK_PRICE_DOWN_TASK_ID = null;
     public static int CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
+
+    // ==================== StockX现货压价任务 ====================
+    public static boolean CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK = false;
+    public static long STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
+    public static Long CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = null;
+    public static int CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
+
+    // ==================== StockX寄存压价任务 ====================
+    public static boolean CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK = false;
+    public static long STOCK_CUSTODIAL_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
+    public static Long CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = null;
+    public static int CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
 }

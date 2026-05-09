@@ -78,5 +78,26 @@ function doUploadRequest(
     });
 }
 
+function doUploadRequestWithParams(
+    apiName: string,
+    file: RcFile,
+    params?: Record<string, string>,
+    callbacks?: { onSuccess?: (res: any) => void; onError?: (err: any) => void }
+) {
+    const formData = new FormData();
+    formData.append("file", file);
+    if (params) {
+        Object.entries(params).forEach(([key, value]) => formData.append(key, value));
+    }
+    request(apiName, {
+        method: 'POST',
+        data: formData,
+    }).then(res => {
+        callbacks?.onSuccess?.(res);
+    }).catch(err => {
+        callbacks?.onError?.(err);
+    });
+}
 
-export {doGetRequest, doPostRequest, doDeleteRequest, doUploadRequest}
+
+export {doGetRequest, doPostRequest, doDeleteRequest, doUploadRequest, doUploadRequestWithParams}

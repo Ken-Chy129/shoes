@@ -1027,6 +1027,179 @@ public class StockXClient {
         return authorization;
     }
 
+    /**
+     * 使用 persisted query 格式查询在售商品（区分库存类型）
+     */
+    public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "SellerListings");
+
+        JSONObject variables = new JSONObject();
+        variables.put("skipGuidance", false);
+        variables.put("skipFlexEligible", true);
+        variables.put("pageSize", 50);
+        variables.put("sort", "CREATED_AT");
+        variables.put("order", "DESC");
+        variables.put("country", "US");
+        variables.put("market", "US");
+        variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
+        variables.put("currencyCode", "USD");
+
+        JSONObject filters = new JSONObject();
+        filters.put("spreadCurrency", "USD");
+        filters.put("inventoryType", Map.of("in", List.of(inventoryType)));
+        if ("CUSTODIAL".equals(inventoryType)) {
+            filters.put("listingStatus", Map.of("in", List.of("ACTIVE", "ON_HOLD")));
+        } else {
+            filters.put("listingStatus", Map.of("in", List.of("ACTIVE")));
+            filters.put("listingType", Map.of("in", List.of("VERIFIED")));
+        }
+        variables.put("filters", filters);
+        requestJson.put("variables", variables);
+
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "ab3842937c803f03d6296570ef963b062e5b01d2e7695ccf3c7aff590a17abef");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders());
+        if (jsonObject == null) {
+            return null;
+        }
+
+        JSONObject result = new JSONObject();
+        JSONObject sellerListings = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("sellerListings");
+        JSONObject pageInfo = sellerListings.getJSONObject("pageInfo");
+        result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
+
+        List<JSONObject> items = new ArrayList<>();
+        result.put("items", items);
+        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            JSONObject node = edge.getJSONObject("node");
+            JSONObject productVariant = node.getJSONObject("productVariant");
+            if (productVariant == null) {
+                continue;
+            }
+            JSONObject item = new JSONObject();
+            item.put("id", node.getString("id"));
+            item.put("amount", node.getInteger("amount"));
+            item.put("isExpired", node.getBoolean("isExpired"));
+            item.put("variantId", productVariant.getString("id"));
+
+            JSONObject product = productVariant.getJSONObject("product");
+            item.put("styleId", product.getString("styleId"));
+            item.put("productName", product.getString("model"));
+
+            String size = Optional.ofNullable(productVariant.getJSONObject("traits"))
+                    .map(traits -> traits.getString("size"))
+                    .orElse(null);
+            item.put("size", size);
+
+            Optional<String> euSizeFromChart = Optional.ofNullable(productVariant.getJSONObject("sizeChart"))
+                    .map(sc -> sc.getJSONArray("displayOptions"))
+                    .map(arr -> arr.toJavaList(JSONObject.class))
+                    .flatMap(list -> list.stream()
+                            .filter(option -> option.getString("size").startsWith("EU"))
+                            .findFirst()
+                            .map(euOption -> ShoesUtil.getShoesSizeFrom(euOption.getString("size"))));
+            if (euSizeFromChart.isPresent()) {
+                item.put("euSize", euSizeFromChart.get());
+            } else if (size != null) {
+                String primaryCategory = product.getString("primaryCategory");
+                String brand = BrandUtil.extractStockXBrand(product.getString("model"));
+                if (brand == null) {
+                    brand = BrandUtil.extractStockXBrand(primaryCategory);
+                }
+                if (brand != null) {
+                    String euSize = SizeConvertUtil.getStockXEuSize(brand, size);
+                    if (euSize != null) {
+                        item.put("euSize", euSize);
+                    }
+                }
+            }
+
+            // 解析两种最低价
+            Optional.ofNullable(productVariant.getJSONObject("market"))
+                    .map(m -> m.getJSONObject("state"))
+                    .map(s -> s.getJSONObject("askServiceLevels"))
+                    .ifPresent(askLevels -> {
+                        Optional.ofNullable(askLevels.getJSONObject("standard"))
+                                .map(s -> s.getJSONObject("lowest"))
+                                .map(l -> l.getInteger("amount"))
+                                .ifPresent(amount -> item.put("standardLowest", amount));
+                        Optional.ofNullable(askLevels.getJSONObject("expressStandard"))
+                                .map(s -> s.getJSONObject("lowest"))
+                                .map(l -> l.getInteger("amount"))
+                                .ifPresent(amount -> item.put("expressStandardLowest", amount));
+                    });
+
+            items.add(item);
+        }
+        return result;
+    }
+
+    /**
+     * V2 API 批量更新 listing 价格
+     */
+    public String batchUpdateListings(List<Map<String, String>> items) {
+        JSONObject body = new JSONObject();
+        body.put("items", items);
+        String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders());
+        if (rawResult == null) {
+            log.error("batchUpdateListings failed, response is null");
+            return null;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        String batchId = result.getString("batchId");
+        log.info("batchUpdateListings success, batchId:{}, totalItems:{}", batchId, items.size());
+        return batchId;
+    }
+
+    /**
+     * V2 API 查询批量更新状态
+     */
+    public JSONObject queryBatchUpdateStatus(String batchId) {
+        String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);
+        String rawResult = HttpUtil.doGet(url, buildHeaders());
+        if (rawResult == null) {
+            return null;
+        }
+        return JSON.parseObject(rawResult);
+    }
+
+    private JSONObject queryPro(String body, Headers headers) {
+        LimiterHelper.limitStockxSecond();
+        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);
+        if (rawResult == null) {
+            return null;
+        }
+        JSONObject jsonObject = JSON.parseObject(rawResult);
+        if (jsonObject.containsKey("status")) {
+            log.error("queryPro error, msg:{}", jsonObject.getString("message"));
+            return null;
+        }
+        if (jsonObject.containsKey("blockScript")) {
+            log.error("queryPro|查询被拦截");
+            return null;
+        }
+        return jsonObject;
+    }
+
+    private Headers buildViperHeaders() {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "authorization", "Bearer " + getAuthorization(),
+                "apollographql-client-name", "Viper",
+                "apollographql-client-version", "2026.05.05.00",
+                "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+                "origin", "https://pro.stockx.com",
+                "referer", "https://pro.stockx.com/",
+                "Connection", "close"
+        );
+    }
+
     @Data
     private static class Filter {
 
