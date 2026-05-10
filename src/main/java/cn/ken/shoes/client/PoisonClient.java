@@ -433,7 +433,9 @@ public class PoisonClient {
             JSONObject json = JSON.parseObject(httpResult);
             Integer code = json.getInteger("code");
             if (code == null || code != 200) {
-                log.error("queryPriceByModelNoV4 error, modelNo:{}, result:{}", modelNo, httpResult);
+                if (code != 901) {
+                    log.error("queryPriceByModelNoV4 error, modelNo:{}, result:{}", modelNo, httpResult);
+                }
                 return Collections.emptyList();
             }
             JSONArray dataArray = json.getJSONArray("data");
