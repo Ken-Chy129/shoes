@@ -1,6 +1,6 @@
-import React, {useEffect, useState, useRef} from "react";
+import React, {useEffect, useState, useRef, useCallback} from "react";
 import {Modal, Table, Input, Select, Space, Button, Switch} from "antd";
-import {SearchOutlined, ReloadOutlined, DownloadOutlined} from "@ant-design/icons";
+import {ReloadOutlined, DownloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
 
@@ -43,7 +43,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const [filterRound, setFilterRound] = useState<string>('');
     const [filterOperateResult, setFilterOperateResult] = useState<string>('');
     const [filterStyleId, setFilterStyleId] = useState<string>('');
+    const [styleIdInput, setStyleIdInput] = useState<string>('');
     const [operateResultOptions, setOperateResultOptions] = useState<{label: string, value: string}[]>([]);
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     // 用于存储定时器
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -54,7 +56,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             queryOperateResults();
             setAutoRefresh(defaultAutoRefresh);
         }
-    }, [visible, taskId, pageIndex, pageSize]);
+    }, [visible, taskId, pageIndex, pageSize, filterRound, filterOperateResult, filterStyleId]);
 
     const queryOperateResults = () => {
         if (!taskId) return;
@@ -103,18 +105,21 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         });
     }
 
-    const handleSearch = () => {
-        setPageIndex(1);
-        queryTaskItems();
+    const handleStyleIdChange = (value: string) => {
+        setStyleIdInput(value);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setFilterStyleId(value);
+            setPageIndex(1);
+        }, 500);
     }
 
     const handleReset = () => {
         setFilterRound('');
         setFilterOperateResult('');
         setFilterStyleId('');
+        setStyleIdInput('');
         setPageIndex(1);
-        // 重置后立即查询
-        setTimeout(() => queryTaskItems(), 0);
     }
 
     const handleExport = () => {
@@ -231,6 +236,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         setFilterRound('');
         setFilterOperateResult('');
         setFilterStyleId('');
+        setStyleIdInput('');
         setAutoRefresh(false);
         onClose();
     }
@@ -248,27 +254,24 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     <Input
                         placeholder="轮次"
                         value={filterRound}
-                        onChange={e => setFilterRound(e.target.value)}
+                        onChange={e => { setFilterRound(e.target.value); setPageIndex(1); }}
                         style={{width: 80}}
                         type="number"
                     />
                     <Select
                         placeholder="操作结果"
                         value={filterOperateResult}
-                        onChange={setFilterOperateResult}
+                        onChange={v => { setFilterOperateResult(v); setPageIndex(1); }}
                         style={{width: 180}}
                         options={operateResultOptions}
                         allowClear
                     />
                     <Input
                         placeholder="货号"
-                        value={filterStyleId}
-                        onChange={e => setFilterStyleId(e.target.value)}
+                        value={styleIdInput}
+                        onChange={e => handleStyleIdChange(e.target.value)}
                         style={{width: 130}}
                     />
-                    <Button type="primary" icon={<SearchOutlined/>} onClick={handleSearch}>
-                        搜索
-                    </Button>
                     <Button icon={<ReloadOutlined/>} onClick={handleReset}>
                         重置
                     </Button>
