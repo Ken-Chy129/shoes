@@ -31,21 +31,6 @@ interface TaskItemModalProps {
     defaultAutoRefresh?: boolean;
 }
 
-const OPERATE_RESULT_OPTIONS = [
-    {label: '全部', value: ''},
-    {label: '待处理', value: '待处理'},
-    {label: '上架成功', value: '上架成功'},
-    {label: '上架失败', value: '上架失败'},
-    {label: '压价成功', value: '压价成功'},
-    {label: '压价失败', value: '压价失败'},
-    {label: '下架成功', value: '下架成功'},
-    {label: '下架失败', value: '下架失败'},
-    {label: '无须上架-无盈利', value: '无须上架-无盈利'},
-    {label: '跳过', value: '跳过'},
-    {label: '保持', value: '保持'},
-    {label: '取消', value: '取消'},
-];
-
 const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false}) => {
     const [taskItems, setTaskItems] = useState<TaskItemRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
@@ -58,6 +43,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const [filterRound, setFilterRound] = useState<string>('');
     const [filterOperateResult, setFilterOperateResult] = useState<string>('');
     const [filterStyleId, setFilterStyleId] = useState<string>('');
+    const [operateResultOptions, setOperateResultOptions] = useState<{label: string, value: string}[]>([]);
 
     // 用于存储定时器
     const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -65,10 +51,20 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     useEffect(() => {
         if (visible && taskId) {
             queryTaskItems();
-            // 打开时根据 defaultAutoRefresh 设置自动刷新
+            queryOperateResults();
             setAutoRefresh(defaultAutoRefresh);
         }
     }, [visible, taskId, pageIndex, pageSize]);
+
+    const queryOperateResults = () => {
+        if (!taskId) return;
+        doGetRequest(TASK_API.TASK_ITEM_OPERATE_RESULTS, {taskId}, {
+            onSuccess: res => {
+                const options = [{label: '全部', value: ''}, ...(res.data || []).map((r: string) => ({label: r, value: r}))];
+                setOperateResultOptions(options);
+            }
+        });
+    }
 
     // 自动刷新逻辑
     useEffect(() => {
@@ -260,8 +256,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                         placeholder="操作结果"
                         value={filterOperateResult}
                         onChange={setFilterOperateResult}
-                        style={{width: 120}}
-                        options={OPERATE_RESULT_OPTIONS}
+                        style={{width: 180}}
+                        options={operateResultOptions}
                         allowClear
                     />
                     <Input

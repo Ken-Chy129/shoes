@@ -39,4 +39,9 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
      * 根据任务ID删除所有明细
      */
     void deleteByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * 查询任务的所有操作结果类型
+     */
+    List<String> selectDistinctOperateResults(@Param("taskId") Long taskId);
 }

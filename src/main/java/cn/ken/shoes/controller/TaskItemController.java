@@ -9,6 +9,8 @@ import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
 
+import cn.ken.shoes.common.Result;
+
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -38,6 +40,11 @@ public class TaskItemController {
         PageResult<List<TaskItemDO>> result = PageResult.buildSuccess(items);
         result.setTotal(total);
         return result;
+    }
+
+    @GetMapping("operateResults")
+    public Result<List<String>> getOperateResults(@RequestParam Long taskId) {
+        return Result.buildSuccess(taskItemMapper.selectDistinctOperateResults(taskId));
     }
 
     @GetMapping("export")
