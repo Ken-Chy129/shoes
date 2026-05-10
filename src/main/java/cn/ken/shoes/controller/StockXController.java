@@ -12,6 +12,7 @@ import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("stockx")
@@ -89,6 +90,37 @@ public class StockXController {
     public Result<Void> delistAllItems() {
         Thread.startVirtualThread(() -> stockXService.delistAllItems());
         return Result.buildSuccess();
+    }
+
+    // ==================== 压价调试接口 ====================
+
+    /**
+     * 测试 persisted query 查询在售商品（区分库存类型）
+     * GET /stockx/testQuerySellingByType?inventoryType=STANDARD&page=1
+     */
+    @GetMapping("testQuerySellingByType")
+    public Result<JSONObject> testQuerySellingByType(@RequestParam String inventoryType,
+                                                     @RequestParam(defaultValue = "1") Integer page) {
+        return Result.buildSuccess(stockXClient.querySellingItemsByInventoryType(inventoryType, page));
+    }
+
+    /**
+     * 测试 V2 API 批量更新价格（传 listingId 和 amount）
+     * POST /stockx/testBatchUpdate
+     * Body: [{"listingId": "xxx", "amount": "150", "currencyCode": "USD"}]
+     */
+    @PostMapping("testBatchUpdate")
+    public Result<String> testBatchUpdate(@RequestBody List<Map<String, String>> items) {
+        return Result.buildSuccess(stockXClient.batchUpdateListings(items));
+    }
+
+    /**
+     * 测试查询批量更新状态
+     * GET /stockx/testBatchStatus?batchId=xxx
+     */
+    @GetMapping("testBatchStatus")
+    public Result<JSONObject> testBatchStatus(@RequestParam String batchId) {
+        return Result.buildSuccess(stockXClient.queryBatchUpdateStatus(batchId));
     }
 
 }
