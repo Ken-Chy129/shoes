@@ -50,8 +50,7 @@ public class StockXStandardPriceDownTaskRunner implements Runnable {
                 }
 
                 if (detectCancelTask(taskId)) return;
-                Thread.sleep(TaskSwitch.STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL);
-                if (detectCancelTask(taskId)) return;
+                if (sleepWithCancelCheck(taskId)) return;
             } catch (InterruptedException e) {
                 log.error(e.getMessage(), e);
             } catch (Exception e) {
@@ -62,6 +61,16 @@ public class StockXStandardPriceDownTaskRunner implements Runnable {
                 }
             }
         }
+    }
+
+    private boolean sleepWithCancelCheck(Long taskId) throws InterruptedException {
+        long remaining = TaskSwitch.STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL;
+        while (remaining > 0) {
+            if (detectCancelTask(taskId)) return true;
+            Thread.sleep(Math.min(5000, remaining));
+            remaining -= 5000;
+        }
+        return false;
     }
 
     private boolean detectCancelTask(Long taskId) {
