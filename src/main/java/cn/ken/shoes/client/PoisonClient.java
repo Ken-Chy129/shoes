@@ -449,10 +449,9 @@ public class PoisonClient {
                 if (price == null || price <= 0 || price > PoisonSwitch.MAX_PRICE) {
                     continue;
                 }
-                String size = convertV4Size(item.getString("size"));
                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                 poisonPriceDO.setModelNo(modelNo);
-                poisonPriceDO.setEuSize(size);
+                poisonPriceDO.setEuSize(item.getString("size"));
                 poisonPriceDO.setPrice(price.intValue());
                 poisonPriceDO.setUpdateTime(updateTime);
                 poisonPriceDOList.add(poisonPriceDO);
@@ -465,13 +464,6 @@ public class PoisonClient {
             log.error("queryPriceByModelNoV4 parse error, modelNo:{}, msg:{}", modelNo, e.getMessage());
             return Collections.emptyList();
         }
-    }
-
-    private String convertV4Size(String size) {
-        if (size == null) {
-            return null;
-        }
-        return size.replace("⅓", " 1/3").replace("⅔", " 2/3");
     }
 
     public void preloadSpuIds(Map<String, Long> modelNoToSpuId) {
