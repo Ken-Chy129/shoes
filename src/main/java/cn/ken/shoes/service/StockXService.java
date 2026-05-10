@@ -509,15 +509,15 @@ public class StockXService {
                     .collect(Collectors.toSet());
             priceManager.preloadMissingPrices(modelNos);
 
-            // 按 styleId:euSize 分组
+            // 按 styleId:size 分组（size 为 traits.size 原始值）
             Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
             for (JSONObject item : items) {
                 String styleId = item.getString("styleId");
-                String euSize = item.getString("euSize");
-                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
+                String size = item.getString("size");
+                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
                     continue;
                 }
-                String key = STR."\{styleId}:\{euSize}";
+                String key = STR."\{styleId}:\{size}";
                 grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(item);
             }
 
@@ -531,12 +531,12 @@ public class StockXService {
 
                 String key = entry.getKey();
                 List<JSONObject> listings = entry.getValue();
-                String[] parts = key.split(":");
+                String[] parts = key.split(":", 2);
                 String styleId = parts[0];
-                String euSize = parts[1];
+                String size = parts[1];
 
                 // 1. 不在 Excel 中 → skip
-                Integer excelMinPrice = ShoesContext.getPriceDownMinPrice(inventoryType, styleId, euSize);
+                Integer excelMinPrice = ShoesContext.getPriceDownMinPrice(inventoryType, styleId, size);
                 if (excelMinPrice == null) {
                     totalSkip += listings.size();
                     // 记录跳过的 TaskItem
@@ -586,8 +586,9 @@ public class StockXService {
                     continue;
                 }
 
-                // 6. 盈利检查
-                Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+                // 6. 盈利检查（得物用 euSize）
+                String euSize = bestListing.getString("euSize");
+                Integer poisonPrice = euSize != null ? priceManager.getPoisonPrice(styleId, euSize) : null;
                 if (poisonPrice != null) {
                     Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
                     if (!ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {

@@ -10,7 +10,7 @@ public class StockXPriceDownInputExcel {
     private String styleId;
 
     @ExcelProperty("尺码")
-    private String euSize;
+    private String size;
 
     @ExcelProperty("最低价($)")
     private Integer minPrice;

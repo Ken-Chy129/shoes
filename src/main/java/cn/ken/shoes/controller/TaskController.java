@@ -191,7 +191,7 @@ public class TaskController {
         List<Map<String, Object>> result = new ArrayList<>();
         ShoesContext.getPriceDownMap(inventoryType).forEach((key, minPrice) -> {
             String[] parts = key.split(":");
-            result.add(Map.of("styleId", parts[0], "euSize", parts.length > 1 ? parts[1] : "", "minPrice", minPrice));
+            result.add(Map.of("styleId", parts[0], "size", parts.length > 1 ? parts[1] : "", "minPrice", minPrice));
         });
         return Result.buildSuccess(result);
     }

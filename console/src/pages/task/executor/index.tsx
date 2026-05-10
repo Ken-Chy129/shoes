@@ -498,12 +498,12 @@ const TaskExecutorPage = () => {
                footer={null} width={600}>
             <Table
                 dataSource={previewData}
-                rowKey={(record) => `${record.styleId}:${record.euSize}`}
+                rowKey={(record) => `${record.styleId}:${record.size}`}
                 size="small"
                 pagination={{pageSize: 20, showTotal: (total) => `共 ${total} 条`}}
                 columns={[
                     {title: '货号', dataIndex: 'styleId', key: 'styleId'},
-                    {title: '尺码', dataIndex: 'euSize', key: 'euSize'},
+                    {title: '尺码', dataIndex: 'size', key: 'size'},
                     {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice'},
                 ]}
             />

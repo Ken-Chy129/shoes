@@ -142,15 +142,15 @@ public class ShoesContext {
         ConcurrentHashMap<String, Integer> map = getPriceDownMap(inventoryType);
         map.clear();
         for (StockXPriceDownInputExcel item : list) {
-            if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getEuSize()) && item.getMinPrice() != null) {
-                String key = STR."\{item.getStyleId()}:\{item.getEuSize()}";
+            if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize()) && item.getMinPrice() != null) {
+                String key = STR."\{item.getStyleId()}:\{item.getSize()}";
                 map.put(key, item.getMinPrice());
             }
         }
     }
 
-    public static Integer getPriceDownMinPrice(String inventoryType, String styleId, String euSize) {
-        String key = STR."\{styleId}:\{euSize}";
+    public static Integer getPriceDownMinPrice(String inventoryType, String styleId, String size) {
+        String key = STR."\{styleId}:\{size}";
         return getPriceDownMap(inventoryType).get(key);
     }
 
