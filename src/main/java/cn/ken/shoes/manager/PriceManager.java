@@ -95,10 +95,25 @@ public class PriceManager {
     }
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
-        try {
-            if (modelNo == null || euSize == null) {
-                return null;
+        if (modelNo == null || euSize == null) {
+            return null;
+        }
+        if (modelNo.contains("/")) {
+            String[] parts = modelNo.split("\\s*/\\s*");
+            Integer bestPrice = null;
+            for (String part : parts) {
+                Integer price = getSinglePoisonPrice(part, euSize);
+                if (price != null && (bestPrice == null || price < bestPrice)) {
+                    bestPrice = price;
+                }
             }
+            return bestPrice;
+        }
+        return getSinglePoisonPrice(modelNo, euSize);
+    }
+
+    private Integer getSinglePoisonPrice(String modelNo, String euSize) {
+        try {
             Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, euSize);
             if (specialPrice != null) {
                 return specialPrice;
@@ -114,7 +129,7 @@ public class PriceManager {
                 return normalPrice.getPrice();
             }
         } catch (ExecutionException e) {
-            log.info("getPoisonPrice error", e);
+            log.info("getSinglePoisonPrice error", e);
             return null;
         }
     }
@@ -155,31 +170,28 @@ public class PriceManager {
         }
         log.info("preloadMissingPrices, total:{}, missing:{}", modelNos.size(), missingModelNos.size());
 
-        // 分离普通货号和带 "/" 的货号
-        Set<String> normalModelNos = new java.util.HashSet<>();
-        // 原始货号 -> 前半部分
-        Map<String, String> slashModelFirstPart = new java.util.HashMap<>();
-        // 原始货号 -> 后半部分
-        Map<String, String> slashModelSecondPart = new java.util.HashMap<>();
-
+        // 拆分组合货号，所有子货号独立查询和缓存
+        Set<String> allModelNos = new java.util.HashSet<>();
         for (String modelNo : missingModelNos) {
             if (modelNo.contains("/")) {
-                String[] parts = modelNo.split("/", 2);
-                slashModelFirstPart.put(modelNo, parts[0].trim());
-                slashModelSecondPart.put(modelNo, parts[1].trim());
+                for (String part : modelNo.split("\\s*/\\s*")) {
+                    if (CACHE.getIfPresent(part) == null) {
+                        allModelNos.add(part);
+                    }
+                }
             } else {
-                normalModelNos.add(modelNo);
+                allModelNos.add(modelNo);
             }
         }
 
-        // 合并需要查询的货号：普通货号 + 带"/"货号的前半部分
-        Set<String> firstBatchQuery = new java.util.HashSet<>(normalModelNos);
-        firstBatchQuery.addAll(slashModelFirstPart.values());
+        if (allModelNos.isEmpty()) {
+            return;
+        }
 
-        // 批量查询第一批货号，每200个一批
-        List<PoisonPriceDO> poisonPriceDOList = batchQueryPrices(new ArrayList<>(firstBatchQuery));
+        // 批量查询所有子货号
+        List<PoisonPriceDO> poisonPriceDOList = batchQueryPrices(new ArrayList<>(allModelNos));
 
-        // 按货号分组
+        // 按货号分组并缓存
         Map<String, Map<String, PoisonPriceDO>> modelNoPriceMap = poisonPriceDOList.stream()
                 .collect(Collectors.groupingBy(
                         PoisonPriceDO::getModelNo,
@@ -190,48 +202,9 @@ public class PriceManager {
                         )
                 ));
 
-        // 处理普通货号的缓存
-        for (String modelNo : normalModelNos) {
+        for (String modelNo : allModelNos) {
             Map<String, PoisonPriceDO> priceMap = modelNoPriceMap.get(modelNo);
             CACHE.put(modelNo, priceMap != null ? priceMap : Map.of());
-        }
-
-        // 处理带 "/" 的货号
-        Set<String> needSecondQuery = new java.util.HashSet<>();
-        for (String originalModelNo : slashModelFirstPart.keySet()) {
-            String firstPart = slashModelFirstPart.get(originalModelNo);
-            Map<String, PoisonPriceDO> priceMap = modelNoPriceMap.get(firstPart);
-            if (priceMap != null && !priceMap.isEmpty()) {
-                // 前半部分有结果，缓存到原始货号
-                CACHE.put(originalModelNo, priceMap);
-            } else {
-                // 前半部分没有结果，需要查询后半部分
-                needSecondQuery.add(originalModelNo);
-            }
-        }
-
-        // 查询需要用后半部分的货号
-        if (!needSecondQuery.isEmpty()) {
-            List<String> secondPartList = needSecondQuery.stream()
-                    .map(slashModelSecondPart::get)
-                    .collect(Collectors.toList());
-
-            List<PoisonPriceDO> secondBatchResult = batchQueryPrices(secondPartList);
-            Map<String, Map<String, PoisonPriceDO>> secondPriceMap = secondBatchResult.stream()
-                    .collect(Collectors.groupingBy(
-                            PoisonPriceDO::getModelNo,
-                            Collectors.toMap(
-                                    PoisonPriceDO::getEuSize,
-                                    Function.identity(),
-                                    (existing, replacement) -> existing
-                            )
-                    ));
-
-            for (String originalModelNo : needSecondQuery) {
-                String secondPart = slashModelSecondPart.get(originalModelNo);
-                Map<String, PoisonPriceDO> priceMap = secondPriceMap.get(secondPart);
-                CACHE.put(originalModelNo, priceMap != null ? priceMap : Map.of());
-            }
         }
     }
 
