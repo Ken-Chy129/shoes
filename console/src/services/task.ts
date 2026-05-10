@@ -25,6 +25,7 @@ enum TASK_API {
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
     TASK_ITEM_EXPORT = '/api/taskItem/export',
+    TASK_ITEM_OPERATE_RESULTS = '/api/taskItem/operateResults',
     // 删除任务
     DELETE = '/api/task/delete',
 }

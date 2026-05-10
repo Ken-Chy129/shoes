@@ -87,4 +87,10 @@
         DELETE FROM task_item WHERE task_id = #{taskId}
     </delete>
 
+    <select id="selectDistinctOperateResults" resultType="java.lang.String">
+        SELECT DISTINCT operate_result FROM task_item
+        WHERE task_id = #{taskId}
+        ORDER BY operate_result
+    </select>
+
 </mapper>
