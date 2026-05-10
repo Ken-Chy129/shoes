@@ -576,23 +576,7 @@ public class StockXService {
                     continue;
                 }
 
-                // 3. 已是最低价
-                if (amount <= lowestPrice) {
-                    updateTaskItemResult(taskItemId, "保持-已是最低价");
-                    continue;
-                }
-
-                // 4. 计算新价格
-                int newPrice = lowestPrice - 1;
-
-                // 5. 低于 Excel 最低价
-                if (newPrice < excelMinPrice) {
-                    updateTaskItemResult(taskItemId, "跳过-低于Excel最低价");
-                    totalSkip++;
-                    continue;
-                }
-
-                // 6. 盈利检查（PriceManager 内部处理组合货号，取最低得物价）
+                // 获取得物价格用于盈利判断
                 String euSize = bestListing.getString("euSize");
                 if (StrUtil.isBlank(euSize)) {
                     updateTaskItemResult(taskItemId, "跳过-无法获取EU码");
@@ -606,17 +590,44 @@ public class StockXService {
                     continue;
                 }
                 Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                if (!ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
-                    updateTaskItemResult(taskItemId, "跳过-压价后不盈利");
-                    totalSkip++;
+                boolean currentPriceProfitable = ShoesUtil.canStockxEarn(poisonPrice, amount, minExpectProfit);
+
+                if (amount <= lowestPrice) {
+                    // 已是最低价：判断当前价是否盈利
+                    if (currentPriceProfitable) {
+                        updateTaskItemResult(taskItemId, "保持-已是最低价且盈利");
+                        updateTaskItemProfit(taskItemId, poisonPrice, amount);
+                    } else {
+                        // 不盈利，设为9999下架
+                        toPriceDown.add(Map.of("listingId", listingId, "amount", "9999", "currencyCode", "USD"));
+                        listingToTaskItemId.put(listingId, taskItemId);
+                        updateTaskItemResult(taskItemId, "设9999-已是最低价但不盈利");
+                        updateTaskItemProfit(taskItemId, poisonPrice, amount);
+                    }
                     continue;
                 }
-                updateTaskItemProfit(taskItemId, poisonPrice, newPrice);
 
-                // 7. 加入待压价列表
-                toPriceDown.add(Map.of("listingId", listingId, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
-                listingToTaskItemId.put(listingId, taskItemId);
-                updateTaskItemResult(taskItemId, "待压价");
+                // 不是最低价：判断 最低价-1 是否可压
+                int newPrice = lowestPrice - 1;
+                boolean canPriceDown = newPrice >= excelMinPrice && ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit);
+
+                if (canPriceDown) {
+                    // 压价到 最低价-1
+                    toPriceDown.add(Map.of("listingId", listingId, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
+                    listingToTaskItemId.put(listingId, taskItemId);
+                    updateTaskItemResult(taskItemId, "待压价");
+                    updateTaskItemProfit(taskItemId, poisonPrice, newPrice);
+                } else if (currentPriceProfitable) {
+                    // 压价后不盈利，但当前价盈利，保持不动
+                    updateTaskItemResult(taskItemId, "保持-压价后不盈利但当前价盈利");
+                    updateTaskItemProfit(taskItemId, poisonPrice, amount);
+                } else {
+                    // 当前价也不盈利，设为9999
+                    toPriceDown.add(Map.of("listingId", listingId, "amount", "9999", "currencyCode", "USD"));
+                    listingToTaskItemId.put(listingId, taskItemId);
+                    updateTaskItemResult(taskItemId, "设9999-不盈利");
+                    updateTaskItemProfit(taskItemId, poisonPrice, amount);
+                }
             }
 
             // 批量压价（V2 API）
