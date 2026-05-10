@@ -417,11 +417,14 @@ public class StockXClient {
     }
 
     public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType) {
+        if (pageIndex == null) {
+            pageIndex = 1;
+        }
         SearchTypeEnum searchTypeEnum = SearchTypeEnum.from(searchType);
         if (searchTypeEnum == null) {
             return Pair.of(0, Collections.emptyList());
         }
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, searchTypeEnum));
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort));
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -547,7 +550,7 @@ public class StockXClient {
         return result;
     }
 
-    private String buildItemSearchRequest(String query, Integer index, String sort, SearchTypeEnum searchTypeEnum) {
+    private String buildItemSearchRequest(String query, Integer index, String sort) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "getDiscoveryData");
         JSONObject variables = new JSONObject();
