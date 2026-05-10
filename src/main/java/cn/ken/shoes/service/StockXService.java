@@ -547,13 +547,19 @@ public class StockXService {
                     continue;
                 }
 
-                // 取当前价格最低的 listing
+                // 取当前价格最低的 listing，其余记录为跳过
                 listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
                 JSONObject bestListing = listings.get(0);
                 String listingId = bestListing.getString("id");
                 int amount = bestListing.getIntValue("amount");
 
-                // 记录 TaskItem
+                // 记录非最低价的 listing
+                for (int i = 1; i < listings.size(); i++) {
+                    Long otherId = insertTaskItem(taskId, inventoryType, listings.get(i));
+                    updateTaskItemResult(otherId, "跳过-同货号尺码非最低价");
+                }
+
+                // 记录最低价的 listing
                 Long taskItemId = insertTaskItem(taskId, inventoryType, bestListing);
 
                 // 2. 取对应类型的最低价（standard=现货最低价，expressStandard=寄存最低价）
