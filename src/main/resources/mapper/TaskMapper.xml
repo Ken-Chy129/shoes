@@ -42,7 +42,7 @@
     </select>
 
     <update id="updateTaskStatus">
-        update task set status = #{status}, end_time = now()
+        update task set status = #{status}, end_time = CONVERT_TZ(NOW(), 'SYSTEM', '+08:00')
         where id = #{id}
     </update>
 
@@ -78,7 +78,7 @@
     </select>
 
     <update id="shelveHistoryTasks">
-        update task set status = 'shelved', end_time = now()
+        update task set status = 'shelved', end_time = CONVERT_TZ(NOW(), 'SYSTEM', '+08:00')
         where status = 'running'
         <if test="list != null and list.size() > 0">
             and id not in
