@@ -73,6 +73,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         if (autoRefresh && visible && taskId) {
             timerRef.current = setInterval(() => {
                 queryTaskItems();
+                queryOperateResults();
             }, 5000);
         } else {
             if (timerRef.current) {
