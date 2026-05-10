@@ -1069,8 +1069,24 @@ public class StockXClient {
             return null;
         }
 
+        // 检查返回结构
+        JSONObject data = jsonObject.getJSONObject("data");
+        if (data == null) {
+            log.error("querySellingItemsByInventoryType response has no data field, response:{}", jsonObject.toJSONString());
+            return null;
+        }
+        JSONObject viewer = data.getJSONObject("viewer");
+        if (viewer == null) {
+            log.error("querySellingItemsByInventoryType response has no viewer field, response:{}", jsonObject.toJSONString());
+            return null;
+        }
+        JSONObject sellerListings = viewer.getJSONObject("sellerListings");
+        if (sellerListings == null) {
+            log.error("querySellingItemsByInventoryType response has no sellerListings field, response:{}", jsonObject.toJSONString());
+            return null;
+        }
+
         JSONObject result = new JSONObject();
-        JSONObject sellerListings = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("sellerListings");
         JSONObject pageInfo = sellerListings.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
 
