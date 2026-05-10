@@ -21,6 +21,7 @@ enum TASK_API {
     STOCKX_SORT_OPTIONS = '/api/task/stockx/sortOptions',
     STOCKX_UPLOAD_PRICE_DOWN_EXCEL = '/api/task/stockx/uploadPriceDownExcel',
     STOCKX_PRICE_DOWN_EXCEL_COUNT = '/api/task/stockx/priceDownExcelCount',
+    STOCKX_PRICE_DOWN_EXCEL_DATA = '/api/task/stockx/priceDownExcelData',
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
     TASK_ITEM_EXPORT = '/api/taskItem/export',

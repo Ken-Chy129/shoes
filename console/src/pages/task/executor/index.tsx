@@ -8,8 +8,10 @@ import {
     Divider,
     Upload,
     Tag,
+    Table,
+    Modal,
 } from "antd";
-import {UploadOutlined} from "@ant-design/icons";
+import {UploadOutlined, EyeOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
@@ -34,6 +36,11 @@ const TaskExecutorPage = () => {
     const [stockxCustodialPriceDownStatus, setStockxCustodialPriceDownStatus] = useState<boolean>(false);
     const [standardExcelCount, setStandardExcelCount] = useState<number>(0);
     const [custodialExcelCount, setCustodialExcelCount] = useState<number>(0);
+
+    // Excel 预览
+    const [previewVisible, setPreviewVisible] = useState(false);
+    const [previewData, setPreviewData] = useState<any[]>([]);
+    const [previewTitle, setPreviewTitle] = useState('');
 
     // 当前任务ID (使用string避免精度丢失)
     const [kcCurrentTaskId, setKcCurrentTaskId] = useState<string | null>(null);
@@ -231,7 +238,17 @@ const TaskExecutorPage = () => {
         }
     }
 
-    // ==================== StockX 现货 Excel 压价 ====================
+    // ==================== StockX Excel 压价 ====================
+
+    const handlePreviewExcel = (inventoryType: string) => {
+        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_DATA, {inventoryType}, {
+            onSuccess: res => {
+                setPreviewData(res.data || []);
+                setPreviewTitle(inventoryType === 'STANDARD' ? '现货压价 Excel 数据' : '寄存压价 Excel 数据');
+                setPreviewVisible(true);
+            }
+        });
+    }
 
     const handleUploadExcel = (file: any, inventoryType: string) => {
         doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {inventoryType}, {
@@ -412,7 +429,11 @@ const TaskExecutorPage = () => {
                     >
                         <Button icon={<UploadOutlined/>}>上传Excel</Button>
                     </Upload>
-                    <Button type="primary" onClick={handleStandardPriceDownStart} disabled={stockxStandardPriceDownStatus}>
+                    {standardExcelCount > 0 && (
+                        <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('STANDARD')}>预览数据</Button>
+                    )}
+                    <Button type="primary" onClick={handleStandardPriceDownStart}
+                            disabled={stockxStandardPriceDownStatus || standardExcelCount === 0}>
                         开启压价
                     </Button>
                     <Button danger onClick={handleStandardPriceDownCancel} disabled={!stockxStandardPriceDownStatus}>
@@ -440,7 +461,11 @@ const TaskExecutorPage = () => {
                     >
                         <Button icon={<UploadOutlined/>}>上传Excel</Button>
                     </Upload>
-                    <Button type="primary" onClick={handleCustodialPriceDownStart} disabled={stockxCustodialPriceDownStatus}>
+                    {custodialExcelCount > 0 && (
+                        <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('CUSTODIAL')}>预览数据</Button>
+                    )}
+                    <Button type="primary" onClick={handleCustodialPriceDownStart}
+                            disabled={stockxCustodialPriceDownStatus || custodialExcelCount === 0}>
                         开启压价
                     </Button>
                     <Button danger onClick={handleCustodialPriceDownCancel} disabled={!stockxCustodialPriceDownStatus}>
@@ -452,6 +477,21 @@ const TaskExecutorPage = () => {
                 </div>
             </div>
         </Card>
+
+        <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)}
+               footer={null} width={600}>
+            <Table
+                dataSource={previewData}
+                rowKey={(record) => `${record.styleId}:${record.euSize}`}
+                size="small"
+                pagination={{pageSize: 20, showTotal: (total) => `共 ${total} 条`}}
+                columns={[
+                    {title: '货号', dataIndex: 'styleId', key: 'styleId'},
+                    {title: '尺码', dataIndex: 'euSize', key: 'euSize'},
+                    {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice'},
+                ]}
+            />
+        </Modal>
 
         <TaskItemModal
             visible={taskItemModalVisible}
