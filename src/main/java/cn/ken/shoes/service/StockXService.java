@@ -531,8 +531,8 @@ public class StockXService {
 
             // 当前页待压价列表
             List<Map<String, String>> toPriceDown = new ArrayList<>();
-            // 记录每个 item 的 taskItem
-            Map<String, Long> listingToTaskItemId = new HashMap<>();
+            // 记录每个 item 的 taskItem 和目标价格: listingId -> (taskItemId, amount)
+            Map<String, Pair<Long, String>> listingToTaskInfo = new HashMap<>();
 
             for (Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
                 if (isCancelled(inventoryType)) break;
@@ -608,8 +608,8 @@ public class StockXService {
                     } else {
                         // 不盈利，设为9999下架
                         toPriceDown.add(Map.of("listingId", listingId, "amount", "9999", "currencyCode", "USD"));
-                        listingToTaskItemId.put(listingId, taskItemId);
-                        updateTaskItemResult(taskItemId, "设9999-已是最低价但不盈利");
+                        listingToTaskInfo.put(listingId, Pair.of(taskItemId, "9999"));
+                        updateTaskItemResult(taskItemId, "待设9999-已是最低价但不盈利");
                         updateTaskItemProfit(taskItemId, poisonPrice, amount);
                     }
                     continue;
@@ -622,7 +622,7 @@ public class StockXService {
                 if (canPriceDown) {
                     // 压价到 最低价-1
                     toPriceDown.add(Map.of("listingId", listingId, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
-                    listingToTaskItemId.put(listingId, taskItemId);
+                    listingToTaskInfo.put(listingId, Pair.of(taskItemId, String.valueOf(newPrice)));
                     updateTaskItemResult(taskItemId, "待压价");
                     updateTaskItemProfit(taskItemId, poisonPrice, newPrice);
                 } else if (currentPriceProfitable) {
@@ -632,26 +632,30 @@ public class StockXService {
                 } else {
                     // 当前价也不盈利，设为9999
                     toPriceDown.add(Map.of("listingId", listingId, "amount", "9999", "currencyCode", "USD"));
-                    listingToTaskItemId.put(listingId, taskItemId);
-                    updateTaskItemResult(taskItemId, "设9999-不盈利");
+                    listingToTaskInfo.put(listingId, Pair.of(taskItemId, "9999"));
+                    updateTaskItemResult(taskItemId, "待设9999-不盈利");
                     updateTaskItemProfit(taskItemId, poisonPrice, amount);
                 }
             }
 
-            // 批量压价（V2 API）
+            // 批量提交（V2 API）
             if (!toPriceDown.isEmpty() && !isCancelled(inventoryType)) {
                 String batchId = stockXClient.batchUpdateListings(toPriceDown);
                 if (batchId != null) {
-                    // 等待批量完成（最多等 60 秒）
                     waitForBatchComplete(batchId);
-                    // 更新所有压价 item 的结果
-                    for (Map.Entry<String, Long> e : listingToTaskItemId.entrySet()) {
-                        updateTaskItemResult(e.getValue(), "压价已提交");
+                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
+                        Long itemId = e.getValue().getKey();
+                        String targetAmount = e.getValue().getValue();
+                        if ("9999".equals(targetAmount)) {
+                            updateTaskItemResult(itemId, "已设9999");
+                        } else {
+                            updateTaskItemResult(itemId, "压价已提交→$" + targetAmount);
+                        }
                     }
                     totalPriceDown += toPriceDown.size();
                 } else {
-                    for (Map.Entry<String, Long> e : listingToTaskItemId.entrySet()) {
-                        updateTaskItemResult(e.getValue(), "压价失败-批量提交失败");
+                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
+                        updateTaskItemResult(e.getValue().getKey(), "提交失败");
                     }
                 }
             }
