@@ -502,12 +502,20 @@ public class StockXService {
                 break;
             }
 
-            // 预加载得物价格（PriceManager 内部处理组合货号拆分）
+            // 只预加载Excel中的商品的得物价格
+            Map<String, Integer> excelMap = ShoesContext.getPriceDownMap(inventoryType);
             Set<String> modelNos = items.stream()
+                    .filter(item -> {
+                        String sid = item.getString("styleId");
+                        String sz = item.getString("size");
+                        return StrUtil.isNotBlank(sid) && StrUtil.isNotBlank(sz)
+                                && excelMap.containsKey(sid + ":" + sz);
+                    })
                     .map(item -> item.getString("styleId"))
-                    .filter(StrUtil::isNotBlank)
                     .collect(Collectors.toSet());
-            priceManager.preloadMissingPrices(modelNos);
+            if (!modelNos.isEmpty()) {
+                priceManager.preloadMissingPrices(modelNos);
+            }
 
             // 按 styleId:size 分组（size 为 traits.size 原始值）
             Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
