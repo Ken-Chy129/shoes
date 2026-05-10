@@ -42,11 +42,6 @@ public class ShoesController {
         return shoesService.page(request);
     }
 
-    @GetMapping("queryPriceBySpuV2")
-    public String queryPriceBySpuV2(String modelNo, Long spuId) {
-        return JSON.toJSONString(poisonClient.queryPriceBySpuV2(modelNo, spuId));
-    }
-
     @GetMapping("queryPriceByModelNo")
     public String queryPriceByModelNo(String modelNo) {
         return JSON.toJSONString(poisonClient.queryPriceByModelNo(modelNo));

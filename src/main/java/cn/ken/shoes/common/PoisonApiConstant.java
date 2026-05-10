@@ -56,4 +56,9 @@ public class PoisonApiConstant {
      * V3 API - 查询token信息
      */
     public static final String V3_TOKEN_INFO = "/api/v1/base/token_info";
+
+    /**
+     * V4 API - 按货号查价格
+     */
+    public static final String V4_PRICE = "http://dewu.ccrotate.com/api/price_sa.php";
 }

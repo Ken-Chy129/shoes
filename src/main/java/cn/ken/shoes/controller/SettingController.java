@@ -54,6 +54,7 @@ public class SettingController {
         jsonObject.put("minProfit", PoisonSwitch.MIN_PROFIT);
         jsonObject.put("minThreeFiveProfit", PoisonSwitch.MIN_THREE_PROFIT);
         jsonObject.put("useV3Api", PoisonSwitch.USE_V3_API);
+        jsonObject.put("useV4Api", PoisonSwitch.USE_V4_API);
         return Result.buildSuccess(jsonObject);
     }
 
@@ -68,6 +69,7 @@ public class SettingController {
         PoisonSwitch.MIN_PROFIT = jsonObject.getInteger("minProfit");
         PoisonSwitch.MIN_THREE_PROFIT = jsonObject.getInteger("minThreeFiveProfit");
         PoisonSwitch.USE_V3_API = jsonObject.getBooleanValue("useV3Api");
+        PoisonSwitch.USE_V4_API = jsonObject.getBooleanValue("useV4Api");
         PoisonSwitch.saveConfig();
         return Result.buildSuccess(jsonObject);
     }
