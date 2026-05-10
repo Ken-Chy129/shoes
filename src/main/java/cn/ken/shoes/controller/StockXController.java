@@ -24,16 +24,6 @@ public class StockXController {
     @Resource
     private StockXService stockXService;
 
-    @GetMapping("queryItems")
-    public Result<List<StockXPriceDO>> queryItems(String brand, Integer pageIndex) {
-        return Result.buildSuccess(stockXClient.queryHotItemsByBrandWithPrice(brand, pageIndex));
-    }
-
-    @GetMapping("queryItemsV2")
-    public Result<List<StockXPriceDO>> queryItemsV2(String brand) {
-        return Result.buildSuccess(stockXClient.queryItemWithPrice(brand, 1));
-    }
-
     @GetMapping("searchItems")
     public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType, String searchType) {
         Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType, searchType);
