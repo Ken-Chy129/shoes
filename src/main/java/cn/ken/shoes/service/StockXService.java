@@ -559,10 +559,16 @@ public class StockXService {
                 listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
                 JSONObject bestListing = listings.get(0);
 
-                // 取最低价
+                // 取最低价（STANDARD取两者中更低的，CUSTODIAL取寄存最低价）
                 Integer lowestPrice;
                 if (isStandard) {
-                    lowestPrice = bestListing.getInteger("standardLowest");
+                    Integer standardLowest = bestListing.getInteger("standardLowest");
+                    Integer expressLowest = bestListing.getInteger("expressStandardLowest");
+                    if (standardLowest != null && expressLowest != null) {
+                        lowestPrice = Math.min(standardLowest, expressLowest);
+                    } else {
+                        lowestPrice = standardLowest != null ? standardLowest : expressLowest;
+                    }
                 } else {
                     lowestPrice = bestListing.getInteger("expressStandardLowest");
                 }
@@ -676,7 +682,14 @@ public class StockXService {
         taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
 
         boolean isStandard = "STANDARD".equals(inventoryType);
-        Integer lowestPrice = isStandard ? item.getInteger("standardLowest") : item.getInteger("expressStandardLowest");
+        Integer lowestPrice;
+        if (isStandard) {
+            Integer sl = item.getInteger("standardLowest");
+            Integer el = item.getInteger("expressStandardLowest");
+            lowestPrice = (sl != null && el != null) ? Math.min(sl, el) : (sl != null ? sl : el);
+        } else {
+            lowestPrice = item.getInteger("expressStandardLowest");
+        }
         taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
 
         taskItemDO.setOperateTime(new Date());
