@@ -49,14 +49,17 @@ public class PoisonClient {
     @Value("${poison.tokenV3}")
     private String tokenV3;
 
+    @Value("${poison.v4Code}")
+    private String v4Code;
+
     private final ConcurrentHashMap<String, Long> spuIdCache = new ConcurrentHashMap<>();
 
     public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
         }
-        if (PoisonSwitch.USE_V3_API) {
-            return batchQueryPriceV3(modelNos);
+        if (PoisonSwitch.USE_V4_API || PoisonSwitch.USE_V3_API) {
+            return batchQueryPriceOneByOne(modelNos);
         }
         // 重试
         int times = 0;
@@ -106,10 +109,10 @@ public class PoisonClient {
         return poisonPriceDOList;
     }
 
-    private List<PoisonPriceDO> batchQueryPriceV3(List<String> modelNos) {
+    private List<PoisonPriceDO> batchQueryPriceOneByOne(List<String> modelNos) {
         List<PoisonPriceDO> allPrices = new ArrayList<>();
         for (String modelNo : modelNos) {
-            List<PoisonPriceDO> prices = queryPriceByModelNoV3(modelNo);
+            List<PoisonPriceDO> prices = queryPriceByModelNo(modelNo);
             allPrices.addAll(prices);
         }
         return allPrices;
@@ -119,7 +122,9 @@ public class PoisonClient {
         if (modelNo == null) {
             return Collections.emptyList();
         }
-        if (PoisonSwitch.USE_V3_API) {
+        if (PoisonSwitch.USE_V4_API) {
+            return queryPriceByModelNoV4(modelNo);
+        } else if (PoisonSwitch.USE_V3_API) {
             return queryPriceByModelNoV3(modelNo);
         } else if (PoisonSwitch.USE_V2_API) {
             return queryPriceByModelNoV2(modelNo);
@@ -241,6 +246,9 @@ public class PoisonClient {
     }
 
     public List<PoisonPriceDO> queryPriceBySpuV2(String modelNo, Long spuId) {
+        if (PoisonSwitch.USE_V4_API) {
+            return queryPriceByModelNoV4(modelNo);
+        }
         if (PoisonSwitch.USE_V3_API) {
             return queryPriceV3(modelNo, spuId);
         }
@@ -406,6 +414,64 @@ public class PoisonClient {
             log.error("queryTokenInfo parse error, msg:{}", e.getMessage());
             return null;
         }
+    }
+
+    // ========== V4 API Methods ==========
+
+    public List<PoisonPriceDO> queryPriceByModelNoV4(String modelNo) {
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
+        LimiterHelper.limitPoisonPrice();
+        String priceUrl = PoisonApiConstant.V4_PRICE + "?huohao=" + modelNo + "&code=" + v4Code;
+        String httpResult = HttpUtil.doGet(priceUrl, false);
+        if (httpResult == null) {
+            log.error("queryPriceByModelNoV4 error, no result, modelNo:{}", modelNo);
+            return Collections.emptyList();
+        }
+        try {
+            JSONObject json = JSON.parseObject(httpResult);
+            Integer code = json.getInteger("code");
+            if (code == null || code != 200) {
+                log.error("queryPriceByModelNoV4 error, modelNo:{}, result:{}", modelNo, httpResult);
+                return Collections.emptyList();
+            }
+            JSONArray dataArray = json.getJSONArray("data");
+            if (dataArray == null || dataArray.isEmpty()) {
+                ShoesContext.addNoPrice(modelNo);
+                return Collections.emptyList();
+            }
+            Date updateTime = json.getDate("update_time");
+            List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
+            for (int i = 0; i < dataArray.size(); i++) {
+                JSONObject item = dataArray.getJSONObject(i);
+                Double price = item.getDouble("price");
+                if (price == null || price <= 0 || price > PoisonSwitch.MAX_PRICE) {
+                    continue;
+                }
+                String size = convertV4Size(item.getString("size"));
+                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
+                poisonPriceDO.setModelNo(modelNo);
+                poisonPriceDO.setEuSize(size);
+                poisonPriceDO.setPrice(price.intValue());
+                poisonPriceDO.setUpdateTime(updateTime);
+                poisonPriceDOList.add(poisonPriceDO);
+            }
+            if (poisonPriceDOList.isEmpty()) {
+                ShoesContext.addNoPrice(modelNo);
+            }
+            return poisonPriceDOList;
+        } catch (Exception e) {
+            log.error("queryPriceByModelNoV4 parse error, modelNo:{}, msg:{}", modelNo, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    private String convertV4Size(String size) {
+        if (size == null) {
+            return null;
+        }
+        return size.replace("⅓", " 1/3").replace("⅔", " 2/3");
     }
 
     public void preloadSpuIds(Map<String, Long> modelNoToSpuId) {

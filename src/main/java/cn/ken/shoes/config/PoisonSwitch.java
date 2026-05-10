@@ -49,6 +49,8 @@ public class PoisonSwitch {
 
     public static Boolean USE_V3_API = true;
 
+    public static Boolean USE_V4_API = true;
+
     /**
      * 保存配置到文件
      */
