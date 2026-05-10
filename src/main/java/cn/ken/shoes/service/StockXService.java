@@ -553,10 +553,10 @@ public class StockXService {
                 String listingId = bestListing.getString("id");
                 int amount = bestListing.getIntValue("amount");
 
-                // 记录非最低价的 listing
+                // 同货号尺码只处理一个，其余跳过
                 for (int i = 1; i < listings.size(); i++) {
                     Long otherId = insertTaskItem(taskId, inventoryType, listings.get(i));
-                    updateTaskItemResult(otherId, "跳过-同货号尺码非最低价");
+                    updateTaskItemResult(otherId, "跳过-相同货号尺码");
                 }
 
                 // 记录最低价的 listing
