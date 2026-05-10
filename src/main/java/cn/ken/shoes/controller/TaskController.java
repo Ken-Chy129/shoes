@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -183,6 +184,16 @@ public class TaskController {
     @GetMapping("stockx/priceDownExcelCount")
     public Result<Integer> getPriceDownExcelCount(@RequestParam("inventoryType") String inventoryType) {
         return Result.buildSuccess(ShoesContext.getPriceDownMap(inventoryType).size());
+    }
+
+    @GetMapping("stockx/priceDownExcelData")
+    public Result<List<Map<String, Object>>> getPriceDownExcelData(@RequestParam("inventoryType") String inventoryType) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        ShoesContext.getPriceDownMap(inventoryType).forEach((key, minPrice) -> {
+            String[] parts = key.split(":");
+            result.add(Map.of("styleId", parts[0], "euSize", parts.length > 1 ? parts[1] : "", "minPrice", minPrice));
+        });
+        return Result.buildSuccess(result);
     }
 
 }
