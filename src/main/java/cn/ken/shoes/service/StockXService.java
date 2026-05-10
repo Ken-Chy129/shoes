@@ -588,17 +588,24 @@ public class StockXService {
 
                 // 6. 盈利检查（得物用 euSize）
                 String euSize = bestListing.getString("euSize");
-                Integer poisonPrice = euSize != null ? priceManager.getPoisonPrice(styleId, euSize) : null;
-                if (poisonPrice != null) {
-                    Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                    if (!ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
-                        updateTaskItemResult(taskItemId, "跳过-压价后不盈利");
-                        totalSkip++;
-                        continue;
-                    }
-                    // 更新得物价格和利润信息
-                    updateTaskItemProfit(taskItemId, poisonPrice, newPrice);
+                if (StrUtil.isBlank(euSize)) {
+                    updateTaskItemResult(taskItemId, "跳过-无法获取EU码");
+                    totalSkip++;
+                    continue;
                 }
+                Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+                if (poisonPrice == null) {
+                    updateTaskItemResult(taskItemId, "跳过-得物无价");
+                    totalSkip++;
+                    continue;
+                }
+                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                if (!ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit)) {
+                    updateTaskItemResult(taskItemId, "跳过-压价后不盈利");
+                    totalSkip++;
+                    continue;
+                }
+                updateTaskItemProfit(taskItemId, poisonPrice, newPrice);
 
                 // 7. 加入待压价列表
                 toPriceDown.add(Map.of("listingId", listingId, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
