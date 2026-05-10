@@ -502,20 +502,20 @@ public class StockXService {
                 break;
             }
 
-            // 只预加载Excel中的商品的得物价格
-            Map<String, Integer> excelMap = ShoesContext.getPriceDownMap(inventoryType);
-            Set<String> modelNos = items.stream()
-                    .filter(item -> {
-                        String sid = item.getString("styleId");
-                        String sz = item.getString("size");
-                        return StrUtil.isNotBlank(sid) && StrUtil.isNotBlank(sz)
-                                && excelMap.containsKey(sid + ":" + sz);
-                    })
-                    .map(item -> item.getString("styleId"))
-                    .collect(Collectors.toSet());
-            if (!modelNos.isEmpty()) {
-                priceManager.preloadMissingPrices(modelNos);
-            }
+            // TODO 后续恢复得物比价时取消注释
+            // Map<String, Integer> excelMap = ShoesContext.getPriceDownMap(inventoryType);
+            // Set<String> modelNos = items.stream()
+            //         .filter(item -> {
+            //             String sid = item.getString("styleId");
+            //             String sz = item.getString("size");
+            //             return StrUtil.isNotBlank(sid) && StrUtil.isNotBlank(sz)
+            //                     && excelMap.containsKey(sid + ":" + sz);
+            //         })
+            //         .map(item -> item.getString("styleId"))
+            //         .collect(Collectors.toSet());
+            // if (!modelNos.isEmpty()) {
+            //     priceManager.preloadMissingPrices(modelNos);
+            // }
 
             // 按 styleId:size 分组（size 为 traits.size 原始值）
             Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
@@ -559,27 +559,6 @@ public class StockXService {
                 listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
                 JSONObject bestListing = listings.get(0);
 
-                // 获取得物价格（同货号尺码共用）
-                String euSize = bestListing.getString("euSize");
-                if (StrUtil.isBlank(euSize)) {
-                    for (JSONObject listing : listings) {
-                        Long tid = insertTaskItem(taskId, inventoryType, listing);
-                        updateTaskItemResult(tid, "跳过-无法获取EU码");
-                    }
-                    totalSkip += listings.size();
-                    continue;
-                }
-                Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
-                if (poisonPrice == null) {
-                    for (JSONObject listing : listings) {
-                        Long tid = insertTaskItem(taskId, inventoryType, listing);
-                        updateTaskItemResult(tid, "跳过-得物无价");
-                    }
-                    totalSkip += listings.size();
-                    continue;
-                }
-                Integer minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-
                 // 取最低价
                 Integer lowestPrice;
                 if (isStandard) {
@@ -588,14 +567,14 @@ public class StockXService {
                     lowestPrice = bestListing.getInteger("expressStandardLowest");
                 }
 
-                // 对所有 listing 做盈利检查，不盈利的设9999
+                // 所有 listing 做 Excel 最低价检查，低于 Excel 底线的设9999
                 // 压价只对最低价的那一个做
+                // TODO 后续区分不同货号，支持按得物价格比价或按Excel价格比价
                 for (int i = 0; i < listings.size(); i++) {
                     JSONObject listing = listings.get(i);
                     String lid = listing.getString("id");
                     int amt = listing.getIntValue("amount");
                     Long itemId = insertTaskItem(taskId, inventoryType, listing);
-                    boolean profitable = ShoesUtil.canStockxEarn(poisonPrice, amt, minExpectProfit);
 
                     if (i == 0) {
                         // 最低价 listing：走完整压价逻辑
@@ -604,44 +583,36 @@ public class StockXService {
                             totalSkip++;
                         } else if (amt <= lowestPrice) {
                             // 已是最低价
-                            if (profitable) {
-                                updateTaskItemResult(itemId, "保持-已是最低价且盈利");
-                                updateTaskItemProfit(itemId, poisonPrice, amt);
+                            if (amt >= excelMinPrice) {
+                                updateTaskItemResult(itemId, "保持-已是最低价");
                             } else {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, "待设9999-已是最低价但不盈利");
-                                updateTaskItemProfit(itemId, poisonPrice, amt);
+                                updateTaskItemResult(itemId, "待设9999-低于Excel最低价");
                             }
                         } else {
                             // 不是最低价：判断压价
                             int newPrice = lowestPrice - 1;
-                            boolean canPriceDown = newPrice >= excelMinPrice && ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit);
-                            if (canPriceDown) {
+                            if (newPrice >= excelMinPrice) {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(newPrice)));
                                 updateTaskItemResult(itemId, "待压价");
-                                updateTaskItemProfit(itemId, poisonPrice, newPrice);
-                            } else if (profitable) {
-                                updateTaskItemResult(itemId, "保持-压价后不盈利但当前价盈利");
-                                updateTaskItemProfit(itemId, poisonPrice, amt);
+                            } else if (amt >= excelMinPrice) {
+                                updateTaskItemResult(itemId, "保持-压价后低于Excel最低价");
                             } else {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, "待设9999-不盈利");
-                                updateTaskItemProfit(itemId, poisonPrice, amt);
+                                updateTaskItemResult(itemId, "待设9999-低于Excel最低价");
                             }
                         }
                     } else {
-                        // 非最低价 listing：只做盈利检查
-                        if (profitable) {
+                        // 非最低价 listing：检查是否低于 Excel 底线
+                        if (amt >= excelMinPrice) {
                             updateTaskItemResult(itemId, "跳过-相同货号尺码");
-                            updateTaskItemProfit(itemId, poisonPrice, amt);
                         } else {
                             toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
                             listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                            updateTaskItemResult(itemId, "待设9999-不盈利");
-                            updateTaskItemProfit(itemId, poisonPrice, amt);
+                            updateTaskItemResult(itemId, "待设9999-低于Excel最低价");
                         }
                     }
                 }
