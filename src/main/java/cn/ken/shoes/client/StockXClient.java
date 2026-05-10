@@ -1206,7 +1206,7 @@ public class StockXClient {
     private Headers buildViperHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
-                "authorization", "Bearer " + getAuthorization(),
+                "authorization", getAuthorization(),
                 "apollographql-client-name", "Viper",
                 "apollographql-client-version", "2026.05.05.00",
                 "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
