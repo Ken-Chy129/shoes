@@ -556,12 +556,12 @@ public class StockXService {
                 // 记录 TaskItem
                 Long taskItemId = insertTaskItem(taskId, inventoryType, bestListing);
 
-                // 2. 取对应类型的最低价
+                // 2. 取对应类型的最低价（standard=现货最低价，expressStandard=寄存最低价）
                 Integer lowestPrice;
                 if (isStandard) {
-                    lowestPrice = bestListing.getInteger("expressStandardLowest");
-                } else {
                     lowestPrice = bestListing.getInteger("standardLowest");
+                } else {
+                    lowestPrice = bestListing.getInteger("expressStandardLowest");
                 }
 
                 if (lowestPrice == null || lowestPrice <= 1) {
@@ -667,7 +667,7 @@ public class StockXService {
         taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
 
         boolean isStandard = "STANDARD".equals(inventoryType);
-        Integer lowestPrice = isStandard ? item.getInteger("expressStandardLowest") : item.getInteger("standardLowest");
+        Integer lowestPrice = isStandard ? item.getInteger("standardLowest") : item.getInteger("expressStandardLowest");
         taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
 
         taskItemDO.setOperateTime(new Date());
