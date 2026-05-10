@@ -74,6 +74,8 @@ const TaskExecutorPage = () => {
     const queryAllTaskInterval = () => {
         queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
+        queryTaskInterval(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, "stockxStandardPriceDownInterval");
+        queryTaskInterval(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, "stockxCustodialPriceDownInterval");
     }
 
     const queryExcelCounts = () => {
@@ -415,67 +417,81 @@ const TaskExecutorPage = () => {
         </Card>
         <br/>
         <Card title={"StockX Excel 压价"}>
-            {/* 现货压价 */}
-            <div style={{marginBottom: 16}}>
-                <div style={{fontWeight: "bold", marginBottom: 8}}>
-                    现货压价 (STANDARD)
-                    {standardExcelCount > 0 && <Tag color="green" style={{marginLeft: 8}}>已加载 {standardExcelCount} 条</Tag>}
+            <Form form={taskForm}>
+                {/* 现货压价 */}
+                <div style={{marginBottom: 16}}>
+                    <div style={{fontWeight: "bold", marginBottom: 8}}>
+                        现货压价 (STANDARD)
+                        {standardExcelCount > 0 && <Tag color="green" style={{marginLeft: 8}}>已加载 {standardExcelCount} 条</Tag>}
+                    </div>
+                    <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
+                        <Upload
+                            accept=".xlsx,.xls"
+                            beforeUpload={(file) => handleUploadExcel(file, 'STANDARD')}
+                            showUploadList={false}
+                        >
+                            <Button icon={<UploadOutlined/>}>上传Excel</Button>
+                        </Upload>
+                        {standardExcelCount > 0 && (
+                            <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('STANDARD')}>预览数据</Button>
+                        )}
+                        <Form.Item label="间隔(秒)" name="stockxStandardPriceDownInterval" style={{marginBottom: 0}}>
+                            <InputNumber min={10} style={{width: 100}}/>
+                        </Form.Item>
+                        <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, "stockxStandardPriceDownInterval")}>
+                            保存间隔
+                        </Button>
+                        <Button type="primary" onClick={handleStandardPriceDownStart}
+                                disabled={stockxStandardPriceDownStatus || standardExcelCount === 0}>
+                            开启压价
+                        </Button>
+                        <Button danger onClick={handleStandardPriceDownCancel} disabled={!stockxStandardPriceDownStatus}>
+                            终止任务
+                        </Button>
+                        {stockxStandardPriceDownStatus && stockxStandardPriceDownTaskId && (
+                            <Button type="link" onClick={handleViewStandardPriceDownDetail}>查看明细</Button>
+                        )}
+                    </div>
                 </div>
-                <div style={{display: "flex", alignItems: "center", gap: 12}}>
-                    <Upload
-                        accept=".xlsx,.xls"
-                        beforeUpload={(file) => handleUploadExcel(file, 'STANDARD')}
-                        showUploadList={false}
-                    >
-                        <Button icon={<UploadOutlined/>}>上传Excel</Button>
-                    </Upload>
-                    {standardExcelCount > 0 && (
-                        <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('STANDARD')}>预览数据</Button>
-                    )}
-                    <Button type="primary" onClick={handleStandardPriceDownStart}
-                            disabled={stockxStandardPriceDownStatus || standardExcelCount === 0}>
-                        开启压价
-                    </Button>
-                    <Button danger onClick={handleStandardPriceDownCancel} disabled={!stockxStandardPriceDownStatus}>
-                        终止任务
-                    </Button>
-                    {stockxStandardPriceDownStatus && stockxStandardPriceDownTaskId && (
-                        <Button type="link" onClick={handleViewStandardPriceDownDetail}>查看明细</Button>
-                    )}
-                </div>
-            </div>
 
-            <Divider/>
+                <Divider/>
 
-            {/* 寄存压价 */}
-            <div>
-                <div style={{fontWeight: "bold", marginBottom: 8}}>
-                    寄存压价 (CUSTODIAL)
-                    {custodialExcelCount > 0 && <Tag color="blue" style={{marginLeft: 8}}>已加载 {custodialExcelCount} 条</Tag>}
+                {/* 寄存压价 */}
+                <div>
+                    <div style={{fontWeight: "bold", marginBottom: 8}}>
+                        寄存压价 (CUSTODIAL)
+                        {custodialExcelCount > 0 && <Tag color="blue" style={{marginLeft: 8}}>已加载 {custodialExcelCount} 条</Tag>}
+                    </div>
+                    <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
+                        <Upload
+                            accept=".xlsx,.xls"
+                            beforeUpload={(file) => handleUploadExcel(file, 'CUSTODIAL')}
+                            showUploadList={false}
+                        >
+                            <Button icon={<UploadOutlined/>}>上传Excel</Button>
+                        </Upload>
+                        {custodialExcelCount > 0 && (
+                            <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('CUSTODIAL')}>预览数据</Button>
+                        )}
+                        <Form.Item label="间隔(秒)" name="stockxCustodialPriceDownInterval" style={{marginBottom: 0}}>
+                            <InputNumber min={10} style={{width: 100}}/>
+                        </Form.Item>
+                        <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, "stockxCustodialPriceDownInterval")}>
+                            保存间隔
+                        </Button>
+                        <Button type="primary" onClick={handleCustodialPriceDownStart}
+                                disabled={stockxCustodialPriceDownStatus || custodialExcelCount === 0}>
+                            开启压价
+                        </Button>
+                        <Button danger onClick={handleCustodialPriceDownCancel} disabled={!stockxCustodialPriceDownStatus}>
+                            终止任务
+                        </Button>
+                        {stockxCustodialPriceDownStatus && stockxCustodialPriceDownTaskId && (
+                            <Button type="link" onClick={handleViewCustodialPriceDownDetail}>查看明细</Button>
+                        )}
+                    </div>
                 </div>
-                <div style={{display: "flex", alignItems: "center", gap: 12}}>
-                    <Upload
-                        accept=".xlsx,.xls"
-                        beforeUpload={(file) => handleUploadExcel(file, 'CUSTODIAL')}
-                        showUploadList={false}
-                    >
-                        <Button icon={<UploadOutlined/>}>上传Excel</Button>
-                    </Upload>
-                    {custodialExcelCount > 0 && (
-                        <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('CUSTODIAL')}>预览数据</Button>
-                    )}
-                    <Button type="primary" onClick={handleCustodialPriceDownStart}
-                            disabled={stockxCustodialPriceDownStatus || custodialExcelCount === 0}>
-                        开启压价
-                    </Button>
-                    <Button danger onClick={handleCustodialPriceDownCancel} disabled={!stockxCustodialPriceDownStatus}>
-                        终止任务
-                    </Button>
-                    {stockxCustodialPriceDownStatus && stockxCustodialPriceDownTaskId && (
-                        <Button type="link" onClick={handleViewCustodialPriceDownDetail}>查看明细</Button>
-                    )}
-                </div>
-            </div>
+            </Form>
         </Card>
 
         <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)}
