@@ -4,7 +4,6 @@ import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.service.StockXService;
-import cn.ken.shoes.util.LockHelper;
 import cn.ken.shoes.util.TimeUtil;
 import jakarta.annotation.Resource;
 import lombok.Getter;
@@ -37,12 +36,7 @@ public class StockXCustodialPriceDownTaskRunner implements Runnable {
                 log.info("StockX寄存压价任务开始执行第{}轮", TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND);
 
                 long startTime = System.currentTimeMillis();
-                LockHelper.lockStockXItem();
-                try {
-                    stockXService.priceDownWithExcel("CUSTODIAL");
-                } finally {
-                    LockHelper.unlockStockXItem();
-                }
+                stockXService.priceDownWithExcel("CUSTODIAL");
                 String cost = TimeUtil.getCostMin(startTime);
                 log.info("StockX寄存压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND, cost);
                 if (taskId != null) {
