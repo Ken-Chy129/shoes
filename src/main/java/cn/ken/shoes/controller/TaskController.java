@@ -189,9 +189,14 @@ public class TaskController {
     @GetMapping("stockx/priceDownExcelData")
     public Result<List<Map<String, Object>>> getPriceDownExcelData(@RequestParam("inventoryType") String inventoryType) {
         List<Map<String, Object>> result = new ArrayList<>();
-        ShoesContext.getPriceDownMap(inventoryType).forEach((key, minPrice) -> {
+        ShoesContext.getPriceDownMap(inventoryType).forEach((key, config) -> {
             String[] parts = key.split(":");
-            result.add(Map.of("styleId", parts[0], "size", parts.length > 1 ? parts[1] : "", "minPrice", minPrice));
+            result.add(Map.of(
+                    "styleId", parts[0],
+                    "size", parts.length > 1 ? parts[1] : "",
+                    "minPrice", config.minPrice(),
+                    "compareType", config.compareType()
+            ));
         });
         return Result.buildSuccess(result);
     }

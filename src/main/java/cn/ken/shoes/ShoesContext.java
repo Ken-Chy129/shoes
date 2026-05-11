@@ -22,8 +22,14 @@ public class ShoesContext {
 
     private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
 
-    private final static ConcurrentHashMap<String, Integer> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
-    private final static ConcurrentHashMap<String, Integer> CUSTODIAL_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
+    public record PriceDownConfig(int minPrice, String compareType) {
+        public boolean isPoisonCompare() {
+            return "毒".equals(compareType);
+        }
+    }
+
+    private final static ConcurrentHashMap<String, PriceDownConfig> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
+    private final static ConcurrentHashMap<String, PriceDownConfig> CUSTODIAL_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
 
     // 3.5
     public static void clearThreeFiveModelSet() {
@@ -139,22 +145,23 @@ public class ShoesContext {
 
     // Excel 压价数据
     public static void loadPriceDownExcel(String inventoryType, List<StockXPriceDownInputExcel> list) {
-        ConcurrentHashMap<String, Integer> map = getPriceDownMap(inventoryType);
+        ConcurrentHashMap<String, PriceDownConfig> map = getPriceDownMap(inventoryType);
         map.clear();
         for (StockXPriceDownInputExcel item : list) {
             if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize()) && item.getMinPrice() != null) {
                 String key = STR."\{item.getStyleId()}:\{item.getSize()}";
-                map.put(key, item.getMinPrice());
+                String compareType = StrUtil.isNotBlank(item.getCompareType()) ? item.getCompareType().trim() : "最低价";
+                map.put(key, new PriceDownConfig(item.getMinPrice(), compareType));
             }
         }
     }
 
-    public static Integer getPriceDownMinPrice(String inventoryType, String styleId, String size) {
+    public static PriceDownConfig getPriceDownConfig(String inventoryType, String styleId, String size) {
         String key = STR."\{styleId}:\{size}";
         return getPriceDownMap(inventoryType).get(key);
     }
 
-    public static ConcurrentHashMap<String, Integer> getPriceDownMap(String inventoryType) {
+    public static ConcurrentHashMap<String, PriceDownConfig> getPriceDownMap(String inventoryType) {
         return "CUSTODIAL".equals(inventoryType) ? CUSTODIAL_PRICE_DOWN_MAP : STANDARD_PRICE_DOWN_MAP;
     }
 }
