@@ -505,6 +505,7 @@ const TaskExecutorPage = () => {
                     {title: '货号', dataIndex: 'styleId', key: 'styleId'},
                     {title: '尺码', dataIndex: 'size', key: 'size'},
                     {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice'},
+                    {title: '比价方式', dataIndex: 'compareType', key: 'compareType'},
                 ]}
             />
         </Modal>
