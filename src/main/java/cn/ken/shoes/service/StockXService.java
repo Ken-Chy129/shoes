@@ -594,33 +594,38 @@ public class StockXService {
                     }
                 }
 
-                // 对所有 listing 处理
+                // 判断组内是否有任何 listing 已是最低价
                 final Integer pp = poisonPrice;
                 final Integer mep = minExpectProfit;
-                for (int i = 0; i < listings.size(); i++) {
-                    JSONObject listing = listings.get(i);
+                boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
+                        && listings.stream().anyMatch(l -> l.getIntValue("amount") <= lowestPrice);
+
+                for (JSONObject listing : listings) {
                     String lid = listing.getString("id");
                     int amt = listing.getIntValue("amount");
                     Long itemId = insertTaskItem(taskId, inventoryType, listing);
 
-                    if (i == 0) {
-                        // 最低价 listing：走完整压价逻辑
-                        if (lowestPrice == null || lowestPrice <= 1) {
-                            updateTaskItemResult(itemId, "跳过-无最低价");
-                            totalSkip++;
-                        } else if (amt <= lowestPrice) {
-                            // 已是最低价：判断当前价是否可接受
-                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
-                                updateTaskItemResult(itemId, "保持-已是最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-已是最低价但不盈利" : "待设9999-低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            }
+                    if (lowestPrice == null || lowestPrice <= 1) {
+                        updateTaskItemResult(itemId, "跳过-无最低价");
+                        totalSkip++;
+                        continue;
+                    }
+
+                    if (anyIsLowest) {
+                        // 组内已有最低价 listing，全组不压价，只做盈利检查
+                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                            updateTaskItemResult(itemId, amt <= lowestPrice ? "保持-已是最低价" : "跳过-相同货号尺码已有最低价");
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                         } else {
-                            // 不是最低价：判断压价
+                            toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
+                            listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
+                            updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                        }
+                    } else {
+                        // 组内没有最低价 listing
+                        if (listing == listings.get(0)) {
+                            // 只压当前价最低的那一个
                             int newPrice = lowestPrice - 1;
                             if (isProfitable(isPoisonCompare, newPrice, excelMinPrice, pp, mep)) {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
@@ -636,17 +641,17 @@ public class StockXService {
                                 updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
                                 if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                             }
-                        }
-                    } else {
-                        // 非最低价 listing：检查当前价是否可接受
-                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
-                            updateTaskItemResult(itemId, "跳过-相同货号尺码");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                         } else {
-                            toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                            listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                            updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            // 非最低价 listing：只做盈利检查
+                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                                updateTaskItemResult(itemId, "跳过-相同货号尺码");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            } else {
+                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
+                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            }
                         }
                     }
                 }
