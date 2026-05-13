@@ -668,7 +668,7 @@ public class StockXService {
                         if ("9999".equals(targetAmount)) {
                             updateTaskItemResult(itemId, "已设9999");
                         } else {
-                            updateTaskItemResult(itemId, "压价已提交→$" + targetAmount);
+                            updateTaskItemResult(itemId, "压价已提交");
                         }
                     }
                     totalPriceDown += toPriceDown.size();
