@@ -28,6 +28,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import java.nio.charset.Charset;
+import java.util.concurrent.CountDownLatch;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -440,61 +441,116 @@ public class StockXClient {
             pageCount = (int) Math.ceil(pageInfo.getDouble("total") / pageInfo.getInteger("limit"));
         }
         List<JSONObject> itemList = results.getJSONArray("edges").toJavaList(JSONObject.class);
-        List<StockXPriceExcel> result = new ArrayList<>();
+        List<StockXPriceExcel> result = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch latch = new CountDownLatch(itemList.size());
         for (JSONObject item : itemList) {
-            JSONObject node = item.getJSONObject("node");
-            String title = node.getString("title");
-            String modelNo = node.getString("styleId");
-            String urlKey = node.getString("urlKey");
-            if (StrUtil.isBlank(modelNo)) {
-                log.info("缺少货号，urlKey:{}", urlKey);
-                continue;
-            }
-            JSONArray variants = node.getJSONArray("variants");
-            if (CollectionUtils.isEmpty(variants)) {
-                log.info("缺少尺码，urlKey:{}", urlKey);
-                continue;
-            }
-            JSONObject firstVariant = variants.getJSONObject(0);
-            boolean hasVariantDetail = firstVariant.getJSONObject("sizeChart") != null;
-            if (hasVariantDetail) {
-                for (JSONObject variant : variants.toJavaList(JSONObject.class)) {
-                    StockXPriceExcel stockXPriceExcel = new StockXPriceExcel();
-                    stockXPriceExcel.setTitle(title);
-                    stockXPriceExcel.setId(variant.getString("id"));
-                    stockXPriceExcel.setUk(urlKey);
-                    stockXPriceExcel.setModelNo(modelNo);
-                    Map<String, String> sizeMap = variant.getJSONObject("sizeChart").getJSONArray("displayOptions").toJavaList(JSONObject.class).stream().collect(Collectors.toMap(option -> option.getString("type"), option -> option.getString("size")));
-                    stockXPriceExcel.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
-                    stockXPriceExcel.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
-                    JSONObject state = variant.getJSONObject("market").getJSONObject("state");
-                    JSONObject lowestAsk = state.getJSONObject("lowestAsk");
-                    stockXPriceExcel.setPrice(Optional.ofNullable(lowestAsk).map(bid -> bid.getInteger("amount")).orElse(0));
-                    JSONObject highestBid = state.getJSONObject("highestBid");
-                    stockXPriceExcel.setPurchasePrice(Optional.ofNullable(highestBid).map(bid -> bid.getInteger("amount")).orElse(0));
-                    Integer salesCount = variant.getJSONObject("market").getJSONObject("statistics").getJSONObject("last72Hours").getInteger("salesCount");
-                    stockXPriceExcel.setLast72HoursSales(salesCount);
-                    result.add(stockXPriceExcel);
+            Thread.startVirtualThread(() -> {
+                try {
+                    JSONObject node = item.getJSONObject("node");
+                    String title = node.getString("title");
+                    String urlKey = node.getString("urlKey");
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum);
+                    result.addAll(itemResult);
+                } catch (Exception e) {
+                    log.error("searchItemWithPrice fetchItemDetail error", e);
+                } finally {
+                    latch.countDown();
                 }
-            } else {
-                StockXPriceExcel stockXPriceExcel = new StockXPriceExcel();
-                stockXPriceExcel.setTitle(title);
-                stockXPriceExcel.setId(firstVariant.getString("id"));
-                stockXPriceExcel.setUk(urlKey);
-                stockXPriceExcel.setModelNo(modelNo);
-                JSONObject market = node.getJSONObject("market");
-                if (market != null && market.getJSONObject("state") != null) {
-                    JSONObject state = market.getJSONObject("state");
-                    stockXPriceExcel.setPrice(Optional.ofNullable(state.getJSONObject("lowestAsk")).map(a -> a.getInteger("amount")).orElse(0));
-                    stockXPriceExcel.setPurchasePrice(Optional.ofNullable(state.getJSONObject("highestBid")).map(b -> b.getInteger("amount")).orElse(0));
-                }
-                if (market != null && market.getJSONObject("statistics") != null) {
-                    stockXPriceExcel.setLast72HoursSales(Optional.ofNullable(market.getJSONObject("statistics").getJSONObject("last72Hours")).map(h -> h.getInteger("salesCount")).orElse(0));
-                }
-                result.add(stockXPriceExcel);
-            }
+            });
+        }
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
         return Pair.of(pageCount, result);
+    }
+
+    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum) {
+        JSONObject[] responses = new JSONObject[2];
+        CountDownLatch detailLatch = new CountDownLatch(2);
+        Thread.startVirtualThread(() -> {
+            try {
+                responses[0] = queryPro(buildGetProductRequest(urlKey));
+            } finally {
+                detailLatch.countDown();
+            }
+        });
+        Thread.startVirtualThread(() -> {
+            try {
+                responses[1] = queryPro(buildGetMarketDataRequest(urlKey));
+            } finally {
+                detailLatch.countDown();
+            }
+        });
+        try {
+            detailLatch.await();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return Collections.emptyList();
+        }
+        JSONObject productResp = responses[0];
+        JSONObject marketResp = responses[1];
+        if (productResp == null || marketResp == null) {
+            log.info("fetchItemDetail response is null, urlKey:{}", urlKey);
+            return Collections.emptyList();
+        }
+        JSONObject productData = productResp.getJSONObject("data");
+        JSONObject marketData = marketResp.getJSONObject("data");
+        if (productData == null || productData.getJSONObject("product") == null
+                || marketData == null || marketData.getJSONObject("product") == null) {
+            log.info("fetchItemDetail product is null, urlKey:{}", urlKey);
+            return Collections.emptyList();
+        }
+        JSONObject product = productData.getJSONObject("product");
+        JSONObject marketProduct = marketData.getJSONObject("product");
+        String modelNo = product.getString("styleId");
+        if (StrUtil.isBlank(modelNo)) {
+            log.info("缺少货号，urlKey:{}", urlKey);
+            return Collections.emptyList();
+        }
+        JSONArray productVariants = product.getJSONArray("variants");
+        JSONArray marketVariants = marketProduct.getJSONArray("variants");
+        if (CollectionUtils.isEmpty(productVariants) || CollectionUtils.isEmpty(marketVariants)) {
+            log.info("缺少尺码，urlKey:{}", urlKey);
+            return Collections.emptyList();
+        }
+        Map<String, JSONObject> marketVariantMap = new HashMap<>();
+        for (JSONObject mv : marketVariants.toJavaList(JSONObject.class)) {
+            marketVariantMap.put(mv.getString("id"), mv);
+        }
+        List<StockXPriceExcel> itemResult = new ArrayList<>();
+        for (JSONObject variant : productVariants.toJavaList(JSONObject.class)) {
+            String variantId = variant.getString("id");
+            JSONObject sizeChart = variant.getJSONObject("sizeChart");
+            if (sizeChart == null) {
+                continue;
+            }
+            JSONObject marketVariant = marketVariantMap.get(variantId);
+            if (marketVariant == null) {
+                continue;
+            }
+            StockXPriceExcel excel = new StockXPriceExcel();
+            excel.setTitle(title);
+            excel.setId(variantId);
+            excel.setUk(urlKey);
+            excel.setModelNo(modelNo);
+            Map<String, String> sizeMap = sizeChart.getJSONArray("displayOptions").toJavaList(JSONObject.class)
+                    .stream().collect(Collectors.toMap(o -> o.getString("type"), o -> o.getString("size")));
+            excel.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
+            excel.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
+            JSONObject mvMarket = marketVariant.getJSONObject("market");
+            if (mvMarket != null && mvMarket.getJSONObject("state") != null) {
+                JSONObject state = mvMarket.getJSONObject("state");
+                excel.setPrice(Optional.ofNullable(state.getJSONObject("lowestAsk")).map(a -> a.getInteger("amount")).orElse(0));
+                excel.setPurchasePrice(Optional.ofNullable(state.getJSONObject("highestBid")).map(b -> b.getInteger("amount")).orElse(0));
+            }
+            if (mvMarket != null && mvMarket.getJSONObject("salesInformation") != null) {
+                excel.setLast72HoursSales(Optional.ofNullable(mvMarket.getJSONObject("salesInformation").getInteger("salesLast72Hours")).orElse(0));
+            }
+            itemResult.add(excel);
+        }
+        return itemResult;
     }
 
     private String getUsSize(SearchTypeEnum searchTypeEnum, Map<String, String> sizeMap) {
@@ -560,7 +616,6 @@ public class StockXClient {
         variables.put("market", "HK");
         variables.put("page", Map.of("index", index, "limit", 40));
         variables.put("unifiedDiscoveryEnabled", false);
-        variables.put("enableMysteryBox", false);
         variables.put("filters", List.of());
         variables.put("query", query);
         variables.put("sort", Map.of("id", sort));
@@ -568,7 +623,41 @@ public class StockXClient {
         JSONObject extensions = new JSONObject();
         JSONObject persistedQuery = new JSONObject();
         persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "d24c331d779f9c4e50c980c251300cafb9f6fa137eb0210aa9efa9ee2bbc770f");
+        persistedQuery.put("sha256Hash", "a425201c8e4ccc83ecad211836645be32d6306ad42894b34f2a4b15de3408d20");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+        return requestJson.toJSONString();
+    }
+
+    private String buildGetProductRequest(String urlKey) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "GetProduct");
+        JSONObject variables = new JSONObject();
+        variables.put("id", urlKey);
+        variables.put("skipBreadcrumbs", true);
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "9e0faa98b5745bd79ef47e2479239514b41084c29a86d3f6dacce68543281914");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+        return requestJson.toJSONString();
+    }
+
+    private String buildGetMarketDataRequest(String urlKey) {
+        JSONObject requestJson = new JSONObject();
+        requestJson.put("operationName", "GetMarketData");
+        JSONObject variables = new JSONObject();
+        variables.put("id", urlKey);
+        variables.put("currencyCode", "USD");
+        variables.put("marketName", "HK");
+        variables.put("viewerContext", "BUYER");
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "589955a4e8c0e714c09999d857089ebc54569d0fe216e5e8538cade33572eb16");
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
         return requestJson.toJSONString();
