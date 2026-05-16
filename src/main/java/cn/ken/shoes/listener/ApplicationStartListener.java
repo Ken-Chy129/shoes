@@ -54,17 +54,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
         initSpecialPrice();
         // 异步不断更新kc商品
         asyncUpdateKcItems();
-        while (true) {
-            try {
-                Thread.sleep(5 * 60 * 1000);
-                if (PoisonSwitch.STOP_QUERY_PRICE) {
-                    continue;
-                }
-                poisonService.refreshAllPrice();
-            } catch (Exception e) {
-                log.error(e.getMessage(), e);
-            }
-        }
     }
 
     private void asyncUpdateKcItems() {

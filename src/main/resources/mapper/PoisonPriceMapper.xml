@@ -13,7 +13,7 @@
     </insert>
 
     <delete id="deleteExpire">
-        delete from poison_price where date(now()) - update_time > 3;
+        delete from poison_price where update_time &lt; DATE_SUB(NOW(), INTERVAL 1 DAY);
     </delete>
 
     <select id="selectPage" resultType="cn.ken.shoes.model.entity.PoisonPriceDO">

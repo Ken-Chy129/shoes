@@ -361,7 +361,7 @@ public class KickScrewService {
                 return 0;
             }
             // 先遍历缓存查询有哪些货号没有价格，没有的批量调用接口查询一次，并更新缓存（查询后没有的货号设置空缓存，避免每次重新查询）
-            priceManager.preloadMissingPrices(modelNos);
+            priceManager.batchLoadPrices(modelNos);
 
             for (KickScrewPriceDO kickScrewPriceDO : kickScrewPriceDOS) {
                 // 检查暂停或取消状态

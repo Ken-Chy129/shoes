@@ -183,7 +183,7 @@ public class StockXService {
                         .map(item -> item.getString("styleId"))
                         .filter(StrUtil::isNotBlank)
                         .collect(Collectors.toSet());
-                priceManager.preloadMissingPrices(modelNos);
+                priceManager.batchLoadPrices(modelNos);
 
                 // 当前页需要压价的商品：listingId -> (newPrice, taskItemId)
                 Map<String, Pair<Integer, Long>> toPriceDown = new LinkedHashMap<>();
@@ -360,7 +360,7 @@ public class StockXService {
         int uploadCnt = 0, poisonNoPriceCnt = 0, noBenefitCnt = 0, tooExpensiveCnt = 0, stockXNoPriceCnt = 0;
         // 预加载得物价格
         Set<String> modelNos = stockXPriceDOS.stream().map(StockXPriceDO::getModelNo).collect(Collectors.toSet());
-        priceManager.preloadMissingPrices(modelNos);
+        priceManager.batchLoadPrices(modelNos);
         try {
             List<Pair<String, Integer>> toCreate = new ArrayList<>();
             for (StockXPriceDO stockXPriceDO : stockXPriceDOS) {
@@ -514,7 +514,7 @@ public class StockXService {
                     .map(item -> item.getString("styleId"))
                     .collect(Collectors.toSet());
             if (!poisonModelNos.isEmpty()) {
-                priceManager.preloadMissingPrices(poisonModelNos);
+                priceManager.batchLoadPrices(poisonModelNos);
             }
 
             // 按 styleId:size 分组（size 为 traits.size 原始值）

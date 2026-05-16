@@ -52,11 +52,19 @@ public class PoisonClient {
     @Value("${poison.v4Code}")
     private String v4Code;
 
+    @Value("${poison.distToken}")
+    private String distToken;
+
+    private static final String DIST_API_URL = "https://distopen.poizon.com/open/api/v1/distribute/product/querySpuList";
+
     private final ConcurrentHashMap<String, Long> spuIdCache = new ConcurrentHashMap<>();
 
     public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
+        }
+        if (PoisonSwitch.USE_DIST_API) {
+            return batchQueryPriceByDistApi(modelNos);
         }
         if (PoisonSwitch.USE_V4_API || PoisonSwitch.USE_V3_API) {
             return batchQueryPriceOneByOne(modelNos);
@@ -121,6 +129,9 @@ public class PoisonClient {
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
         if (modelNo == null) {
             return Collections.emptyList();
+        }
+        if (PoisonSwitch.USE_DIST_API) {
+            return queryPriceByDistApi(modelNo);
         }
         if (PoisonSwitch.USE_V4_API) {
             return queryPriceByModelNoV4(modelNo);
@@ -283,6 +294,106 @@ public class PoisonClient {
             log.error("queryPriceBySpuV2 error, msg:{}, model:{}, spuId:{}", e.getMessage(), modelNo, spuId);
             return Collections.emptyList();
         }
+    }
+
+    // ========== Dist API Methods (官方分销开放API) ==========
+
+    public List<PoisonPriceDO> queryPriceByDistApi(String modelNo) {
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
+        List<PoisonPriceDO> result = batchQueryPriceByDistApi(List.of(modelNo));
+        if (result.isEmpty()) {
+            ShoesContext.addNoPrice(modelNo);
+        }
+        return result;
+    }
+
+    public List<PoisonPriceDO> batchQueryPriceByDistApi(List<String> modelNos) {
+        List<PoisonPriceDO> allPrices = new ArrayList<>();
+        List<List<String>> batches = com.google.common.collect.Lists.partition(modelNos, 200);
+        for (List<String> batch : batches) {
+            LimiterHelper.limitPoisonPrice();
+            JSONObject params = new JSONObject();
+            params.put("dwDesignerId", batch);
+            params.put("pageSize", 200);
+            params.put("querySku", true);
+            Headers headers = Headers.of(
+                    "access-token", distToken,
+                    "Content-Type", "application/json"
+            );
+            String result = HttpUtil.doPost(DIST_API_URL, params.toJSONString(), headers);
+            if (result == null) {
+                log.error("batchQueryPriceByDistApi error, no result, modelNos:{}", batch);
+                continue;
+            }
+            try {
+                JSONObject json = JSON.parseObject(result);
+                Integer code = json.getInteger("code");
+                if (code == null || code != 200) {
+                    log.error("batchQueryPriceByDistApi error, code:{}, msg:{}", code, json.getString("msg"));
+                    continue;
+                }
+                JSONObject data = json.getJSONObject("data");
+                if (data == null) {
+                    continue;
+                }
+                JSONArray spuList = data.getJSONArray("spuList");
+                if (spuList == null || spuList.isEmpty()) {
+                    continue;
+                }
+                for (int i = 0; i < spuList.size(); i++) {
+                    JSONObject spu = spuList.getJSONObject(i);
+                    String articleNumber = spu.getString("dwDesignerId");
+                    JSONArray skuList = spu.getJSONArray("skuList");
+                    if (skuList == null) {
+                        continue;
+                    }
+                    for (int j = 0; j < skuList.size(); j++) {
+                        JSONObject sku = skuList.getJSONObject(j);
+                        Long minBidPrice = sku.getLong("minBidPrice");
+                        if (minBidPrice == null || minBidPrice <= 0 || minBidPrice > PoisonSwitch.MAX_PRICE * 100L) {
+                            continue;
+                        }
+                        String euSize = extractDistApiSize(sku);
+                        if (euSize == null) {
+                            continue;
+                        }
+                        PoisonPriceDO priceDO = new PoisonPriceDO();
+                        priceDO.setModelNo(articleNumber);
+                        priceDO.setEuSize(euSize);
+                        priceDO.setPrice((int) (minBidPrice / 100));
+                        priceDO.setUpdateTime(new Date());
+                        allPrices.add(priceDO);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("batchQueryPriceByDistApi parse error, msg:{}", e.getMessage());
+            }
+        }
+        return allPrices;
+    }
+
+    private String extractDistApiSize(JSONObject sku) {
+        JSONArray saleAttr = sku.getJSONArray("saleAttr");
+        if (saleAttr != null) {
+            for (int i = 0; i < saleAttr.size(); i++) {
+                JSONObject attr = saleAttr.getJSONObject(i);
+                if ("Size".equals(attr.getString("enName"))) {
+                    return attr.getString("enValue");
+                }
+            }
+        }
+        JSONArray sizeInfos = sku.getJSONArray("sizeInfos");
+        if (sizeInfos != null) {
+            for (int i = 0; i < sizeInfos.size(); i++) {
+                JSONObject info = sizeInfos.getJSONObject(i);
+                if (info.getString("sizeKey") != null && info.getString("sizeKey").contains("EU")) {
+                    return info.getString("sizeValue");
+                }
+            }
+        }
+        return null;
     }
 
     // ========== V3 API Methods ==========

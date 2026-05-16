@@ -38,7 +38,7 @@ public class PriceManager {
 
     private final LoadingCache<String, Map<String, PoisonPriceDO>> CACHE = CacheBuilder.newBuilder()
                 .maximumSize(100000) // 设置最大容量
-                .expireAfterWrite(12, TimeUnit.HOURS) // 设置写入后过期时间
+                .expireAfterWrite(24, TimeUnit.HOURS)
                 .build(new CacheLoader<>() {
                     @NonNull
                     @Override
@@ -157,7 +157,7 @@ public class PriceManager {
      * 3. 更新缓存（包括设置空缓存，避免重复查询）
      * 4. 对于形如 xxx/xxxx 的货号，先查前半部分，查不到再查后半部分
      */
-    public void preloadMissingPrices(Set<String> modelNos) {
+    public void batchLoadPrices(Set<String> modelNos) {
         if (modelNos == null || modelNos.isEmpty()) {
             return;
         }
@@ -168,7 +168,7 @@ public class PriceManager {
         if (missingModelNos.isEmpty()) {
             return;
         }
-        log.info("preloadMissingPrices, total:{}, missing:{}", modelNos.size(), missingModelNos.size());
+        log.info("batchLoadPrices, total:{}, missing:{}", modelNos.size(), missingModelNos.size());
 
         // 拆分组合货号，所有子货号独立查询和缓存
         Set<String> allModelNos = new java.util.HashSet<>();
@@ -219,6 +219,28 @@ public class PriceManager {
             List<PoisonPriceDO> batchResult = poisonClient.batchQueryPrice(batch);
             if (batchResult != null) {
                 result.addAll(batchResult);
+            }
+        }
+        return result;
+    }
+
+    public List<PoisonPriceDO> queryPriceForExternal(String modelNo) {
+        try {
+            Map<String, PoisonPriceDO> sizePriceMap = CACHE.get(modelNo);
+            return new ArrayList<>(sizePriceMap.values());
+        } catch (ExecutionException e) {
+            log.error("queryPriceForExternal error, modelNo:{}", modelNo, e);
+            return Collections.emptyList();
+        }
+    }
+
+    public Map<String, List<PoisonPriceDO>> batchQueryPriceForExternal(List<String> modelNos) {
+        batchLoadPrices(new java.util.HashSet<>(modelNos));
+        Map<String, List<PoisonPriceDO>> result = new java.util.LinkedHashMap<>();
+        for (String modelNo : modelNos) {
+            Map<String, PoisonPriceDO> cached = CACHE.getIfPresent(modelNo);
+            if (cached != null && !cached.isEmpty()) {
+                result.put(modelNo, new ArrayList<>(cached.values()));
             }
         }
         return result;

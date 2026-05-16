@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.SpecialPriceMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 
@@ -28,9 +30,27 @@ public class PoisonController {
     @Resource
     private PoisonClient poisonClient;
 
+    @Resource
+    private PriceManager priceManager;
+
     @GetMapping("batchQueryPrice")
     public Result<List<PoisonPriceDO>> batchQueryPrice(String query) {
         return Result.buildSuccess(poisonClient.batchQueryPrice(List.of(query)));
+    }
+
+    @GetMapping("price")
+    public Result<List<PoisonPriceDO>> queryPrice(@RequestParam String modelNo) {
+        List<PoisonPriceDO> prices = priceManager.queryPriceForExternal(modelNo);
+        if (prices.isEmpty()) {
+            return Result.buildError("未找到该货号的价格信息");
+        }
+        return Result.buildSuccess(prices);
+    }
+
+    @PostMapping("batchPrice")
+    public Result<Map<String, List<PoisonPriceDO>>> batchPrice(@RequestBody List<String> modelNos) {
+        Map<String, List<PoisonPriceDO>> result = priceManager.batchQueryPriceForExternal(modelNos);
+        return Result.buildSuccess(result);
     }
 
     @GetMapping("tokenInfo")
