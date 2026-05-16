@@ -2,6 +2,7 @@ package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.annotation.CheckApiToken;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.manager.PriceManager;
@@ -38,6 +39,7 @@ public class PoisonController {
         return Result.buildSuccess(poisonClient.batchQueryPrice(List.of(query)));
     }
 
+    @CheckApiToken
     @GetMapping("price")
     public Result<List<PoisonPriceDO>> queryPrice(@RequestParam String modelNo) {
         List<PoisonPriceDO> prices = priceManager.queryPriceForExternal(modelNo);
@@ -47,6 +49,7 @@ public class PoisonController {
         return Result.buildSuccess(prices);
     }
 
+    @CheckApiToken
     @PostMapping("batchPrice")
     public Result<Map<String, List<PoisonPriceDO>>> batchPrice(@RequestBody List<String> modelNos) {
         Map<String, List<PoisonPriceDO>> result = priceManager.batchQueryPriceForExternal(modelNos);
