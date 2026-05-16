@@ -16,7 +16,7 @@
 所有接口需在 Header 中携带 `api-token`：
 
 ```
-api-token: sk-shoes-9f8a7b6c5d4e3f2a1b0c
+api-token: <向管理员获取>
 ```
 
 鉴权失败返回：
@@ -34,7 +34,7 @@ api-token: sk-shoes-9f8a7b6c5d4e3f2a1b0c
 ### 请求示例
 
 ```bash
-curl -H 'api-token: sk-shoes-9f8a7b6c5d4e3f2a1b0c' \
+curl -H 'api-token: <your_token>' \
   'http://43.99.84.114:8081/poison/price?modelNo=JS4442'
 ```
 
@@ -66,7 +66,7 @@ curl -H 'api-token: sk-shoes-9f8a7b6c5d4e3f2a1b0c' \
 ### 请求示例
 
 ```bash
-curl -X POST -H 'api-token: sk-shoes-9f8a7b6c5d4e3f2a1b0c' \
+curl -X POST -H 'api-token: <your_token>' \
   -H 'Content-Type: application/json' \
   -d '["JS4442", "DZ5485-612"]' \
   'http://43.99.84.114:8081/poison/batchPrice'
