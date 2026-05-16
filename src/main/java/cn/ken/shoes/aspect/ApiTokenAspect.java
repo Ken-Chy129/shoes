@@ -23,6 +23,9 @@ public class ApiTokenAspect {
     public Object checkApiToken(ProceedingJoinPoint point) throws Throwable {
         HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.getRequestAttributes()).getRequest();
         String token = request.getHeader("api-token");
+        if (token == null) {
+            token = request.getParameter("api-token");
+        }
         if (token == null || !apiToken.equals(token)) {
             log.warn("Invalid api-token from {}", request.getRemoteAddr());
             return Result.buildError("无效的api-token");
