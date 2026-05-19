@@ -51,82 +51,56 @@ public class TaskExecutorManager {
         switch (taskType) {
             case KC_LISTING -> {
                 TaskSwitch.CANCEL_KC_LISTING_TASK = false;
+                Long kcListingTaskId = createTask("kickscrew", taskType.getCode());
+                TaskSwitch.CURRENT_KC_LISTING_TASK_ID = kcListingTaskId;
+                TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
                 if (!kcTaskRunner.isInit()) {
-                    // 创建任务记录
-                    Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_LISTING_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
                     new Thread(kcTaskRunner, "KC-Listing-Task").start();
-                } else if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID == null) {
-                    // 任务已运行但没有任务ID，创建新任务
-                    Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_LISTING_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_LISTING_ROUND = 0;
                 }
             }
             case KC_PRICE_DOWN -> {
                 TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = false;
+                Long kcPdTaskId = createTask("kickscrew", taskType.getCode());
+                TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = kcPdTaskId;
+                TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND = 0;
                 if (!kcPriceDownTaskRunner.isInit()) {
-                    Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND = 0;
                     new Thread(kcPriceDownTaskRunner, "KC-PriceDown-Task").start();
-                } else if (TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID == null) {
-                    Long taskId = createTask("kickscrew", taskType.getCode());
-                    TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND = 0;
                 }
             }
             case STOCKX_LISTING -> {
                 TaskSwitch.CANCEL_STOCK_LISTING_TASK = false;
+                Long sxListingTaskId = createTask("stockx", taskType.getCode());
+                TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = sxListingTaskId;
+                TaskSwitch.CURRENT_STOCK_LISTING_ROUND = 0;
                 if (!stockXTaskRunner.isInit()) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_LISTING_ROUND = 0;
                     new Thread(stockXTaskRunner, "StockX-Listing-Task").start();
-                } else if (TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID == null) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_LISTING_ROUND = 0;
                 }
             }
             case STOCKX_PRICE_DOWN -> {
                 TaskSwitch.CANCEL_STOCK_PRICE_DOWN_TASK = false;
+                Long sxPdTaskId = createTask("stockx", taskType.getCode());
+                TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = sxPdTaskId;
+                TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
                 if (!stockXPriceDownTaskRunner.isInit()) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
                     new Thread(stockXPriceDownTaskRunner, "StockX-PriceDown-Task").start();
-                } else if (TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID == null) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
                 }
             }
             case STOCKX_STANDARD_PRICE_DOWN -> {
                 TaskSwitch.CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK = false;
+                Long sxStdPdTaskId = createTask("stockx", taskType.getCode());
+                TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = sxStdPdTaskId;
+                TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
                 if (!stockXStandardPriceDownTaskRunner.isInit()) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
                     new Thread(stockXStandardPriceDownTaskRunner, "StockX-Standard-PriceDown-Task").start();
-                } else if (TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID == null) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
                 }
             }
             case STOCKX_CUSTODIAL_PRICE_DOWN -> {
                 TaskSwitch.CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK = false;
+                Long sxCusPdTaskId = createTask("stockx", taskType.getCode());
+                TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = sxCusPdTaskId;
+                TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
                 if (!stockXCustodialPriceDownTaskRunner.isInit()) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
                     new Thread(stockXCustodialPriceDownTaskRunner, "StockX-Custodial-PriceDown-Task").start();
-                } else if (TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID == null) {
-                    Long taskId = createTask("stockx", taskType.getCode());
-                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = taskId;
-                    TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
                 }
             }
         }
