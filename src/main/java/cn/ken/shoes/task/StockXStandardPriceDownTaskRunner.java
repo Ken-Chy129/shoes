@@ -26,34 +26,38 @@ public class StockXStandardPriceDownTaskRunner implements Runnable {
     @Override
     public void run() {
         isInit = true;
-        while (true) {
-            try {
-                TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND++;
-                Long taskId = TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND);
-                }
-                log.info("StockX现货压价任务开始执行第{}轮", TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND);
+        try {
+            while (true) {
+                try {
+                    TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND++;
+                    Long taskId = TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND);
+                    }
+                    log.info("StockX现货压价任务开始执行第{}轮", TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND);
 
-                long startTime = System.currentTimeMillis();
-                stockXService.priceDownWithExcel("STANDARD");
-                String cost = TimeUtil.getCostMin(startTime);
-                log.info("StockX现货压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND, cost);
-                if (taskId != null) {
-                    taskMapper.updateTaskCost(taskId, cost);
-                }
+                    long startTime = System.currentTimeMillis();
+                    stockXService.priceDownWithExcel("STANDARD");
+                    String cost = TimeUtil.getCostMin(startTime);
+                    log.info("StockX现货压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND, cost);
+                    if (taskId != null) {
+                        taskMapper.updateTaskCost(taskId, cost);
+                    }
 
-                if (detectCancelTask(taskId)) return;
-                if (sleepWithCancelCheck(taskId)) return;
-            } catch (InterruptedException e) {
-                log.error(e.getMessage(), e);
-            } catch (Exception e) {
-                log.error("StockX现货压价任务执行异常: {}", e.getMessage(), e);
-                Long taskId = TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    if (detectCancelTask(taskId)) return;
+                    if (sleepWithCancelCheck(taskId)) return;
+                } catch (InterruptedException e) {
+                    log.error(e.getMessage(), e);
+                } catch (Exception e) {
+                    log.error("StockX现货压价任务执行异常: {}", e.getMessage(), e);
+                    Long taskId = TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    }
                 }
             }
+        } finally {
+            isInit = false;
         }
     }
 

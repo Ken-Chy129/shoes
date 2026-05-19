@@ -31,41 +31,44 @@ public class StockXTaskRunner implements Runnable {
     @Override
     public void run() {
         isInit = true;
-        while (true) {
-            try {
-                // 增加轮次计数
-                TaskSwitch.CURRENT_STOCK_LISTING_ROUND++;
-                Long taskId = TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_STOCK_LISTING_ROUND);
-                }
-                log.info("StockX上架任务开始执行第{}轮", TaskSwitch.CURRENT_STOCK_LISTING_ROUND);
-
-                long startTime = System.currentTimeMillis();
-                LockHelper.lockStockXItem();
+        try {
+            while (true) {
                 try {
-                    stockXService.refreshPrices();
-                } finally {
-                    LockHelper.unlockStockXItem();
-                }
-                String cost = TimeUtil.getCostMin(startTime);
-                log.info("StockX上架任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_LISTING_ROUND, cost);
-                if (taskId != null) {
-                    taskMapper.updateTaskCost(taskId, cost);
-                }
+                    TaskSwitch.CURRENT_STOCK_LISTING_ROUND++;
+                    Long taskId = TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_STOCK_LISTING_ROUND);
+                    }
+                    log.info("StockX上架任务开始执行第{}轮", TaskSwitch.CURRENT_STOCK_LISTING_ROUND);
 
-                if (detectCancelTask(taskId)) return;
-                Thread.sleep(TaskSwitch.STOCK_LISTING_TASK_INTERVAL);
-                if (detectCancelTask(taskId)) return;
-            } catch (InterruptedException e) {
-                log.error(e.getMessage(), e);
-            } catch (Exception e) {
-                log.error("StockX上架任务执行异常: {}", e.getMessage(), e);
-                Long taskId = TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    long startTime = System.currentTimeMillis();
+                    LockHelper.lockStockXItem();
+                    try {
+                        stockXService.refreshPrices();
+                    } finally {
+                        LockHelper.unlockStockXItem();
+                    }
+                    String cost = TimeUtil.getCostMin(startTime);
+                    log.info("StockX上架任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_STOCK_LISTING_ROUND, cost);
+                    if (taskId != null) {
+                        taskMapper.updateTaskCost(taskId, cost);
+                    }
+
+                    if (detectCancelTask(taskId)) return;
+                    Thread.sleep(TaskSwitch.STOCK_LISTING_TASK_INTERVAL);
+                    if (detectCancelTask(taskId)) return;
+                } catch (InterruptedException e) {
+                    log.error(e.getMessage(), e);
+                } catch (Exception e) {
+                    log.error("StockX上架任务执行异常: {}", e.getMessage(), e);
+                    Long taskId = TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    }
                 }
             }
+        } finally {
+            isInit = false;
         }
     }
 

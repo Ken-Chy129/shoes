@@ -27,40 +27,44 @@ public class KcPriceDownTaskRunner implements Runnable {
     @Override
     public void run() {
         isInit = true;
-        while (true) {
-            try {
-                TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND++;
-                Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND);
-                }
-                log.info("KC压价任务开始执行第{}轮", TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND);
-
-                long startTime = System.currentTimeMillis();
-                LockHelper.lockKcItem();
+        try {
+            while (true) {
                 try {
-                    kickScrewService.priceDown();
-                } finally {
-                    LockHelper.unlockKcItem();
-                }
-                String cost = TimeUtil.getCostMin(startTime);
-                log.info("KC压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND, cost);
-                if (taskId != null) {
-                    taskMapper.updateTaskCost(taskId, cost);
-                }
+                    TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND++;
+                    Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskRound(taskId, TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND);
+                    }
+                    log.info("KC压价任务开始执行第{}轮", TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND);
 
-                if (detectCancelTask(taskId)) return;
-                Thread.sleep(TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL);
-                if (detectCancelTask(taskId)) return;
-            } catch (InterruptedException e) {
-                log.error(e.getMessage(), e);
-            } catch (Exception e) {
-                log.error("KC压价任务执行异常: {}", e.getMessage(), e);
-                Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
-                if (taskId != null) {
-                    taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    long startTime = System.currentTimeMillis();
+                    LockHelper.lockKcItem();
+                    try {
+                        kickScrewService.priceDown();
+                    } finally {
+                        LockHelper.unlockKcItem();
+                    }
+                    String cost = TimeUtil.getCostMin(startTime);
+                    log.info("KC压价任务第{}轮执行完成，耗时:{}", TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND, cost);
+                    if (taskId != null) {
+                        taskMapper.updateTaskCost(taskId, cost);
+                    }
+
+                    if (detectCancelTask(taskId)) return;
+                    Thread.sleep(TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL);
+                    if (detectCancelTask(taskId)) return;
+                } catch (InterruptedException e) {
+                    log.error(e.getMessage(), e);
+                } catch (Exception e) {
+                    log.error("KC压价任务执行异常: {}", e.getMessage(), e);
+                    Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
+                    if (taskId != null) {
+                        taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                    }
                 }
             }
+        } finally {
+            isInit = false;
         }
     }
 
