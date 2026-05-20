@@ -100,4 +100,25 @@ function doUploadRequestWithParams(
 }
 
 
-export {doGetRequest, doPostRequest, doDeleteRequest, doUploadRequest, doUploadRequestWithParams}
+function doPutRequest(
+    apiName: string,
+    data: {},
+    recall: {
+        onSuccess: (response: any) => void,
+        onError?: (response: any) => void,
+        onFinally?: () => void
+    }
+) {
+    request(apiName, {
+        method: 'PUT',
+        data
+    }).then((res) => {
+        (res.success ? recall.onSuccess : recall.onError)?.(res);
+    }).catch(() => {
+        message.error("系统异常").then(_ => {});
+    }).finally(() => {
+        recall.onFinally?.();
+    });
+}
+
+export {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest, doUploadRequest, doUploadRequestWithParams}

@@ -476,219 +476,28 @@ public class StockXService {
      * @param inventoryType STANDARD 或 CUSTODIAL
      */
     public void priceDownWithExcel(String inventoryType) {
-        long taskStartTime = System.currentTimeMillis();
-        int pageNumber = 1;
-        boolean hasMore;
-        int totalPriceDown = 0, totalSkip = 0;
-
+        // 构造默认账号，委托给多账号方法（兼容旧 TaskRunner 调用）
         boolean isStandard = "STANDARD".equals(inventoryType);
         Long taskId = isStandard ? TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID : TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID;
+        String defaultAccountId = "_default";
 
-        do {
-            if (isCancelled(inventoryType)) {
-                log.info("{}压价任务已取消", inventoryType);
-                break;
-            }
+        TaskSwitch.setExcelTaskId(defaultAccountId, inventoryType, taskId);
+        TaskSwitch.resetExcelCancel(defaultAccountId, inventoryType);
+        int round = isStandard ? TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND : TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND;
+        TaskSwitch.resetExcelRound(defaultAccountId, inventoryType);
+        for (int i = 0; i < round; i++) {
+            TaskSwitch.incrementExcelRound(defaultAccountId, inventoryType);
+        }
 
-            long startTime = System.currentTimeMillis();
-            JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber);
-            if (jsonObject == null) {
-                log.error("priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", inventoryType, pageNumber);
-                break;
-            }
+        // 同步旧取消标志到新 Map
+        if (isCancelled(inventoryType)) {
+            TaskSwitch.cancelExcel(defaultAccountId, inventoryType);
+        }
 
-            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-            if (items.isEmpty()) {
-                hasMore = false;
-                break;
-            }
-
-            // 只预加载比价方式为"毒"的商品的得物价格
-            Set<String> poisonModelNos = items.stream()
-                    .filter(item -> {
-                        String sid = item.getString("styleId");
-                        String sz = item.getString("size");
-                        if (StrUtil.isBlank(sid) || StrUtil.isBlank(sz)) return false;
-                        ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(inventoryType, sid, sz);
-                        return config != null && config.isPoisonCompare();
-                    })
-                    .map(item -> item.getString("styleId"))
-                    .collect(Collectors.toSet());
-            if (!poisonModelNos.isEmpty()) {
-                priceManager.batchLoadPrices(poisonModelNos);
-            }
-
-            // 按 styleId:size 分组（size 为 traits.size 原始值）
-            Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
-            for (JSONObject item : items) {
-                String styleId = item.getString("styleId");
-                String size = item.getString("size");
-                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
-                    continue;
-                }
-                String key = STR."\{styleId}:\{size}";
-                grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(item);
-            }
-
-            // 当前页待压价列表
-            List<Map<String, String>> toPriceDown = new ArrayList<>();
-            // 记录每个 item 的 taskItem 和目标价格: listingId -> (taskItemId, amount)
-            Map<String, Pair<Long, String>> listingToTaskInfo = new HashMap<>();
-
-            for (Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
-                if (isCancelled(inventoryType)) break;
-
-                String key = entry.getKey();
-                List<JSONObject> listings = entry.getValue();
-                String[] parts = key.split(":", 2);
-                String styleId = parts[0];
-                String size = parts[1];
-
-                // 1. 不在 Excel 中 → skip
-                ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(inventoryType, styleId, size);
-                if (config == null) {
-                    totalSkip += listings.size();
-                    for (JSONObject listing : listings) {
-                        Long taskItemId = insertTaskItem(taskId, inventoryType, listing);
-                        updateTaskItemResult(taskItemId, "跳过-不在Excel中");
-                    }
-                    continue;
-                }
-                int excelMinPrice = config.minPrice();
-                boolean isPoisonCompare = config.isPoisonCompare();
-
-                // 排序：价格从低到高
-                listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
-                JSONObject bestListing = listings.get(0);
-
-                // 取最低价（STANDARD取两者中更低的，CUSTODIAL取寄存最低价）
-                Integer lowestPrice;
-                if (isStandard) {
-                    Integer standardLowest = bestListing.getInteger("standardLowest");
-                    Integer expressLowest = bestListing.getInteger("expressStandardLowest");
-                    if (standardLowest != null && expressLowest != null) {
-                        lowestPrice = Math.min(standardLowest, expressLowest);
-                    } else {
-                        lowestPrice = standardLowest != null ? standardLowest : expressLowest;
-                    }
-                } else {
-                    lowestPrice = bestListing.getInteger("expressStandardLowest");
-                }
-
-                // 得物比价模式：预获取得物价格
-                Integer poisonPrice = null;
-                String euSize = null;
-                Integer minExpectProfit = null;
-                if (isPoisonCompare) {
-                    euSize = bestListing.getString("euSize");
-                    if (StrUtil.isNotBlank(euSize)) {
-                        poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
-                        minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
-                    }
-                    if (StrUtil.isBlank(euSize) || poisonPrice == null) {
-                        for (JSONObject listing : listings) {
-                            Long tid = insertTaskItem(taskId, inventoryType, listing);
-                            updateTaskItemResult(tid, StrUtil.isBlank(euSize) ? "跳过-无法获取EU码" : "跳过-得物无价");
-                        }
-                        totalSkip += listings.size();
-                        continue;
-                    }
-                }
-
-                // 判断组内是否有任何 listing 已是最低价
-                final Integer pp = poisonPrice;
-                final Integer mep = minExpectProfit;
-                boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
-                        && listings.stream().anyMatch(l -> l.getIntValue("amount") <= lowestPrice);
-
-                for (JSONObject listing : listings) {
-                    String lid = listing.getString("id");
-                    int amt = listing.getIntValue("amount");
-                    Long itemId = insertTaskItem(taskId, inventoryType, listing);
-
-                    if (lowestPrice == null || lowestPrice <= 1) {
-                        updateTaskItemResult(itemId, "跳过-无最低价");
-                        totalSkip++;
-                        continue;
-                    }
-
-                    if (anyIsLowest) {
-                        // 组内已有最低价 listing，全组不压价，只做盈利检查
-                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
-                            updateTaskItemResult(itemId, amt <= lowestPrice ? "保持-已是最低价" : "跳过-相同货号尺码已有最低价");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                        } else {
-                            toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                            listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                            updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                        }
-                    } else {
-                        // 组内没有最低价 listing
-                        if (listing == listings.get(0)) {
-                            // 只压当前价最低的那一个
-                            int newPrice = lowestPrice - 1;
-                            if (isProfitable(isPoisonCompare, newPrice, excelMinPrice, pp, mep)) {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(newPrice)));
-                                updateTaskItemResult(itemId, "待压价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, newPrice);
-                            } else if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
-                                updateTaskItemResult(itemId, isPoisonCompare ? "保持-压价后不盈利但当前价盈利" : "保持-压价后低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            }
-                        } else {
-                            // 非最低价 listing：只做盈利检查
-                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
-                                updateTaskItemResult(itemId, "跳过-相同货号尺码");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 批量提交（V2 API）
-            if (!toPriceDown.isEmpty() && !isCancelled(inventoryType)) {
-                String batchId = stockXClient.batchUpdateListings(toPriceDown);
-                if (batchId != null) {
-                    waitForBatchComplete(batchId);
-                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
-                        Long itemId = e.getValue().getKey();
-                        String targetAmount = e.getValue().getValue();
-                        if ("9999".equals(targetAmount)) {
-                            updateTaskItemResult(itemId, "已设9999");
-                        } else {
-                            updateTaskItemResult(itemId, "压价已提交");
-                        }
-                    }
-                    totalPriceDown += toPriceDown.size();
-                } else {
-                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
-                        updateTaskItemResult(e.getValue().getKey(), "提交失败");
-                    }
-                }
-            }
-
-            log.info("priceDownWithExcel[{}] page:{}, items:{}, priceDown:{}, skip:{}, cost:{}",
-                    inventoryType, pageNumber, items.size(), toPriceDown.size(), totalSkip, TimeUtil.getCostMin(startTime));
-
-            hasMore = jsonObject.getBoolean("hasMore");
-            pageNumber++;
-        } while (hasMore);
-
-        log.info("priceDownWithExcel[{}] finished, totalPriceDown:{}, totalSkip:{}, cost:{}",
-                inventoryType, totalPriceDown, totalSkip, TimeUtil.getCostMin(taskStartTime));
+        StockXAccount defaultAccount = new StockXAccount();
+        defaultAccount.setId(defaultAccountId);
+        defaultAccount.setName("default");
+        priceDownWithExcelForAccount(defaultAccount, inventoryType);
     }
 
     /**
@@ -734,7 +543,7 @@ public class StockXService {
                     .map(item -> item.getString("styleId"))
                     .collect(Collectors.toSet());
             if (!poisonModelNos.isEmpty()) {
-                priceManager.preloadMissingPrices(poisonModelNos);
+                priceManager.batchLoadPrices(poisonModelNos);
             }
 
             Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
@@ -956,40 +765,6 @@ public class StockXService {
                 : TaskSwitch.CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK;
     }
 
-    private Long insertTaskItem(Long taskId, String inventoryType, JSONObject item) {
-        if (taskId == null) return null;
-        int round = "STANDARD".equals(inventoryType)
-                ? TaskSwitch.CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND
-                : TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND;
-
-        TaskItemDO taskItemDO = new TaskItemDO();
-        taskItemDO.setTaskId(taskId);
-        taskItemDO.setRound(round);
-        taskItemDO.setTitle(item.getString("productName"));
-        taskItemDO.setListingId(item.getString("id"));
-        taskItemDO.setProductId(item.getString("variantId"));
-        taskItemDO.setStyleId(item.getString("styleId"));
-        taskItemDO.setSize(item.getString("size"));
-        taskItemDO.setEuSize(item.getString("euSize"));
-        Integer amount = item.getInteger("amount");
-        taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
-
-        boolean isStandard = "STANDARD".equals(inventoryType);
-        Integer lowestPrice;
-        if (isStandard) {
-            Integer sl = item.getInteger("standardLowest");
-            Integer el = item.getInteger("expressStandardLowest");
-            lowestPrice = (sl != null && el != null) ? Math.min(sl, el) : (sl != null ? sl : el);
-        } else {
-            lowestPrice = item.getInteger("expressStandardLowest");
-        }
-        taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
-
-        taskItemDO.setOperateTime(new Date());
-        taskItemDO.setOperateResult("待处理");
-        taskItemMapper.insert(taskItemDO);
-        return taskItemDO.getId();
-    }
 
     private void updateTaskItemProfit(Long taskItemId, int poisonPrice, int sellPrice) {
         if (taskItemId == null) return;
@@ -1004,20 +779,4 @@ public class StockXService {
         taskItemMapper.updateById(update);
     }
 
-    private void waitForBatchComplete(String batchId) {
-        for (int i = 0; i < 12; i++) {
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            JSONObject status = stockXClient.queryBatchUpdateStatus(batchId);
-            if (status != null && "COMPLETED".equals(status.getString("status"))) {
-                log.info("batch update completed, batchId:{}", batchId);
-                return;
-            }
-        }
-        log.warn("batch update timeout, batchId:{}", batchId);
-    }
 }
