@@ -28,8 +28,8 @@ public class ShoesContext {
         }
     }
 
-    private final static ConcurrentHashMap<String, PriceDownConfig> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
-    private final static ConcurrentHashMap<String, PriceDownConfig> CUSTODIAL_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
+    private final static ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
+    private final static ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> CUSTODIAL_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
 
     // 3.5
     public static void clearThreeFiveModelSet() {
@@ -143,9 +143,24 @@ public class ShoesContext {
         return SPECIAL_PRICE_MAP.get(key);
     }
 
-    // Excel 压价数据
+    private static final String DEFAULT_ACCOUNT = "_default";
+
+    // 兼容旧调用（无 accountId 参数）
     public static void loadPriceDownExcel(String inventoryType, List<StockXPriceDownInputExcel> list) {
-        ConcurrentHashMap<String, PriceDownConfig> map = getPriceDownMap(inventoryType);
+        loadPriceDownExcel(DEFAULT_ACCOUNT, inventoryType, list);
+    }
+
+    public static PriceDownConfig getPriceDownConfig(String inventoryType, String styleId, String size) {
+        return getPriceDownConfig(DEFAULT_ACCOUNT, inventoryType, styleId, size);
+    }
+
+    public static ConcurrentHashMap<String, PriceDownConfig> getPriceDownMap(String inventoryType) {
+        return getPriceDownMap(DEFAULT_ACCOUNT, inventoryType);
+    }
+
+    // Excel 压价数据（按账号隔离）
+    public static void loadPriceDownExcel(String accountId, String inventoryType, List<StockXPriceDownInputExcel> list) {
+        ConcurrentHashMap<String, PriceDownConfig> map = getPriceDownMap(accountId, inventoryType);
         map.clear();
         for (StockXPriceDownInputExcel item : list) {
             if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize()) && item.getMinPrice() != null) {
@@ -156,12 +171,14 @@ public class ShoesContext {
         }
     }
 
-    public static PriceDownConfig getPriceDownConfig(String inventoryType, String styleId, String size) {
+    public static PriceDownConfig getPriceDownConfig(String accountId, String inventoryType, String styleId, String size) {
         String key = STR."\{styleId}:\{size}";
-        return getPriceDownMap(inventoryType).get(key);
+        return getPriceDownMap(accountId, inventoryType).get(key);
     }
 
-    public static ConcurrentHashMap<String, PriceDownConfig> getPriceDownMap(String inventoryType) {
-        return "CUSTODIAL".equals(inventoryType) ? CUSTODIAL_PRICE_DOWN_MAP : STANDARD_PRICE_DOWN_MAP;
+    public static ConcurrentHashMap<String, PriceDownConfig> getPriceDownMap(String accountId, String inventoryType) {
+        ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> outerMap =
+                "CUSTODIAL".equals(inventoryType) ? CUSTODIAL_PRICE_DOWN_MAP : STANDARD_PRICE_DOWN_MAP;
+        return outerMap.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>());
     }
 }

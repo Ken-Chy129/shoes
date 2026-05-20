@@ -7,6 +7,7 @@ import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -688,6 +689,258 @@ public class StockXService {
 
         log.info("priceDownWithExcel[{}] finished, totalPriceDown:{}, totalSkip:{}, cost:{}",
                 inventoryType, totalPriceDown, totalSkip, TimeUtil.getCostMin(taskStartTime));
+    }
+
+    /**
+     * 多账号 Excel 压价：对指定账号的在售商品进行压价
+     */
+    public void priceDownWithExcelForAccount(StockXAccount account, String inventoryType) {
+        String accountId = account.getId();
+        String accountName = account.getName();
+        long taskStartTime = System.currentTimeMillis();
+        int pageNumber = 1;
+        boolean hasMore;
+        int totalPriceDown = 0, totalSkip = 0;
+
+        boolean isStandard = "STANDARD".equals(inventoryType);
+        Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+
+        do {
+            if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+                log.info("[{}]{}压价任务已取消", accountName, inventoryType);
+                break;
+            }
+
+            long startTime = System.currentTimeMillis();
+            JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
+            if (jsonObject == null) {
+                log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
+                break;
+            }
+
+            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+            if (items.isEmpty()) {
+                break;
+            }
+
+            Set<String> poisonModelNos = items.stream()
+                    .filter(item -> {
+                        String sid = item.getString("styleId");
+                        String sz = item.getString("size");
+                        if (StrUtil.isBlank(sid) || StrUtil.isBlank(sz)) return false;
+                        ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(accountId, inventoryType, sid, sz);
+                        return config != null && config.isPoisonCompare();
+                    })
+                    .map(item -> item.getString("styleId"))
+                    .collect(Collectors.toSet());
+            if (!poisonModelNos.isEmpty()) {
+                priceManager.preloadMissingPrices(poisonModelNos);
+            }
+
+            Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
+            for (JSONObject item : items) {
+                String styleId = item.getString("styleId");
+                String size = item.getString("size");
+                if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
+                    continue;
+                }
+                String key = STR."\{styleId}:\{size}";
+                grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(item);
+            }
+
+            List<Map<String, String>> toPriceDown = new ArrayList<>();
+            Map<String, Pair<Long, String>> listingToTaskInfo = new HashMap<>();
+
+            for (Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
+                if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+
+                String key = entry.getKey();
+                List<JSONObject> listings = entry.getValue();
+                String[] parts = key.split(":", 2);
+                String styleId = parts[0];
+                String size = parts[1];
+
+                ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(accountId, inventoryType, styleId, size);
+                if (config == null) {
+                    totalSkip += listings.size();
+                    for (JSONObject listing : listings) {
+                        Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                        updateTaskItemResult(taskItemId, "跳过-不在Excel中");
+                    }
+                    continue;
+                }
+                int excelMinPrice = config.minPrice();
+                boolean isPoisonCompare = config.isPoisonCompare();
+
+                listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
+                JSONObject bestListing = listings.get(0);
+
+                Integer lowestPrice;
+                if (isStandard) {
+                    Integer standardLowest = bestListing.getInteger("standardLowest");
+                    Integer expressLowest = bestListing.getInteger("expressStandardLowest");
+                    if (standardLowest != null && expressLowest != null) {
+                        lowestPrice = Math.min(standardLowest, expressLowest);
+                    } else {
+                        lowestPrice = standardLowest != null ? standardLowest : expressLowest;
+                    }
+                } else {
+                    lowestPrice = bestListing.getInteger("expressStandardLowest");
+                }
+
+                Integer poisonPrice = null;
+                String euSize = null;
+                Integer minExpectProfit = null;
+                if (isPoisonCompare) {
+                    euSize = bestListing.getString("euSize");
+                    if (StrUtil.isNotBlank(euSize)) {
+                        poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+                        minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                    }
+                    if (StrUtil.isBlank(euSize) || poisonPrice == null) {
+                        for (JSONObject listing : listings) {
+                            Long tid = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                            updateTaskItemResult(tid, StrUtil.isBlank(euSize) ? "跳过-无法获取EU码" : "跳过-得物无价");
+                        }
+                        totalSkip += listings.size();
+                        continue;
+                    }
+                }
+
+                final Integer pp = poisonPrice;
+                final Integer mep = minExpectProfit;
+                boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
+                        && listings.stream().anyMatch(l -> l.getIntValue("amount") <= lowestPrice);
+
+                for (JSONObject listing : listings) {
+                    String lid = listing.getString("id");
+                    int amt = listing.getIntValue("amount");
+                    Long itemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+
+                    if (lowestPrice == null || lowestPrice <= 1) {
+                        updateTaskItemResult(itemId, "跳过-无最低价");
+                        totalSkip++;
+                        continue;
+                    }
+
+                    if (anyIsLowest) {
+                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                            updateTaskItemResult(itemId, amt <= lowestPrice ? "保持-已是最低价" : "跳过-相同货号尺码已有最低价");
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                        } else {
+                            toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
+                            listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
+                            updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                        }
+                    } else {
+                        if (listing == listings.get(0)) {
+                            int newPrice = lowestPrice - 1;
+                            if (isProfitable(isPoisonCompare, newPrice, excelMinPrice, pp, mep)) {
+                                toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(newPrice)));
+                                updateTaskItemResult(itemId, "待压价");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, newPrice);
+                            } else if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                                updateTaskItemResult(itemId, isPoisonCompare ? "保持-压价后不盈利但当前价盈利" : "保持-压价后低于Excel最低价");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            } else {
+                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
+                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            }
+                        } else {
+                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                                updateTaskItemResult(itemId, "跳过-相同货号尺码");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            } else {
+                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
+                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!toPriceDown.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+                String batchId = stockXClient.batchUpdateListings(toPriceDown, account);
+                if (batchId != null) {
+                    waitForBatchComplete(batchId, account);
+                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
+                        Long itemId = e.getValue().getKey();
+                        String targetAmount = e.getValue().getValue();
+                        updateTaskItemResult(itemId, "9999".equals(targetAmount) ? "已设9999" : "压价已提交");
+                    }
+                    totalPriceDown += toPriceDown.size();
+                } else {
+                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
+                        updateTaskItemResult(e.getValue().getKey(), "提交失败");
+                    }
+                }
+            }
+
+            log.info("[{}] priceDownWithExcel[{}] page:{}, items:{}, priceDown:{}, skip:{}, cost:{}",
+                    accountName, inventoryType, pageNumber, items.size(), toPriceDown.size(), totalSkip, TimeUtil.getCostMin(startTime));
+
+            hasMore = jsonObject.getBoolean("hasMore");
+            pageNumber++;
+        } while (hasMore);
+
+        log.info("[{}] priceDownWithExcel[{}] finished, totalPriceDown:{}, totalSkip:{}, cost:{}",
+                accountName, inventoryType, totalPriceDown, totalSkip, TimeUtil.getCostMin(taskStartTime));
+    }
+
+    private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
+        if (taskId == null) return null;
+        int round = TaskSwitch.getExcelRound(accountId, inventoryType);
+
+        TaskItemDO taskItemDO = new TaskItemDO();
+        taskItemDO.setTaskId(taskId);
+        taskItemDO.setRound(round);
+        taskItemDO.setTitle(item.getString("productName"));
+        taskItemDO.setListingId(item.getString("id"));
+        taskItemDO.setProductId(item.getString("variantId"));
+        taskItemDO.setStyleId(item.getString("styleId"));
+        taskItemDO.setSize(item.getString("size"));
+        taskItemDO.setEuSize(item.getString("euSize"));
+        Integer amount = item.getInteger("amount");
+        taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
+
+        boolean isStandard = "STANDARD".equals(inventoryType);
+        Integer lowestPrice;
+        if (isStandard) {
+            Integer sl = item.getInteger("standardLowest");
+            Integer el = item.getInteger("expressStandardLowest");
+            lowestPrice = (sl != null && el != null) ? Math.min(sl, el) : (sl != null ? sl : el);
+        } else {
+            lowestPrice = item.getInteger("expressStandardLowest");
+        }
+        taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
+
+        taskItemDO.setOperateTime(new Date());
+        taskItemDO.setOperateResult("待处理");
+        taskItemMapper.insert(taskItemDO);
+        return taskItemDO.getId();
+    }
+
+    private void waitForBatchComplete(String batchId, StockXAccount account) {
+        for (int i = 0; i < 12; i++) {
+            try {
+                Thread.sleep(5000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            JSONObject status = stockXClient.queryBatchUpdateStatus(batchId, account);
+            if (status != null && "COMPLETED".equals(status.getString("status"))) {
+                log.info("[{}] batch update completed, batchId:{}", account.getName(), batchId);
+                return;
+            }
+        }
+        log.warn("[{}] batch update timeout, batchId:{}", account.getName(), batchId);
     }
 
     private boolean isProfitable(boolean isPoisonCompare, int price, int excelMinPrice, Integer poisonPrice, Integer minExpectProfit) {

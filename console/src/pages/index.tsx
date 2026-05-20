@@ -1,13 +1,20 @@
-import {Button, Card, Form, Input, message, Radio, Row, Select} from "antd";
-import React, {useEffect} from "react";
+import {Button, Card, Form, Input, message, Modal, Radio, Row, Select, Switch, Table} from "antd";
+import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
+import {request} from "@umijs/max";
 
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
     const [kcForm] = Form.useForm();
     const [kcTokenForm] = Form.useForm();
     const [stockxForm] = Form.useForm();
+
+    // StockX 多账号
+    const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
+    const [accountModalVisible, setAccountModalVisible] = useState(false);
+    const [editingAccount, setEditingAccount] = useState<any>(null);
+    const [accountForm] = Form.useForm();
 
     useEffect(() => {
         doGetRequest(SETTING_API.POISON, {}, {
@@ -28,6 +35,7 @@ const SettingPage = () => {
         queryToken();
         queryStockxSetting();
         queryKcToken();
+        loadAccounts();
     }, []);
 
     const updatePoisonSetting = () => {
@@ -147,6 +155,80 @@ const SettingPage = () => {
             }
         })
     }
+
+    // ==================== StockX 多账号管理 ====================
+
+    const loadAccounts = () => {
+        doGetRequest(SETTING_API.STOCKX_ACCOUNTS, {}, {
+            onSuccess: res => setStockxAccounts(res.data || [])
+        });
+    }
+
+    const handleAddAccount = () => {
+        setEditingAccount(null);
+        accountForm.resetFields();
+        setAccountModalVisible(true);
+    }
+
+    const handleEditAccount = (record: any) => {
+        setEditingAccount(record);
+        accountForm.setFieldsValue(record);
+        setAccountModalVisible(true);
+    }
+
+    const handleDeleteAccount = (id: string) => {
+        request(`${SETTING_API.STOCKX_ACCOUNTS}/${id}`, {method: 'DELETE'}).then(() => {
+            message.success('已删除');
+            loadAccounts();
+        });
+    }
+
+    const handleAccountSubmit = () => {
+        accountForm.validateFields().then(values => {
+            if (editingAccount) {
+                request(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.id}`, {
+                    method: 'PUT', data: values
+                }).then(() => {
+                    message.success('已更新');
+                    setAccountModalVisible(false);
+                    loadAccounts();
+                });
+            } else {
+                doPostRequest(SETTING_API.STOCKX_ACCOUNTS, values, {
+                    onSuccess: () => {
+                        message.success('已添加');
+                        setAccountModalVisible(false);
+                        loadAccounts();
+                    }
+                });
+            }
+        });
+    }
+
+    const handleToggleAccount = (record: any, enabled: boolean) => {
+        request(`${SETTING_API.STOCKX_ACCOUNTS}/${record.id}`, {
+            method: 'PUT', data: {...record, enabled}
+        }).then(() => loadAccounts());
+    }
+
+    const maskStr = (s: string) => s ? s.substring(0, 10) + '...' : '';
+
+    const accountColumns = [
+        {title: '账号名', dataIndex: 'name', key: 'name', width: 120},
+        {title: 'API Key', dataIndex: 'apiKey', key: 'apiKey', render: (v: string) => maskStr(v), width: 150},
+        {title: 'Token', dataIndex: 'authorization', key: 'authorization', render: (v: string) => maskStr(v), width: 150},
+        {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 80,
+            render: (v: boolean, record: any) => (
+                <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
+            )},
+        {title: '操作', key: 'action', width: 120,
+            render: (_: any, record: any) => (
+                <span>
+                    <Button type="link" size="small" onClick={() => handleEditAccount(record)}>编辑</Button>
+                    <Button type="link" size="small" danger onClick={() => handleDeleteAccount(record.id)}>删除</Button>
+                </span>
+            )},
+    ];
 
     return <>
         <Card title={"通用配置"}>
@@ -273,34 +355,38 @@ const SettingPage = () => {
             </Form>
         </Card>
         <br/>
-        <Card title={"stockx配置"}>
-            {/*<Form form={stockxForm}*/}
-            {/*      style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>*/}
-            {/*    <div style={{display: "flex"}}>*/}
-            {/*        <Form.Item name="expireTime" label="令牌有效期">*/}
-            {/*            <Input disabled={true}/>*/}
-            {/*        </Form.Item>*/}
-            {/*        <Form.Item style={{marginLeft: 50}}>*/}
-            {/*            <Button type="primary" htmlType="submit" onClick={authorize}>*/}
-            {/*                认证*/}
-            {/*            </Button>*/}
-            {/*        </Form.Item>*/}
-            {/*        <Form.Item style={{marginLeft: 50}}>*/}
-            {/*            <Button type="primary" htmlType="submit" onClick={initToken}>*/}
-            {/*                初始化令牌*/}
-            {/*            </Button>*/}
-            {/*        </Form.Item>*/}
-            {/*        <Form.Item style={{marginLeft: 50}}>*/}
-            {/*            <Button type="primary" htmlType="submit" onClick={refreshToken}>*/}
-            {/*                刷新令牌*/}
-            {/*            </Button>*/}
-            {/*        </Form.Item>*/}
-            {/*    </div>*/}
-            {/*</Form>*/}
+        <Card title={"StockX 账号管理"} extra={<Button type="primary" size="small" onClick={handleAddAccount}>添加账号</Button>}>
+            <Table dataSource={stockxAccounts} columns={accountColumns} rowKey="id" size="small" pagination={false}/>
+        </Card>
+
+        <Modal title={editingAccount ? '编辑账号' : '添加账号'} open={accountModalVisible}
+               onOk={handleAccountSubmit} onCancel={() => setAccountModalVisible(false)}>
+            <Form form={accountForm} layout="vertical">
+                <Form.Item name="id" label="账号ID" rules={[{required: true}]}
+                           extra="唯一标识，如 account_1">
+                    <Input disabled={!!editingAccount}/>
+                </Form.Item>
+                <Form.Item name="name" label="账号名" rules={[{required: true}]}>
+                    <Input/>
+                </Form.Item>
+                <Form.Item name="apiKey" label="API Key" rules={[{required: true}]}>
+                    <Input.TextArea rows={2}/>
+                </Form.Item>
+                <Form.Item name="authorization" label="Authorization (Bearer token)" rules={[{required: true}]}>
+                    <Input.TextArea rows={3}/>
+                </Form.Item>
+                <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
+                    <Switch/>
+                </Form.Item>
+            </Form>
+        </Modal>
+
+        <br/>
+        <Card title={"StockX 通用配置"}>
             <Form form={stockxForm}
                   style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
                 <div style={{display: "flex"}}>
-                    <Form.Item name="accessToken" label="令牌">
+                    <Form.Item name="accessToken" label="默认令牌（旧压价用）">
                         <Input/>
                     </Form.Item>
                     <Form.Item style={{marginLeft: 50}}>

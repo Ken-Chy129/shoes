@@ -3,11 +3,19 @@ package cn.ken.shoes.manager;
 import cn.ken.shoes.config.*;
 import cn.ken.shoes.common.StockXPriceEnum;
 import cn.ken.shoes.common.StockXSortEnum;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.ConfigService;
+import com.alibaba.fastjson.JSON;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Properties;
 
 @Component
@@ -21,6 +29,7 @@ public class ConfigManager {
     private static final String STOCKX_CONFIG_FILE = "stockx-config.properties";
     private static final String STOCKX_OAUTH_CONFIG_FILE = "stockx-oauth-config.properties";
     private static final String KICKSCREW_OAUTH_CONFIG_FILE = "kickscrew-oauth-config.properties";
+    private static final String STOCKX_ACCOUNTS_FILE = "stockx-accounts.json";
 
     @PostConstruct
     public void initConfigs() {
@@ -28,6 +37,7 @@ public class ConfigManager {
         loadPriceConfig();
         loadStockXConfig();
         loadStockXOAuthConfig();
+        loadStockXAccounts();
         loadKickScrewOAuthConfig();
     }
 
@@ -164,5 +174,31 @@ public class ConfigManager {
             properties.setProperty("access.token", KickScrewConfig.CONFIG.getAccessToken());
         }
         configService.saveConfig(KICKSCREW_OAUTH_CONFIG_FILE, properties);
+    }
+
+    public void loadStockXAccounts() {
+        Path path = Paths.get("files/config", STOCKX_ACCOUNTS_FILE);
+        if (!Files.exists(path)) {
+            StockXConfig.setAccounts(new ArrayList<>());
+            return;
+        }
+        try {
+            String json = Files.readString(path);
+            List<StockXAccount> accounts = JSON.parseArray(json, StockXAccount.class);
+            StockXConfig.setAccounts(accounts != null ? accounts : new ArrayList<>());
+        } catch (IOException e) {
+            System.err.println("Failed to load stockx accounts: " + e.getMessage());
+            StockXConfig.setAccounts(new ArrayList<>());
+        }
+    }
+
+    public void saveStockXAccounts() {
+        Path path = Paths.get("files/config", STOCKX_ACCOUNTS_FILE);
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, JSON.toJSONString(StockXConfig.getAccounts()));
+        } catch (IOException e) {
+            System.err.println("Failed to save stockx accounts: " + e.getMessage());
+        }
     }
 }

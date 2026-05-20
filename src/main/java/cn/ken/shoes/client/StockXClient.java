@@ -6,6 +6,7 @@ import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
@@ -862,6 +863,10 @@ public class StockXClient {
      * 使用 persisted query 格式查询在售商品（区分库存类型）
      */
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber) {
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders());
+    }
+
+    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "SellerListings");
 
@@ -895,7 +900,7 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
 
-        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders());
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), headers);
         if (jsonObject == null) {
             return null;
         }
@@ -1045,6 +1050,57 @@ public class StockXClient {
                 "referer", "https://pro.stockx.com/",
                 "Connection", "close"
         );
+    }
+
+    // ==================== 多账号支持：带 StockXAccount 参数的方法重载 ====================
+
+    private Headers buildHeaders(StockXAccount account) {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "Authorization", account.getAuthorization(),
+                "x-api-key", account.getApiKey(),
+                "Connection", "close"
+        );
+    }
+
+    private Headers buildViperHeaders(StockXAccount account) {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "authorization", account.getAuthorization(),
+                "apollographql-client-name", "Viper",
+                "apollographql-client-version", "2026.05.05.00",
+                "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+                "origin", "https://pro.stockx.com",
+                "referer", "https://pro.stockx.com/",
+                "Connection", "close"
+        );
+    }
+
+    public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber, StockXAccount account) {
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account));
+    }
+
+    public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
+        JSONObject body = new JSONObject();
+        body.put("items", items);
+        String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders(account));
+        if (rawResult == null) {
+            log.error("batchUpdateListings[{}] failed, response is null", account.getName());
+            return null;
+        }
+        JSONObject result = JSON.parseObject(rawResult);
+        String batchId = result.getString("batchId");
+        log.info("batchUpdateListings[{}] success, batchId:{}, totalItems:{}", account.getName(), batchId, items.size());
+        return batchId;
+    }
+
+    public JSONObject queryBatchUpdateStatus(String batchId, StockXAccount account) {
+        String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);
+        String rawResult = HttpUtil.doGet(url, buildHeaders(account));
+        if (rawResult == null) {
+            return null;
+        }
+        return JSON.parseObject(rawResult);
     }
 
     @Data
