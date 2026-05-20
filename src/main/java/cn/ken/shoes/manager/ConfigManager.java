@@ -186,7 +186,7 @@ public class ConfigManager {
             String json = Files.readString(path);
             List<StockXAccount> accounts = JSON.parseArray(json, StockXAccount.class);
             StockXConfig.setAccounts(accounts != null ? accounts : new ArrayList<>());
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.err.println("Failed to load stockx accounts: " + e.getMessage());
             StockXConfig.setAccounts(new ArrayList<>());
         }

@@ -1,5 +1,6 @@
 package cn.ken.shoes.controller;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
@@ -210,6 +211,9 @@ public class TaskController {
     public Result<Boolean> startExcelPriceDown(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");
         String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
         taskExecutorManager.startExcelPriceDown(accountId, inventoryType);
         return Result.buildSuccess(true);
     }
@@ -218,6 +222,9 @@ public class TaskController {
     public Result<Boolean> cancelExcelPriceDown(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");
         String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
         taskExecutorManager.cancelExcelPriceDown(accountId, inventoryType);
         return Result.buildSuccess(true);
     }

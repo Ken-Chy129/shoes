@@ -57,6 +57,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     if (taskId != null) {
                         taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
                     }
+                    return;
                 }
             }
         } finally {
