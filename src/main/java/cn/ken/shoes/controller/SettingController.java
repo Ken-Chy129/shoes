@@ -8,6 +8,7 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
@@ -249,6 +250,44 @@ public class SettingController {
             return Result.buildSuccess(Boolean.FALSE);
         }
         brandMapper.updateDefaultCrawlCnt(defaultCnt, platform);
+        return Result.buildSuccess(true);
+    }
+
+    // ==================== StockX 多账号管理 ====================
+
+    @GetMapping("stockx/accounts")
+    public Result<List<StockXAccount>> getStockXAccounts() {
+        return Result.buildSuccess(StockXConfig.getAccounts());
+    }
+
+    @PostMapping("stockx/accounts")
+    public Result<Boolean> addStockXAccount(@RequestBody StockXAccount account) {
+        if (StrUtil.isBlank(account.getId()) || StrUtil.isBlank(account.getName())) {
+            return Result.buildError("id和name不能为空");
+        }
+        if (StockXConfig.getAccount(account.getId()) != null) {
+            return Result.buildError("账号ID已存在: " + account.getId());
+        }
+        StockXConfig.addAccount(account);
+        return Result.buildSuccess(true);
+    }
+
+    @PutMapping("stockx/accounts/{id}")
+    public Result<Boolean> updateStockXAccount(@PathVariable String id, @RequestBody StockXAccount account) {
+        if (StockXConfig.getAccount(id) == null) {
+            return Result.buildError("账号不存在: " + id);
+        }
+        account.setId(id);
+        StockXConfig.updateAccount(account);
+        return Result.buildSuccess(true);
+    }
+
+    @DeleteMapping("stockx/accounts/{id}")
+    public Result<Boolean> deleteStockXAccount(@PathVariable String id) {
+        if (StockXConfig.getAccount(id) == null) {
+            return Result.buildError("账号不存在: " + id);
+        }
+        StockXConfig.removeAccount(id);
         return Result.buildSuccess(true);
     }
 }

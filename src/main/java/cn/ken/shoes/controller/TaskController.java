@@ -169,6 +169,7 @@ public class TaskController {
 
     @PostMapping("stockx/uploadPriceDownExcel")
     public Result<Integer> uploadPriceDownExcel(@RequestParam("file") MultipartFile file,
+                                                @RequestParam("accountId") String accountId,
                                                 @RequestParam("inventoryType") String inventoryType) throws IOException {
         if (!"STANDARD".equals(inventoryType) && !"CUSTODIAL".equals(inventoryType)) {
             return Result.buildError("无效的库存类型: " + inventoryType);
@@ -177,19 +178,21 @@ public class TaskController {
                 .head(StockXPriceDownInputExcel.class)
                 .sheet()
                 .doReadSync();
-        ShoesContext.loadPriceDownExcel(inventoryType, list);
-        return Result.buildSuccess(ShoesContext.getPriceDownMap(inventoryType).size());
+        ShoesContext.loadPriceDownExcel(accountId, inventoryType, list);
+        return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
     }
 
     @GetMapping("stockx/priceDownExcelCount")
-    public Result<Integer> getPriceDownExcelCount(@RequestParam("inventoryType") String inventoryType) {
-        return Result.buildSuccess(ShoesContext.getPriceDownMap(inventoryType).size());
+    public Result<Integer> getPriceDownExcelCount(@RequestParam("accountId") String accountId,
+                                                  @RequestParam("inventoryType") String inventoryType) {
+        return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
     }
 
     @GetMapping("stockx/priceDownExcelData")
-    public Result<List<Map<String, Object>>> getPriceDownExcelData(@RequestParam("inventoryType") String inventoryType) {
+    public Result<List<Map<String, Object>>> getPriceDownExcelData(@RequestParam("accountId") String accountId,
+                                                                   @RequestParam("inventoryType") String inventoryType) {
         List<Map<String, Object>> result = new ArrayList<>();
-        ShoesContext.getPriceDownMap(inventoryType).forEach((key, config) -> {
+        ShoesContext.getPriceDownMap(accountId, inventoryType).forEach((key, config) -> {
             String[] parts = key.split(":");
             result.add(Map.of(
                     "styleId", parts[0],
@@ -199,6 +202,43 @@ public class TaskController {
             ));
         });
         return Result.buildSuccess(result);
+    }
+
+    // ==================== StockX Excel 多账号压价任务控制 ====================
+
+    @PostMapping("stockx/startExcelPriceDown")
+    public Result<Boolean> startExcelPriceDown(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        taskExecutorManager.startExcelPriceDown(accountId, inventoryType);
+        return Result.buildSuccess(true);
+    }
+
+    @PostMapping("stockx/cancelExcelPriceDown")
+    public Result<Boolean> cancelExcelPriceDown(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        taskExecutorManager.cancelExcelPriceDown(accountId, inventoryType);
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx/excelPriceDownStatus")
+    public Result<JSONObject> getExcelPriceDownStatus(@RequestParam("accountId") String accountId,
+                                                      @RequestParam("inventoryType") String inventoryType) {
+        JSONObject status = new JSONObject();
+        status.put("running", taskExecutorManager.isExcelPriceDownRunning(accountId, inventoryType));
+        status.put("taskId", taskExecutorManager.getExcelPriceDownTaskId(accountId, inventoryType));
+        status.put("interval", taskExecutorManager.getExcelPriceDownInterval(accountId, inventoryType) / 1000);
+        return Result.buildSuccess(status);
+    }
+
+    @PostMapping("stockx/setExcelPriceDownInterval")
+    public Result<Boolean> setExcelPriceDownInterval(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        long intervalSeconds = body.getLongValue("interval");
+        taskExecutorManager.setExcelPriceDownInterval(accountId, inventoryType, intervalSeconds * 1000);
+        return Result.buildSuccess(true);
     }
 
 }

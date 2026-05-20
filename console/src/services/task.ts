@@ -22,6 +22,11 @@ enum TASK_API {
     STOCKX_UPLOAD_PRICE_DOWN_EXCEL = '/api/task/stockx/uploadPriceDownExcel',
     STOCKX_PRICE_DOWN_EXCEL_COUNT = '/api/task/stockx/priceDownExcelCount',
     STOCKX_PRICE_DOWN_EXCEL_DATA = '/api/task/stockx/priceDownExcelData',
+    // StockX Excel 多账号压价
+    STOCKX_START_EXCEL_PRICE_DOWN = '/api/task/stockx/startExcelPriceDown',
+    STOCKX_CANCEL_EXCEL_PRICE_DOWN = '/api/task/stockx/cancelExcelPriceDown',
+    STOCKX_EXCEL_PRICE_DOWN_STATUS = '/api/task/stockx/excelPriceDownStatus',
+    STOCKX_SET_EXCEL_PRICE_DOWN_INTERVAL = '/api/task/stockx/setExcelPriceDownInterval',
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
     TASK_ITEM_EXPORT = '/api/taskItem/export',

@@ -1,16 +1,15 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
-import cn.ken.shoes.task.KcPriceDownTaskRunner;
-import cn.ken.shoes.task.KcTaskRunner;
-import cn.ken.shoes.task.StockXCustodialPriceDownTaskRunner;
-import cn.ken.shoes.task.StockXPriceDownTaskRunner;
-import cn.ken.shoes.task.StockXStandardPriceDownTaskRunner;
-import cn.ken.shoes.task.StockXTaskRunner;
+import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.service.StockXService;
+import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -20,8 +19,12 @@ import java.util.List;
 /**
  * 任务执行管理器
  */
+@Slf4j
 @Component
 public class TaskExecutorManager {
+
+    @Resource
+    private StockXService stockXService;
 
     @Resource
     private KcTaskRunner kcTaskRunner;
@@ -245,5 +248,49 @@ public class TaskExecutorManager {
         if (taskId != null) {
             taskMapper.updateTaskStatus(taskId, status);
         }
+    }
+
+    // ==================== StockX Excel 多账号压价 ====================
+
+    public void startExcelPriceDown(String accountId, String inventoryType) {
+        if (TaskSwitch.isExcelRunning(accountId, inventoryType)) {
+            log.info("Excel压价任务已在运行: {}:{}", accountId, inventoryType);
+            return;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return;
+        }
+        Long taskId = createTask("stockx", "EXCEL_PRICE_DOWN_" + inventoryType);
+        TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
+        TaskSwitch.resetExcelCancel(accountId, inventoryType);
+        TaskSwitch.resetExcelRound(accountId, inventoryType);
+
+        StockXExcelPriceDownTaskRunner runner = new StockXExcelPriceDownTaskRunner(
+                account, inventoryType, stockXService, taskMapper);
+        new Thread(runner, "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
+        log.info("Excel压价任务已启动: [{}] {}", account.getName(), inventoryType);
+    }
+
+    public void cancelExcelPriceDown(String accountId, String inventoryType) {
+        TaskSwitch.cancelExcel(accountId, inventoryType);
+        log.info("Excel压价任务已发送取消信号: {}:{}", accountId, inventoryType);
+    }
+
+    public boolean isExcelPriceDownRunning(String accountId, String inventoryType) {
+        return TaskSwitch.isExcelRunning(accountId, inventoryType);
+    }
+
+    public Long getExcelPriceDownTaskId(String accountId, String inventoryType) {
+        return TaskSwitch.getExcelTaskId(accountId, inventoryType);
+    }
+
+    public void setExcelPriceDownInterval(String accountId, String inventoryType, long interval) {
+        TaskSwitch.setExcelInterval(accountId, inventoryType, interval);
+    }
+
+    public long getExcelPriceDownInterval(String accountId, String inventoryType) {
+        return TaskSwitch.getExcelInterval(accountId, inventoryType);
     }
 }

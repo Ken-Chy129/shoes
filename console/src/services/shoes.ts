@@ -27,7 +27,8 @@ enum SETTING_API {
     QUERY_TOKEN = '/api/setting/stockx/getAuthorization',
     UPDATE_TOKEN = '/api/setting/stockx/updateAuthorization',
     QUERY_KC_TOKEN = '/api/setting/kc/getAuthorization',
-    UPDATE_KC_TOKEN = '/api/setting/kc/updateAuthorization'
+    UPDATE_KC_TOKEN = '/api/setting/kc/updateAuthorization',
+    STOCKX_ACCOUNTS = '/api/setting/stockx/accounts',
 }
 
 enum KC_API {

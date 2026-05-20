@@ -15,6 +15,7 @@ import {UploadOutlined, EyeOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
+import {SETTING_API} from "@/services/shoes";
 import TaskItemModal from "@/pages/task/components/TaskItemModal";
 
 interface SortOption {
@@ -31,11 +32,10 @@ const TaskExecutorPage = () => {
     const [stockxPriceDownTaskStatus, setStockxPriceDownTaskStatus] = useState<boolean>(false);
     const [sortOptions, setSortOptions] = useState<SortOption[]>([]);
 
-    // StockX Excel压价
-    const [stockxStandardPriceDownStatus, setStockxStandardPriceDownStatus] = useState<boolean>(false);
-    const [stockxCustodialPriceDownStatus, setStockxCustodialPriceDownStatus] = useState<boolean>(false);
-    const [standardExcelCount, setStandardExcelCount] = useState<number>(0);
-    const [custodialExcelCount, setCustodialExcelCount] = useState<number>(0);
+    // StockX 多账号
+    const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
+    // key: "accountId:inventoryType", value: { running, taskId, excelCount, interval }
+    const [excelTaskStates, setExcelTaskStates] = useState<Record<string, any>>({});
 
     // Excel 预览
     const [previewVisible, setPreviewVisible] = useState(false);
@@ -46,8 +46,6 @@ const TaskExecutorPage = () => {
     const [kcCurrentTaskId, setKcCurrentTaskId] = useState<string | null>(null);
     const [kcPriceDownCurrentTaskId, setKcPriceDownCurrentTaskId] = useState<string | null>(null);
     const [stockxPriceDownCurrentTaskId, setStockxPriceDownCurrentTaskId] = useState<string | null>(null);
-    const [stockxStandardPriceDownTaskId, setStockxStandardPriceDownTaskId] = useState<string | null>(null);
-    const [stockxCustodialPriceDownTaskId, setStockxCustodialPriceDownTaskId] = useState<string | null>(null);
 
     // 任务明细弹窗
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
@@ -58,7 +56,7 @@ const TaskExecutorPage = () => {
         queryAllTaskInterval();
         queryStockXConfig();
         querySortOptions();
-        queryExcelCounts();
+        loadStockXAccounts();
     }, []);
 
     // ==================== 统一查询方法 ====================
@@ -67,23 +65,49 @@ const TaskExecutorPage = () => {
         queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId);
         queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
         queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId);
-        queryTaskStatus(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, setStockxStandardPriceDownStatus, setStockxStandardPriceDownTaskId);
-        queryTaskStatus(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, setStockxCustodialPriceDownStatus, setStockxCustodialPriceDownTaskId);
     }
 
     const queryAllTaskInterval = () => {
         queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
         queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
-        queryTaskInterval(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, "stockxStandardPriceDownInterval");
-        queryTaskInterval(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, "stockxCustodialPriceDownInterval");
     }
 
-    const queryExcelCounts = () => {
-        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_COUNT, {inventoryType: 'STANDARD'}, {
-            onSuccess: res => setStandardExcelCount(res.data || 0)
+    const loadStockXAccounts = () => {
+        doGetRequest(SETTING_API.STOCKX_ACCOUNTS, {}, {
+            onSuccess: res => {
+                const accounts = (res.data || []).filter((a: any) => a.enabled);
+                setStockxAccounts(accounts);
+                accounts.forEach((account: any) => {
+                    ['STANDARD', 'CUSTODIAL'].forEach(inventoryType => {
+                        refreshExcelTaskState(account.id, inventoryType);
+                    });
+                });
+            }
         });
-        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_COUNT, {inventoryType: 'CUSTODIAL'}, {
-            onSuccess: res => setCustodialExcelCount(res.data || 0)
+    }
+
+    const refreshExcelTaskState = (accountId: string, inventoryType: string) => {
+        const key = `${accountId}:${inventoryType}`;
+        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_COUNT, {accountId, inventoryType}, {
+            onSuccess: res => {
+                setExcelTaskStates(prev => ({
+                    ...prev,
+                    [key]: {...(prev[key] || {}), excelCount: res.data || 0}
+                }));
+            }
+        });
+        doGetRequest(TASK_API.STOCKX_EXCEL_PRICE_DOWN_STATUS, {accountId, inventoryType}, {
+            onSuccess: res => {
+                setExcelTaskStates(prev => ({
+                    ...prev,
+                    [key]: {
+                        ...(prev[key] || {}),
+                        running: res.data?.running || false,
+                        taskId: res.data?.taskId ? String(res.data.taskId) : null,
+                        interval: res.data?.interval || 1800,
+                    }
+                }));
+            }
         });
     }
 
@@ -240,69 +264,60 @@ const TaskExecutorPage = () => {
         }
     }
 
-    // ==================== StockX Excel 压价 ====================
+    // ==================== StockX Excel 多账号压价 ====================
 
-    const handlePreviewExcel = (inventoryType: string) => {
-        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_DATA, {inventoryType}, {
+    const handlePreviewExcel = (accountId: string, inventoryType: string) => {
+        doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_DATA, {accountId, inventoryType}, {
             onSuccess: res => {
                 setPreviewData(res.data || []);
-                setPreviewTitle(inventoryType === 'STANDARD' ? '现货压价 Excel 数据' : '寄存压价 Excel 数据');
+                setPreviewTitle(`${inventoryType === 'STANDARD' ? '现货' : '寄存'}压价 Excel 数据`);
                 setPreviewVisible(true);
             }
         });
     }
 
-    const handleUploadExcel = (file: any, inventoryType: string) => {
-        doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {inventoryType}, {
+    const handleUploadExcel = (file: any, accountId: string, inventoryType: string) => {
+        doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {accountId, inventoryType}, {
             onSuccess: res => {
                 message.success(`已加载 ${res.data} 条数据`);
-                queryExcelCounts();
+                refreshExcelTaskState(accountId, inventoryType);
             },
             onError: () => message.error('上传失败'),
         });
         return false;
     }
 
-    const handleStandardPriceDownStart = () => {
-        if (standardExcelCount === 0) {
-            message.warning('请先上传现货压价Excel');
-            return;
-        }
-        startTask(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, () =>
-            queryTaskStatus(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, setStockxStandardPriceDownStatus, setStockxStandardPriceDownTaskId));
+    const handleExcelPriceDownStart = (accountId: string, inventoryType: string) => {
+        doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {accountId, inventoryType}, {
+            onSuccess: () => {
+                message.success('任务已启动');
+                refreshExcelTaskState(accountId, inventoryType);
+            }
+        });
     }
 
-    const handleStandardPriceDownCancel = () => {
-        cancelTask(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, () =>
-            queryTaskStatus(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, setStockxStandardPriceDownStatus, setStockxStandardPriceDownTaskId));
+    const handleExcelPriceDownCancel = (accountId: string, inventoryType: string) => {
+        doPostRequest(TASK_API.STOCKX_CANCEL_EXCEL_PRICE_DOWN, {accountId, inventoryType}, {
+            onSuccess: () => {
+                message.success('已发送取消信号');
+                setTimeout(() => refreshExcelTaskState(accountId, inventoryType), 2000);
+            }
+        });
     }
 
-    const handleCustodialPriceDownStart = () => {
-        if (custodialExcelCount === 0) {
-            message.warning('请先上传寄存压价Excel');
-            return;
-        }
-        startTask(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, () =>
-            queryTaskStatus(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, setStockxCustodialPriceDownStatus, setStockxCustodialPriceDownTaskId));
+    const handleSetExcelInterval = (accountId: string, inventoryType: string, interval: number) => {
+        doPostRequest(TASK_API.STOCKX_SET_EXCEL_PRICE_DOWN_INTERVAL, {accountId, inventoryType, interval}, {
+            onSuccess: () => message.success('间隔已保存')
+        });
     }
 
-    const handleCustodialPriceDownCancel = () => {
-        cancelTask(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, () =>
-            queryTaskStatus(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, setStockxCustodialPriceDownStatus, setStockxCustodialPriceDownTaskId));
+    const handleViewExcelTaskDetail = (taskId: string) => {
+        setCurrentViewTaskId(taskId);
+        setTaskItemModalVisible(true);
     }
 
-    const handleViewStandardPriceDownDetail = () => {
-        if (stockxStandardPriceDownTaskId) {
-            setCurrentViewTaskId(stockxStandardPriceDownTaskId);
-            setTaskItemModalVisible(true);
-        }
-    }
-
-    const handleViewCustodialPriceDownDetail = () => {
-        if (stockxCustodialPriceDownTaskId) {
-            setCurrentViewTaskId(stockxCustodialPriceDownTaskId);
-            setTaskItemModalVisible(true);
-        }
+    const getExcelState = (accountId: string, inventoryType: string) => {
+        return excelTaskStates[`${accountId}:${inventoryType}`] || {};
     }
 
     return <>
@@ -416,82 +431,64 @@ const TaskExecutorPage = () => {
             </Form>
         </Card>
         <br/>
-        <Card title={"StockX Excel 压价"}>
-            <Form form={taskForm}>
-                {/* 现货压价 */}
-                <div style={{marginBottom: 16}}>
-                    <div style={{fontWeight: "bold", marginBottom: 8}}>
-                        现货压价 (STANDARD)
-                        {standardExcelCount > 0 && <Tag color="green" style={{marginLeft: 8}}>已加载 {standardExcelCount} 条</Tag>}
-                    </div>
-                    <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
-                        <Upload
-                            accept=".xlsx,.xls"
-                            beforeUpload={(file) => handleUploadExcel(file, 'STANDARD')}
-                            showUploadList={false}
-                        >
-                            <Button icon={<UploadOutlined/>}>上传Excel</Button>
-                        </Upload>
-                        {standardExcelCount > 0 && (
-                            <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('STANDARD')}>预览数据</Button>
-                        )}
-                        <Form.Item label="间隔(秒)" name="stockxStandardPriceDownInterval" style={{marginBottom: 0}}>
-                            <InputNumber min={10} style={{width: 100}}/>
-                        </Form.Item>
-                        <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_STANDARD_PRICE_DOWN, "stockxStandardPriceDownInterval")}>
-                            保存间隔
-                        </Button>
-                        <Button type="primary" onClick={handleStandardPriceDownStart}
-                                disabled={stockxStandardPriceDownStatus || standardExcelCount === 0}>
-                            开启压价
-                        </Button>
-                        <Button danger onClick={handleStandardPriceDownCancel} disabled={!stockxStandardPriceDownStatus}>
-                            终止任务
-                        </Button>
-                        {stockxStandardPriceDownStatus && stockxStandardPriceDownTaskId && (
-                            <Button type="link" onClick={handleViewStandardPriceDownDetail}>查看明细</Button>
-                        )}
-                    </div>
+        <Card title={"StockX Excel 压价（多账号）"}>
+            {stockxAccounts.length === 0 && <div style={{color: '#999'}}>暂无已启用的 StockX 账号，请在首页配置中添加</div>}
+            {stockxAccounts.map((account: any, idx: number) => (
+                <div key={account.id}>
+                    {idx > 0 && <Divider/>}
+                    <div style={{fontWeight: "bold", fontSize: 15, marginBottom: 12}}>{account.name}</div>
+                    {['STANDARD', 'CUSTODIAL'].map((inventoryType) => {
+                        const state = getExcelState(account.id, inventoryType);
+                        const excelCount = state.excelCount || 0;
+                        const running = state.running || false;
+                        const taskId = state.taskId || null;
+                        const interval = state.interval || 1800;
+                        const label = inventoryType === 'STANDARD' ? '现货' : '寄存';
+                        const color = inventoryType === 'STANDARD' ? 'green' : 'blue';
+                        return (
+                            <div key={inventoryType} style={{marginBottom: 12, marginLeft: 16}}>
+                                <div style={{fontWeight: "bold", marginBottom: 6}}>
+                                    {label} ({inventoryType})
+                                    {excelCount > 0 && <Tag color={color} style={{marginLeft: 8}}>已加载 {excelCount} 条</Tag>}
+                                </div>
+                                <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
+                                    <Upload
+                                        accept=".xlsx,.xls"
+                                        beforeUpload={(file) => handleUploadExcel(file, account.id, inventoryType)}
+                                        showUploadList={false}
+                                    >
+                                        <Button icon={<UploadOutlined/>} size="small">上传Excel</Button>
+                                    </Upload>
+                                    {excelCount > 0 && (
+                                        <Button icon={<EyeOutlined/>} size="small"
+                                                onClick={() => handlePreviewExcel(account.id, inventoryType)}>预览</Button>
+                                    )}
+                                    <InputNumber
+                                        min={10} size="small" style={{width: 80}}
+                                        defaultValue={interval}
+                                        addonAfter="秒"
+                                        onChange={(val) => val && handleSetExcelInterval(account.id, inventoryType, val)}
+                                    />
+                                    <Button type="primary" size="small"
+                                            onClick={() => handleExcelPriceDownStart(account.id, inventoryType)}
+                                            disabled={running || excelCount === 0}>
+                                        开启压价
+                                    </Button>
+                                    <Button danger size="small"
+                                            onClick={() => handleExcelPriceDownCancel(account.id, inventoryType)}
+                                            disabled={!running}>
+                                        终止
+                                    </Button>
+                                    {running && taskId && (
+                                        <Button type="link" size="small"
+                                                onClick={() => handleViewExcelTaskDetail(taskId)}>查看明细</Button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
-
-                <Divider/>
-
-                {/* 寄存压价 */}
-                <div>
-                    <div style={{fontWeight: "bold", marginBottom: 8}}>
-                        寄存压价 (CUSTODIAL)
-                        {custodialExcelCount > 0 && <Tag color="blue" style={{marginLeft: 8}}>已加载 {custodialExcelCount} 条</Tag>}
-                    </div>
-                    <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
-                        <Upload
-                            accept=".xlsx,.xls"
-                            beforeUpload={(file) => handleUploadExcel(file, 'CUSTODIAL')}
-                            showUploadList={false}
-                        >
-                            <Button icon={<UploadOutlined/>}>上传Excel</Button>
-                        </Upload>
-                        {custodialExcelCount > 0 && (
-                            <Button icon={<EyeOutlined/>} onClick={() => handlePreviewExcel('CUSTODIAL')}>预览数据</Button>
-                        )}
-                        <Form.Item label="间隔(秒)" name="stockxCustodialPriceDownInterval" style={{marginBottom: 0}}>
-                            <InputNumber min={10} style={{width: 100}}/>
-                        </Form.Item>
-                        <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_CUSTODIAL_PRICE_DOWN, "stockxCustodialPriceDownInterval")}>
-                            保存间隔
-                        </Button>
-                        <Button type="primary" onClick={handleCustodialPriceDownStart}
-                                disabled={stockxCustodialPriceDownStatus || custodialExcelCount === 0}>
-                            开启压价
-                        </Button>
-                        <Button danger onClick={handleCustodialPriceDownCancel} disabled={!stockxCustodialPriceDownStatus}>
-                            终止任务
-                        </Button>
-                        {stockxCustodialPriceDownStatus && stockxCustodialPriceDownTaskId && (
-                            <Button type="link" onClick={handleViewCustodialPriceDownDetail}>查看明细</Button>
-                        )}
-                    </div>
-                </div>
-            </Form>
+            ))}
         </Card>
 
         <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)}

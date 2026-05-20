@@ -1,12 +1,61 @@
 package cn.ken.shoes.config;
 
 import cn.ken.shoes.manager.ConfigManager;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.SpringContextUtil;
 import lombok.Data;
+
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class StockXConfig {
 
     public static final OAuth2Config CONFIG = new OAuth2Config();
+
+    private static final List<StockXAccount> ACCOUNTS = new CopyOnWriteArrayList<>();
+
+    public static List<StockXAccount> getAccounts() {
+        return ACCOUNTS;
+    }
+
+    public static List<StockXAccount> getEnabledAccounts() {
+        return ACCOUNTS.stream().filter(StockXAccount::isEnabled).toList();
+    }
+
+    public static StockXAccount getAccount(String id) {
+        return ACCOUNTS.stream().filter(a -> a.getId().equals(id)).findFirst().orElse(null);
+    }
+
+    public static void setAccounts(List<StockXAccount> accounts) {
+        ACCOUNTS.clear();
+        ACCOUNTS.addAll(accounts);
+    }
+
+    public static void addAccount(StockXAccount account) {
+        ACCOUNTS.add(account);
+        saveAccounts();
+    }
+
+    public static void removeAccount(String id) {
+        ACCOUNTS.removeIf(a -> a.getId().equals(id));
+        saveAccounts();
+    }
+
+    public static void updateAccount(StockXAccount updated) {
+        ACCOUNTS.replaceAll(a -> a.getId().equals(updated.getId()) ? updated : a);
+        saveAccounts();
+    }
+
+    public static void saveAccounts() {
+        try {
+            ConfigManager configManager = SpringContextUtil.getBean(ConfigManager.class);
+            if (configManager != null) {
+                configManager.saveStockXAccounts();
+            }
+        } catch (Exception e) {
+            System.err.println("Failed to save stockx accounts: " + e.getMessage());
+        }
+    }
 
     public static final String AUTHORIZE = "https://accounts.stockx.com/authorize?" +
             "response_type=code&" +
