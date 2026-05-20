@@ -1,8 +1,7 @@
 import {Button, Card, Form, Input, message, Modal, Radio, Row, Select, Switch, Table} from "antd";
 import React, {useEffect, useState} from "react";
-import {doGetRequest, doPostRequest} from "@/util/http";
+import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
-import {request} from "@umijs/max";
 
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
@@ -177,21 +176,23 @@ const SettingPage = () => {
     }
 
     const handleDeleteAccount = (id: string) => {
-        request(`${SETTING_API.STOCKX_ACCOUNTS}/${id}`, {method: 'DELETE'}).then(() => {
-            message.success('已删除');
-            loadAccounts();
+        doDeleteRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${id}`, {}, {
+            onSuccess: () => {
+                message.success('已删除');
+                loadAccounts();
+            }
         });
     }
 
     const handleAccountSubmit = () => {
         accountForm.validateFields().then(values => {
             if (editingAccount) {
-                request(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.id}`, {
-                    method: 'PUT', data: values
-                }).then(() => {
-                    message.success('已更新');
-                    setAccountModalVisible(false);
-                    loadAccounts();
+                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.id}`, values, {
+                    onSuccess: () => {
+                        message.success('已更新');
+                        setAccountModalVisible(false);
+                        loadAccounts();
+                    }
                 });
             } else {
                 doPostRequest(SETTING_API.STOCKX_ACCOUNTS, values, {
@@ -206,9 +207,9 @@ const SettingPage = () => {
     }
 
     const handleToggleAccount = (record: any, enabled: boolean) => {
-        request(`${SETTING_API.STOCKX_ACCOUNTS}/${record.id}`, {
-            method: 'PUT', data: {...record, enabled}
-        }).then(() => loadAccounts());
+        doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${record.id}`, {...record, enabled}, {
+            onSuccess: () => loadAccounts()
+        });
     }
 
     const maskStr = (s: string) => s ? s.substring(0, 10) + '...' : '';
