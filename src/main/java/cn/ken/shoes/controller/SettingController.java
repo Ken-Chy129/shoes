@@ -8,6 +8,7 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.StockXSwitch;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.CustomModelMapper;
@@ -286,6 +287,9 @@ public class SettingController {
     public Result<Boolean> deleteStockXAccount(@PathVariable String id) {
         if (StockXConfig.getAccount(id) == null) {
             return Result.buildError("账号不存在: " + id);
+        }
+        if (TaskSwitch.isExcelRunning(id, "STANDARD") || TaskSwitch.isExcelRunning(id, "CUSTODIAL")) {
+            return Result.buildError("该账号有正在运行的压价任务，请先终止");
         }
         StockXConfig.removeAccount(id);
         return Result.buildSuccess(true);

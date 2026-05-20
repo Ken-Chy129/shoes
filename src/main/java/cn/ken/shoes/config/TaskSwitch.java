@@ -1,6 +1,8 @@
 package cn.ken.shoes.config;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -112,6 +114,10 @@ public class TaskSwitch {
 
     public static Map<String, Boolean> getAllExcelRunningStatus() {
         return new HashMap<>(EXCEL_RUNNING_MAP);
+    }
+
+    public static List<Long> getAllExcelTaskIds() {
+        return new ArrayList<>(EXCEL_TASK_ID_MAP.values());
     }
 
     public static void clearExcelState(String accountId, String inventoryType) {

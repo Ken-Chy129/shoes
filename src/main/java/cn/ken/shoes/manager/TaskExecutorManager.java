@@ -238,6 +238,7 @@ public class TaskExecutorManager {
         if (TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID != null) {
             validIds.add(TaskSwitch.CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID);
         }
+        validIds.addAll(TaskSwitch.getAllExcelTaskIds());
         return validIds;
     }
 
