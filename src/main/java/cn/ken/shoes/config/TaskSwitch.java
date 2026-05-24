@@ -1,5 +1,7 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.model.stockx.StockXAccount;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -97,11 +99,31 @@ public class TaskSwitch {
     }
 
     public static long getExcelInterval(String accountId, String inventoryType) {
-        return EXCEL_INTERVAL_MAP.getOrDefault(buildExcelKey(accountId, inventoryType), 30 * 60 * 1000L);
+        String key = buildExcelKey(accountId, inventoryType);
+        Long cached = EXCEL_INTERVAL_MAP.get(key);
+        if (cached != null) return cached;
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account != null) {
+            long val = "STANDARD".equals(inventoryType) ? account.getStandardInterval() : account.getCustodialInterval();
+            long ms = val * 1000;
+            EXCEL_INTERVAL_MAP.put(key, ms);
+            return ms;
+        }
+        return 30 * 60 * 1000L;
     }
 
     public static void setExcelInterval(String accountId, String inventoryType, long interval) {
         EXCEL_INTERVAL_MAP.put(buildExcelKey(accountId, inventoryType), interval);
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account != null) {
+            long seconds = interval / 1000;
+            if ("STANDARD".equals(inventoryType)) {
+                account.setStandardInterval(seconds);
+            } else {
+                account.setCustodialInterval(seconds);
+            }
+            StockXConfig.saveAccounts();
+        }
     }
 
     public static boolean isExcelRunning(String accountId, String inventoryType) {
@@ -123,7 +145,6 @@ public class TaskSwitch {
     public static void clearExcelState(String accountId, String inventoryType) {
         String key = buildExcelKey(accountId, inventoryType);
         EXCEL_CANCEL_MAP.remove(key);
-        EXCEL_TASK_ID_MAP.remove(key);
         EXCEL_ROUND_MAP.remove(key);
         EXCEL_RUNNING_MAP.remove(key);
     }
