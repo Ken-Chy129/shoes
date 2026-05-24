@@ -873,7 +873,7 @@ public class StockXClient {
         JSONObject variables = new JSONObject();
         variables.put("skipGuidance", false);
         variables.put("skipFlexEligible", true);
-        variables.put("pageSize", 50);
+        variables.put("pageSize", 100);
         variables.put("sort", "CREATED_AT");
         variables.put("order", "DESC");
         variables.put("country", "US");
