@@ -464,7 +464,7 @@ const TaskExecutorPage = () => {
                                                 onClick={() => handlePreviewExcel(account.id, inventoryType)}>预览</Button>
                                     )}
                                     <InputNumber
-                                        min={10} size="small" style={{width: 80}}
+                                        min={10} size="small" style={{width: 120}}
                                         defaultValue={interval}
                                         addonAfter="秒"
                                         onChange={(val) => val && handleSetExcelInterval(account.id, inventoryType, val)}
@@ -479,7 +479,7 @@ const TaskExecutorPage = () => {
                                             disabled={!running}>
                                         终止
                                     </Button>
-                                    {running && taskId && (
+                                    {taskId && (
                                         <Button type="link" size="small"
                                                 onClick={() => handleViewExcelTaskDetail(taskId)}>查看明细</Button>
                                     )}

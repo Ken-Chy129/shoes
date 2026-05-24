@@ -14,4 +14,8 @@ public class StockXAccount {
     private String authorization;
 
     private boolean enabled;
+
+    private long standardInterval = 1800;
+
+    private long custodialInterval = 1800;
 }
