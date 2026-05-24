@@ -465,9 +465,17 @@ const TaskExecutorPage = () => {
                                     )}
                                     <InputNumber
                                         min={10} size="small" style={{width: 120}}
-                                        defaultValue={interval}
+                                        value={interval}
                                         addonAfter="秒"
-                                        onChange={(val) => val && handleSetExcelInterval(account.id, inventoryType, val)}
+                                        onChange={(val) => {
+                                            if (!val) return;
+                                            const key = `${account.id}:${inventoryType}`;
+                                            setExcelTaskStates(prev => ({
+                                                ...prev,
+                                                [key]: {...(prev[key] || {}), interval: val}
+                                            }));
+                                            handleSetExcelInterval(account.id, inventoryType, val);
+                                        }}
                                     />
                                     <Button type="primary" size="small"
                                             onClick={() => handleExcelPriceDownStart(account.id, inventoryType)}
