@@ -507,32 +507,47 @@ public class StockXService {
         String accountId = account.getId();
         String accountName = account.getName();
         long taskStartTime = System.currentTimeMillis();
-        int pageNumber = 1;
-        boolean hasMore;
         int totalPriceDown = 0, totalSkip = 0;
 
         boolean isStandard = "STANDARD".equals(inventoryType);
         Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+        int pageNumber = 1;
+        boolean hasMore = true;
+        int pagesPerBatch = 4;
 
-        do {
+        while (hasMore) {
             if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
                 log.info("[{}]{}压价任务已取消", accountName, inventoryType);
                 break;
             }
 
-            long startTime = System.currentTimeMillis();
-            JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
-            if (jsonObject == null) {
-                log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
-                break;
+            // ===== 收集本批次（最多4页）的 listing =====
+            List<JSONObject> batchItems = new ArrayList<>();
+            int pagesCollected = 0;
+            while (pagesCollected < pagesPerBatch && hasMore) {
+                if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
+                if (jsonObject == null) {
+                    log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
+                    hasMore = false;
+                    break;
+                }
+                List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+                if (items.isEmpty()) {
+                    hasMore = false;
+                    break;
+                }
+                batchItems.addAll(items);
+                hasMore = jsonObject.getBoolean("hasMore");
+                pageNumber++;
+                pagesCollected++;
             }
 
-            List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-            if (items.isEmpty()) {
-                break;
-            }
+            if (batchItems.isEmpty()) break;
+            log.info("[{}] priceDownWithExcel[{}] 本批次收集{}页共{}条", accountName, inventoryType, pagesCollected, batchItems.size());
 
-            Set<String> poisonModelNos = items.stream()
+            // ===== 预加载得物价格 =====
+            Set<String> poisonModelNos = batchItems.stream()
                     .filter(item -> {
                         String sid = item.getString("styleId");
                         String sz = item.getString("size");
@@ -546,8 +561,9 @@ public class StockXService {
                 priceManager.batchLoadPrices(poisonModelNos);
             }
 
+            // ===== 按 styleId:size 分组（跨页合并） =====
             Map<String, List<JSONObject>> grouped = new LinkedHashMap<>();
-            for (JSONObject item : items) {
+            for (JSONObject item : batchItems) {
                 String styleId = item.getString("styleId");
                 String size = item.getString("size");
                 if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
@@ -557,6 +573,7 @@ public class StockXService {
                 grouped.computeIfAbsent(key, k -> new ArrayList<>()).add(item);
             }
 
+            // ===== 处理本批次所有分组 =====
             List<Map<String, String>> toPriceDown = new ArrayList<>();
             Map<String, Pair<Long, String>> listingToTaskInfo = new HashMap<>();
 
@@ -674,6 +691,7 @@ public class StockXService {
                 }
             }
 
+            // ===== 批量提交本批次压价 =====
             if (!toPriceDown.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
                 String batchId = stockXClient.batchUpdateListings(toPriceDown, account);
                 if (batchId != null) {
@@ -690,13 +708,7 @@ public class StockXService {
                     }
                 }
             }
-
-            log.info("[{}] priceDownWithExcel[{}] page:{}, items:{}, priceDown:{}, skip:{}, cost:{}",
-                    accountName, inventoryType, pageNumber, items.size(), toPriceDown.size(), totalSkip, TimeUtil.getCostMin(startTime));
-
-            hasMore = jsonObject.getBoolean("hasMore");
-            pageNumber++;
-        } while (hasMore);
+        }
 
         log.info("[{}] priceDownWithExcel[{}] finished, totalPriceDown:{}, totalSkip:{}, cost:{}",
                 accountName, inventoryType, totalPriceDown, totalSkip, TimeUtil.getCostMin(taskStartTime));
