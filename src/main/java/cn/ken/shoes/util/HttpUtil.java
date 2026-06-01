@@ -14,6 +14,7 @@ import java.net.Proxy;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 public class HttpUtil {
@@ -38,6 +39,10 @@ public class HttpUtil {
                     ProxyConfig config = ProxyConfig.getInstance();
                     proxyClient = new OkHttpClient()
                             .newBuilder()
+                            .connectionPool(new ConnectionPool(32, 5, TimeUnit.MINUTES))
+                            .connectTimeout(30, TimeUnit.SECONDS)
+                            .readTimeout(30, TimeUnit.SECONDS)
+                            .writeTimeout(30, TimeUnit.SECONDS)
                             .proxy(new Proxy(Proxy.Type.HTTP, new InetSocketAddress(config.getHost(), config.getPort())))
                             .proxyAuthenticator((route, response) -> {
                                 String credential = Credentials.basic(config.getUsername(), config.getPassword());

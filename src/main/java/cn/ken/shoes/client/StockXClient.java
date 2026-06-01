@@ -838,8 +838,7 @@ public class StockXClient {
                 "selected-country", "HK",
                 "origin", "https://stockx.com",
                 "referer", "https://stockx.com/",
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0",
-                "Connection", "close"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
         );
     }
 
@@ -847,8 +846,7 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "Authorization", getAuthorization(),
-                "x-api-key", apiKey,
-                "Connection", "close"
+                "x-api-key", apiKey
         );
     }
 
@@ -1047,8 +1045,7 @@ public class StockXClient {
                 "apollographql-client-version", "2026.05.05.00",
                 "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
                 "origin", "https://pro.stockx.com",
-                "referer", "https://pro.stockx.com/",
-                "Connection", "close"
+                "referer", "https://pro.stockx.com/"
         );
     }
 
@@ -1058,8 +1055,7 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "Authorization", account.getAuthorization(),
-                "x-api-key", account.getApiKey(),
-                "Connection", "close"
+                "x-api-key", account.getApiKey()
         );
     }
 
@@ -1071,8 +1067,7 @@ public class StockXClient {
                 "apollographql-client-version", "2026.05.05.00",
                 "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
                 "origin", "https://pro.stockx.com",
-                "referer", "https://pro.stockx.com/",
-                "Connection", "close"
+                "referer", "https://pro.stockx.com/"
         );
     }
 
