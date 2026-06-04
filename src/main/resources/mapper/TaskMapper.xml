@@ -46,6 +46,11 @@
         where id = #{id}
     </update>
 
+    <update id="updateTaskFailed">
+        update task set status = 'failed', fail_reason = #{failReason}, end_time = CONVERT_TZ(NOW(), 'SYSTEM', '+08:00')
+        where id = #{id}
+    </update>
+
     <update id="updateTaskRound">
         update task set round = #{round}
         where id = #{id}

@@ -35,6 +35,8 @@ public class TaskDO {
      */
     private String status;
 
+    private String failReason;
+
     /**
      * 执行轮次
      */
