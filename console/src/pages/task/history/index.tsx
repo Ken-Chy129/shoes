@@ -29,6 +29,7 @@ interface TaskRecord {
     endTime: string;
     cost: string;
     status: string;
+    failReason: string;
     round: number;
 }
 
@@ -126,7 +127,7 @@ const TaskHistoryPage = () => {
             dataIndex: 'status',
             key: 'status',
             width: '10%',
-            render: (status: string) => {
+            render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
                     'success': {text: '执行成功', color: 'green'},
@@ -134,7 +135,11 @@ const TaskHistoryPage = () => {
                     'cancel': {text: '已取消', color: 'gray'},
                 };
                 const statusInfo = statusMap[status] || {text: status, color: 'default'};
-                return <span style={{color: statusInfo.color}}>{statusInfo.text}</span>;
+                const node = <span style={{color: statusInfo.color}}>{statusInfo.text}</span>;
+                if (status === 'failed' && record.failReason) {
+                    return <Tooltip title={record.failReason}>{node}</Tooltip>;
+                }
+                return node;
             }
         },
         {
