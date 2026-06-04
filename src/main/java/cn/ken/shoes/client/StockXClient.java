@@ -1054,15 +1054,15 @@ public class StockXClient {
     private Headers buildHeaders(StockXAccount account) {
         return Headers.of(
                 "Content-Type", "application/json",
-                "Authorization", account.getAuthorization(),
-                "x-api-key", account.getApiKey()
+                "Authorization", account.getAuthorization().strip(),
+                "x-api-key", account.getApiKey().strip()
         );
     }
 
     private Headers buildViperHeaders(StockXAccount account) {
         return Headers.of(
                 "Content-Type", "application/json",
-                "authorization", account.getAuthorization(),
+                "authorization", account.getAuthorization().strip(),
                 "apollographql-client-name", "Viper",
                 "apollographql-client-version", "2026.05.05.00",
                 "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
