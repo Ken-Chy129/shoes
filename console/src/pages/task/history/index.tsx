@@ -24,6 +24,7 @@ interface TaskRecord {
     id: string;
     platform: string;
     taskType: string;
+    accountName: string;
     startTime: string;
     endTime: string;
     cost: string;
@@ -94,6 +95,13 @@ const TaskHistoryPage = () => {
             dataIndex: 'taskType',
             key: 'type',
             width: '12%'
+        },
+        {
+            title: '账号',
+            dataIndex: 'accountName',
+            key: 'accountName',
+            width: '8%',
+            render: (name: string) => name || '-',
         },
         {
             title: '开始时间',

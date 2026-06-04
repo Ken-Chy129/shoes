@@ -52,6 +52,14 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     log.error(e.getMessage(), e);
                     return;
                 } catch (Exception e) {
+                    if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                        log.error("[{}]{}压价任务因Token过期终止，请更新Token后重新启动", account.getName(), inventoryType);
+                        Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                        if (taskId != null) {
+                            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.FAILED.getCode());
+                        }
+                        return;
+                    }
                     log.error("[{}]{}压价任务执行异常: {}", account.getName(), inventoryType, e.getMessage(), e);
                     Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
                     if (taskId != null) {

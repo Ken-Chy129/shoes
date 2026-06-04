@@ -532,6 +532,10 @@ public class StockXService {
                     hasMore = false;
                     break;
                 }
+                if (jsonObject.getBooleanValue("_unauthorized")) {
+                    log.error("[{}] priceDownWithExcel Token已过期，终止本轮压价", accountName);
+                    throw new RuntimeException("TOKEN_EXPIRED");
+                }
                 List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
                 if (items.isEmpty()) {
                     hasMore = false;
