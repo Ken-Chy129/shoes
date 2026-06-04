@@ -234,7 +234,8 @@ public class TaskController {
                                                       @RequestParam("inventoryType") String inventoryType) {
         JSONObject status = new JSONObject();
         status.put("running", taskExecutorManager.isExcelPriceDownRunning(accountId, inventoryType));
-        status.put("taskId", taskExecutorManager.getExcelPriceDownTaskId(accountId, inventoryType));
+        Long taskId = taskExecutorManager.getExcelPriceDownTaskId(accountId, inventoryType);
+        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
         status.put("interval", taskExecutorManager.getExcelPriceDownInterval(accountId, inventoryType) / 1000);
         return Result.buildSuccess(status);
     }
