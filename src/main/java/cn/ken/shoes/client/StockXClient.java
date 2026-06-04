@@ -904,6 +904,12 @@ public class StockXClient {
         }
 
         // 检查返回结构
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            log.error("querySellingItemsByInventoryType|Token已过期或无效，请更新Token");
+            JSONObject errorResult = new JSONObject();
+            errorResult.put("_unauthorized", true);
+            return errorResult;
+        }
         JSONObject data = jsonObject.getJSONObject("data");
         if (data == null) {
             log.error("querySellingItemsByInventoryType response has no data field, response:{}", jsonObject.toJSONString());
@@ -1026,6 +1032,10 @@ public class StockXClient {
             return null;
         }
         JSONObject jsonObject = JSON.parseObject(rawResult);
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            log.error("queryPro|Token已过期或无效，请更新Token");
+            return jsonObject;
+        }
         if (jsonObject.containsKey("status")) {
             log.error("queryPro error, msg:{}", jsonObject.getString("message"));
             return null;

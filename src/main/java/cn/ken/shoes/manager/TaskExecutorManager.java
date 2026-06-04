@@ -199,14 +199,17 @@ public class TaskExecutorManager {
      * 创建任务记录
      */
     private Long createTask(String platform, String taskType) {
-        // 先搁置历史遗留的运行中任务（不在当前内存有效ID列表中的）
+        return createTask(platform, taskType, null);
+    }
+
+    private Long createTask(String platform, String taskType, String accountName) {
         List<Long> validTaskIds = collectValidTaskIds();
         taskMapper.shelveHistoryTasks(validTaskIds);
 
-        // 再创建新任务
         TaskDO taskDO = new TaskDO();
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);
+        taskDO.setAccountName(accountName);
         taskDO.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         taskDO.setStartTime(new Date());
         taskDO.setRound(0);
@@ -263,7 +266,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return;
         }
-        Long taskId = createTask("stockx", "EXCEL_PRICE_DOWN_" + inventoryType);
+        Long taskId = createTask("stockx", "EXCEL_PRICE_DOWN_" + inventoryType, account.getName());
         TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
         TaskSwitch.resetExcelCancel(accountId, inventoryType);
         TaskSwitch.resetExcelRound(accountId, inventoryType);

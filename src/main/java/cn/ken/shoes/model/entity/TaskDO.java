@@ -20,6 +20,8 @@ public class TaskDO {
 
     private String taskType;
 
+    private String accountName;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
     private Date startTime;
 
