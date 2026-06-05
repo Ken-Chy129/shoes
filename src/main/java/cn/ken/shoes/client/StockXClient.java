@@ -1009,7 +1009,11 @@ public class StockXClient {
         }
         JSONObject result = JSON.parseObject(rawResult);
         String batchId = result.getString("batchId");
-        log.info("batchUpdateListings success, batchId:{}, totalItems:{}", batchId, items.size());
+        if (batchId == null) {
+            log.warn("batchUpdateListings response无batchId, totalItems:{}, response:{}", items.size(), rawResult);
+        } else {
+            log.info("batchUpdateListings success, batchId:{}, totalItems:{}", batchId, items.size());
+        }
         return batchId;
     }
 
@@ -1095,7 +1099,11 @@ public class StockXClient {
         }
         JSONObject result = JSON.parseObject(rawResult);
         String batchId = result.getString("batchId");
-        log.info("batchUpdateListings[{}] success, batchId:{}, totalItems:{}", account.getName(), batchId, items.size());
+        if (batchId == null) {
+            log.warn("batchUpdateListings[{}] response无batchId, totalItems:{}, response:{}", account.getName(), items.size(), rawResult);
+        } else {
+            log.info("batchUpdateListings[{}] success, batchId:{}, totalItems:{}", account.getName(), batchId, items.size());
+        }
         return batchId;
     }
 
