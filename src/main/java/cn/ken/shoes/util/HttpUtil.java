@@ -11,6 +11,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
+import java.net.SocketTimeoutException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -59,6 +60,30 @@ public class HttpUtil {
         return useProxy ? getProxyClient() : client;
     }
 
+    private static final int MAX_RETRIES = 2;
+
+    private static String executeWithRetry(Request request, boolean useProxy, String method) {
+        for (int attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            ResponseBody responseBody = null;
+            try (Response response = getClient(useProxy).newCall(request).execute()) {
+                responseBody = response.body();
+                if (responseBody != null) {
+                    return responseBody.string();
+                }
+            } catch (SocketTimeoutException e) {
+                if (attempt < MAX_RETRIES) {
+                    log.warn("{} timeout, url:{}, 第{}次重试", method, request.url(), attempt + 1);
+                } else {
+                    log.error("{} error, url:{}, error:timeout(已重试{}次)", method, request.url(), MAX_RETRIES);
+                }
+            } catch (IOException e) {
+                log.error("{} error, url:{}, responseBody:{}, error:{}", method, request.url(), JSON.toJSONString(responseBody), e.getMessage());
+                return null;
+            }
+        }
+        return null;
+    }
+
     public static String doGet(HttpUrl url) {
         Request request = new Request.Builder().url(url).build();
         ResponseBody body = null;
@@ -94,16 +119,7 @@ public class HttpUtil {
                 .headers(headers)
                 .get()
                 .build();
-        ResponseBody responseBody = null;
-        try (Response response = getClient(useProxy).newCall(request).execute()) {
-            responseBody  = response.body();
-            if (responseBody != null) {
-                return responseBody.string();
-            }
-        } catch (IOException e) {
-            log.error("doGet error, url:{}, responseBody:{}, error:{}", url, JSON.toJSONString(responseBody), e.getMessage());
-        }
-        return null;
+        return executeWithRetry(request, useProxy, "doGet");
     }
 
     public static void downloadFile(String url, Headers headers, String path) {
@@ -139,16 +155,7 @@ public class HttpUtil {
                 .headers(headers)
                 .post(body)
                 .build();
-        ResponseBody responseBody = null;
-        try (Response response = getClient(true).newCall(request).execute()) {
-            responseBody  = response.body();
-            if (responseBody != null) {
-                return responseBody.string();
-            }
-        } catch (IOException e) {
-            log.error("doPost error, url:{}, responseBody:{}, error:{}", url, JSON.toJSONString(responseBody), e.getMessage());
-        }
-        return null;
+        return executeWithRetry(request, true, "doPost");
     }
 
     public static String doPut(String url, String json, Headers headers) {
@@ -159,16 +166,7 @@ public class HttpUtil {
                 .headers(headers)
                 .put(body)
                 .build();
-        ResponseBody responseBody = null;
-        try (Response response = getClient(true).newCall(request).execute()) {
-            responseBody  = response.body();
-            if (responseBody != null) {
-                return responseBody.string();
-            }
-        } catch (IOException e) {
-            log.error("doPut error, url:{}, responseBody:{}, error:{}", url, JSON.toJSONString(responseBody), e.getMessage());
-        }
-        return null;
+        return executeWithRetry(request, true, "doPut");
     }
 
     public static String doDelete(String url, String json, Headers headers) {
@@ -179,16 +177,7 @@ public class HttpUtil {
                 .headers(headers)
                 .delete(body)
                 .build();
-        ResponseBody responseBody = null;
-        try (Response response = getClient(true).newCall(request).execute()) {
-            responseBody  = response.body();
-            if (responseBody != null) {
-                return responseBody.string();
-            }
-        } catch (IOException e) {
-            log.error("doDelete error, url:{}, responseBody:{}, error:{}", url, JSON.toJSONString(responseBody), e.getMessage());
-        }
-        return null;
+        return executeWithRetry(request, true, "doDelete");
     }
 
     public static String buildUrlParams(Map<String, Object> params) {
