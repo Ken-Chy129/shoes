@@ -653,14 +653,17 @@ public class StockXService {
                         continue;
                     }
 
+                    int markUpPrice = amt + 100;
+                    String markUpAmount = String.valueOf(markUpPrice);
+
                     if (anyIsLowest) {
                         if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
                             updateTaskItemResult(itemId, amt <= lowestPrice ? "保持-已是最低价" : "跳过-相同货号尺码已有最低价");
                             if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                         } else {
-                            toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                            listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                            updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                            toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
+                            listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
+                            updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
                             if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                         }
                     } else {
@@ -675,9 +678,9 @@ public class StockXService {
                                 updateTaskItemResult(itemId, isPoisonCompare ? "保持-压价后不盈利但当前价盈利" : "保持-压价后低于Excel最低价");
                                 if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                             } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                                toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
+                                updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
                                 if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                             }
                         } else {
@@ -685,9 +688,9 @@ public class StockXService {
                                 updateTaskItemResult(itemId, "跳过-相同货号尺码");
                                 if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                             } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", "9999", "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, "9999"));
-                                updateTaskItemResult(itemId, isPoisonCompare ? "待设9999-不盈利" : "待设9999-低于Excel最低价");
+                                toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
+                                listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
+                                updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
                                 if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
                             }
                         }
@@ -703,7 +706,7 @@ public class StockXService {
                     for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
                         Long itemId = e.getValue().getKey();
                         String targetAmount = e.getValue().getValue();
-                        updateTaskItemResult(itemId, "9999".equals(targetAmount) ? "已设9999" : "压价已提交");
+                        updateTaskItemResult(itemId, "压价已提交");
                     }
                     totalPriceDown += toPriceDown.size();
                 } else {
