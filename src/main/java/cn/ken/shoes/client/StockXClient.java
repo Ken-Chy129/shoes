@@ -814,7 +814,13 @@ public class StockXClient {
         if (rawResult == null) {
             return null;
         }
-        JSONObject jsonObject = JSON.parseObject(rawResult);
+        JSONObject jsonObject;
+        try {
+            jsonObject = JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("queryPro response非JSON, response:{}", rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
         if (jsonObject.containsKey("status")) {
             log.error("queryHotItemsByBrandWithPrice error, msg:{}", jsonObject.getString("message"));
             return null;
@@ -823,7 +829,7 @@ public class StockXClient {
             log.error("queryHotItemsByBrandWithPrice|查询被拦截");
             return null;
         }
-        return JSON.parseObject(rawResult);
+        return jsonObject;
     }
 
     private Headers buildProHeaders() {
@@ -1007,7 +1013,13 @@ public class StockXClient {
             log.error("batchUpdateListings failed, response is null");
             return null;
         }
-        JSONObject result = JSON.parseObject(rawResult);
+        JSONObject result;
+        try {
+            result = JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("batchUpdateListings response非JSON, totalItems:{}, response:{}", items.size(), rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
         String batchId = result.getString("batchId");
         if (batchId == null) {
             log.warn("batchUpdateListings response无batchId, totalItems:{}, response:{}", items.size(), rawResult);
@@ -1035,7 +1047,13 @@ public class StockXClient {
         if (rawResult == null) {
             return null;
         }
-        JSONObject jsonObject = JSON.parseObject(rawResult);
+        JSONObject jsonObject;
+        try {
+            jsonObject = JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("queryPro response非JSON, response:{}", rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {
             log.error("queryPro|Token已过期或无效，请更新Token");
             return jsonObject;
@@ -1097,7 +1115,13 @@ public class StockXClient {
             log.error("batchUpdateListings[{}] failed, response is null", account.getName());
             return null;
         }
-        JSONObject result = JSON.parseObject(rawResult);
+        JSONObject result;
+        try {
+            result = JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("batchUpdateListings[{}] response非JSON, totalItems:{}, response:{}", account.getName(), items.size(), rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
         String batchId = result.getString("batchId");
         if (batchId == null) {
             log.warn("batchUpdateListings[{}] response无batchId, totalItems:{}, response:{}", account.getName(), items.size(), rawResult);
