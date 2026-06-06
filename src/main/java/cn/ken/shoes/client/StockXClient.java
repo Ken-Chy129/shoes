@@ -1041,7 +1041,12 @@ public class StockXClient {
         if (rawResult == null) {
             return null;
         }
-        return JSON.parseObject(rawResult);
+        try {
+            return JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("queryBatchUpdateStatus response非JSON, batchId:{}, response:{}", batchId, rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
     }
 
     private JSONObject queryPro(String body, Headers headers) {
@@ -1140,7 +1145,12 @@ public class StockXClient {
         if (rawResult == null) {
             return null;
         }
-        return JSON.parseObject(rawResult);
+        try {
+            return JSON.parseObject(rawResult);
+        } catch (Exception e) {
+            log.error("queryBatchUpdateStatus[{}] response非JSON, batchId:{}, response:{}", account.getName(), batchId, rawResult.substring(0, Math.min(200, rawResult.length())));
+            return null;
+        }
     }
 
     @Data
