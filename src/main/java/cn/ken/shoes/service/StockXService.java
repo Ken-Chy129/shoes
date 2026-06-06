@@ -698,20 +698,29 @@ public class StockXService {
                 }
             }
 
-            // ===== 批量提交本批次压价 =====
+            // ===== 批量提交本批次压价（StockX限制每批最多100条） =====
             if (!toPriceDown.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                String batchId = stockXClient.batchUpdateListings(toPriceDown, account);
-                if (batchId != null) {
-                    waitForBatchComplete(batchId, account);
-                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
-                        Long itemId = e.getValue().getKey();
-                        String targetAmount = e.getValue().getValue();
-                        updateTaskItemResult(itemId, "压价已提交");
-                    }
-                    totalPriceDown += toPriceDown.size();
-                } else {
-                    for (Map.Entry<String, Pair<Long, String>> e : listingToTaskInfo.entrySet()) {
-                        updateTaskItemResult(e.getValue().getKey(), "提交失败");
+                int batchLimit = 100;
+                for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
+                    String batchId = stockXClient.batchUpdateListings(subBatch, account);
+                    if (batchId != null) {
+                        waitForBatchComplete(batchId, account);
+                        for (Map<String, String> item : subBatch) {
+                            Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
+                            if (info != null) {
+                                updateTaskItemResult(info.getKey(), "9999".equals(info.getValue()) ? "已设9999" : "压价已提交");
+                            }
+                        }
+                        totalPriceDown += subBatch.size();
+                    } else {
+                        for (Map<String, String> item : subBatch) {
+                            Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
+                            if (info != null) {
+                                updateTaskItemResult(info.getKey(), "提交失败");
+                            }
+                        }
                     }
                 }
             }

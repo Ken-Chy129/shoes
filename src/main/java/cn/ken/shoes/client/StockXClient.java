@@ -951,6 +951,9 @@ public class StockXClient {
             item.put("variantId", productVariant.getString("id"));
 
             JSONObject product = productVariant.getJSONObject("product");
+            if (product == null) {
+                continue;
+            }
             item.put("styleId", product.getString("styleId"));
             item.put("productName", product.getString("model"));
 
