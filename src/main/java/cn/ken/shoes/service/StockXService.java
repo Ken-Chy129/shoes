@@ -408,7 +408,7 @@ public class StockXService {
 
             // ===== 批量下架 =====
             if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                boolean isSuccess = stockXClient.deleteItems(toDelete);
+                boolean isSuccess = stockXClient.deleteItems(toDelete, account);
                 String result = isSuccess ? "下架成功" : "下架失败";
                 for (String lid : toDelete) {
                     Long tid = deleteToTaskInfo.get(lid);

@@ -165,6 +165,10 @@ public class StockXClient {
     }
 
     public boolean deleteItems(List<String> idList) {
+        return deleteItems(idList, null);
+    }
+
+    public boolean deleteItems(List<String> idList, StockXAccount account) {
         if (idList.isEmpty()) {
             return false;
         }
@@ -178,7 +182,8 @@ public class StockXClient {
         variables.put("input", input);
         body.put("variables", variables);
         body.put("query", "mutation BulkDeleteSellerListings($input: [DeleteListingBatchInput]) {\n  deleteBatchListings(input: $input) {\n    id\n    status\n    completedAt\n    createdAt\n    updatedAt\n  }\n}");
-        JSONObject jsonObject = queryPro(body.toJSONString());
+        Headers headers = account != null ? buildProHeaders(account, account.getCountry()) : buildProHeaders();
+        JSONObject jsonObject = queryPro(body.toJSONString(), headers);
         log.info("deleteItems, result:{}", jsonObject);
         return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
     }
