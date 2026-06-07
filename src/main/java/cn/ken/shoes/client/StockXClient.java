@@ -324,7 +324,7 @@ public class StockXClient {
         return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
     }
 
-    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType) {
+    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType, String country) {
         if (pageIndex == null) {
             pageIndex = 1;
         }
@@ -332,7 +332,8 @@ public class StockXClient {
         if (searchTypeEnum == null) {
             return Pair.of(0, Collections.emptyList());
         }
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort));
+        if (country == null) country = "HK";
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, country));
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -356,7 +357,7 @@ public class StockXClient {
                     JSONObject node = item.getJSONObject("node");
                     String title = node.getString("title");
                     String urlKey = node.getString("urlKey");
-                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum);
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, country);
                     result.addAll(itemResult);
                 } catch (Exception e) {
                     log.error("searchItemWithPrice fetchItemDetail error", e);
@@ -373,7 +374,7 @@ public class StockXClient {
         return Pair.of(pageCount, result);
     }
 
-    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum) {
+    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country) {
         JSONObject[] responses = new JSONObject[2];
         CountDownLatch detailLatch = new CountDownLatch(2);
         Thread.startVirtualThread(() -> {
@@ -385,7 +386,7 @@ public class StockXClient {
         });
         Thread.startVirtualThread(() -> {
             try {
-                responses[1] = queryPro(buildGetMarketDataRequest(urlKey));
+                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country));
             } finally {
                 detailLatch.countDown();
             }
@@ -513,14 +514,14 @@ public class StockXClient {
         return result;
     }
 
-    private String buildItemSearchRequest(String query, Integer index, String sort) {
+    private String buildItemSearchRequest(String query, Integer index, String sort, String country) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "getDiscoveryData");
         JSONObject variables = new JSONObject();
-        variables.put("country", "HK");
+        variables.put("country", country);
         variables.put("currency", "USD");
         variables.put("flow", "SEARCH_RESULTS");
-        variables.put("market", "HK");
+        variables.put("market", country);
         variables.put("page", Map.of("index", index, "limit", 40));
         variables.put("unifiedDiscoveryEnabled", false);
         variables.put("filters", List.of());
@@ -552,13 +553,13 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
-    private String buildGetMarketDataRequest(String urlKey) {
+    private String buildGetMarketDataRequest(String urlKey, String country) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "GetMarketData");
         JSONObject variables = new JSONObject();
         variables.put("id", urlKey);
         variables.put("currencyCode", "USD");
-        variables.put("marketName", "HK");
+        variables.put("marketName", country);
         variables.put("viewerContext", "BUYER");
         requestJson.put("variables", variables);
         JSONObject extensions = new JSONObject();

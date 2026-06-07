@@ -43,6 +43,8 @@ public class SearchTaskDO extends BaseDO {
      */
     private String searchType;
 
+    private String accountName;
+
     /**
      * 进度百分比 (0-100)
      */
