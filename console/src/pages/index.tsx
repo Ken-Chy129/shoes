@@ -1,4 +1,4 @@
-import {Button, Card, Form, Input, message, Modal, Radio, Row, Select, Switch, Table} from "antd";
+import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Switch, Table} from "antd";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
@@ -175,8 +175,8 @@ const SettingPage = () => {
         setAccountModalVisible(true);
     }
 
-    const handleDeleteAccount = (id: string) => {
-        doDeleteRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${id}`, {}, {
+    const handleDeleteAccount = (name: string) => {
+        doDeleteRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${name}`, {}, {
             onSuccess: () => {
                 message.success('已删除');
                 loadAccounts();
@@ -187,7 +187,7 @@ const SettingPage = () => {
     const handleAccountSubmit = () => {
         accountForm.validateFields().then(values => {
             if (editingAccount) {
-                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.id}`, values, {
+                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.name}`, values, {
                     onSuccess: () => {
                         message.success('已更新');
                         setAccountModalVisible(false);
@@ -207,7 +207,7 @@ const SettingPage = () => {
     }
 
     const handleToggleAccount = (record: any, enabled: boolean) => {
-        doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${record.id}`, {...record, enabled}, {
+        doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${record.name}`, {...record, enabled}, {
             onSuccess: () => loadAccounts()
         });
     }
@@ -215,10 +215,14 @@ const SettingPage = () => {
     const maskStr = (s: string) => s ? s.substring(0, 10) + '...' : '';
 
     const accountColumns = [
-        {title: '账号名', dataIndex: 'name', key: 'name', width: 120},
-        {title: 'API Key', dataIndex: 'apiKey', key: 'apiKey', render: (v: string) => maskStr(v), width: 150},
-        {title: 'Token', dataIndex: 'authorization', key: 'authorization', render: (v: string) => maskStr(v), width: 150},
-        {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 80,
+        {title: '账号名', dataIndex: 'name', key: 'name', width: 100},
+        {title: '区域', dataIndex: 'country', key: 'country', width: 60},
+        {title: '转账费率', dataIndex: 'transferFeeRate', key: 'transferFeeRate', width: 80, render: (v: number) => v === 0 ? '免' : `${(v * 100).toFixed(0)}%`},
+        {title: '商家费率', dataIndex: 'merchantFeeRate', key: 'merchantFeeRate', width: 80, render: (v: number) => v === 0 ? '免' : `${(v * 100).toFixed(0)}%`},
+        {title: '最低商家费', dataIndex: 'minMerchantFee', key: 'minMerchantFee', width: 90, render: (v: number) => `$${v}`},
+        {title: '平台运费', dataIndex: 'platformShippingFee', key: 'platformShippingFee', width: 80, render: (v: number) => `$${v}`},
+        {title: '运费(¥)', dataIndex: 'freight', key: 'freight', width: 70, render: (v: number) => `¥${v}`},
+        {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
             )},
@@ -226,7 +230,7 @@ const SettingPage = () => {
             render: (_: any, record: any) => (
                 <span>
                     <Button type="link" size="small" onClick={() => handleEditAccount(record)}>编辑</Button>
-                    <Button type="link" size="small" danger onClick={() => handleDeleteAccount(record.id)}>删除</Button>
+                    <Button type="link" size="small" danger onClick={() => handleDeleteAccount(record.name)}>删除</Button>
                 </span>
             )},
     ];
@@ -357,24 +361,46 @@ const SettingPage = () => {
         </Card>
         <br/>
         <Card title={"StockX 账号管理"} extra={<Button type="primary" size="small" onClick={handleAddAccount}>添加账号</Button>}>
-            <Table dataSource={stockxAccounts} columns={accountColumns} rowKey="id" size="small" pagination={false}/>
+            <Table dataSource={stockxAccounts} columns={accountColumns} rowKey="name" size="small" pagination={false}/>
         </Card>
 
         <Modal title={editingAccount ? '编辑账号' : '添加账号'} open={accountModalVisible}
                onOk={handleAccountSubmit} onCancel={() => setAccountModalVisible(false)}>
             <Form form={accountForm} layout="vertical">
-                <Form.Item name="id" label="账号ID" rules={[{required: true}]}
-                           extra="唯一标识，如 account_1">
+                <Form.Item name="name" label="账号名" rules={[{required: true}]}
+                           extra="唯一标识，不可重复">
                     <Input disabled={!!editingAccount}/>
                 </Form.Item>
-                <Form.Item name="name" label="账号名" rules={[{required: true}]}>
-                    <Input/>
+                <Form.Item name="country" label="区域" rules={[{required: true}]} initialValue="US">
+                    <Select>
+                        <Select.Option value="US">美区 (US)</Select.Option>
+                        <Select.Option value="HK">港区 (HK)</Select.Option>
+                    </Select>
                 </Form.Item>
                 <Form.Item name="apiKey" label="API Key" rules={[{required: true}]}>
                     <Input.TextArea rows={2}/>
                 </Form.Item>
                 <Form.Item name="authorization" label="Authorization (Bearer token)" rules={[{required: true}]}>
                     <Input.TextArea rows={3}/>
+                </Form.Item>
+                <Form.Item name="transferFeeRate" label="转账手续费比例" initialValue={0.03}
+                           extra="设为0表示免手续费">
+                    <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="merchantFeeRate" label="商家手续费比例" initialValue={0.07}
+                           extra="设为0表示免手续费">
+                    <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="minMerchantFee" label="最低商家手续费($)" initialValue={5.79}
+                           extra="商家手续费不低于此值（比例为0时忽略）">
+                    <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="platformShippingFee" label="平台运费($)" rules={[{required: true}]}
+                           extra="StockX平台收取的运费(USD)">
+                    <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="freight" label="人民币运费(¥)" initialValue={25}>
+                    <InputNumber min={0} step={1} style={{width: '100%'}}/>
                 </Form.Item>
                 <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
                     <Switch/>

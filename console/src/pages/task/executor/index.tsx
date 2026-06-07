@@ -79,7 +79,7 @@ const TaskExecutorPage = () => {
                 setStockxAccounts(accounts);
                 accounts.forEach((account: any) => {
                     ['STANDARD', 'CUSTODIAL'].forEach(inventoryType => {
-                        refreshExcelTaskState(account.id, inventoryType);
+                        refreshExcelTaskState(account.name, inventoryType);
                     });
                 });
             }
@@ -434,11 +434,11 @@ const TaskExecutorPage = () => {
         <Card title={"StockX Excel 压价（多账号）"}>
             {stockxAccounts.length === 0 && <div style={{color: '#999'}}>暂无已启用的 StockX 账号，请在首页配置中添加</div>}
             {stockxAccounts.map((account: any, idx: number) => (
-                <div key={account.id}>
+                <div key={account.name}>
                     {idx > 0 && <Divider/>}
                     <div style={{fontWeight: "bold", fontSize: 15, marginBottom: 12}}>{account.name}</div>
                     {['STANDARD', 'CUSTODIAL'].map((inventoryType) => {
-                        const state = getExcelState(account.id, inventoryType);
+                        const state = getExcelState(account.name, inventoryType);
                         const excelCount = state.excelCount || 0;
                         const running = state.running || false;
                         const taskId = state.taskId || null;
@@ -454,14 +454,14 @@ const TaskExecutorPage = () => {
                                 <div style={{display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap"}}>
                                     <Upload
                                         accept=".xlsx,.xls"
-                                        beforeUpload={(file) => handleUploadExcel(file, account.id, inventoryType)}
+                                        beforeUpload={(file) => handleUploadExcel(file, account.name, inventoryType)}
                                         showUploadList={false}
                                     >
                                         <Button icon={<UploadOutlined/>} size="small">上传Excel</Button>
                                     </Upload>
                                     {excelCount > 0 && (
                                         <Button icon={<EyeOutlined/>} size="small"
-                                                onClick={() => handlePreviewExcel(account.id, inventoryType)}>预览</Button>
+                                                onClick={() => handlePreviewExcel(account.name, inventoryType)}>预览</Button>
                                     )}
                                     <InputNumber
                                         min={10} size="small" style={{width: 120}}
@@ -469,21 +469,21 @@ const TaskExecutorPage = () => {
                                         addonAfter="秒"
                                         onChange={(val) => {
                                             if (!val) return;
-                                            const key = `${account.id}:${inventoryType}`;
+                                            const key = `${account.name}:${inventoryType}`;
                                             setExcelTaskStates(prev => ({
                                                 ...prev,
                                                 [key]: {...(prev[key] || {}), interval: val}
                                             }));
-                                            handleSetExcelInterval(account.id, inventoryType, val);
+                                            handleSetExcelInterval(account.name, inventoryType, val);
                                         }}
                                     />
                                     <Button type="primary" size="small"
-                                            onClick={() => handleExcelPriceDownStart(account.id, inventoryType)}
+                                            onClick={() => handleExcelPriceDownStart(account.name, inventoryType)}
                                             disabled={running || excelCount === 0}>
                                         开启压价
                                     </Button>
                                     <Button danger size="small"
-                                            onClick={() => handleExcelPriceDownCancel(account.id, inventoryType)}
+                                            onClick={() => handleExcelPriceDownCancel(account.name, inventoryType)}
                                             disabled={!running}>
                                         终止
                                     </Button>

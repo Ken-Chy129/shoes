@@ -22,8 +22,8 @@ public class StockXConfig {
         return ACCOUNTS.stream().filter(StockXAccount::isEnabled).toList();
     }
 
-    public static StockXAccount getAccount(String id) {
-        return ACCOUNTS.stream().filter(a -> a.getId().equals(id)).findFirst().orElse(null);
+    public static StockXAccount getAccount(String name) {
+        return ACCOUNTS.stream().filter(a -> a.getName().equals(name)).findFirst().orElse(null);
     }
 
     public static void setAccounts(List<StockXAccount> accounts) {
@@ -36,13 +36,13 @@ public class StockXConfig {
         saveAccounts();
     }
 
-    public static void removeAccount(String id) {
-        ACCOUNTS.removeIf(a -> a.getId().equals(id));
+    public static void removeAccount(String name) {
+        ACCOUNTS.removeIf(a -> a.getName().equals(name));
         saveAccounts();
     }
 
     public static void updateAccount(StockXAccount updated) {
-        ACCOUNTS.replaceAll(a -> a.getId().equals(updated.getId()) ? updated : a);
+        ACCOUNTS.replaceAll(a -> a.getName().equals(updated.getName()) ? updated : a);
         saveAccounts();
     }
 
