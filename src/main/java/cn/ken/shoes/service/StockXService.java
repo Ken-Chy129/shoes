@@ -495,8 +495,7 @@ public class StockXService {
         }
 
         StockXAccount defaultAccount = new StockXAccount();
-        defaultAccount.setId(defaultAccountId);
-        defaultAccount.setName("default");
+        defaultAccount.setName(defaultAccountId);
         priceDownWithExcelForAccount(defaultAccount, inventoryType);
     }
 
