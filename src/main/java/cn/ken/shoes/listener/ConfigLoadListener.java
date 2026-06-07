@@ -19,7 +19,6 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
             configManager.loadPoisonConfig();
             configManager.loadPriceConfig();
             configManager.loadStockXConfig();
-            configManager.loadStockXOAuthConfig();
             System.out.println("Configurations loaded successfully.");
         } catch (Exception e) {
             System.err.println("Failed to load configurations: " + e.getMessage());

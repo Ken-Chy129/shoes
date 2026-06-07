@@ -3,14 +3,12 @@ package cn.ken.shoes.config;
 import cn.ken.shoes.manager.ConfigManager;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.SpringContextUtil;
-import lombok.Data;
 
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 public class StockXConfig {
 
-    public static final OAuth2Config CONFIG = new OAuth2Config();
 
     private static final List<StockXAccount> ACCOUNTS = new CopyOnWriteArrayList<>();
 
@@ -85,28 +83,4 @@ public class StockXConfig {
 
     public static final String BATCH_UPDATE_LISTING_STATUS = "https://api.stockx.com/v2/selling/batch/update-listing/{batchId}";
 
-    /**
-     * 保存OAuth配置到文件
-     */
-    public static void saveOAuthConfig() {
-        try {
-            ConfigManager configManager = SpringContextUtil.getBean(ConfigManager.class);
-            if (configManager != null) {
-                configManager.saveStockXOAuthConfig();
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to save stockx oauth config: " + e.getMessage());
-        }
-    }
-
-    @Data
-    public static class OAuth2Config {
-        private String accessToken;
-
-        private String refreshToken;
-
-        private String idToken;
-
-        private String expireTime;
-    }
 }

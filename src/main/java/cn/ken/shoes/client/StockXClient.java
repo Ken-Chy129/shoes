@@ -29,7 +29,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.nio.charset.Charset;
 import java.util.concurrent.CountDownLatch;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -258,75 +257,6 @@ public class StockXClient {
         String batchId = result.getString("batchId");
         String totalItems = result.getString("totalItems");
         return batchId;
-    }
-
-    public boolean refreshToken() {
-        JSONObject params = new JSONObject();
-        params.put("grant_type", "refresh_token");
-        params.put("client_id", clientId);
-        params.put("client_secret", clientSecret);
-        params.put("audience", "gateway.stockx.com");
-        params.put("refresh_token", StockXConfig.CONFIG.getRefreshToken());
-        String rawResult = HttpUtil.doPost(StockXConfig.TOKEN, params.toJSONString(), Headers.of("content-type", "application/x-www-form-urlencoded"));
-        if (rawResult == null) {
-            return false;
-        }
-        JSONObject result = JSON.parseObject(rawResult);
-        if (result.containsKey("error")) {
-            log.error("initToken error, msg:{}, description:{}", result.getString("error"), result.getString("error_description"));
-            return false;
-        }
-        Integer expiresIn = result.getInteger("expires_in");
-        LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
-        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
-        StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
-        StockXConfig.saveOAuthConfig();
-        return true;
-    }
-
-    public boolean initToken() {
-        JSONObject params = new JSONObject();
-        params.put("grant_type", "authorization_code");
-        params.put("client_id", clientId);
-        params.put("client_secret", clientSecret);
-        params.put("code", getCode());
-        params.put("redirect_uri", redirectUri);
-        String rawResult = HttpUtil.doPost(StockXConfig.TOKEN, params.toJSONString(), Headers.of("content-type", "application/x-www-form-urlencoded"));
-        if (rawResult == null) {
-            return false;
-        }
-        JSONObject result = JSON.parseObject(rawResult);
-        if (result.containsKey("error")) {
-            log.error("initToken error, msg:{}, description:{}", result.getString("error"), result.getString("error_description"));
-            return false;
-        }
-        StockXConfig.CONFIG.setAccessToken(result.getString("access_token"));
-        StockXConfig.CONFIG.setRefreshToken(result.getString("refresh_token"));
-        StockXConfig.CONFIG.setIdToken(result.getString("id_token"));
-        Integer expiresIn = result.getInteger("expires_in");
-        LocalDateTime time = LocalDateTime.now().plusSeconds(expiresIn);
-        StockXConfig.CONFIG.setExpireTime(time.format(TimeUtil.YYYY_MM_DD_HH_MM_SS));
-        StockXConfig.saveOAuthConfig();
-        Thread.startVirtualThread(() -> {
-            try {
-                while (true) {
-                    Thread.sleep(11 * 60 * 60 * 1000);
-                    refreshToken();
-                    log.info("refresh token");
-                }
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        });
-        return true;
-    }
-
-    public String getCode() {
-        return HttpUtil.doGet(StockXConfig.CALLBACK);
-    }
-
-    public String getAuthorizeUrl() {
-        return StockXConfig.AUTHORIZE.replace("{clientId}", clientId).replace("{redirectUri}", redirectUri).replace("{state}", state);
     }
 
     public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType, String country) {
@@ -713,8 +643,9 @@ public class StockXClient {
     }
 
     private String getAuthorization() {
-        if (StrUtil.isNotBlank(StockXConfig.CONFIG.getAccessToken())) {
-            return StockXConfig.CONFIG.getAccessToken();
+        List<StockXAccount> accounts = StockXConfig.getEnabledAccounts();
+        if (!accounts.isEmpty()) {
+            return accounts.get(0).getAuthorization().strip();
         }
         return authorization;
     }
