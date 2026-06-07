@@ -504,7 +504,7 @@ public class StockXService {
      * 多账号 Excel 压价：对指定账号的在售商品进行压价
      */
     public void priceDownWithExcelForAccount(StockXAccount account, String inventoryType) {
-        String accountId = account.getId();
+        String accountId = account.getName();
         String accountName = account.getName();
         long taskStartTime = System.currentTimeMillis();
         int totalPriceDown = 0, totalSkip = 0;
@@ -657,41 +657,41 @@ public class StockXService {
                     String markUpAmount = String.valueOf(markUpPrice);
 
                     if (anyIsLowest) {
-                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                        if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep, account)) {
                             updateTaskItemResult(itemId, amt <= lowestPrice ? "保持-已是最低价" : "跳过-相同货号尺码已有最低价");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                         } else {
                             toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
                             listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
                             updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
-                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                            if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                         }
                     } else {
                         if (listing == listings.get(0)) {
                             int newPrice = lowestPrice - 1;
-                            if (isProfitable(isPoisonCompare, newPrice, excelMinPrice, pp, mep)) {
+                            if (isProfitable(isPoisonCompare, newPrice, excelMinPrice, pp, mep, account)) {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(newPrice)));
                                 updateTaskItemResult(itemId, "待压价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, newPrice);
-                            } else if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, newPrice, account);
+                            } else if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep, account)) {
                                 updateTaskItemResult(itemId, isPoisonCompare ? "保持-压价后不盈利但当前价盈利" : "保持-压价后低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                             } else {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
                                 updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                             }
                         } else {
-                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep)) {
+                            if (isProfitable(isPoisonCompare, amt, excelMinPrice, pp, mep, account)) {
                                 updateTaskItemResult(itemId, "跳过-相同货号尺码");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                             } else {
                                 toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
                                 listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
                                 updateTaskItemResult(itemId, isPoisonCompare ? "待加价$100-不盈利" : "待加价$100-低于Excel最低价");
-                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt);
+                                if (isPoisonCompare) updateTaskItemProfit(itemId, pp, amt, account);
                             }
                         }
                     }
@@ -780,9 +780,9 @@ public class StockXService {
         log.warn("[{}] batch update timeout, batchId:{}", account.getName(), batchId);
     }
 
-    private boolean isProfitable(boolean isPoisonCompare, int price, int excelMinPrice, Integer poisonPrice, Integer minExpectProfit) {
+    private boolean isProfitable(boolean isPoisonCompare, int price, int excelMinPrice, Integer poisonPrice, Integer minExpectProfit, StockXAccount account) {
         if (isPoisonCompare) {
-            return poisonPrice != null && minExpectProfit != null && ShoesUtil.canStockxEarn(poisonPrice, price, minExpectProfit);
+            return poisonPrice != null && minExpectProfit != null && ShoesUtil.canStockxEarn(poisonPrice, price, minExpectProfit, account);
         }
         return price >= excelMinPrice;
     }
@@ -794,9 +794,9 @@ public class StockXService {
     }
 
 
-    private void updateTaskItemProfit(Long taskItemId, int poisonPrice, int sellPrice) {
+    private void updateTaskItemProfit(Long taskItemId, int poisonPrice, int sellPrice, StockXAccount account) {
         if (taskItemId == null) return;
-        double profit = ShoesUtil.getStockxEarn(poisonPrice, sellPrice);
+        double profit = ShoesUtil.getStockxEarn(poisonPrice, sellPrice, account);
         double profitRate = profit / poisonPrice;
         TaskItemDO update = new TaskItemDO();
         update.setId(taskItemId);

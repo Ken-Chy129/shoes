@@ -26,7 +26,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
 
     @Override
     public void run() {
-        String accountId = account.getId();
+        String accountId = account.getName();
         TaskSwitch.setExcelRunning(accountId, inventoryType, true);
         try {
             while (true) {
@@ -77,7 +77,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
     }
 
     private boolean sleepWithCancelCheck() throws InterruptedException {
-        long remaining = TaskSwitch.getExcelInterval(account.getId(), inventoryType);
+        long remaining = TaskSwitch.getExcelInterval(account.getName(), inventoryType);
         while (remaining > 0) {
             if (detectCancel()) return true;
             Thread.sleep(Math.min(5000, remaining));
@@ -87,7 +87,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
     }
 
     private boolean detectCancel() {
-        String accountId = account.getId();
+        String accountId = account.getName();
         if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
             log.info("[{}]{}压价任务已取消，终止执行", account.getName(), inventoryType);
             Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);

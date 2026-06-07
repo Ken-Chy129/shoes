@@ -263,35 +263,35 @@ public class SettingController {
 
     @PostMapping("stockx/accounts")
     public Result<Boolean> addStockXAccount(@RequestBody StockXAccount account) {
-        if (StrUtil.isBlank(account.getId()) || StrUtil.isBlank(account.getName())) {
-            return Result.buildError("id和name不能为空");
+        if (StrUtil.isBlank(account.getName())) {
+            return Result.buildError("name不能为空");
         }
-        if (StockXConfig.getAccount(account.getId()) != null) {
-            return Result.buildError("账号ID已存在: " + account.getId());
+        if (StockXConfig.getAccount(account.getName()) != null) {
+            return Result.buildError("账号名称已存在: " + account.getName());
         }
         StockXConfig.addAccount(account);
         return Result.buildSuccess(true);
     }
 
-    @PutMapping("stockx/accounts/{id}")
-    public Result<Boolean> updateStockXAccount(@PathVariable String id, @RequestBody StockXAccount account) {
-        if (StockXConfig.getAccount(id) == null) {
-            return Result.buildError("账号不存在: " + id);
+    @PutMapping("stockx/accounts/{name}")
+    public Result<Boolean> updateStockXAccount(@PathVariable String name, @RequestBody StockXAccount account) {
+        if (StockXConfig.getAccount(name) == null) {
+            return Result.buildError("账号不存在: " + name);
         }
-        account.setId(id);
+        account.setName(name);
         StockXConfig.updateAccount(account);
         return Result.buildSuccess(true);
     }
 
-    @DeleteMapping("stockx/accounts/{id}")
-    public Result<Boolean> deleteStockXAccount(@PathVariable String id) {
-        if (StockXConfig.getAccount(id) == null) {
-            return Result.buildError("账号不存在: " + id);
+    @DeleteMapping("stockx/accounts/{name}")
+    public Result<Boolean> deleteStockXAccount(@PathVariable String name) {
+        if (StockXConfig.getAccount(name) == null) {
+            return Result.buildError("账号不存在: " + name);
         }
-        if (TaskSwitch.isExcelRunning(id, "STANDARD") || TaskSwitch.isExcelRunning(id, "CUSTODIAL")) {
+        if (TaskSwitch.isExcelRunning(name, "STANDARD") || TaskSwitch.isExcelRunning(name, "CUSTODIAL")) {
             return Result.buildError("该账号有正在运行的压价任务，请先终止");
         }
-        StockXConfig.removeAccount(id);
+        StockXConfig.removeAccount(name);
         return Result.buildSuccess(true);
     }
 }

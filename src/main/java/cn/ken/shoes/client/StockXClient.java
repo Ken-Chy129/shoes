@@ -867,10 +867,10 @@ public class StockXClient {
      * 使用 persisted query 格式查询在售商品（区分库存类型）
      */
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber) {
-        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders());
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(), "US");
     }
 
-    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers) {
+    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers, String country) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "SellerListings");
 
@@ -880,8 +880,8 @@ public class StockXClient {
         variables.put("pageSize", 100);
         variables.put("sort", "CREATED_AT");
         variables.put("order", "DESC");
-        variables.put("country", "US");
-        variables.put("market", "US");
+        variables.put("country", country);
+        variables.put("market", country);
         variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
         variables.put("currencyCode", "USD");
 
@@ -1112,7 +1112,8 @@ public class StockXClient {
     }
 
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber, StockXAccount account) {
-        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account));
+        String country = account.getCountry() != null ? account.getCountry() : "US";
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account), country);
     }
 
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {

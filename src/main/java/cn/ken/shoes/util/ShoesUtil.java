@@ -3,6 +3,7 @@ package cn.ken.shoes.util;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
+import cn.ken.shoes.model.stockx.StockXAccount;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -98,19 +99,23 @@ public class ShoesUtil {
         return earn >= minExpectProfit;
     }
 
-    /**
-     * 计算 StockX 利润
-     * @param poisonPrice 得物价格
-     * @param stockXPrice StockX 售价
-     * @return 利润（人民币）
-     */
+    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit, StockXAccount account) {
+        double earn = getStockxEarn(poisonPrice, stockXPrice, account);
+        return earn >= minExpectProfit;
+    }
+
     public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice) {
-        // 转账手续费
         double transferFee = stockXPrice * 0.03;
-        // 商家手续费
         double merchantFee = Math.max(stockXPrice * 0.07, 5.79);
         double getFromPlatform = (stockXPrice - transferFee - merchantFee) * PriceSwitch.EXCHANGE_RATE;
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
+    }
+
+    public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice, StockXAccount account) {
+        double transferFee = account.getTransferFeeRate() == 0 ? 0 : stockXPrice * account.getTransferFeeRate();
+        double merchantFee = account.getMerchantFeeRate() == 0 ? 0 : Math.max(stockXPrice * account.getMerchantFeeRate(), account.getMinMerchantFee());
+        double getFromPlatform = (stockXPrice - transferFee - merchantFee - account.getPlatformShippingFee()) * PriceSwitch.EXCHANGE_RATE;
+        return getFromPlatform - account.getFreight() - poisonPrice;
     }
 
     public static Integer getThreeFivePrice(Integer normalPrice) {
