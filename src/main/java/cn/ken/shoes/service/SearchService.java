@@ -4,6 +4,8 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.DunkClient;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.common.Gender;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.PlatformEnum;
@@ -68,6 +70,7 @@ public class SearchService {
         searchTask.setPageCount(request.getPageCount());
         searchTask.setType(request.getType());
         searchTask.setSearchType(request.getSearchType());
+        searchTask.setAccountName(request.getAccountName());
         searchTask.setProgress(0);
         searchTask.setStatus(SearchTaskDO.StatusEnum.PENDING.getCode());
 
@@ -147,7 +150,7 @@ public class SearchService {
                     cancelledTaskIds.remove(taskId);
                     return;
                 }
-                Pair<Integer, JSONArray> firstPair = doSearch(taskId, platform, query, sort.trim(), searchType, 1);
+                Pair<Integer, JSONArray> firstPair = doSearch(taskId, platform, query, sort.trim(), searchType, 1, searchTask.getAccountName());
                 Integer totalPage = firstPair.getKey();
                 // 修正totalQueries：用实际页数替代预估页数
                 int actualPages = Math.min(pageCount, totalPage);
@@ -180,7 +183,7 @@ public class SearchService {
                         cancelledTaskIds.remove(taskId);
                         return;
                     }
-                    Pair<Integer, JSONArray> pair = doSearch(taskId, platform, query, sort.trim(), searchType, i);
+                    Pair<Integer, JSONArray> pair = doSearch(taskId, platform, query, sort.trim(), searchType, i, searchTask.getAccountName());
                     if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
                         log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, i);
                         completedQueries++;
@@ -253,7 +256,7 @@ public class SearchService {
                 return;
             }
             // 只查询第一页,pageIndex=1,searchType默认为"shoes"
-            Pair<Integer, JSONArray> pair = doSearch(taskId, platform, modelNo, sort.trim(), "shoes", 1);
+            Pair<Integer, JSONArray> pair = doSearch(taskId, platform, modelNo, sort.trim(), "shoes", 1, searchTask.getAccountName());
 
             if (pair.getKey() == 0 || CollectionUtils.isEmpty(pair.getValue())) {
                 log.warn("executeModelNoSearch no result for modelNo:{}, taskId:{}", modelNo, taskId);
@@ -296,9 +299,11 @@ public class SearchService {
                  taskId, modelNoList.size(), resultList.size());
     }
 
-    private Pair<Integer, JSONArray> doSearch(Long taskId, String platform, String query, String sort, String searchType, Integer pageIndex) {
+    private Pair<Integer, JSONArray> doSearch(Long taskId, String platform, String query, String sort, String searchType, Integer pageIndex, String accountName) {
         if ("stockx".equals(platform)) {
-            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType);
+            StockXAccount account = accountName != null ? StockXConfig.getAccount(accountName) : null;
+            String country = account != null ? account.getCountry() : "HK";
+            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType, country);
             return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
         } else if ("dunk".equals(platform)) {
             DunkSearchRequest dunkSearchRequest = new DunkSearchRequest();

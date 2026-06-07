@@ -21,6 +21,7 @@ import {DownloadOutlined, PlusOutlined, StopOutlined} from "@ant-design/icons";
 import {doGetRequest, doPostRequest} from "@/util/http";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
+import {SETTING_API} from "@/services/shoes";
 
 interface SearchTask {
     id: number;
@@ -49,6 +50,7 @@ const SearchPage = () => {
 
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
     const [searchMode, setSearchMode] = useState<'keyword' | 'modelNo'>('keyword');
     const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
 
@@ -56,6 +58,9 @@ const SearchPage = () => {
 
     useEffect(() => {
         queryTaskList();
+        doGetRequest(SETTING_API.STOCKX_ACCOUNTS, {}, {
+            onSuccess: res => setStockxAccounts((res.data || []).filter((a: any) => a.enabled))
+        });
     }, [pageIndex, pageSize]);
 
     useEffect(() => {
@@ -109,7 +114,7 @@ const SearchPage = () => {
 
             if (searchMode === 'keyword') {
                 // 关键词搜索模式
-                const {keywords, sorts, pageCount, searchType} = values;
+                const {keywords, sorts, pageCount, searchType, accountName} = values;
                 const sortsStr = sorts.join(',');
 
                 // 根据换行符拆分关键词
@@ -137,7 +142,8 @@ const SearchPage = () => {
                         sorts: sortsStr,
                         pageCount,
                         type: 'keyword',
-                        searchType
+                        searchType,
+                        accountName
                     }, {
                         onSuccess: res => {
                             completedTasks++;
@@ -181,12 +187,14 @@ const SearchPage = () => {
 
                 // 将所有货号用换行符连接成一个字符串,只创建一个任务
                 const queryString = modelNoList.join('\n');
+                const {accountName} = values;
                 doPostRequest(SEARCH_TASK_API.CREATE, {
                     platform: "stockx",
                     query: queryString,
                     sorts: 'featured',
                     pageCount: 1,
-                    type: 'modelNo'
+                    type: 'modelNo',
+                    accountName
                 }, {
                     onSuccess: res => {
                         message.success(`货号搜索任务创建成功！共${modelNoList.length}个货号`);
@@ -539,6 +547,19 @@ const SearchPage = () => {
                     modelNumbers: ''
                 }}
             >
+                <Form.Item
+                    name="accountName"
+                    label="StockX 账号"
+                    rules={[{required: true, message: '请选择账号'}]}
+                >
+                    <Select
+                        placeholder="请选择账号（决定查询区域）"
+                        options={stockxAccounts.map((a: any) => ({
+                            label: `${a.name} (${a.country})`,
+                            value: a.name,
+                        }))}
+                    />
+                </Form.Item>
                 <Form.Item label="搜索模式">
                     <Radio.Group
                         value={searchMode}

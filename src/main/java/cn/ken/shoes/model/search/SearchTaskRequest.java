@@ -34,4 +34,6 @@ public class SearchTaskRequest {
      * 搜索类型类别: shoes-鞋类, clothes-服饰 (仅关键词搜索时使用)
      */
     private String searchType;
+
+    private String accountName;
 }
