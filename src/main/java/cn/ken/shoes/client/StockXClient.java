@@ -332,8 +332,8 @@ public class StockXClient {
         if (searchTypeEnum == null) {
             return Pair.of(0, Collections.emptyList());
         }
-        if (country == null) country = "HK";
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, country));
+        String finalCountry = country != null ? country : "HK";
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry));
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -357,7 +357,7 @@ public class StockXClient {
                     JSONObject node = item.getJSONObject("node");
                     String title = node.getString("title");
                     String urlKey = node.getString("urlKey");
-                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, country);
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry);
                     result.addAll(itemResult);
                 } catch (Exception e) {
                     log.error("searchItemWithPrice fetchItemDetail error", e);
