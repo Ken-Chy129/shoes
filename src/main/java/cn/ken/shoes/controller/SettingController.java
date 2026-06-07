@@ -1,13 +1,11 @@
 package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
-import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.*;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.config.StockXConfig;
-import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -25,7 +23,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 @RestController
@@ -37,9 +34,6 @@ public class SettingController {
 
     @Resource
     private BrandMapper brandMapper;
-
-    @Resource
-    private StockXClient stockXClient;
 
     @Resource
     private CustomModelMapper customModelMapper;
@@ -105,67 +99,6 @@ public class SettingController {
     public Result<Boolean> updateKcAuthorization(@RequestBody JSONObject jsonObject) {
         KickScrewConfig.CONFIG.setAccessToken(jsonObject.getString("accessToken"));
         KickScrewConfig.saveOAuthConfig();
-        return Result.buildSuccess(true);
-    }
-
-    @GetMapping("stockx")
-    public Result<JSONObject> queryStockxSetting() {
-        JSONObject jsonObject = new JSONObject();
-        jsonObject.put("sortType", StockXSwitch.SORT_TYPE.getCode());
-        jsonObject.put("priceType", StockXSwitch.PRICE_TYPE.getCode());
-        return Result.buildSuccess(jsonObject);
-    }
-
-    @PostMapping("stockx")
-    public Result<Boolean> updateStockxSetting(@RequestBody JSONObject jsonObject) {
-        StockXSortEnum sortType = StockXSortEnum.from(jsonObject.getString("sortType"));
-        StockXPriceEnum priceType = StockXPriceEnum.from(jsonObject.getString("priceType"));
-        if (Objects.isNull(sortType) || Objects.isNull(priceType)) {
-            return Result.buildError("非法类型");
-        }
-        StockXSwitch.SORT_TYPE = sortType;
-        StockXSwitch.PRICE_TYPE = priceType;
-        StockXSwitch.saveConfig();
-        return Result.buildSuccess(true);
-    }
-
-    @GetMapping("queryStockxConfig")
-    public Result<StockXConfig.OAuth2Config> queryStockxConfig() {
-        return Result.buildSuccess(StockXConfig.CONFIG);
-    }
-
-    @GetMapping("stockx/getAuthorizeUrl")
-    public Result<String> getAuthorizeUrl() {
-        return Result.buildSuccess(stockXClient.getAuthorizeUrl());
-    }
-
-    @PostMapping("stockx/initToken")
-    public Result<Boolean> initToken() {
-        if (stockXClient.initToken()) {
-            return Result.buildSuccess(true);
-        } else {
-            return Result.buildError("初始化令牌失败");
-        }
-    }
-
-    @PostMapping("stockx/refreshToken")
-    public Result<Boolean> refreshToken() {
-        if (stockXClient.refreshToken()) {
-            return Result.buildSuccess(true);
-        } else {
-            return Result.buildError("刷新令牌失败");
-        }
-    }
-
-    @GetMapping("stockx/getAuthorization")
-    public Result<String> getAuthorization() {
-        return Result.buildSuccess(StockXConfig.CONFIG.getAccessToken());
-    }
-
-    @PostMapping("stockx/updateAuthorization")
-    public Result<Boolean> updateAuthorization(@RequestBody JSONObject jsonObject) {
-        StockXConfig.CONFIG.setAccessToken(jsonObject.getString("accessToken"));
-        StockXConfig.saveOAuthConfig();
         return Result.buildSuccess(true);
     }
 

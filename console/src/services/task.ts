@@ -2,8 +2,6 @@
 const TASK_TYPE = {
     KC_LISTING: 'kc_listing',
     KC_PRICE_DOWN: 'kc_price_down',
-    STOCKX_LISTING: 'stockx_listing',
-    STOCKX_PRICE_DOWN: 'stockx_price_down',
     STOCKX_STANDARD_PRICE_DOWN: 'stockx_standard_price_down',
     STOCKX_CUSTODIAL_PRICE_DOWN: 'stockx_custodial_price_down',
 };
