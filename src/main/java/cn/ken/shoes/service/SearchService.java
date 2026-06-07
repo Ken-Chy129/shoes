@@ -303,7 +303,7 @@ public class SearchService {
         if ("stockx".equals(platform)) {
             StockXAccount account = accountName != null ? StockXConfig.getAccount(accountName) : null;
             String country = account != null ? account.getCountry() : "HK";
-            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType, country);
+            Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, pageIndex, sort.trim(), searchType, country, account);
             return Pair.of(pair.getKey(), (JSONArray) JSONArray.toJSON(pair.getValue()));
         } else if ("dunk".equals(platform)) {
             DunkSearchRequest dunkSearchRequest = new DunkSearchRequest();
