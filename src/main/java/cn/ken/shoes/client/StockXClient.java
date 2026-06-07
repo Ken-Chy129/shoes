@@ -325,6 +325,10 @@ public class StockXClient {
     }
 
     public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType, String country) {
+        return searchItemWithPrice(query, pageIndex, sort, searchType, country, null);
+    }
+
+    public Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(String query, Integer pageIndex, String sort, String searchType, String country, StockXAccount account) {
         if (pageIndex == null) {
             pageIndex = 1;
         }
@@ -333,7 +337,8 @@ public class StockXClient {
             return Pair.of(0, Collections.emptyList());
         }
         String finalCountry = country != null ? country : "HK";
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry));
+        Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry), headers);
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -357,7 +362,7 @@ public class StockXClient {
                     JSONObject node = item.getJSONObject("node");
                     String title = node.getString("title");
                     String urlKey = node.getString("urlKey");
-                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry);
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry, headers);
                     result.addAll(itemResult);
                 } catch (Exception e) {
                     log.error("searchItemWithPrice fetchItemDetail error", e);
@@ -374,19 +379,19 @@ public class StockXClient {
         return Pair.of(pageCount, result);
     }
 
-    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country) {
+    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers) {
         JSONObject[] responses = new JSONObject[2];
         CountDownLatch detailLatch = new CountDownLatch(2);
         Thread.startVirtualThread(() -> {
             try {
-                responses[0] = queryPro(buildGetProductRequest(urlKey));
+                responses[0] = queryPro(buildGetProductRequest(urlKey), headers);
             } finally {
                 detailLatch.countDown();
             }
         });
         Thread.startVirtualThread(() -> {
             try {
-                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country));
+                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country), headers);
             } finally {
                 detailLatch.countDown();
             }
@@ -660,6 +665,22 @@ public class StockXClient {
             return null;
         }
         return jsonObject;
+    }
+
+    private Headers buildProHeaders(StockXAccount account, String country) {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "accept", "application/json",
+                "authorization", account.getAuthorization().strip(),
+                "apollographql-client-name", "Iron",
+                "apollographql-client-version", "2026.05.03.00",
+                "app-platform", "Iron",
+                "app-version", "2026.05.03.00",
+                "selected-country", country,
+                "origin", "https://stockx.com",
+                "referer", "https://stockx.com/",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+        );
     }
 
     private Headers buildProHeaders() {
