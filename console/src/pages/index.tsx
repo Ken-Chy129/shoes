@@ -392,7 +392,7 @@ const SettingPage = () => {
                     <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
                 </Form.Item>
                 <Form.Item name="minMerchantFee" label="最低商家手续费($)" initialValue={5.79}
-                           extra="商家手续费不低于此值（比例为0时忽略）">
+                           extra="商家手续费不低于此值；设为0表示免商家手续费">
                     <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
                 </Form.Item>
                 <Form.Item name="platformShippingFee" label="平台运费($)" rules={[{required: true}]}
