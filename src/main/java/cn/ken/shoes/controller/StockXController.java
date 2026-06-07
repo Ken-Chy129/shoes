@@ -25,8 +25,8 @@ public class StockXController {
     private StockXService stockXService;
 
     @GetMapping("searchItems")
-    public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType, String searchType) {
-        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType, searchType);
+    public Result<List<StockXPriceExcel>> searchItems(String query, Integer page, String sortType, String searchType, String country) {
+        Pair<Integer, List<StockXPriceExcel>> pair = stockXClient.searchItemWithPrice(query, page, sortType, searchType, country);
         if (pair == null) {
             return Result.buildError("no result");
         }
