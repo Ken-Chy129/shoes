@@ -139,6 +139,7 @@ const SettingPage = () => {
         {title: '最低商家费', dataIndex: 'minMerchantFee', key: 'minMerchantFee', width: 90, render: (v: number) => `$${v}`},
         {title: '平台运费', dataIndex: 'platformShippingFee', key: 'platformShippingFee', width: 80, render: (v: number) => `$${v}`},
         {title: '运费(¥)', dataIndex: 'freight', key: 'freight', width: 70, render: (v: number) => `¥${v}`},
+        {title: '最小利润', dataIndex: 'minProfit', key: 'minProfit', width: 80, render: (v: number) => `¥${v}`},
         {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
@@ -318,6 +319,10 @@ const SettingPage = () => {
                 </Form.Item>
                 <Form.Item name="freight" label="人民币运费(¥)" initialValue={25}>
                     <InputNumber min={0} step={1} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="minProfit" label="最小利润(¥)" initialValue={-30}
+                           extra="低于此利润的商品会被加价$100">
+                    <InputNumber step={1} style={{width: '100%'}}/>
                 </Form.Item>
                 <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
                     <Switch/>
