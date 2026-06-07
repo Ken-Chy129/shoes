@@ -201,7 +201,8 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
         Headers headers = account != null ? buildProHeaders(account, account.getCountry()) : buildProHeaders();
-        JSONObject jsonObject = queryPro(body.toJSONString(), headers);
+        String accName = account != null ? account.getName() : null;
+        JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName);
         log.info("deleteItems, result:{}", jsonObject);
         return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
     }
@@ -292,7 +293,8 @@ public class StockXClient {
         }
         String finalCountry = country != null ? country : "HK";
         Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry), headers);
+        String accName = account != null ? account.getName() : null;
+        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry), headers, accName);
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -316,7 +318,7 @@ public class StockXClient {
                     JSONObject node = item.getJSONObject("node");
                     String title = node.getString("title");
                     String urlKey = node.getString("urlKey");
-                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry, headers);
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry, headers, accName);
                     result.addAll(itemResult);
                 } catch (Exception e) {
                     log.error("searchItemWithPrice fetchItemDetail error", e);
@@ -333,19 +335,19 @@ public class StockXClient {
         return Pair.of(pageCount, result);
     }
 
-    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers) {
+    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers, String accountName) {
         JSONObject[] responses = new JSONObject[2];
         CountDownLatch detailLatch = new CountDownLatch(2);
         Thread.startVirtualThread(() -> {
             try {
-                responses[0] = queryPro(buildGetProductRequest(urlKey), headers);
+                responses[0] = queryPro(buildGetProductRequest(urlKey), headers, accountName);
             } finally {
                 detailLatch.countDown();
             }
         });
         Thread.startVirtualThread(() -> {
             try {
-                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country), headers);
+                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country), headers, accountName);
             } finally {
                 detailLatch.countDown();
             }
@@ -598,7 +600,7 @@ public class StockXClient {
     }
 
     private JSONObject queryPro(String body) {
-        LimiterHelper.limitStockxSecond();
+        LimiterHelper.limitStockxGraphql(null);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, buildProHeaders());
         if (rawResult == null) {
             return null;
@@ -673,10 +675,10 @@ public class StockXClient {
      * 使用 persisted query 格式查询在售商品（区分库存类型）
      */
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber) {
-        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(), "US");
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(), "US", null);
     }
 
-    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers, String country) {
+    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers, String country, String accountName) {
         JSONObject requestJson = new JSONObject();
         requestJson.put("operationName", "SellerListings");
 
@@ -710,7 +712,7 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
 
-        JSONObject jsonObject = queryPro(requestJson.toJSONString(), headers);
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), headers, accountName);
         if (jsonObject == null) {
             return null;
         }
@@ -856,7 +858,11 @@ public class StockXClient {
     }
 
     private JSONObject queryPro(String body, Headers headers) {
-        LimiterHelper.limitStockxSecond();
+        return queryPro(body, headers, null);
+    }
+
+    private JSONObject queryPro(String body, Headers headers, String accountName) {
+        LimiterHelper.limitStockxGraphql(accountName);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);
         if (rawResult == null) {
             return null;
@@ -919,10 +925,11 @@ public class StockXClient {
 
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber, StockXAccount account) {
         String country = account.getCountry() != null ? account.getCountry() : "US";
-        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account), country);
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account), country, account.getName());
     }
 
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
+        LimiterHelper.limitStockxApi(account.getName());
         JSONObject body = new JSONObject();
         body.put("items", items);
         String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders(account));
@@ -947,6 +954,7 @@ public class StockXClient {
     }
 
     public JSONObject queryBatchUpdateStatus(String batchId, StockXAccount account) {
+        LimiterHelper.limitStockxApi(account.getName());
         String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);
         String rawResult = HttpUtil.doGet(url, buildHeaders(account));
         if (rawResult == null) {
