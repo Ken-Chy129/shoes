@@ -150,9 +150,23 @@ public class StockXClient {
         for (Pair<String, Integer> item : itemList) {
             String variantId = item.getKey();
             String amount = String.valueOf(item.getValue());
-            data.add(Map.of("variantID", variantId, "amount", amount, "expiresAt", expireTime, "currency", "USD", "quantity", 1));
+            data.add(Map.of(
+                    "active", true,
+                    "amount", amount,
+                    "currency", "USD",
+                    "expiresAt", expireTime,
+                    "quantity", 1,
+                    "variantID", variantId,
+                    "inventoryType", "STANDARD",
+                    "actionContext", "ASK"
+            ));
         }
-        body.put("query", "mutation CreateBatchListings($items: [CreateListingBatchInput]) {\n  createBatchListings(input: $items) {\n    id\n    status\n    __typename\n  }\n}");
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
+        extensions.put("persistedQuery", persistedQuery);
+        body.put("extensions", extensions);
         JSONObject jsonObject = queryPro(body.toJSONString());
         if (jsonObject == null) {
             return;
