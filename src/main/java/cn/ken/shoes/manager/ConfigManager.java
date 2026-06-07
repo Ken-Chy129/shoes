@@ -26,7 +26,6 @@ public class ConfigManager {
     private static final String POISON_CONFIG_FILE = "poison-config.properties";
     private static final String PRICE_CONFIG_FILE = "price-config.properties";
     private static final String STOCKX_CONFIG_FILE = "stockx-config.properties";
-    private static final String STOCKX_OAUTH_CONFIG_FILE = "stockx-oauth-config.properties";
     private static final String KICKSCREW_OAUTH_CONFIG_FILE = "kickscrew-oauth-config.properties";
     private static final String STOCKX_ACCOUNTS_FILE = "stockx-accounts.json";
 
@@ -35,7 +34,6 @@ public class ConfigManager {
         loadPoisonConfig();
         loadPriceConfig();
         loadStockXConfig();
-        loadStockXOAuthConfig();
         loadStockXAccounts();
         loadKickScrewOAuthConfig();
     }
@@ -112,34 +110,6 @@ public class ConfigManager {
         properties.setProperty("sort.type", StockXSwitch.SORT_TYPE.name());
 
         configService.saveConfig(STOCKX_CONFIG_FILE, properties);
-    }
-
-    public void loadStockXOAuthConfig() {
-        Properties properties = configService.loadConfig(STOCKX_OAUTH_CONFIG_FILE);
-        
-        StockXConfig.CONFIG.setAccessToken(configService.getProperty(properties, "access.token", null));
-        StockXConfig.CONFIG.setRefreshToken(configService.getProperty(properties, "refresh.token", null));
-        StockXConfig.CONFIG.setIdToken(configService.getProperty(properties, "id.token", null));
-        StockXConfig.CONFIG.setExpireTime(configService.getProperty(properties, "expire.time", null));
-    }
-
-    public void saveStockXOAuthConfig() {
-        Properties properties = new Properties();
-
-        if (StockXConfig.CONFIG.getAccessToken() != null) {
-            properties.setProperty("access.token", StockXConfig.CONFIG.getAccessToken());
-        }
-        if (StockXConfig.CONFIG.getRefreshToken() != null) {
-            properties.setProperty("refresh.token", StockXConfig.CONFIG.getRefreshToken());
-        }
-        if (StockXConfig.CONFIG.getIdToken() != null) {
-            properties.setProperty("id.token", StockXConfig.CONFIG.getIdToken());
-        }
-        if (StockXConfig.CONFIG.getExpireTime() != null) {
-            properties.setProperty("expire.time", StockXConfig.CONFIG.getExpireTime());
-        }
-
-        configService.saveConfig(STOCKX_OAUTH_CONFIG_FILE, properties);
     }
 
     public void loadKickScrewOAuthConfig() {
