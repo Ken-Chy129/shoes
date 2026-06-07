@@ -214,7 +214,7 @@ public class StockXService {
                     euSize = bestListing.getString("euSize");
                     if (StrUtil.isNotBlank(euSize)) {
                         poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
-                        minExpectProfit = ShoesUtil.isThreeFiveModel(styleId, euSize) ? PoisonSwitch.MIN_THREE_PROFIT : PoisonSwitch.MIN_PROFIT;
+                        minExpectProfit = account.getMinProfit();
                     }
                     if (StrUtil.isBlank(euSize) || poisonPrice == null) {
                         for (JSONObject listing : listings) {

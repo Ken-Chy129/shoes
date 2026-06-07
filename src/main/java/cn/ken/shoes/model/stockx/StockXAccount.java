@@ -25,6 +25,8 @@ public class StockXAccount {
 
     private int freight = 25;
 
+    private int minProfit = -30;
+
     private long standardInterval = 1800;
 
     private long custodialInterval = 1800;
