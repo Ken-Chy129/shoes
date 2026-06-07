@@ -38,6 +38,8 @@ public class TaskSwitch {
     private static final ConcurrentHashMap<String, Integer> EXCEL_ROUND_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Long> EXCEL_INTERVAL_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> EXCEL_RUNNING_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> EXCEL_PROCESS_OUTSIDE_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, String> EXCEL_UNPROFITABLE_ACTION_MAP = new ConcurrentHashMap<>();
 
     public static String buildExcelKey(String accountId, String inventoryType) {
         return accountId + ":" + inventoryType;
@@ -129,5 +131,23 @@ public class TaskSwitch {
         EXCEL_CANCEL_MAP.remove(key);
         EXCEL_ROUND_MAP.remove(key);
         EXCEL_RUNNING_MAP.remove(key);
+        EXCEL_PROCESS_OUTSIDE_MAP.remove(key);
+        EXCEL_UNPROFITABLE_ACTION_MAP.remove(key);
+    }
+
+    public static boolean isProcessOutsideExcel(String accountId, String inventoryType) {
+        return Boolean.TRUE.equals(EXCEL_PROCESS_OUTSIDE_MAP.get(buildExcelKey(accountId, inventoryType)));
+    }
+
+    public static void setProcessOutsideExcel(String accountId, String inventoryType, boolean value) {
+        EXCEL_PROCESS_OUTSIDE_MAP.put(buildExcelKey(accountId, inventoryType), value);
+    }
+
+    public static String getUnprofitableAction(String accountId, String inventoryType) {
+        return EXCEL_UNPROFITABLE_ACTION_MAP.getOrDefault(buildExcelKey(accountId, inventoryType), "markup");
+    }
+
+    public static void setUnprofitableAction(String accountId, String inventoryType, String action) {
+        EXCEL_UNPROFITABLE_ACTION_MAP.put(buildExcelKey(accountId, inventoryType), action);
     }
 }

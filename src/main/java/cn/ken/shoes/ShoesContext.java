@@ -22,10 +22,7 @@ public class ShoesContext {
 
     private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
 
-    public record PriceDownConfig(int minPrice, String compareType) {
-        public boolean isPoisonCompare() {
-            return "毒".equals(compareType);
-        }
+    public record PriceDownConfig(int minPrice, boolean skip) {
     }
 
     private final static ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
@@ -163,10 +160,11 @@ public class ShoesContext {
         ConcurrentHashMap<String, PriceDownConfig> map = getPriceDownMap(accountId, inventoryType);
         map.clear();
         for (StockXPriceDownInputExcel item : list) {
-            if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize()) && item.getMinPrice() != null) {
+            if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize())) {
                 String key = STR."\{item.getStyleId()}:\{item.getSize()}";
-                String compareType = StrUtil.isNotBlank(item.getCompareType()) ? item.getCompareType().trim() : "最低价";
-                map.put(key, new PriceDownConfig(item.getMinPrice(), compareType));
+                boolean skip = item.getMinPrice() != null && item.getMinPrice() == -1;
+                int minPrice = item.getMinPrice() != null ? item.getMinPrice() : 0;
+                map.put(key, new PriceDownConfig(minPrice, skip));
             }
         }
     }
