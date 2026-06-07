@@ -4,7 +4,9 @@ import {
     Input,
     InputNumber,
     message,
+    Radio,
     Select,
+    Switch,
     Divider,
     Upload,
     Tag,
@@ -202,7 +204,10 @@ const TaskExecutorPage = () => {
     }
 
     const handleExcelPriceDownStart = (accountId: string, inventoryType: string) => {
-        doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {accountId, inventoryType}, {
+        const state = getExcelState(accountId, inventoryType);
+        const processOutsideExcel = state.processOutside || false;
+        const unprofitableAction = state.unprofitableAction || 'markup';
+        doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {accountId, inventoryType, processOutsideExcel, unprofitableAction}, {
             onSuccess: () => {
                 message.success('任务已启动');
                 refreshExcelTaskState(accountId, inventoryType);
@@ -340,6 +345,39 @@ const TaskExecutorPage = () => {
                                                 onClick={() => handleViewExcelTaskDetail(taskId)}>查看明细</Button>
                                     )}
                                 </div>
+                                <div style={{display: "flex", alignItems: "center", gap: 12, marginTop: 6}}>
+                                    <span>处理Excel外商品：</span>
+                                    <Switch
+                                        size="small"
+                                        checked={state.processOutside || false}
+                                        onChange={(checked) => {
+                                            const k = `${account.name}:${inventoryType}`;
+                                            setExcelTaskStates(prev => ({
+                                                ...prev,
+                                                [k]: {...(prev[k] || {}), processOutside: checked}
+                                            }));
+                                        }}
+                                    />
+                                    {state.processOutside && (
+                                        <>
+                                            <span style={{marginLeft: 8}}>不盈利操作：</span>
+                                            <Radio.Group
+                                                size="small"
+                                                value={state.unprofitableAction || 'markup'}
+                                                onChange={(e) => {
+                                                    const k = `${account.name}:${inventoryType}`;
+                                                    setExcelTaskStates(prev => ({
+                                                        ...prev,
+                                                        [k]: {...(prev[k] || {}), unprofitableAction: e.target.value}
+                                                    }));
+                                                }}
+                                            >
+                                                <Radio value="markup">加价$100</Radio>
+                                                <Radio value="delist">下架</Radio>
+                                            </Radio.Group>
+                                        </>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
@@ -357,8 +395,7 @@ const TaskExecutorPage = () => {
                 columns={[
                     {title: '货号', dataIndex: 'styleId', key: 'styleId'},
                     {title: '尺码', dataIndex: 'size', key: 'size'},
-                    {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice'},
-                    {title: '比价方式', dataIndex: 'compareType', key: 'compareType'},
+                    {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice', render: (v: number) => v === -1 ? '跳过' : `$${v}`},
                 ]}
             />
         </Modal>

@@ -159,6 +159,10 @@ public class TaskController {
         if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
             return Result.buildError("accountId和inventoryType不能为空");
         }
+        boolean processOutside = body.getBooleanValue("processOutsideExcel");
+        String unprofitableAction = body.getString("unprofitableAction");
+        TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, processOutside);
+        TaskSwitch.setUnprofitableAction(accountId, inventoryType, unprofitableAction != null ? unprofitableAction : "markup");
         taskExecutorManager.startExcelPriceDown(accountId, inventoryType);
         return Result.buildSuccess(true);
     }
