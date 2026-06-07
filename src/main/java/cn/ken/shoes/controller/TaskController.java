@@ -2,6 +2,7 @@ package cn.ken.shoes.controller;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
@@ -143,8 +144,7 @@ public class TaskController {
             result.add(Map.of(
                     "styleId", parts[0],
                     "size", parts.length > 1 ? parts[1] : "",
-                    "minPrice", config.minPrice(),
-                    "compareType", config.compareType()
+                    "minPrice", config.minPrice()
             ));
         });
         return Result.buildSuccess(result);
