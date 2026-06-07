@@ -113,7 +113,7 @@ public class ShoesUtil {
 
     public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice, StockXAccount account) {
         double transferFee = account.getTransferFeeRate() == 0 ? 0 : stockXPrice * account.getTransferFeeRate();
-        double merchantFee = account.getMerchantFeeRate() == 0 ? 0 : Math.max(stockXPrice * account.getMerchantFeeRate(), account.getMinMerchantFee());
+        double merchantFee = (account.getMerchantFeeRate() == 0 || account.getMinMerchantFee() == 0) ? 0 : Math.max(stockXPrice * account.getMerchantFeeRate(), account.getMinMerchantFee());
         double getFromPlatform = (stockXPrice - transferFee - merchantFee - account.getPlatformShippingFee()) * PriceSwitch.EXCHANGE_RATE;
         return getFromPlatform - account.getFreight() - poisonPrice;
     }
