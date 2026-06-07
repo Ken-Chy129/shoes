@@ -180,7 +180,12 @@ public class StockXClient {
         }
         variables.put("input", input);
         body.put("variables", variables);
-        body.put("query", "mutation BulkDeleteSellerListings($input: [DeleteListingBatchInput]) {\n  deleteBatchListings(input: $input) {\n    id\n    status\n    completedAt\n    createdAt\n    updatedAt\n  }\n}");
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "c6e5f5ce76a05d8877c3f61c5e98678c31855ee46276011e9b8f047eefdad036");
+        extensions.put("persistedQuery", persistedQuery);
+        body.put("extensions", extensions);
         Headers headers = account != null ? buildProHeaders(account, account.getCountry()) : buildProHeaders();
         JSONObject jsonObject = queryPro(body.toJSONString(), headers);
         log.info("deleteItems, result:{}", jsonObject);
