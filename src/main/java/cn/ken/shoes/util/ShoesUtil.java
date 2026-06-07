@@ -94,21 +94,9 @@ public class ShoesUtil {
         return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
-    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit) {
-        double earn = getStockxEarn(poisonPrice, stockXPrice);
-        return earn >= minExpectProfit;
-    }
-
     public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit, StockXAccount account) {
         double earn = getStockxEarn(poisonPrice, stockXPrice, account);
         return earn >= minExpectProfit;
-    }
-
-    public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice) {
-        double transferFee = stockXPrice * 0.03;
-        double merchantFee = Math.max(stockXPrice * 0.07, 5.79);
-        double getFromPlatform = (stockXPrice - transferFee - merchantFee) * PriceSwitch.EXCHANGE_RATE;
-        return getFromPlatform - PriceSwitch.FREIGHT - poisonPrice;
     }
 
     public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice, StockXAccount account) {
