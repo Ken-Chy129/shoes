@@ -28,8 +28,6 @@ const TaskExecutorPage = () => {
     const [configForm] = Form.useForm();
     const [kcTaskStatus, setKcTaskStatus] = useState<boolean>(false);
     const [kcPriceDownTaskStatus, setKcPriceDownTaskStatus] = useState<boolean>(false);
-    // const [stockxListingTaskStatus, setStockxListingTaskStatus] = useState<boolean>(false);
-    const [stockxPriceDownTaskStatus, setStockxPriceDownTaskStatus] = useState<boolean>(false);
     const [sortOptions, setSortOptions] = useState<SortOption[]>([]);
 
     // StockX 多账号
@@ -45,8 +43,6 @@ const TaskExecutorPage = () => {
     // 当前任务ID (使用string避免精度丢失)
     const [kcCurrentTaskId, setKcCurrentTaskId] = useState<string | null>(null);
     const [kcPriceDownCurrentTaskId, setKcPriceDownCurrentTaskId] = useState<string | null>(null);
-    const [stockxPriceDownCurrentTaskId, setStockxPriceDownCurrentTaskId] = useState<string | null>(null);
-
     // 任务明细弹窗
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [currentViewTaskId, setCurrentViewTaskId] = useState<string | null>(null);
@@ -64,12 +60,10 @@ const TaskExecutorPage = () => {
     const queryAllTaskStatus = () => {
         queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId);
         queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
-        queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId);
     }
 
     const queryAllTaskInterval = () => {
         queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
-        queryTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval");
     }
 
     const loadStockXAccounts = () => {
@@ -233,37 +227,6 @@ const TaskExecutorPage = () => {
         }
     }
 
-    // ==================== StockX 上架任务 ====================
-
-    // const handleStockxListingTask = () => {
-    //     if (stockxListingTaskStatus) {
-    //         stopTask(TASK_TYPE.STOCKX_LISTING, () => queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus));
-    //     } else {
-    //         startTask(TASK_TYPE.STOCKX_LISTING, () => queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus));
-    //     }
-    // }
-
-    // const handleStockxListingCancel = () => {
-    //     cancelTask(TASK_TYPE.STOCKX_LISTING, () => queryTaskStatus(TASK_TYPE.STOCKX_LISTING, setStockxListingTaskStatus));
-    // }
-
-    // ==================== StockX 压价任务 ====================
-
-    const handleStockxPriceDownStart = () => {
-        startTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId));
-    }
-
-    const handleStockxPriceDownCancel = () => {
-        cancelTask(TASK_TYPE.STOCKX_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.STOCKX_PRICE_DOWN, setStockxPriceDownTaskStatus, setStockxPriceDownCurrentTaskId));
-    }
-
-    const handleViewStockxPriceDownTaskDetail = () => {
-        if (stockxPriceDownCurrentTaskId) {
-            setCurrentViewTaskId(stockxPriceDownCurrentTaskId);
-            setTaskItemModalVisible(true);
-        }
-    }
-
     // ==================== StockX Excel 多账号压价 ====================
 
     const handlePreviewExcel = (accountId: string, inventoryType: string) => {
@@ -382,53 +345,6 @@ const TaskExecutorPage = () => {
                 </Form.Item>
             </Form>
 
-            <Divider/>
-
-            <Form form={taskForm}>
-                {/* 上架任务（暂时注释） */}
-                {/*<div style={{marginBottom: 16}}>*/}
-                {/*    <div style={{fontWeight: "bold", marginBottom: 8}}>上架</div>*/}
-                {/*    <div style={{display: "flex", alignItems: "center"}}>*/}
-                {/*        <Form.Item label={"任务间隔"} name="stockxListingTaskInterval">*/}
-                {/*            <Input/>*/}
-                {/*        </Form.Item>*/}
-                {/*        <Form.Item style={{marginLeft: 30}}>*/}
-                {/*            <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_LISTING, "stockxListingTaskInterval")}>修改配置</Button>*/}
-                {/*        </Form.Item>*/}
-                {/*        <Form.Item style={{marginLeft: 30}}>*/}
-                {/*            <Button type="primary" onClick={handleStockxListingTask}>*/}
-                {/*                {stockxListingTaskStatus ? "暂停上架" : "开启上架"}*/}
-                {/*            </Button>*/}
-                {/*        </Form.Item>*/}
-                {/*        <Form.Item style={{marginLeft: 15}}>*/}
-                {/*            <Button danger onClick={handleStockxListingCancel} disabled={!stockxListingTaskStatus}>取消任务</Button>*/}
-                {/*        </Form.Item>*/}
-                {/*    </div>*/}
-                {/*</div>*/}
-                {/* 压价任务 */}
-                <div>
-                    <div style={{fontWeight: "bold", marginBottom: 8}}>压价</div>
-                    <div style={{display: "flex", alignItems: "center"}}>
-                        <Form.Item label={"任务间隔"} name="stockxPriceDownTaskInterval">
-                            <Input/>
-                        </Form.Item>
-                        <Form.Item style={{marginLeft: 30}}>
-                            <Button onClick={() => updateTaskInterval(TASK_TYPE.STOCKX_PRICE_DOWN, "stockxPriceDownTaskInterval")}>修改配置</Button>
-                        </Form.Item>
-                        <Form.Item style={{marginLeft: 30}}>
-                            <Button type="primary" onClick={handleStockxPriceDownStart} disabled={stockxPriceDownTaskStatus}>开启压价</Button>
-                        </Form.Item>
-                        <Form.Item style={{marginLeft: 15}}>
-                            <Button danger onClick={handleStockxPriceDownCancel} disabled={!stockxPriceDownTaskStatus}>终止任务</Button>
-                        </Form.Item>
-                        {stockxPriceDownTaskStatus && stockxPriceDownCurrentTaskId && (
-                            <Form.Item style={{marginLeft: 15}}>
-                                <Button type="link" onClick={handleViewStockxPriceDownTaskDetail}>查看明细</Button>
-                            </Form.Item>
-                        )}
-                    </div>
-                </div>
-            </Form>
         </Card>
         <br/>
         <Card title={"StockX Excel 压价（多账号）"}>

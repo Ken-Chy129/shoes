@@ -43,11 +43,6 @@ public class StockXController {
         return Result.buildSuccess(stockXClient.queryBrands());
     }
 
-    @GetMapping("querySellingItems")
-    public Result<JSONObject> querySellingItems() {
-        return Result.buildSuccess(stockXClient.querySellingItems(1, "HM9606-400"));
-    }
-
     @GetMapping("refreshBrand")
     public Result<Boolean> refreshBrand() {
         stockXService.refreshBrand();
@@ -73,12 +68,6 @@ public class StockXController {
     @PostMapping("extendAllItems")
     public Result<Void> extendAllItems() {
         Thread.startVirtualThread(() -> stockXService.extendAllItems());
-        return Result.buildSuccess();
-    }
-
-    @PostMapping("delistAllItems")
-    public Result<Void> delistAllItems() {
-        Thread.startVirtualThread(() -> stockXService.delistAllItems());
         return Result.buildSuccess();
     }
 

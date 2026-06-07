@@ -5,7 +5,6 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
-import cn.ken.shoes.config.StockXSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
@@ -165,77 +164,6 @@ public class StockXClient {
         }
     }
 
-    public JSONObject querySellingItems(Integer pageNumber, String query) {
-        JSONObject jsonObject = queryPro(buildItemsSellingQueryRequest(pageNumber, query));
-        if (jsonObject == null) {
-            return null;
-        }
-        JSONObject result = new JSONObject();
-        JSONObject sellerListings = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("sellerListings");
-        JSONObject pageInfo = sellerListings.getJSONObject("pageInfo");
-        result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
-        result.put("endCursor", pageInfo.getString("endCursor"));
-        List<JSONObject> items = new ArrayList<>();
-        result.put("items", items);
-        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
-            JSONObject node = edge.getJSONObject("node");
-            JSONObject productVariant = node.getJSONObject("productVariant");
-            if (productVariant == null) {
-                continue;
-            }
-            JSONObject item = new JSONObject();
-            item.put("id", node.getString("id"));
-            item.put("amount", node.getInteger("amount"));
-            item.put("isExpired", node.getBoolean("isExpired"));
-            item.put("variantId", productVariant.getString("id"));
-            item.put("styleId", productVariant.getJSONObject("product").getString("styleId"));
-            JSONObject product = productVariant.getJSONObject("product");
-            String productName = product.getString("model");
-            item.put("productName", productName);
-            String size = Optional.ofNullable(productVariant.getJSONObject("traits"))
-                    .map(traits -> traits.getString("size"))
-                    .orElse(null);
-            item.put("size", size);
-            // 尝试从 sizeChart 中解析 EU 尺码
-            Optional<String> euSizeFromChart = Optional.ofNullable(productVariant.getJSONObject("sizeChart"))
-                    .map(sc -> sc.getJSONArray("displayOptions"))
-                    .map(arr -> arr.toJavaList(JSONObject.class))
-                    .flatMap(list -> list.stream()
-                            .filter(option -> option.getString("size").startsWith("EU"))
-                            .findFirst()
-                            .map(euOption -> ShoesUtil.getShoesSizeFrom(euOption.getString("size"))));
-            if (euSizeFromChart.isPresent()) {
-                item.put("euSize", euSizeFromChart.get());
-            } else {
-                // 备用方案：从 product 中获取 name，通过品牌和尺码转换得到 euSize
-                if (size != null) {
-                    String primaryCategory = product.getString("primaryCategory");
-                    // 优先从商品名称提取品牌，其次使用 primaryCategory
-                    String brand = BrandUtil.extractStockXBrand(productName);
-                    if (brand == null) {
-                        brand = BrandUtil.extractStockXBrand(primaryCategory);
-                    }
-                    if (brand != null) {
-                        String euSize = SizeConvertUtil.getStockXEuSize(brand, size);
-                        if (euSize != null) {
-                            item.put("euSize", euSize);
-                        }
-                    }
-                }
-            }
-            // 获取 askServiceLevels.standard.lowest.amount
-            Optional.ofNullable(productVariant.getJSONObject("market"))
-                    .map(m -> m.getJSONObject("state"))
-                    .map(s -> s.getJSONObject("askServiceLevels"))
-                    .map(a -> a.getJSONObject("standard"))
-                    .map(st -> st.getJSONObject("lowest"))
-                    .map(l -> l.getInteger("amount"))
-                    .ifPresent(amount -> item.put("lowestAskAmount", amount));
-            items.add(item);
-        }
-        return result;
-    }
-
     public boolean deleteItems(List<String> idList) {
         if (idList.isEmpty()) {
             return false;
@@ -253,28 +181,6 @@ public class StockXClient {
         JSONObject jsonObject = queryPro(body.toJSONString());
         log.info("deleteItems, result:{}", jsonObject);
         return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
-    }
-
-    /**
-     * 更新卖家listing价格
-     * @param id listing的id
-     * @param amount 新价格
-     * @return 更新结果，包含id、status、error等信息
-     */
-    public boolean updateSellerListing(String id, String amount) {
-        JSONObject body = new JSONObject();
-        body.put("operationName", "UpdateSellerListing");
-        JSONObject variables = new JSONObject();
-        variables.put("id", id);
-        variables.put("currency", "USD");
-        variables.put("amount", amount);
-        variables.put("expiresAt", expireTime);
-        variables.put("checkoutTraceId", UUID.randomUUID().toString());
-        body.put("variables", variables);
-        body.put("query", "mutation UpdateSellerListing($id: String!, $currency: CurrencyCode, $amount: String, $active: Boolean, $expiresAt: ISODate, $actionContext: AskActionContext, $matchCandidateId: String, $checkoutTraceId: String) {\n  updateSellerListing(\n    input: {id: $id, currency: $currency, active: $active, amount: $amount, expiresAt: $expiresAt, actionContext: $actionContext, matchCandidateId: $matchCandidateId, checkoutTraceId: $checkoutTraceId}\n  ) {\n    id\n    status\n    createdAt\n    updatedAt\n    error\n    __typename\n  }\n}");
-        JSONObject jsonObject = queryPro(body.toJSONString());
-        log.info("updateSellerListing, id:{}, amount:{}, result:{}", id, amount, jsonObject);
-        return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("updateSellerListing");
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
@@ -727,83 +633,6 @@ public class StockXClient {
         filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
         variables.put("filters", filters);
         variables.put("state", "PENDING");
-        requestJson.put("variables", variables);
-        return requestJson.toJSONString();
-    }
-
-    private String buildItemsSellingQueryRequest(Integer pageNumber, String query) {
-        JSONObject requestJson = new JSONObject();
-        requestJson.put("operationName", "SellerListings");
-        requestJson.put("query", "query SellerListings($query: String, $filters: SellerListingFilters, $sort: SellerListingSortField, $order: AscDescOrderInput, $pageSize: Int, $pageNumber: Int, $currencyCode: CurrencyCode, $country: String!, $market: String!) {\n" +
-                "  viewer {\n" +
-                "    sellerListings(\n" +
-                "      query: $query\n" +
-                "      filters: $filters\n" +
-                "      sort: $sort\n" +
-                "      order: $order\n" +
-                "      pageSize: $pageSize\n" +
-                "      pageNumber: $pageNumber\n" +
-                "    ) {\n" +
-                "      pageInfo {\n" +
-                "        hasNextPage\n" +
-                "        endCursor\n" +
-                "        totalCount\n" +
-                "      }\n" +
-                "      edges {\n" +
-                "        node {\n" +
-                "          id\n" +
-                "          amount\n" +
-                "          isExpired\n" +
-                "          productVariant {\n" +
-                "            id\n" +
-                "            traits {\n" +
-                "              size\n" +
-                "            }\n" +
-                "            sizeChart {\n" +
-                "              displayOptions {\n" +
-                "                size\n" +
-                "              }\n" +
-                "            }\n" +
-                "            market(currencyCode: $currencyCode) {\n" +
-                "              state(country: $country, market: $market) {\n" +
-                "                askServiceLevels {\n" +
-                "                  standard {\n" +
-                "                    lowest {\n" +
-                "                      amount\n" +
-                "                    }\n" +
-                "                  }\n" +
-                "                }\n" +
-                "              }\n" +
-                "            }\n" +
-                "            product {\n" +
-                "              id\n" +
-                "              model\n" +
-                "              urlKey\n" +
-                "              styleId\n" +
-                "              primaryCategory\n" +
-                "            }\n" +
-                "          }\n" +
-                "        }\n" +
-                "      }\n" +
-                "    }\n" +
-                "  }\n" +
-                "}");
-        JSONObject variables = new JSONObject();
-        variables.put("pageSize", 100);
-        variables.put("sort", StockXSwitch.TASK_LISTING_SORT);
-        variables.put("order", StockXSwitch.TASK_LISTING_ORDER);
-        variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
-        variables.put("currencyCode", "USD");
-        variables.put("country", "HK");
-        variables.put("market", "HK");
-        if (StrUtil.isNotBlank(query)) {
-            variables.put("query", query);
-        }
-        JSONObject filters = new JSONObject();
-        filters.put("spreadCurrency", "USD");
-        filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
-        filters.put("listingStatus", Map.of("in", List.of("ACTIVE")));
-        variables.put("filters", filters);
         requestJson.put("variables", variables);
         return requestJson.toJSONString();
     }

@@ -32,24 +32,6 @@ public class TaskSwitch {
     public static Long CURRENT_STOCK_LISTING_TASK_ID = null;
     public static int CURRENT_STOCK_LISTING_ROUND = 0;
 
-    // ==================== StockX压价任务（非Excel，保留原有逻辑） ====================
-    public static boolean CANCEL_STOCK_PRICE_DOWN_TASK = false;
-    public static long STOCK_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
-    public static Long CURRENT_STOCK_PRICE_DOWN_TASK_ID = null;
-    public static int CURRENT_STOCK_PRICE_DOWN_ROUND = 0;
-
-    // ==================== StockX现货压价任务（保留，供旧Runner使用） ====================
-    public static boolean CANCEL_STOCK_STANDARD_PRICE_DOWN_TASK = false;
-    public static long STOCK_STANDARD_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
-    public static Long CURRENT_STOCK_STANDARD_PRICE_DOWN_TASK_ID = null;
-    public static int CURRENT_STOCK_STANDARD_PRICE_DOWN_ROUND = 0;
-
-    // ==================== StockX寄存压价任务（保留，供旧Runner使用） ====================
-    public static boolean CANCEL_STOCK_CUSTODIAL_PRICE_DOWN_TASK = false;
-    public static long STOCK_CUSTODIAL_PRICE_DOWN_TASK_INTERVAL = 30 * 60 * 1000;
-    public static Long CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_TASK_ID = null;
-    public static int CURRENT_STOCK_CUSTODIAL_PRICE_DOWN_ROUND = 0;
-
     // ==================== StockX Excel 多账号压价任务（动态Map） ====================
     private static final ConcurrentHashMap<String, Boolean> EXCEL_CANCEL_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Long> EXCEL_TASK_ID_MAP = new ConcurrentHashMap<>();

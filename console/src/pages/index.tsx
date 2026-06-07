@@ -7,8 +7,6 @@ const SettingPage = () => {
     const [poisonForm] = Form.useForm();
     const [kcForm] = Form.useForm();
     const [kcTokenForm] = Form.useForm();
-    const [stockxForm] = Form.useForm();
-
     // StockX 多账号
     const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
     const [accountModalVisible, setAccountModalVisible] = useState(false);
@@ -26,13 +24,6 @@ const SettingPage = () => {
                 kcForm.setFieldsValue(res.data);
             }
         });
-        doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
-            onSuccess: res => {
-                stockxForm.setFieldsValue(res.data);
-            }
-        });
-        queryToken();
-        queryStockxSetting();
         queryKcToken();
         loadAccounts();
     }, []);
@@ -61,78 +52,6 @@ const SettingPage = () => {
         doPostRequest(SETTING_API.KC, {exchangeRate, freight, kcGetRate, kcServiceFee}, {
             onSuccess: _ => {
                 message.success("修改成功").then(_ => {});
-            }
-        })
-    }
-
-    const authorize = () => {
-        doGetRequest(SETTING_API.AUTHORIZE_URL, {}, {
-            onSuccess: res => {
-                window.open(res.data, '_blank');
-            }
-        })
-    }
-
-    const initToken = () => {
-        doPostRequest(SETTING_API.INIT_TOKEN, {}, {
-            onSuccess: _ => {
-                message.success("初始化成功").then(_ => {});
-                doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
-                    onSuccess: res => {
-                        stockxForm.setFieldsValue(res.data);
-                    }
-                });
-            }
-        })
-    }
-
-    const refreshToken = () => {
-        doPostRequest(SETTING_API.REFRESH_TOKEN, {}, {
-            onSuccess: _ => {
-                message.success("刷新成功").then(_ => {});
-                doGetRequest(SETTING_API.QUERY_STOCKX_CONFIG, {}, {
-                    onSuccess: res => {
-                        stockxForm.setFieldsValue(res.data);
-                    }
-                });
-            }
-        })
-    }
-
-    const queryToken = () => {
-        doGetRequest(SETTING_API.QUERY_TOKEN, {}, {
-            onSuccess: res => {
-                stockxForm.setFieldValue("accessToken", res.data);
-            }
-        })
-    }
-
-    const updateToken = () => {
-        const accessToken = stockxForm.getFieldValue("accessToken");
-        doPostRequest(SETTING_API.UPDATE_TOKEN, {accessToken}, {
-            onSuccess: _ => {
-                message.success("刷新成功").then(_ => {});
-                queryToken();
-            }
-        })
-    }
-
-    const queryStockxSetting = () => {
-        doGetRequest(SETTING_API.STOCKX, {}, {
-            onSuccess: res => {
-                stockxForm.setFieldValue("sortType", res.data.sortType);
-                stockxForm.setFieldValue("priceType", res.data.priceType);
-            }
-        })
-    }
-
-    const updateStockxSetting = () => {
-        const sortType = stockxForm.getFieldValue("sortType");
-        const priceType = stockxForm.getFieldValue("priceType");
-        doPostRequest(SETTING_API.STOCKX, {sortType, priceType}, {
-            onSuccess: _ => {
-                message.success("刷新成功").then(_ => {});
-                queryStockxSetting();
             }
         })
     }
@@ -211,8 +130,6 @@ const SettingPage = () => {
             onSuccess: () => loadAccounts()
         });
     }
-
-    const maskStr = (s: string) => s ? s.substring(0, 10) + '...' : '';
 
     const accountColumns = [
         {title: '账号名', dataIndex: 'name', key: 'name', width: 100},
@@ -408,71 +325,6 @@ const SettingPage = () => {
             </Form>
         </Modal>
 
-        <br/>
-        <Card title={"StockX 通用配置"}>
-            <Form form={stockxForm}
-                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div style={{display: "flex"}}>
-                    <Form.Item name="accessToken" label="默认令牌（旧压价用）">
-                        <Input/>
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 50}}>
-                        <Button type="primary" htmlType="submit" onClick={updateToken}>
-                            手动重置令牌
-                        </Button>
-                    </Form.Item>
-                </div>
-            </Form>
-            <Form form={stockxForm}
-                  style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-                <div style={{display: "flex"}}>
-                    <Form.Item name="sortType" label="排序方式">
-                        <Select
-                            style={{width: 160}}
-                            placeholder="请选择字段"
-                            allowClear
-                            optionFilterProp="label"
-                            options={
-                                [
-                                    {label: '精选', value: "featured"},
-                                    {label: '最受欢迎', value: "most-active"},
-                                    {label: '新最低报价', value: "recent_asks"},
-                                    {label: '新最高出价', value: "recent_bids"},
-                                    {label: '平均成交价', value: "average_deadstock_price"},
-                                    {label: '总销量', value: "deadstock_sold"},
-                                    {label: '价格波动性', value: "volatility"},
-                                    {label: '溢价', value: "price_premium"},
-                                    {label: '最新售价', value: "last_sale"},
-                                    {label: '最低报价', value: "lowest_ask"},
-                                    {label: '最高出价', value: "highest_bid"},
-                                    {label: '发布日期', value: "release_date"},
-                                ]
-                            }
-                        />
-                    </Form.Item>
-                    <Form.Item name="priceType" style={{marginLeft: 50}} label="价格类型">
-                        <Select
-                            style={{width: 160}}
-                            placeholder="请选择字段"
-                            allowClear
-                            optionFilterProp="label"
-                            options={
-                                [
-                                    {label: '更快售出', value: "sellFaster"},
-                                    {label: '挣得更多', value: "earnMore"},
-                                    {label: '立即售出', value: "sellNow"}
-                                ]
-                            }
-                        />
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 50}}>
-                        <Button type="primary" htmlType="submit" onClick={updateStockxSetting}>
-                            更新配置
-                        </Button>
-                    </Form.Item>
-                </div>
-            </Form>
-        </Card>
     </>
 }
 
