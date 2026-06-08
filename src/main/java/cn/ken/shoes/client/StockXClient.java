@@ -712,31 +712,35 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
 
-        JSONObject jsonObject = queryPro(requestJson.toJSONString(), headers, accountName);
-        if (jsonObject == null) {
+        int maxRetries = 3;
+        JSONObject sellerListings = null;
+        for (int retry = 0; retry <= maxRetries; retry++) {
+            JSONObject jsonObject = queryPro(requestJson.toJSONString(), headers, accountName);
+            if (jsonObject == null) {
+                return null;
+            }
+            if ("Unauthorized".equals(jsonObject.getString("message"))) {
+                log.error("querySellingItemsByInventoryType|Token已过期或无效，请更新Token");
+                JSONObject errorResult = new JSONObject();
+                errorResult.put("_unauthorized", true);
+                return errorResult;
+            }
+            JSONObject data = jsonObject.getJSONObject("data");
+            JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+            sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
+            if (sellerListings != null) {
+                break;
+            }
+            boolean hasConnReset = jsonObject.containsKey("errors") && jsonObject.toJSONString().contains("ECONNRESET");
+            if (hasConnReset && retry < maxRetries) {
+                log.warn("querySellingItemsByInventoryType ECONNRESET, retry {}/{}, page:{}", retry + 1, maxRetries, pageNumber);
+                try { Thread.sleep(3000L * (retry + 1)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
+                continue;
+            }
+            log.error("querySellingItemsByInventoryType response invalid, page:{}, response:{}", pageNumber, jsonObject.toJSONString());
             return null;
         }
-
-        // 检查返回结构
-        if ("Unauthorized".equals(jsonObject.getString("message"))) {
-            log.error("querySellingItemsByInventoryType|Token已过期或无效，请更新Token");
-            JSONObject errorResult = new JSONObject();
-            errorResult.put("_unauthorized", true);
-            return errorResult;
-        }
-        JSONObject data = jsonObject.getJSONObject("data");
-        if (data == null) {
-            log.error("querySellingItemsByInventoryType response has no data field, response:{}", jsonObject.toJSONString());
-            return null;
-        }
-        JSONObject viewer = data.getJSONObject("viewer");
-        if (viewer == null) {
-            log.error("querySellingItemsByInventoryType response has no viewer field, response:{}", jsonObject.toJSONString());
-            return null;
-        }
-        JSONObject sellerListings = viewer.getJSONObject("sellerListings");
         if (sellerListings == null) {
-            log.error("querySellingItemsByInventoryType response has no sellerListings field, response:{}", jsonObject.toJSONString());
             return null;
         }
 
