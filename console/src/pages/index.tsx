@@ -1,4 +1,4 @@
-import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Switch, Table} from "antd";
+import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table} from "antd";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
@@ -12,6 +12,7 @@ const SettingPage = () => {
     const [accountModalVisible, setAccountModalVisible] = useState(false);
     const [editingAccount, setEditingAccount] = useState<any>(null);
     const [accountForm] = Form.useForm();
+    const [accountStep, setAccountStep] = useState(0);
 
     useEffect(() => {
         doGetRequest(SETTING_API.POISON, {}, {
@@ -85,12 +86,14 @@ const SettingPage = () => {
     const handleAddAccount = () => {
         setEditingAccount(null);
         accountForm.resetFields();
+        setAccountStep(0);
         setAccountModalVisible(true);
     }
 
     const handleEditAccount = (record: any) => {
         setEditingAccount(record);
         accountForm.setFieldsValue(record);
+        setAccountStep(0);
         setAccountModalVisible(true);
     }
 
@@ -283,50 +286,80 @@ const SettingPage = () => {
         </Card>
 
         <Modal title={editingAccount ? '编辑账号' : '添加账号'} open={accountModalVisible}
-               onOk={handleAccountSubmit} onCancel={() => setAccountModalVisible(false)}>
+               onCancel={() => setAccountModalVisible(false)} width={560}
+               footer={[
+                   accountStep > 0 && <Button key="prev" onClick={() => setAccountStep(s => s - 1)}>上一步</Button>,
+                   accountStep < 2 && <Button key="next" type="primary" onClick={() => {
+                       const fields = accountStep === 0
+                           ? ['name', 'country', 'apiKey', 'authorization', 'enabled']
+                           : ['transferFeeRate', 'merchantFeeRate', 'minMerchantFee', 'platformShippingFee', 'freight', 'minProfit'];
+                       accountForm.validateFields(fields).then(() => setAccountStep(s => s + 1));
+                   }}>下一步</Button>,
+                   accountStep === 2 && <Button key="submit" type="primary" onClick={handleAccountSubmit}>提交</Button>,
+               ]}>
+            <Steps current={accountStep} size="small" style={{marginBottom: 24}}
+                   items={[{title: '基本信息'}, {title: '费率配置'}, {title: '限流配置'}]}/>
             <Form form={accountForm} layout="vertical">
-                <Form.Item name="name" label="账号名" rules={[{required: true}]}
-                           extra="唯一标识，不可重复">
-                    <Input disabled={!!editingAccount}/>
-                </Form.Item>
-                <Form.Item name="country" label="区域" rules={[{required: true}]} initialValue="US">
-                    <Select>
-                        <Select.Option value="US">美区 (US)</Select.Option>
-                        <Select.Option value="HK">港区 (HK)</Select.Option>
-                    </Select>
-                </Form.Item>
-                <Form.Item name="apiKey" label="API Key" rules={[{required: true}]}>
-                    <Input.TextArea rows={2}/>
-                </Form.Item>
-                <Form.Item name="authorization" label="Authorization (Bearer token)" rules={[{required: true}]}>
-                    <Input.TextArea rows={3}/>
-                </Form.Item>
-                <Form.Item name="transferFeeRate" label="转账手续费比例" initialValue={0.03}
-                           extra="设为0表示免手续费">
-                    <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="merchantFeeRate" label="商家手续费比例" initialValue={0.07}
-                           extra="设为0表示免手续费">
-                    <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="minMerchantFee" label="最低商家手续费($)" initialValue={5.79}
-                           extra="商家手续费不低于此值；设为0表示免商家手续费">
-                    <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="platformShippingFee" label="平台运费($)" rules={[{required: true}]}
-                           extra="StockX平台收取的运费(USD)">
-                    <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="freight" label="人民币运费(¥)" initialValue={25}>
-                    <InputNumber min={0} step={1} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="minProfit" label="最小利润(¥)" initialValue={-30}
-                           extra="低于此利润的商品会被加价$100">
-                    <InputNumber step={1} style={{width: '100%'}}/>
-                </Form.Item>
-                <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
-                    <Switch/>
-                </Form.Item>
+                <div style={{display: accountStep === 0 ? 'block' : 'none'}}>
+                    <Form.Item name="name" label="账号名" rules={[{required: true}]}
+                               extra="唯一标识，不可重复">
+                        <Input disabled={!!editingAccount}/>
+                    </Form.Item>
+                    <Form.Item name="country" label="区域" rules={[{required: true}]} initialValue="US">
+                        <Select>
+                            <Select.Option value="US">美区 (US)</Select.Option>
+                            <Select.Option value="HK">港区 (HK)</Select.Option>
+                        </Select>
+                    </Form.Item>
+                    <Form.Item name="apiKey" label="API Key" rules={[{required: true}]}>
+                        <Input.TextArea rows={2}/>
+                    </Form.Item>
+                    <Form.Item name="authorization" label="Authorization (Bearer token)" rules={[{required: true}]}>
+                        <Input.TextArea rows={3}/>
+                    </Form.Item>
+                    <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
+                        <Switch/>
+                    </Form.Item>
+                </div>
+                <div style={{display: accountStep === 1 ? 'block' : 'none'}}>
+                    <Form.Item name="transferFeeRate" label="转账手续费比例" initialValue={0.03}
+                               extra="设为0表示免手续费">
+                        <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="merchantFeeRate" label="商家手续费比例" initialValue={0.07}
+                               extra="设为0表示免手续费">
+                        <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="minMerchantFee" label="最低商家手续费($)" initialValue={5.79}
+                               extra="商家手续费不低于此值；设为0表示免商家手续费">
+                        <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="platformShippingFee" label="平台运费($)" rules={[{required: true}]}
+                               extra="StockX平台收取的运费(USD)">
+                        <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="freight" label="人民币运费(¥)" initialValue={25}>
+                        <InputNumber min={0} step={1} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="minProfit" label="最小利润(¥)" initialValue={-30}
+                               extra="低于此利润的商品会被加价$100">
+                        <InputNumber step={1} style={{width: '100%'}}/>
+                    </Form.Item>
+                </div>
+                <div style={{display: accountStep === 2 ? 'block' : 'none'}}>
+                    <Form.Item name="graphqlQps" label="GraphQL QPS" initialValue={1}
+                               extra="GraphQL接口每秒请求数（搜索、查在售等）">
+                        <InputNumber min={0.1} max={10} step={0.1} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="apiQps" label="REST API QPS" initialValue={1}
+                               extra="官方REST API每秒请求数（批量压价、查状态等）">
+                        <InputNumber min={0.1} max={10} step={0.1} style={{width: '100%'}}/>
+                    </Form.Item>
+                    <Form.Item name="batchItemLimit" label="Batch Items上限 / 5分钟" initialValue={500}
+                               extra="5分钟内批量提交的最大商品条数">
+                        <InputNumber min={10} max={5000} step={10} style={{width: '100%'}}/>
+                    </Form.Item>
+                </div>
             </Form>
         </Modal>
 

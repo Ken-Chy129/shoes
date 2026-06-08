@@ -27,6 +27,12 @@ public class StockXAccount {
 
     private int minProfit = -30;
 
+    private double graphqlQps = 1;
+
+    private double apiQps = 1;
+
+    private int batchItemLimit = 500;
+
     private long standardInterval = 1800;
 
     private long custodialInterval = 1800;
