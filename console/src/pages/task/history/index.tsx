@@ -130,13 +130,18 @@ const TaskHistoryPage = () => {
             render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
+                    '运行中': {text: '运行中', color: 'blue'},
                     'success': {text: '执行成功', color: 'green'},
+                    '执行成功': {text: '执行成功', color: 'green'},
                     'failed': {text: '执行失败', color: 'red'},
+                    '执行失败': {text: '执行失败', color: 'red'},
                     'cancel': {text: '已取消', color: 'gray'},
+                    '已取消': {text: '已取消', color: 'gray'},
+                    '已搁置': {text: '已搁置', color: 'orange'},
                 };
                 const statusInfo = statusMap[status] || {text: status, color: 'default'};
                 const node = <span style={{color: statusInfo.color}}>{statusInfo.text}</span>;
-                if (status === 'failed' && record.failReason) {
+                if (record.failReason) {
                     return <Tooltip title={record.failReason}>{node}</Tooltip>;
                 }
                 return node;
