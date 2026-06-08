@@ -70,7 +70,7 @@ public class LimiterHelper {
         if (accountName != null) {
             StockXAccount account = StockXConfig.getAccount(accountName);
             double qps = account != null ? account.getGraphqlQps() : 1;
-            STOCKX_GRAPHQL_LIMITERS.computeIfAbsent(accountName, k -> RateLimiter.create(qps)).acquire();
+            getOrUpdateLimiter(STOCKX_GRAPHQL_LIMITERS, accountName, qps).acquire();
         } else {
             STOCKX_GLOBAL_GRAPHQL_LIMITER.acquire();
         }
@@ -80,10 +80,21 @@ public class LimiterHelper {
         if (accountName != null) {
             StockXAccount account = StockXConfig.getAccount(accountName);
             double qps = account != null ? account.getApiQps() : 1;
-            STOCKX_API_LIMITERS.computeIfAbsent(accountName, k -> RateLimiter.create(qps)).acquire();
+            getOrUpdateLimiter(STOCKX_API_LIMITERS, accountName, qps).acquire();
         } else {
             STOCKX_GLOBAL_API_LIMITER.acquire();
         }
+    }
+
+    private static RateLimiter getOrUpdateLimiter(ConcurrentHashMap<String, RateLimiter> map, String key, double qps) {
+        RateLimiter limiter = map.get(key);
+        if (limiter == null) {
+            limiter = RateLimiter.create(qps);
+            map.put(key, limiter);
+        } else if (limiter.getRate() != qps) {
+            limiter.setRate(qps);
+        }
+        return limiter;
     }
 
     public static void limitStockxBatch(String accountName, int itemCount) {
