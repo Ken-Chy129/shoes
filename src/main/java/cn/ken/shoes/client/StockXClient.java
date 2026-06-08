@@ -821,6 +821,8 @@ public class StockXClient {
      * V2 API 批量更新 listing 价格
      */
     public String batchUpdateListings(List<Map<String, String>> items) {
+        LimiterHelper.limitStockxBatch(null, items.size());
+        LimiterHelper.limitStockxApi(null);
         JSONObject body = new JSONObject();
         body.put("items", items);
         String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders());
@@ -933,6 +935,7 @@ public class StockXClient {
     }
 
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
+        LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxApi(account.getName());
         JSONObject body = new JSONObject();
         body.put("items", items);
