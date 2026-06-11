@@ -68,7 +68,19 @@ public class HttpUtil {
             try (Response response = getClient(useProxy).newCall(request).execute()) {
                 responseBody = response.body();
                 if (responseBody != null) {
-                    return responseBody.string();
+                    String bodyStr = responseBody.string();
+                    if (!response.isSuccessful()) {
+                        log.warn("{} 响应异常, url:{}, httpCode:{}, bodyLen:{}, contentType:{}, headers:{}",
+                                method, request.url(), response.code(), bodyStr.length(),
+                                response.header("Content-Type"), response.headers());
+                        if (response.code() == 403 || response.code() == 429) {
+                            if (attempt < MAX_RETRIES) {
+                                log.warn("{} {}被拦截, 第{}次重试", method, response.code(), attempt + 1);
+                                continue;
+                            }
+                        }
+                    }
+                    return bodyStr;
                 }
             } catch (SocketTimeoutException e) {
                 if (attempt < MAX_RETRIES) {
