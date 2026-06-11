@@ -22,6 +22,8 @@ public class HttpUtil {
 
     private static final Random RANDOM = new Random();
 
+    private static final String STOCKX_DEVICE_ID = UUID.randomUUID().toString();
+
     /**
      * 代理请求限流器，每秒5次
      */
@@ -207,6 +209,10 @@ public class HttpUtil {
             log.error("buildUrlParams error, params:{}, error:{}", JSON.toJSONString(params), e.getMessage());
         }
         return queryStringBuilder.toString();
+    }
+
+    public static String getStockXDeviceId() {
+        return STOCKX_DEVICE_ID;
     }
 
     public static String getRandomUserAgent() {
