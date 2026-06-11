@@ -999,6 +999,45 @@ public class StockXClient {
         return batchId;
     }
 
+    public boolean batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
+        LimiterHelper.limitStockxGraphql(account.getName());
+        JSONObject requestJson = new JSONObject(true);
+        requestJson.put("operationName", "BulkUpdateListings");
+        JSONObject variables = new JSONObject(true);
+        List<JSONObject> graphqlItems = new ArrayList<>();
+        for (Map<String, String> item : items) {
+            JSONObject gi = new JSONObject(true);
+            gi.put("id", item.get("listingId"));
+            gi.put("amount", item.get("amount"));
+            gi.put("expiresAt", expireTime);
+            gi.put("currency", "USD");
+            gi.put("checkoutTraceId", UUID.randomUUID().toString());
+            gi.put("actionContext", "ASK");
+            graphqlItems.add(gi);
+        }
+        variables.put("items", graphqlItems);
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "9b512eb2b0884486754955fca273c6410f9ca690f3e9b04c509bb4f1efe26f45");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+
+        JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        if (result == null) {
+            log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
+            return false;
+        }
+        if (result.containsKey("data")) {
+            log.info("batchUpdateListingsGraphql[{}] success, totalItems:{}", account.getName(), items.size());
+            return true;
+        }
+        log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, response:{}", account.getName(), items.size(),
+                result.toJSONString().substring(0, Math.min(300, result.toJSONString().length())));
+        return false;
+    }
+
     public JSONObject queryBatchUpdateStatus(String batchId, StockXAccount account) {
         LimiterHelper.limitStockxApi(account.getName());
         String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);

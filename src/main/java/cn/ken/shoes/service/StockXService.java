@@ -385,9 +385,8 @@ public class StockXService {
                 for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
                     if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
                     List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
-                    String batchId = stockXClient.batchUpdateListings(subBatch, account);
-                    if (batchId != null) {
-                        waitForBatchComplete(batchId, account);
+                    boolean success = stockXClient.batchUpdateListingsGraphql(subBatch, account);
+                    if (success) {
                         for (Map<String, String> item : subBatch) {
                             Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
                             if (info != null) {
