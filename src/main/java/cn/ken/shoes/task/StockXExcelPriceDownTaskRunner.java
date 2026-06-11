@@ -62,8 +62,8 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     }
                     log.error("[{}]{}压价任务执行异常: {}", account.getName(), inventoryType, e.getMessage(), e);
                     if (taskId != null) {
-                        String reason = e.getMessage();
-                        if (reason != null && reason.length() > 200) {
+                        String reason = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                        if (reason.length() > 200) {
                             reason = reason.substring(0, 200);
                         }
                         taskMapper.updateTaskFailed(taskId, reason);

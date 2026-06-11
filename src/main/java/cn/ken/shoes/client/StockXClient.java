@@ -880,6 +880,11 @@ public class StockXClient {
             log.error("queryPro response非JSON, response:{}", rawResult.substring(0, Math.min(200, rawResult.length())));
             return null;
         }
+        if (jsonObject == null) {
+            log.error("queryPro 响应体为空或解析为null, account:{}, rawLen:{}, raw:[{}]", accountName, rawResult.length(),
+                    rawResult.substring(0, Math.min(500, rawResult.length())));
+            return null;
+        }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {
             log.error("queryPro|Token已过期或无效，请更新Token");
             return jsonObject;
