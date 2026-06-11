@@ -627,15 +627,23 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "accept", "application/json",
+                "accept-language", "zh-CN",
                 "authorization", account.getAuthorization().strip(),
                 "apollographql-client-name", "Iron",
-                "apollographql-client-version", "2026.05.03.00",
+                "apollographql-client-version", "2026.06.11.00",
                 "app-platform", "Iron",
-                "app-version", "2026.05.03.00",
+                "app-version", "2026.06.11.00",
                 "selected-country", country,
                 "origin", "https://stockx.com",
                 "referer", "https://stockx.com/",
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+                "sec-ch-ua", "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+                "sec-ch-ua-mobile", "?0",
+                "sec-ch-ua-platform", "\"Windows\"",
+                "sec-fetch-dest", "empty",
+                "sec-fetch-mode", "cors",
+                "sec-fetch-site", "same-site",
+                "x-stockx-device-id", HttpUtil.getStockXDeviceId()
         );
     }
 
@@ -643,15 +651,23 @@ public class StockXClient {
         return Headers.of(
                 "Content-Type", "application/json",
                 "accept", "application/json",
+                "accept-language", "zh-CN",
                 "authorization", getAuthorization(),
                 "apollographql-client-name", "Iron",
-                "apollographql-client-version", "2026.05.03.00",
+                "apollographql-client-version", "2026.06.11.00",
                 "app-platform", "Iron",
-                "app-version", "2026.05.03.00",
+                "app-version", "2026.06.11.00",
                 "selected-country", "HK",
                 "origin", "https://stockx.com",
                 "referer", "https://stockx.com/",
-                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36 Edg/146.0.0.0"
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+                "sec-ch-ua", "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+                "sec-ch-ua-mobile", "?0",
+                "sec-ch-ua-platform", "\"Windows\"",
+                "sec-fetch-dest", "empty",
+                "sec-fetch-mode", "cors",
+                "sec-fetch-site", "same-site",
+                "x-stockx-device-id", HttpUtil.getStockXDeviceId()
         );
     }
 
@@ -903,12 +919,21 @@ public class StockXClient {
     private Headers buildViperHeaders() {
         return Headers.of(
                 "Content-Type", "application/json",
+                "accept", "*/*",
+                "accept-language", "zh-CN",
                 "authorization", getAuthorization(),
                 "apollographql-client-name", "Viper",
-                "apollographql-client-version", "2026.05.05.00",
-                "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+                "apollographql-client-version", "2026.06.11.00",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
                 "origin", "https://pro.stockx.com",
-                "referer", "https://pro.stockx.com/"
+                "referer", "https://pro.stockx.com/",
+                "sec-ch-ua", "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+                "sec-ch-ua-mobile", "?0",
+                "sec-ch-ua-platform", "\"Windows\"",
+                "sec-fetch-dest", "empty",
+                "sec-fetch-mode", "cors",
+                "sec-fetch-site", "same-site",
+                "x-stockx-device-id", HttpUtil.getStockXDeviceId()
         );
     }
 
@@ -925,12 +950,21 @@ public class StockXClient {
     private Headers buildViperHeaders(StockXAccount account) {
         return Headers.of(
                 "Content-Type", "application/json",
+                "accept", "*/*",
+                "accept-language", "zh-CN",
                 "authorization", account.getAuthorization().strip(),
                 "apollographql-client-name", "Viper",
-                "apollographql-client-version", "2026.05.05.00",
-                "User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36",
+                "apollographql-client-version", "2026.06.11.00",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
                 "origin", "https://pro.stockx.com",
-                "referer", "https://pro.stockx.com/"
+                "referer", "https://pro.stockx.com/",
+                "sec-ch-ua", "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+                "sec-ch-ua-mobile", "?0",
+                "sec-ch-ua-platform", "\"Windows\"",
+                "sec-fetch-dest", "empty",
+                "sec-fetch-mode", "cors",
+                "sec-fetch-site", "same-site",
+                "x-stockx-device-id", HttpUtil.getStockXDeviceId()
         );
     }
 
