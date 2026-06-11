@@ -63,7 +63,7 @@ public class StockXClient {
         if (jsonObject == null) {
             return null;
         }
-        JSONObject result = new JSONObject();
+        JSONObject result = new JSONObject(true);
         List<StockXOrderExcel> orders = new ArrayList<>();
         JSONObject ask = jsonObject.getJSONObject("data").getJSONObject("viewer").getJSONObject("asks");
         JSONObject pageInfo = ask.getJSONObject("pageInfo");
@@ -100,7 +100,7 @@ public class StockXClient {
         if (jsonObject == null) {
             return null;
         }
-        JSONObject result = new JSONObject();
+        JSONObject result = new JSONObject(true);
         if (jsonObject.getJSONObject("data") == null || jsonObject.getJSONObject("data").getJSONObject("viewer") == null) {
             log.error("queryToDeal error, {}", jsonObject);
             return null;
@@ -126,9 +126,9 @@ public class StockXClient {
     }
 
     public void extendItem(String chainId, String orderId) {
-        JSONObject body = new JSONObject();
+        JSONObject body = new JSONObject(true);
         body.put("operationName", "ExtendShipDate");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         body.put("variables", variables);
         variables.put("chainId", chainId);
         variables.put("orderId", orderId);
@@ -141,9 +141,9 @@ public class StockXClient {
         if (CollectionUtils.isEmpty(itemList)) {
             return;
         }
-        JSONObject body = new JSONObject();
+        JSONObject body = new JSONObject(true);
         body.put("operationName", "CreateBatchListings");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         body.put("variables", variables);
         List<Map<String, Object>> data = new ArrayList<>();
         variables.put("items", data);
@@ -161,8 +161,8 @@ public class StockXClient {
                     "actionContext", "ASK"
             ));
         }
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
         extensions.put("persistedQuery", persistedQuery);
@@ -185,17 +185,17 @@ public class StockXClient {
         if (idList.isEmpty()) {
             return false;
         }
-        JSONObject body = new JSONObject();
+        JSONObject body = new JSONObject(true);
         body.put("operationName", "BulkDeleteSellerListings");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         List<Map<String, String>> input = new ArrayList<>();
         for (String id : idList) {
             input.add(Map.of("id", id));
         }
         variables.put("input", input);
         body.put("variables", variables);
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "c6e5f5ce76a05d8877c3f61c5e98678c31855ee46276011e9b8f047eefdad036");
         extensions.put("persistedQuery", persistedQuery);
@@ -267,7 +267,7 @@ public class StockXClient {
             map.put("expiresAt", expireTime);
             toCreate.add(map);
         }
-        JSONObject jsonObject = new JSONObject();
+        JSONObject jsonObject = new JSONObject(true);
         jsonObject.put("items", toCreate);
         String rawResult = HttpUtil.doPost(StockXConfig.CREATE_LISTING, jsonObject.toJSONString(), buildHeaders());
         if (rawResult == null) {
@@ -476,9 +476,9 @@ public class StockXClient {
     }
 
     private String buildItemSearchRequest(String query, Integer index, String sort, String country) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "getDiscoveryData");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("country", country);
         variables.put("currency", "USD");
         variables.put("flow", "SEARCH_RESULTS");
@@ -489,8 +489,8 @@ public class StockXClient {
         variables.put("query", query);
         variables.put("sort", Map.of("id", sort));
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "a425201c8e4ccc83ecad211836645be32d6306ad42894b34f2a4b15de3408d20");
         extensions.put("persistedQuery", persistedQuery);
@@ -499,14 +499,14 @@ public class StockXClient {
     }
 
     private String buildGetProductRequest(String urlKey) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "GetProduct");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("id", urlKey);
         variables.put("skipBreadcrumbs", true);
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "9e0faa98b5745bd79ef47e2479239514b41084c29a86d3f6dacce68543281914");
         extensions.put("persistedQuery", persistedQuery);
@@ -515,16 +515,16 @@ public class StockXClient {
     }
 
     private String buildGetMarketDataRequest(String urlKey, String country) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "GetMarketData");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("id", urlKey);
         variables.put("currencyCode", "USD");
         variables.put("marketName", country);
         variables.put("viewerContext", "BUYER");
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "589955a4e8c0e714c09999d857089ebc54569d0fe216e5e8538cade33572eb16");
         extensions.put("persistedQuery", persistedQuery);
@@ -533,10 +533,10 @@ public class StockXClient {
     }
 
     private String buildBrandQueryRequest(String brand, Integer index, Integer limit) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "getDiscoveryData");
         requestJson.put("query", "fragment FiltersFragment on BrowseFilter {\n  id\n  name\n  type\n  ... on BrowseFilterTree {\n    isCollapsed\n    multiSelectEnabled\n    options {\n      id\n      name\n      count\n      selected\n      children\n      level\n      value\n    }\n  }\n  ... on BrowseFilterList {\n    isCollapsed\n    multiSelectEnabled\n    listFilterStyle: style\n    options {\n      id\n      name\n      count\n      selected\n      value\n    }\n  }\n  ... on BrowseFilterBoolean {\n    id\n    name\n    type\n    selected\n    booleanFilterStyle: style\n  }\n  ... on BrowseFilterRange {\n    id\n    isCollapsed\n    name\n    type\n    minimum {\n      value\n    }\n    maximum {\n      value\n    }\n  }\n  ... on BrowseFilterColor {\n    id\n    isCollapsed\n    name\n    type\n    options {\n      name\n      value\n      count\n      selected\n      swatchColor\n      borderColor\n    }\n  }\n}\n\nquery getDiscoveryData($country: String!, $currency: CurrencyCode, $filters: [BrowseFilterInput], $flow: BrowseFlow, $market: String, $query: String, $sort: BrowseSortInput, $page: BrowsePageInput, $enableOpenSearch: Boolean) {\n  browse(\n    filters: $filters\n    flow: $flow\n    sort: $sort\n    page: $page\n    market: $market\n    query: $query\n    experiments: {ads: {enabled: true}, dynamicFilter: {enabled: true}, dynamicFilterDefinitions: {enabled: true}, multiselect: {enabled: true}, openSearch: {enabled: $enableOpenSearch}}\n  ) {\n    filtersConfig {\n      quick {\n        ...FiltersFragment\n      }\n      advanced {\n        ...FiltersFragment\n      }\n    }\n    results {\n      edges {\n        isAd\n        adIdentifier\n        adServiceLevel\n        adInventoryId\n        objectId\n        node {\n          __typename\n          ... on Variant {\n            id\n            favorite\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            product {\n              id\n              name\n              urlKey\n              title\n              brand\n              gender\n              description\n              model\n              condition\n              productCategory\n              browseVerticals\n              listingType\n              media {\n                thumbUrl\n                smallImageUrl\n              }\n              traits(filterTypes: [RELEASE_DATE]) {\n                name\n                value\n              }\n            }\n            sizeChart {\n              baseSize\n              baseType\n              displayOptions {\n                size\n                type\n              }\n            }\n          }\n          ... on Product {\n            id\n            name\n            urlKey\n            title\n            brand\n            description\n            model\n            condition\n            productCategory\n            browseVerticals\n            listingType\n            favorite\n            media {\n              thumbUrl\n              smallImageUrl\n            }\n            traits(filterTypes: [RELEASE_DATE]) {\n              name\n              value\n            }\n            market(currencyCode: $currency) {\n              state(country: $country, market: $market) {\n                highestBid {\n                  amount\n                  updatedAt\n                }\n                lowestAsk {\n                  amount\n                  updatedAt\n                }\n                askServiceLevels {\n                  expressExpedited {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                  expressStandard {\n                    count\n                    lowest {\n                      amount\n                    }\n                  }\n                }\n              }\n              statistics(market: $market) {\n                annual {\n                  averagePrice\n                  volatility\n                  salesCount\n                  pricePremium\n                }\n                last72Hours {\n                  salesCount\n                }\n                lastSale {\n                  amount\n                }\n              }\n            }\n            variants {\n              id\n            }\n          }\n        }\n      }\n      pageInfo {\n        limit\n        page\n        pageCount\n        queryId\n        queryIndex\n        total\n      }\n    }\n    seo {\n      title\n      blurb\n      richBlurb\n      meta {\n        name\n        value\n      }\n    }\n    sort {\n      id\n      name\n      description\n      seoUrlKey\n      short\n    }\n  }\n}");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("country", "HK");
         variables.put("currency", "USD");
         variables.put("enableOpenSearch", false);
@@ -553,10 +553,10 @@ public class StockXClient {
     }
 
     private String buildPriceQueryRequest(String id) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "ProductVariants");
         requestJson.put("query", "query ProductVariants($id: String!, $currency: CurrencyCode!, $country: String!, $market: String!, $skipFlexEligible: Boolean!, $skipGuidance: Boolean!) {\n  product(id: $id) {\n    id\n    styleId\n    traits {\n      value\n      name\n     }\n    variants {\n      id\n      isFlexEligible @skip(if: $skipFlexEligible)\n      sizeChart {\n        displayOptions {\n          size\n          type\n          }\n        }\n      market(currencyCode: $currency) {\n        state(country: $country, market: $market) {\n          highestBid {\n            amount\n            }\n          }\n        }\n      pricingGuidance(country: $country, market: $market, currencyCode: $currency) @skip(if: $skipGuidance) {\n        marketConsensusGuidance {\n          standardSellerGuidance {\n            sellFaster\n            earnMore\n            }\n          }\n        }\n      }\n      }\n}");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("id", id);
         variables.put("currency", "USD");
         variables.put("country", "HK");
@@ -568,10 +568,10 @@ public class StockXClient {
     }
 
     private String buildOrder(String after) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "ViewerAsks");
         requestJson.put("query", "query ViewerAsks($query: String, $after: String, $pageSize: Int, $currencyCode: CurrencyCode, $state: AsksGeneralState, $filters: AsksFiltersInput, $sort: AsksSortInput, $order: AscDescOrderInput, $country: String!, $market: String!, $skipGuidance: Boolean = true, $skipFlexEligible: Boolean = true, $includeHasAttributedAd: Boolean = false) {\n  viewer {\n    asks(\n      query: $query\n      after: $after\n      first: $pageSize\n      includeHasAttributedAd: $includeHasAttributedAd\n      currencyCode: $currencyCode\n      state: $state\n      filters: $filters\n      sort: $sort\n      order: $order\n    ) {\n      pageInfo {\n        endCursor\n        hasNextPage\n        totalCount\n        __typename\n      }\n      edges {\n        node {\n          ...AskAttributes\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n}\n\nfragment AskAttributes on Ask {\n  id\n  amount\n  created\n  bidAskSpread\n  currentCurrency\n  expires\n  soldOn\n  orderNumber\n  state\n  dateToShipBy\n  authCenter\n  inventoryType\n  shippingExtensionRequested\n  associatedAutomation {\n    status\n    id\n    fields {\n      price\n      __typename\n    }\n    __typename\n  }\n  pricingGuidance(country: $country, market: $market) @skip(if: $skipGuidance) {\n    marketConsensusGuidance {\n      standardSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      flexSellerGuidance {\n        earnMore\n        sellFaster\n        beatUSPrice\n        marketRange {\n          idealMinPrice\n          idealMaxPrice\n          fairMinPrice\n          fairMaxPrice\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    __typename\n  }\n  shipment {\n    id\n    bulk\n    deleted\n    displayId\n    trackingNumber\n    trackingUrl\n    deliveryDate\n    commercialInvoiceUrl\n    documents {\n      sellerShippingInstructions\n      sellerShippingInstructionsThermal\n      __typename\n    }\n    __typename\n  }\n  productVariant {\n    id\n    isFlexEligible @skip(if: $skipFlexEligible)\n    traits {\n      size\n      sizeDescriptor\n      __typename\n    }\n    sizeChart {\n      displayOptions {\n        size\n        __typename\n      }\n      baseType\n      __typename\n    }\n    market(currencyCode: $currencyCode) {\n      state(country: $country, market: $market) {\n        bidInventoryTypes {\n          standard {\n            highest {\n              amount\n              chainId\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        askServiceLevels {\n          standard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          expressStandard {\n            lowest {\n              amount\n              __typename\n            }\n            __typename\n          }\n          __typename\n        }\n        __typename\n      }\n      __typename\n    }\n    product {\n      id\n      name\n      styleId\n      model\n      title\n      productCategory\n      contentGroup\n      browseVerticals\n      primaryCategory\n      minimumBid(currencyCode: $currencyCode)\n      traits {\n        name\n        value\n        __typename\n      }\n      taxInformation {\n        id\n        code\n        __typename\n      }\n      media {\n        thumbUrl\n        __typename\n      }\n      sizeDescriptor\n      hazardousMaterial {\n        lithiumIonBucket\n        __typename\n      }\n      lockSelling\n      listingType\n      __typename\n    }\n    __typename\n  }\n  hasAttributedAd\n  __typename\n}");
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("country", "HK");
         variables.put("market", "HK");
         variables.put("pageSize", 30);
@@ -584,12 +584,12 @@ public class StockXClient {
         if (StrUtil.isNotBlank(after)) {
             variables.put("after", after);
         }
-        JSONObject filters = new JSONObject();
+        JSONObject filters = new JSONObject(true);
         filters.put("vertical", Map.of("in", List.of()));
         filters.put("shipmentId", Map.of("in", List.of()));
-        filters.put("lowestAsk", new JSONObject());
-        filters.put("expired", new JSONObject());
-        filters.put("includeBulkShipmentItems", new JSONObject());
+        filters.put("lowestAsk", new JSONObject(true));
+        filters.put("expired", new JSONObject(true));
+        filters.put("includeBulkShipmentItems", new JSONObject(true));
         filters.put("statesList", Map.of("in", List.of(410, 411, 415)));
         filters.put("productId", Map.of("in", List.of()));
         filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
@@ -695,10 +695,10 @@ public class StockXClient {
     }
 
     private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers, String country, String accountName) {
-        JSONObject requestJson = new JSONObject();
+        JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "SellerListings");
 
-        JSONObject variables = new JSONObject();
+        JSONObject variables = new JSONObject(true);
         variables.put("skipGuidance", false);
         variables.put("skipFlexEligible", true);
         variables.put("pageSize", 100);
@@ -709,7 +709,7 @@ public class StockXClient {
         variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
         variables.put("currencyCode", "USD");
 
-        JSONObject filters = new JSONObject();
+        JSONObject filters = new JSONObject(true);
         filters.put("spreadCurrency", "USD");
         filters.put("inventoryType", Map.of("in", List.of(inventoryType)));
         if ("CUSTODIAL".equals(inventoryType)) {
@@ -721,8 +721,8 @@ public class StockXClient {
         variables.put("filters", filters);
         requestJson.put("variables", variables);
 
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
         persistedQuery.put("sha256Hash", "ab3842937c803f03d6296570ef963b062e5b01d2e7695ccf3c7aff590a17abef");
         extensions.put("persistedQuery", persistedQuery);
@@ -737,7 +737,7 @@ public class StockXClient {
             }
             if ("Unauthorized".equals(jsonObject.getString("message"))) {
                 log.error("querySellingItemsByInventoryType|Token已过期或无效，请更新Token");
-                JSONObject errorResult = new JSONObject();
+                JSONObject errorResult = new JSONObject(true);
                 errorResult.put("_unauthorized", true);
                 return errorResult;
             }
@@ -760,7 +760,7 @@ public class StockXClient {
             return null;
         }
 
-        JSONObject result = new JSONObject();
+        JSONObject result = new JSONObject(true);
         JSONObject pageInfo = sellerListings.getJSONObject("pageInfo");
         result.put("hasMore", pageInfo.getBoolean("hasNextPage"));
 
@@ -772,7 +772,7 @@ public class StockXClient {
             if (productVariant == null) {
                 continue;
             }
-            JSONObject item = new JSONObject();
+            JSONObject item = new JSONObject(true);
             item.put("id", node.getString("id"));
             item.put("amount", node.getInteger("amount"));
             item.put("isExpired", node.getBoolean("isExpired"));
@@ -839,7 +839,7 @@ public class StockXClient {
     public String batchUpdateListings(List<Map<String, String>> items) {
         LimiterHelper.limitStockxBatch(null, items.size());
         LimiterHelper.limitStockxApi(null);
-        JSONObject body = new JSONObject();
+        JSONObject body = new JSONObject(true);
         body.put("items", items);
         String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders());
         if (rawResult == null) {
@@ -976,7 +976,7 @@ public class StockXClient {
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
         LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxApi(account.getName());
-        JSONObject body = new JSONObject();
+        JSONObject body = new JSONObject(true);
         body.put("items", items);
         String rawResult = HttpUtil.doPost(StockXConfig.BATCH_UPDATE_LISTING, body.toJSONString(), buildHeaders(account));
         if (rawResult == null) {
