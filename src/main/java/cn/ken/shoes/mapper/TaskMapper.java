@@ -28,4 +28,8 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
      * 将所有运行中的任务状态更新为已搁置（排除当前有效的任务ID列表）
      */
     void shelveHistoryTasks(List<Long> validTaskIds);
+
+    List<Long> selectIdsBeforeDate(@Param("beforeDate") java.util.Date beforeDate);
+
+    void deleteByIds(@Param("ids") List<Long> ids);
 }
