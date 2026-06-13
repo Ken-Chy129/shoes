@@ -4,9 +4,7 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.manager.PriceManager;
-import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
-import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.price.PriceVO;
 import jakarta.annotation.Resource;
@@ -24,9 +22,6 @@ public class PriceService {
 
     @Resource
     private PoisonClient poisonClient;
-
-    @Resource
-    private PoisonItemMapper poisonItemMapper;
 
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
@@ -84,16 +79,7 @@ public class PriceService {
 
     private Map<String, Integer> queryLatestPrices(String modelNo) {
         try {
-            PoisonItemDO item = poisonItemMapper.selectByArticleNumber(modelNo);
-            if (item == null) {
-                List<PoisonItemDO> items = poisonClient.queryItemByModelNos(List.of(modelNo));
-                if (CollectionUtils.isEmpty(items)) {
-                    return Collections.emptyMap();
-                }
-                item = items.getFirst();
-                poisonItemMapper.insert(item);
-            }
-            List<PoisonPriceDO> latestPrices = poisonClient.queryPriceBySpuV2(modelNo, item.getSpuId());
+            List<PoisonPriceDO> latestPrices = poisonClient.queryPriceByModelNo(modelNo);
             if (CollectionUtils.isEmpty(latestPrices)) {
                 return Collections.emptyMap();
             }
