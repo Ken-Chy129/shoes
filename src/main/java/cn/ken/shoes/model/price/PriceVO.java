@@ -12,4 +12,8 @@ public class PriceVO {
     private String cacheTime;
 
     private Integer latestPrice;
+
+    private Integer businessPrice;
+
+    private String remark;
 }

@@ -1,7 +1,9 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.PoisonItemMapper;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonItemDO;
@@ -28,6 +30,9 @@ public class PriceService {
 
     @Resource
     private PoisonPriceMapper poisonPriceMapper;
+
+    @Resource
+    private PriceManager priceManager;
 
     public Result<List<PriceVO>> queryByModelNo(String modelNo) {
         // 1. 查缓存价格
@@ -61,6 +66,17 @@ public class PriceService {
             }
 
             vo.setLatestPrice(latestMap.get(euSize));
+
+            Integer businessPrice = priceManager.getPoisonPrice(modelNo, euSize);
+            vo.setBusinessPrice(businessPrice);
+            if (ShoesContext.isFlawsModel(modelNo, euSize)) {
+                vo.setRemark("禁爬货号");
+            } else if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
+                vo.setRemark("不比价货号");
+            } else if (ShoesContext.isNoPrice(modelNo)) {
+                vo.setRemark("无价缓存");
+            }
+
             result.add(vo);
         }
         return Result.buildSuccess(result);

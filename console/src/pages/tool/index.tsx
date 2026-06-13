@@ -61,9 +61,11 @@ const ToolPage = () => {
 
     const priceColumns = [
         {title: '尺码', dataIndex: 'euSize', key: 'euSize'},
-        {title: '缓存价格', dataIndex: 'cachedPrice', key: 'cachedPrice', render: (v: number) => v ?? '-'},
+        {title: '业务价格', dataIndex: 'businessPrice', key: 'businessPrice', render: (v: number) => v != null ? `¥${v}` : '-'},
+        {title: '缓存价格', dataIndex: 'cachedPrice', key: 'cachedPrice', render: (v: number) => v != null ? `¥${v}` : '-'},
         {title: '缓存时间', dataIndex: 'cacheTime', key: 'cacheTime', render: (v: string) => v || '-'},
-        {title: '最新价格', dataIndex: 'latestPrice', key: 'latestPrice', render: (v: number) => v ?? '-'},
+        {title: '最新价格', dataIndex: 'latestPrice', key: 'latestPrice', render: (v: number) => v != null ? `¥${v}` : '-'},
+        {title: '备注', dataIndex: 'remark', key: 'remark', render: (v: string) => v ? <span style={{color: '#faad14'}}>{v}</span> : '-'},
     ];
 
     const sizeColumns = [

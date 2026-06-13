@@ -374,6 +374,13 @@ public class KickScrewService {
                 String key = modelNo + "_" + euSize;
                 Long taskItemId = priceKeyToTaskItemIdMap.get(key);
 
+                if (ShoesContext.isFlawsModel(modelNo, euSize) || ShoesContext.isNotCompareModel(modelNo, euSize)) {
+                    if (taskItemId != null) {
+                        noPoisonPriceIds.add(taskItemId);
+                    }
+                    continue;
+                }
+
                 Integer poisonPrice = priceManager.getPoisonPrice(modelNo, euSize);
 
                 // 更新 TaskItem 的得物价格、利润信息
@@ -532,8 +539,7 @@ public class KickScrewService {
                 }
                 String modelNo = kickScrewPriceDO.getModelNo();
                 String euSize = kickScrewPriceDO.getEuSize();
-                if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
-                    // 不压价下架的商品
+                if (ShoesContext.isFlawsModel(modelNo, euSize) || ShoesContext.isNotCompareModel(modelNo, euSize)) {
                     Long taskItemId = priceToTaskItemIdMap.get(kickScrewPriceDO);
                     if (taskItemId != null) {
                         noNeedDeleteIds.add(taskItemId);

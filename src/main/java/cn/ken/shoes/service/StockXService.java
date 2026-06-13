@@ -205,6 +205,22 @@ public class StockXService {
                         }
                         continue;
                     }
+                    if (ShoesContext.isFlawsModel(styleId, euSize)) {
+                        totalSkip += listings.size();
+                        for (JSONObject listing : listings) {
+                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                            updateTaskItemResult(taskItemId, "跳过-禁爬货号");
+                        }
+                        continue;
+                    }
+                    if (ShoesContext.isNotCompareModel(styleId, euSize)) {
+                        totalSkip += listings.size();
+                        for (JSONObject listing : listings) {
+                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                            updateTaskItemResult(taskItemId, "跳过-不比价货号");
+                        }
+                        continue;
+                    }
                     Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
                     if (poisonPrice == null) {
                         for (JSONObject listing : listings) {
@@ -545,6 +561,18 @@ public class StockXService {
                         if (existingVariantIds.contains(variantId)) {
                             taskItemDO.setCurrentPrice(BigDecimal.valueOf(lowestAsk));
                             taskItemDO.setOperateResult("跳过-已在售");
+                            taskItemMapper.insert(taskItemDO);
+                            continue;
+                        }
+
+                        // 禁爬/不比价检查
+                        if (ShoesContext.isFlawsModel(modelNo, euSize)) {
+                            taskItemDO.setOperateResult("跳过-禁爬货号");
+                            taskItemMapper.insert(taskItemDO);
+                            continue;
+                        }
+                        if (ShoesContext.isNotCompareModel(modelNo, euSize)) {
+                            taskItemDO.setOperateResult("跳过-不比价货号");
                             taskItemMapper.insert(taskItemDO);
                             continue;
                         }
