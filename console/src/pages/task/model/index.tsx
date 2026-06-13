@@ -41,7 +41,6 @@ const ModelPage = () => {
     const [addModelNos, setAddModelNos] = useState('');
     const [adding, setAdding] = useState(false);
 
-    const [importModalVisible, setImportModalVisible] = useState(false);
 
     useEffect(() => {
         queryList();
@@ -106,7 +105,6 @@ const ModelPage = () => {
         doUploadRequestWithParams(SETTING_API.IMPORT_SPECIAL_MODEL_EXCEL, file, {}, {
             onSuccess: res => {
                 message.success(`成功导入 ${res.data} 条`);
-                setImportModalVisible(false);
                 queryList();
             },
             onError: () => message.error('导入失败'),
@@ -159,9 +157,9 @@ const ModelPage = () => {
                 <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
                     下载模板
                 </Button>
-                <Button icon={<UploadOutlined/>} onClick={() => setImportModalVisible(true)}>
-                    导入Excel
-                </Button>
+                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
+                    <Button icon={<UploadOutlined/>}>导入Excel</Button>
+                </Upload>
                 <Button type="primary" icon={<PlusOutlined/>} onClick={() => setAddModalVisible(true)}>
                     添加
                 </Button>
@@ -197,16 +195,6 @@ const ModelPage = () => {
             />
         </Modal>
 
-        {/* 导入 Modal */}
-        <Modal
-            title="导入Excel" open={importModalVisible}
-            onCancel={() => setImportModalVisible(false)} footer={null} width={400}
-        >
-            <p style={{color: '#666', marginBottom: 16}}>Excel中需包含"类型"列（必爬/禁爬/不比价），可先下载模板查看格式</p>
-            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
-                <Button icon={<UploadOutlined/>}>选择文件并上传</Button>
-            </Upload>
-        </Modal>
     </>;
 };
 
