@@ -1,8 +1,8 @@
 import {
-    Button, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Upload,
+    Button, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Upload,
 } from "antd";
-import {PlusOutlined, UploadOutlined, DownloadOutlined, SearchOutlined} from "@ant-design/icons";
-import React, {useEffect, useRef, useState} from "react";
+import {PlusOutlined, UploadOutlined, DownloadOutlined} from "@ant-design/icons";
+import React, {useEffect, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
@@ -32,10 +32,9 @@ const ModelPage = () => {
     const [total, setTotal] = useState(0);
     const [loading, setLoading] = useState(false);
 
+    const [conditionForm] = Form.useForm();
     const [filterCategory, setFilterCategory] = useState('');
     const [filterModelNo, setFilterModelNo] = useState('');
-    const [searchInput, setSearchInput] = useState('');
-    const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
     const [addModalVisible, setAddModalVisible] = useState(false);
     const [addCategory, setAddCategory] = useState('mustCrawl');
@@ -62,13 +61,17 @@ const ModelPage = () => {
         });
     };
 
-    const handleSearchChange = (value: string) => {
-        setSearchInput(value);
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            setFilterModelNo(value);
-            setPageIndex(1);
-        }, 500);
+    const handleQuery = () => {
+        setFilterCategory(conditionForm.getFieldValue('category') || '');
+        setFilterModelNo(conditionForm.getFieldValue('modelNo') || '');
+        setPageIndex(1);
+    };
+
+    const handleReset = () => {
+        conditionForm.resetFields();
+        setFilterCategory('');
+        setFilterModelNo('');
+        setPageIndex(1);
     };
 
     const handleDelete = (record: SpecialModelRecord) => {
@@ -137,23 +140,21 @@ const ModelPage = () => {
     ];
 
     return <>
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
-            <Space>
-                <Select
-                    value={filterCategory}
-                    onChange={v => { setFilterCategory(v); setPageIndex(1); }}
-                    style={{width: 120}}
-                    options={CATEGORY_OPTIONS}
-                />
-                <Input
-                    placeholder="搜索货号"
-                    prefix={<SearchOutlined/>}
-                    value={searchInput}
-                    onChange={e => handleSearchChange(e.target.value)}
-                    style={{width: 200}}
-                    allowClear
-                />
-            </Space>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
+            <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>
+                <Form.Item name="category" label="类型">
+                    <Select style={{width: 120}} placeholder="全部" allowClear options={CATEGORY_OPTIONS.filter(o => o.value !== '')}/>
+                </Form.Item>
+                <Form.Item name="modelNo" label="货号">
+                    <Input placeholder="搜索货号" style={{width: 180}} allowClear/>
+                </Form.Item>
+                <Form.Item>
+                    <Space>
+                        <Button type="primary" onClick={handleQuery}>查询</Button>
+                        <Button onClick={handleReset}>重置</Button>
+                    </Space>
+                </Form.Item>
+            </Form>
             <Space>
                 <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
                     下载模板
