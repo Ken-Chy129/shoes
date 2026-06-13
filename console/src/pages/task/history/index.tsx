@@ -1,22 +1,12 @@
 import {
-    Button, DatePicker,
-    Form,
-    Input,
-    message,
-    Modal,
-    Popconfirm,
-    Radio,
-    Select,
-    Space,
-    Table,
-    Tabs,
-    Tooltip
+    Button, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
+    Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider,
 } from "antd";
+import {PlusOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
-import {TEMPLATE_API} from "@/services/management";
-import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
-import {TASK_API} from "@/services/task";
+import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
+import {TASK_API, TASK_TYPE} from "@/services/task";
+import {SETTING_API} from "@/services/shoes";
 import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 
@@ -34,11 +24,23 @@ interface TaskRecord {
     round: number;
 }
 
-const TaskHistoryPage = () => {
+const SORT_OPTIONS = [
+    {label: '精选', value: 'featured'},
+    {label: 'Top Selling', value: 'most-active'},
+    {label: 'Price: Low to High', value: 'lowest_ask'},
+    {label: '出价: 从高到低', value: 'highest_bid'},
+    {label: 'Recent Price Drops', value: 'recent_asks'},
+    {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
+    {label: '发布日期', value: 'release_date'},
+    {label: 'Last Sale: High to Low', value: 'last_sale'},
+];
+
+const TYPE_LABELS: Record<string, string> = { listing: '上架', price_down: '压价' };
+const PLATFORM_LABELS: Record<string, string> = { stockx: 'StockX', kickscrew: 'KC' };
+
+const TaskPage = () => {
     const [conditionForm] = Form.useForm();
-
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
-
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [total, setTotal] = useState(0);
@@ -49,295 +51,365 @@ const TaskHistoryPage = () => {
     const [paramsModalVisible, setParamsModalVisible] = useState(false);
     const [paramsModalData, setParamsModalData] = useState<Record<string, any> | null>(null);
 
-    useEffect(() => {
-        queryTaskList();
-    }, [pageIndex, pageSize]);
+    // 新建任务
+    const [createModalVisible, setCreateModalVisible] = useState(false);
+    const [createForm] = Form.useForm();
+    const [createPlatform, setCreatePlatform] = useState<string>('stockx');
+    const [createTaskType, setCreateTaskType] = useState<string>('listing');
+    const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
+    const [creating, setCreating] = useState(false);
+
+    useEffect(() => { queryTaskList(); }, [pageIndex, pageSize]);
 
     const queryTaskList = () => {
         let startTime = conditionForm.getFieldValue("startTime");
-        if (startTime != null && startTime !== '') {
-            startTime = moment(startTime).format('YYYY-MM-DD HH:mm:ss');
-        }
+        if (startTime) startTime = moment(startTime).format('YYYY-MM-DD HH:mm:ss');
         let endTime = conditionForm.getFieldValue("endTime");
-        if (endTime != null && endTime !== '') {
-            endTime = moment(endTime).format('YYYY-MM-DD HH:mm:ss');
-        }
+        if (endTime) endTime = moment(endTime).format('YYYY-MM-DD HH:mm:ss');
         const taskType = conditionForm.getFieldValue("taskType");
         const platform = conditionForm.getFieldValue("platform");
         const status = conditionForm.getFieldValue("status");
         doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
-            onSuccess: res => {
-                setTaskList(res.data);
-                setTotal(res.total);
-                message.success("查询成功").then();
-            }
+            onSuccess: res => { setTaskList(res.data); setTotal(res.total); }
         });
     }
 
-    const handleRowClick = (record: TaskRecord) => {
-        setSelectedTaskId(record.id);
-        setTaskItemModalVisible(true);
+    const handleCancelTask = (record: TaskRecord) => {
+        if (record.platform === 'stockx' && record.taskType === 'price_down') {
+            try {
+                const p = JSON.parse(record.params || '{}');
+                doPostRequest(TASK_API.STOCKX_CANCEL_EXCEL_PRICE_DOWN, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
+                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
+                });
+            } catch { message.error('无法解析任务参数'); }
+        } else if (record.platform === 'stockx' && record.taskType === 'listing') {
+            doPostRequest(TASK_API.CANCEL_SEARCH_LIST, {accountId: record.accountName}, {
+                onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
+            });
+        } else {
+            doPostRequest(`${TASK_API.CANCEL}?taskType=${record.taskType}`, {}, {
+                onSuccess: () => { message.success('已终止'); setTimeout(queryTaskList, 2000); }
+            });
+        }
     }
 
     const handleDeleteTask = (record: TaskRecord) => {
         doDeleteRequest(TASK_API.DELETE, {taskId: record.id}, {
-            onSuccess: () => {
-                message.success("删除成功");
-                queryTaskList();
+            onSuccess: () => { message.success("删除成功"); queryTaskList(); }
+        });
+    }
+
+    // ==================== 新建任务 ====================
+
+    const openCreateModal = () => {
+        createForm.resetFields();
+        setCreatePlatform('stockx');
+        setCreateTaskType('listing');
+        setCreateModalVisible(true);
+        if (stockxAccounts.length === 0) {
+            doGetRequest(SETTING_API.STOCKX_ACCOUNTS, {}, {
+                onSuccess: res => setStockxAccounts((res.data || []).filter((a: any) => a.enabled))
+            });
+        }
+    }
+
+    const handleCreateTask = () => {
+        createForm.validateFields().then((values: any) => {
+            setCreating(true);
+            if (createPlatform === 'stockx' && createTaskType === 'listing') {
+                doPostRequest(TASK_API.START_SEARCH_LIST, {
+                    accountId: values.accountId,
+                    keywords: values.keywords,
+                    sorts: (values.sorts || ['lowest_ask']).join(','),
+                    pageCount: values.pageCount || 3,
+                    searchType: values.searchType || 'shoes',
+                }, {
+                    onSuccess: () => { message.success('任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
+            } else if (createPlatform === 'stockx' && createTaskType === 'price_down') {
+                const accountId = values.accountId;
+                const inventoryType = values.inventoryType || 'STANDARD';
+                const file = values.excelFile?.[0]?.originFileObj;
+                if (!file) { message.error('请上传Excel文件'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {accountId, inventoryType}, {
+                    onSuccess: () => {
+                        doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {
+                            accountId, inventoryType,
+                            processOutsideExcel: values.processOutsideExcel || false,
+                            unprofitableAction: values.unprofitableAction || 'markup',
+                        }, {
+                            onSuccess: () => { message.success('压价任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                            onFinally: () => setCreating(false),
+                        });
+                    },
+                    onError: () => { message.error('Excel上传失败'); setCreating(false); },
+                });
+            } else {
+                // KC
+                doPostRequest(`${TASK_API.START}?taskType=${createTaskType}`, {}, {
+                    onSuccess: () => { message.success('任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             }
         });
     }
 
+    // ==================== 列定义 ====================
+
     const columns = [
         {
-            title: '平台',
-            dataIndex: 'platform',
-            key: 'platform',
-            width: 80,
+            title: '平台', dataIndex: 'platform', key: 'platform', width: 80,
         },
         {
-            title: '任务类型',
-            dataIndex: 'taskType',
-            key: 'type',
-            width: '12%',
+            title: '任务类型', dataIndex: 'taskType', key: 'type', width: 120,
             render: (taskType: string, record: TaskRecord) => {
-                const typeLabels: Record<string, string> = {
-                    listing: '上架',
-                    price_down: '压价',
-                };
-                const label = typeLabels[taskType];
-                if (label) {
-                    const platformLabels: Record<string, string> = {
-                        stockx: 'StockX',
-                        kickscrew: 'KC',
-                    };
-                    const platformLabel = platformLabels[record.platform] || record.platform;
-                    return `${platformLabel} ${label}`;
-                }
+                const label = TYPE_LABELS[taskType];
+                if (label) return `${PLATFORM_LABELS[record.platform] || record.platform} ${label}`;
                 return taskType;
             },
         },
         {
-            title: '账号',
-            dataIndex: 'accountName',
-            key: 'accountName',
-            width: '8%',
+            title: '账号', dataIndex: 'accountName', key: 'accountName', width: 90,
             render: (name: string) => name || '-',
         },
         {
-            title: '开始时间',
-            dataIndex: 'startTime',
-            key: 'startTime',
-            width: '14%',
+            title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 160,
         },
         {
-            title: '结束时间',
-            dataIndex: 'endTime',
-            key: 'endTime',
-            width: '14%',
+            title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160,
         },
         {
-            title: '耗时',
-            dataIndex: 'cost',
-            key: 'cost',
-            width: '10%',
+            title: '耗时', dataIndex: 'cost', key: 'cost', width: 100,
         },
         {
-            title: '状态',
-            dataIndex: 'status',
-            key: 'status',
-            width: '10%',
+            title: '状态', dataIndex: 'status', key: 'status', width: 90,
             render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
                     '运行中': {text: '运行中', color: 'blue'},
-                    'success': {text: '执行成功', color: 'green'},
-                    '执行成功': {text: '执行成功', color: 'green'},
-                    'failed': {text: '执行失败', color: 'red'},
-                    '执行失败': {text: '执行失败', color: 'red'},
+                    'success': {text: '成功', color: 'green'},
+                    '执行成功': {text: '成功', color: 'green'},
+                    'failed': {text: '失败', color: 'red'},
+                    '执行失败': {text: '失败', color: 'red'},
                     'cancel': {text: '已取消', color: 'gray'},
                     '已取消': {text: '已取消', color: 'gray'},
                     '已搁置': {text: '已搁置', color: 'orange'},
                 };
-                const statusInfo = statusMap[status] || {text: status, color: 'default'};
-                const node = <span style={{color: statusInfo.color}}>{statusInfo.text}</span>;
-                if (record.failReason) {
-                    return <Tooltip title={record.failReason}>{node}</Tooltip>;
-                }
-                return node;
+                const info = statusMap[status] || {text: status, color: 'default'};
+                const node = <span style={{color: info.color, fontWeight: 500}}>{info.text}</span>;
+                return record.failReason ? <Tooltip title={record.failReason}>{node}</Tooltip> : node;
             }
         },
         {
-            title: '轮次',
-            dataIndex: 'round',
-            key: 'round',
-            width: '8%',
+            title: '轮次', dataIndex: 'round', key: 'round', width: 60,
         },
         {
-            title: '操作',
-            key: 'action',
-            width: '15%',
+            title: '操作', key: 'action', width: 200,
             render: (_: any, record: TaskRecord) => (
                 <Space size={0}>
-                    <Button type="link" size="small" onClick={() => handleRowClick(record)}>
-                        查看明细
+                    <Button type="link" size="small" onClick={() => { setSelectedTaskId(record.id); setTaskItemModalVisible(true); }}>
+                        明细
                     </Button>
                     {record.params && (
                         <Button type="link" size="small" onClick={() => {
                             try { setParamsModalData(JSON.parse(record.params)); } catch { setParamsModalData({raw: record.params}); }
                             setParamsModalVisible(true);
-                        }}>
-                            参数
-                        </Button>
+                        }}>参数</Button>
                     )}
-                    <Popconfirm
-                        title="确认删除"
-                        description="确定要删除该任务及其所有明细数据吗？"
-                        onConfirm={() => handleDeleteTask(record)}
-                        okText="确定"
-                        cancelText="取消"
-                    >
-                        <Button type="link" size="small" danger>
-                            删除
-                        </Button>
+                    {record.status === 'running' && (
+                        <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
+                            <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
+                        </Popconfirm>
+                    )}
+                    <Popconfirm title="确认删除" description="将删除任务及所有明细数据" onConfirm={() => handleDeleteTask(record)} okText="确定" cancelText="取消">
+                        <Button type="link" size="small" danger>删除</Button>
                     </Popconfirm>
                 </Space>
             ),
         }
     ];
 
+    // ==================== 新建任务表单 ====================
+
+    const renderCreateForm = () => {
+        if (createPlatform === 'stockx' && createTaskType === 'listing') {
+            return <>
+                <Form.Item name="keywords" label="关键词（每行一个）" rules={[{required: true, message: '请输入关键词'}]}>
+                    <Input.TextArea rows={3} placeholder={"jordan retro\nyeezy slides"}/>
+                </Form.Item>
+                <Form.Item name="sorts" label="排序方式" initialValue={['lowest_ask']}>
+                    <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
+                </Form.Item>
+                <div style={{display: 'flex', gap: 24}}>
+                    <Form.Item name="pageCount" label="查询页数" initialValue={3}>
+                        <InputNumber min={1} max={50} style={{width: 100}}/>
+                    </Form.Item>
+                    <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
+                        <Radio.Group>
+                            <Radio.Button value="shoes">鞋类</Radio.Button>
+                            <Radio.Button value="clothes">服饰</Radio.Button>
+                        </Radio.Group>
+                    </Form.Item>
+                </div>
+            </>;
+        }
+
+        if (createPlatform === 'stockx' && createTaskType === 'price_down') {
+            return <>
+                <Form.Item name="inventoryType" label="库存类型" initialValue="STANDARD">
+                    <Radio.Group>
+                        <Radio.Button value="STANDARD">现货</Radio.Button>
+                        <Radio.Button value="CUSTODIAL">寄存</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item name="excelFile" label="压价Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择文件</Button>
+                    </Upload>
+                </Form.Item>
+                <div style={{display: 'flex', gap: 24}}>
+                    <Form.Item name="interval" label="轮询间隔(秒)" initialValue={1800}>
+                        <InputNumber min={10} style={{width: 120}}/>
+                    </Form.Item>
+                    <Form.Item name="processOutsideExcel" label="处理Excel外商品" valuePropName="checked" initialValue={false}>
+                        <Switch size="small"/>
+                    </Form.Item>
+                </div>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel}>
+                    {({getFieldValue}) => getFieldValue('processOutsideExcel') && (
+                        <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup">
+                            <Radio.Group>
+                                <Radio.Button value="markup">加价$100</Radio.Button>
+                                <Radio.Button value="delist">下架</Radio.Button>
+                            </Radio.Group>
+                        </Form.Item>
+                    )}
+                </Form.Item>
+            </>;
+        }
+
+        // KC 任务无额外参数
+        return <div style={{color: '#999', padding: '12px 0'}}>该任务类型无需额外配置，直接创建即可。</div>;
+    };
+
+    // ==================== 参数 Modal ====================
+
+    const PARAM_LABELS: Record<string, string> = {
+        inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
+        pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
+        processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+    };
+
+    const formatParamValue = (k: string, v: any): string => {
+        if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
+        if (k === 'processOutsideExcel') return v ? '是' : '否';
+        if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
+        if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
+        if (k === 'interval') return `${v}秒`;
+        if (k === 'sorts') return String(v).split(',').join(', ');
+        if (k === 'keywords') return String(v).split('\n').join(', ');
+        return String(v);
+    };
+
+    // ==================== 渲染 ====================
+
     return <>
-        <Form form={conditionForm}
-              style={{display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "nowrap"}}>
-            <div style={{display: "flex"}}>
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
+            <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>
                 <Form.Item name="platform" label="平台">
-                    <Select
-                        style={{width: 160}}
-                        placeholder="请选择平台"
-                        allowClear
-                        showSearch={true}
-                        optionFilterProp="label"
-                        options={
-                            [
-                                {label: 'KickScrew', value: 'kickscrew'},
-                                {label: 'StockX', value: 'stockx'},
-                            ]
-                        }
-                    />
+                    <Select style={{width: 120}} placeholder="全部" allowClear
+                        options={[{label: 'KickScrew', value: 'kickscrew'}, {label: 'StockX', value: 'stockx'}]}/>
                 </Form.Item>
-                <Form.Item name="taskType" label="任务类型" style={{marginLeft: 20}}>
-                    <Select
-                        style={{width: 180}}
-                        placeholder="请选择任务类型"
-                        allowClear
-                        showSearch={true}
-                        optionFilterProp="label"
-                        options={
-                            [
-                                {label: '上架', value: "listing"},
-                                {label: '压价', value: "price_down"},
-                            ]
-                        }
-                    />
+                <Form.Item name="taskType" label="类型">
+                    <Select style={{width: 100}} placeholder="全部" allowClear
+                        options={[{label: '上架', value: 'listing'}, {label: '压价', value: 'price_down'}]}/>
                 </Form.Item>
-                <Form.Item name="status" label="状态" style={{marginLeft: 20}}>
-                    <Select
-                        style={{width: 160}}
-                        placeholder="请选择状态"
-                        allowClear
-                        showSearch={true}
-                        optionFilterProp="label"
-                        options={
-                            [
-                                {label: '运行中', value: "running"},
-                                {label: '执行成功', value: "success"},
-                                {label: '执行失败', value: "failed"},
-                                {label: '已取消', value: "cancel"},
-                            ]
-                        }
-                    />
+                <Form.Item name="status" label="状态">
+                    <Select style={{width: 110}} placeholder="全部" allowClear
+                        options={[
+                            {label: '运行中', value: 'running'}, {label: '成功', value: 'success'},
+                            {label: '失败', value: 'failed'}, {label: '已取消', value: 'cancel'},
+                        ]}/>
                 </Form.Item>
-                <Form.Item style={{marginLeft: 30}}>
-                    <Button type="primary" htmlType="submit" onClick={queryTaskList}>
-                        查询
-                    </Button>
+                <Form.Item>
+                    <Space>
+                        <Button type="primary" onClick={queryTaskList}>查询</Button>
+                        <Button onClick={() => { conditionForm.resetFields(); queryTaskList(); }}>重置</Button>
+                    </Space>
                 </Form.Item>
-                <Form.Item style={{marginLeft: 30}}>
-                    <Button type="primary" htmlType="reset" onClick={() => conditionForm.resetFields()}>
-                        重置
-                    </Button>
-                </Form.Item>
-            </div>
-        </Form>
+            </Form>
+            <Button type="primary" icon={<PlusOutlined/>} onClick={openCreateModal}>
+                新建任务
+            </Button>
+        </div>
+
         <Table
-            columns={columns}
-            dataSource={taskList}
+            columns={columns} dataSource={taskList} rowKey="id" size="middle"
             pagination={{
-                current: pageIndex,
-                pageSize: pageSize,
-                total: total,
-                showSizeChanger: true,
-                onChange: (current, pageSize) => {
-                    setPageIndex(current);
-                    setPageSize(pageSize);
-                }
-            }}
-            rowKey="id"
-        />
-        <TaskItemModal
-            visible={taskItemModalVisible}
-            taskId={selectedTaskId}
-            onClose={() => {
-                setTaskItemModalVisible(false);
-                setSelectedTaskId(null);
+                current: pageIndex, pageSize, total, showSizeChanger: true, showTotal: t => `共 ${t} 条`,
+                onChange: (c, s) => { setPageIndex(c); setPageSize(s); }
             }}
         />
 
+        {/* 新建任务 Modal */}
         <Modal
-            title="任务参数"
-            open={paramsModalVisible}
-            onCancel={() => setParamsModalVisible(false)}
-            footer={null}
-            width={480}
+            title="新建任务" open={createModalVisible} width={520}
+            onCancel={() => setCreateModalVisible(false)}
+            onOk={handleCreateTask} confirmLoading={creating}
+            okText="创建" cancelText="取消"
         >
+            <Form form={createForm} layout="vertical" style={{marginTop: 16}}>
+                <div style={{display: 'flex', gap: 16, marginBottom: 8}}>
+                    <Form.Item label="平台" style={{flex: 1, marginBottom: 12}}>
+                        <Select value={createPlatform} onChange={(v) => { setCreatePlatform(v); createForm.resetFields(); }}>
+                            <Select.Option value="stockx">StockX</Select.Option>
+                            <Select.Option value="kickscrew">KickScrew</Select.Option>
+                        </Select>
+                    </Form.Item>
+                    {createPlatform === 'stockx' && (
+                        <Form.Item name="accountId" label="账号" style={{flex: 1, marginBottom: 12}}
+                                   rules={[{required: true, message: '请选择账号'}]}>
+                            <Select placeholder="选择账号" options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}/>
+                        </Form.Item>
+                    )}
+                    <Form.Item label="类型" style={{flex: 1, marginBottom: 12}}>
+                        <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); createForm.resetFields(); }}>
+                            <Select.Option value="listing">上架</Select.Option>
+                            <Select.Option value="price_down">压价</Select.Option>
+                        </Select>
+                    </Form.Item>
+                </div>
+                <Divider style={{margin: '4px 0 16px'}}/>
+                {renderCreateForm()}
+            </Form>
+        </Modal>
+
+        {/* 参数查看 Modal */}
+        <Modal title="任务参数" open={paramsModalVisible} onCancel={() => setParamsModalVisible(false)} footer={null} width={480}>
             {paramsModalData && (
                 <table style={{width: '100%', borderCollapse: 'collapse'}}>
                     <tbody>
-                    {Object.entries(paramsModalData).map(([key, value]) => {
-                        const labelMap: Record<string, string> = {
-                            inventoryType: '库存类型',
-                            keywords: '关键词',
-                            sorts: '排序方式',
-                            pageCount: '查询页数',
-                            searchType: '搜索类型',
-                            interval: '执行间隔',
-                            processOutsideExcel: '处理Excel外商品',
-                            unprofitableAction: '不盈利操作',
-                        };
-                        const formatValue = (k: string, v: any): string => {
-                            if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
-                            if (k === 'processOutsideExcel') return v ? '是' : '否';
-                            if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
-                            if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
-                            if (k === 'interval') return `${v}秒`;
-                            if (k === 'sorts') return String(v).split(',').join(', ');
-                            if (k === 'keywords') return String(v).split('\n').join(', ');
-                            return String(v);
-                        };
-                        return (
-                            <tr key={key} style={{borderBottom: '1px solid #f0f0f0'}}>
-                                <td style={{padding: '10px 12px', color: '#666', width: 140, fontWeight: 500}}>
-                                    {labelMap[key] || key}
-                                </td>
-                                <td style={{padding: '10px 12px'}}>{formatValue(key, value)}</td>
-                            </tr>
-                        );
-                    })}
+                    {Object.entries(paramsModalData).map(([key, value]) => (
+                        <tr key={key} style={{borderBottom: '1px solid #f0f0f0'}}>
+                            <td style={{padding: '10px 12px', color: '#666', width: 140, fontWeight: 500}}>
+                                {PARAM_LABELS[key] || key}
+                            </td>
+                            <td style={{padding: '10px 12px'}}>{formatParamValue(key, value)}</td>
+                        </tr>
+                    ))}
                     </tbody>
                 </table>
             )}
         </Modal>
+
+        {/* 任务明细 Modal */}
+        <TaskItemModal
+            visible={taskItemModalVisible} taskId={selectedTaskId}
+            onClose={() => { setTaskItemModalVisible(false); setSelectedTaskId(null); }}
+        />
     </>
 }
 
-export default TaskHistoryPage;
+export default TaskPage;

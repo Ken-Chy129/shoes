@@ -167,20 +167,11 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
         },
         {
           name: "任务",
-          children: [
-            {
-              name: "执行器",
-              path: "task/executor"
-            },
-            {
-              name: "历史任务",
-              path: "task/history"
-            },
-            {
-              name: "特殊货号管理",
-              path: "task/model"
-            },
-          ]
+          path: "/task"
+        },
+        {
+          name: "特殊货号",
+          path: "/model"
         },
         {
           name: "工具",
