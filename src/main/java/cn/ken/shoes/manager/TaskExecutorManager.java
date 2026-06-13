@@ -33,17 +33,14 @@ public class TaskExecutorManager {
     private KcPriceDownTaskRunner kcPriceDownTaskRunner;
 
     @Resource
-    private StockXTaskRunner stockXTaskRunner;
-
-    @Resource
     private TaskMapper taskMapper;
 
     /**
-     * 启动任务
+     * 启动任务（KC平台）
      */
     public void startTask(TaskTypeEnum taskType) {
         switch (taskType) {
-            case KC_LISTING -> {
+            case LISTING -> {
                 TaskSwitch.CANCEL_KC_LISTING_TASK = false;
                 Long kcListingTaskId = createTask("kickscrew", taskType.getCode());
                 TaskSwitch.CURRENT_KC_LISTING_TASK_ID = kcListingTaskId;
@@ -52,7 +49,7 @@ public class TaskExecutorManager {
                     new Thread(kcTaskRunner, "KC-Listing-Task").start();
                 }
             }
-            case KC_PRICE_DOWN -> {
+            case PRICE_DOWN -> {
                 TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = false;
                 Long kcPdTaskId = createTask("kickscrew", taskType.getCode());
                 TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID = kcPdTaskId;
@@ -61,83 +58,48 @@ public class TaskExecutorManager {
                     new Thread(kcPriceDownTaskRunner, "KC-PriceDown-Task").start();
                 }
             }
-            case STOCKX_LISTING -> {
-                TaskSwitch.CANCEL_STOCK_LISTING_TASK = false;
-                Long sxListingTaskId = createTask("stockx", taskType.getCode());
-                TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID = sxListingTaskId;
-                TaskSwitch.CURRENT_STOCK_LISTING_ROUND = 0;
-                if (!stockXTaskRunner.isInit()) {
-                    new Thread(stockXTaskRunner, "StockX-Listing-Task").start();
-                }
-            }
         }
     }
 
-    /**
-     * 取消任务（终止任务执行）
-     * 设置取消标志，TaskRunner 会在检测到标志后终止线程并更新状态
-     */
     public void cancelTask(TaskTypeEnum taskType) {
         switch (taskType) {
-            case KC_LISTING -> TaskSwitch.CANCEL_KC_LISTING_TASK = true;
-            case KC_PRICE_DOWN -> TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = true;
-            case STOCKX_LISTING -> TaskSwitch.CANCEL_STOCK_LISTING_TASK = true;
+            case LISTING -> TaskSwitch.CANCEL_KC_LISTING_TASK = true;
+            case PRICE_DOWN -> TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = true;
         }
     }
 
-    /**
-     * 查询任务状态
-     * @return true表示运行中，false表示已终止
-     */
     public boolean queryTaskStatus(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC_LISTING -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_LISTING_TASK;
-            case KC_PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
-            case STOCKX_LISTING -> stockXTaskRunner.isInit() && !TaskSwitch.CANCEL_STOCK_LISTING_TASK;
+            case LISTING -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_LISTING_TASK;
+            case PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
         };
     }
 
-    /**
-     * 获取当前任务ID
-     */
     public Long getCurrentTaskId(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC_LISTING -> TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
-            case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
-            case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID;
+            case LISTING -> TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
+            case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
         };
     }
 
-    /**
-     * 获取当前轮次
-     */
     public int getCurrentRound(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC_LISTING -> TaskSwitch.CURRENT_KC_LISTING_ROUND;
-            case KC_PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
-            case STOCKX_LISTING -> TaskSwitch.CURRENT_STOCK_LISTING_ROUND;
+            case LISTING -> TaskSwitch.CURRENT_KC_LISTING_ROUND;
+            case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
         };
     }
 
-    /**
-     * 获取任务间隔
-     */
     public long getTaskInterval(TaskTypeEnum taskType) {
         return switch (taskType) {
-            case KC_LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL;
-            case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
-            case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL;
+            case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL;
+            case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
         };
     }
 
-    /**
-     * 设置任务间隔
-     */
     public void setTaskInterval(TaskTypeEnum taskType, long interval) {
         switch (taskType) {
-            case KC_LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL = interval;
-            case KC_PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
-            case STOCKX_LISTING -> TaskSwitch.STOCK_LISTING_TASK_INTERVAL = interval;
+            case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL = interval;
+            case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
         }
     }
 
@@ -149,6 +111,10 @@ public class TaskExecutorManager {
     }
 
     private Long createTask(String platform, String taskType, String accountName) {
+        return createTask(platform, taskType, accountName, null);
+    }
+
+    private Long createTask(String platform, String taskType, String accountName, String params) {
         List<Long> validTaskIds = collectValidTaskIds();
         taskMapper.shelveHistoryTasks(validTaskIds);
 
@@ -156,6 +122,7 @@ public class TaskExecutorManager {
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);
         taskDO.setAccountName(accountName);
+        taskDO.setParams(params);
         taskDO.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         taskDO.setStartTime(new Date());
         taskDO.setRound(0);
@@ -175,10 +142,8 @@ public class TaskExecutorManager {
         if (TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID != null) {
             validIds.add(TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID);
         }
-        if (TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID != null) {
-            validIds.add(TaskSwitch.CURRENT_STOCK_LISTING_TASK_ID);
-        }
         validIds.addAll(TaskSwitch.getAllExcelTaskIds());
+        validIds.addAll(TaskSwitch.getAllSearchListTaskIds());
         return validIds;
     }
 
@@ -203,7 +168,9 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return;
         }
-        Long taskId = createTask("stockx", "EXCEL_PRICE_DOWN_" + inventoryType, account.getName());
+        String params = STR."""
+                {"inventoryType":"\{inventoryType}"}""";
+        Long taskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
         TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
         TaskSwitch.resetExcelCancel(accountId, inventoryType);
         TaskSwitch.resetExcelRound(accountId, inventoryType);
@@ -233,5 +200,50 @@ public class TaskExecutorManager {
 
     public long getExcelPriceDownInterval(String accountId, String inventoryType) {
         return TaskSwitch.getExcelInterval(accountId, inventoryType);
+    }
+
+    // ==================== StockX 搜索上架 ====================
+
+    public Long startSearchList(String accountId, String keywords, String sorts,
+                                int pageCount, String searchType, boolean autoList) {
+        if (TaskSwitch.isSearchListRunning(accountId)) {
+            log.info("搜索上架任务已在运行: {}", accountId);
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        String params = new com.alibaba.fastjson.JSONObject()
+                .fluentPut("keywords", keywords)
+                .fluentPut("sorts", sorts)
+                .fluentPut("pageCount", pageCount)
+                .fluentPut("searchType", searchType)
+                .fluentPut("autoList", autoList)
+                .toJSONString();
+        Long taskId = createTask("stockx", TaskTypeEnum.LISTING.getCode(), account.getName(), params);
+        TaskSwitch.setSearchListTaskId(accountId, taskId);
+        TaskSwitch.resetSearchListCancel(accountId);
+        TaskSwitch.setSearchListRunning(accountId, true);
+
+        StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
+                account, taskId, keywords, sorts, pageCount, searchType, autoList,
+                stockXService, taskMapper);
+        new Thread(runner, "StockX-SearchList-" + account.getName()).start();
+        log.info("搜索上架任务已启动: [{}]", account.getName());
+        return taskId;
+    }
+
+    public void cancelSearchList(String accountId) {
+        TaskSwitch.cancelSearchList(accountId);
+    }
+
+    public boolean isSearchListRunning(String accountId) {
+        return TaskSwitch.isSearchListRunning(accountId);
+    }
+
+    public Long getSearchListTaskId(String accountId) {
+        return TaskSwitch.getSearchListTaskId(accountId);
     }
 }

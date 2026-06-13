@@ -95,7 +95,23 @@ const TaskHistoryPage = () => {
             title: '任务类型',
             dataIndex: 'taskType',
             key: 'type',
-            width: '12%'
+            width: '12%',
+            render: (taskType: string, record: TaskRecord) => {
+                const typeLabels: Record<string, string> = {
+                    listing: '上架',
+                    price_down: '压价',
+                };
+                const label = typeLabels[taskType];
+                if (label) {
+                    const platformLabels: Record<string, string> = {
+                        stockx: 'StockX',
+                        kickscrew: 'KC',
+                    };
+                    const platformLabel = platformLabels[record.platform] || record.platform;
+                    return `${platformLabel} ${label}`;
+                }
+                return taskType;
+            },
         },
         {
             title: '账号',
@@ -206,9 +222,8 @@ const TaskHistoryPage = () => {
                         optionFilterProp="label"
                         options={
                             [
-                                {label: 'KC改价任务', value: "kc"},
-                                {label: 'StockX上架任务', value: "stockx_listing"},
-                                {label: 'StockX压价任务', value: "stockx_price_down"},
+                                {label: '上架', value: "listing"},
+                                {label: '压价', value: "price_down"},
                             ]
                         }
                     />

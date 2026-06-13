@@ -137,46 +137,6 @@ public class StockXClient {
         queryPro(body.toJSONString());
     }
 
-    public void createListingV2(List<Pair<String, Integer>> itemList) {
-        if (CollectionUtils.isEmpty(itemList)) {
-            return;
-        }
-        JSONObject body = new JSONObject(true);
-        body.put("operationName", "CreateBatchListings");
-        JSONObject variables = new JSONObject(true);
-        body.put("variables", variables);
-        List<Map<String, Object>> data = new ArrayList<>();
-        variables.put("items", data);
-        for (Pair<String, Integer> item : itemList) {
-            String variantId = item.getKey();
-            String amount = String.valueOf(item.getValue());
-            data.add(Map.of(
-                    "active", true,
-                    "amount", amount,
-                    "currency", "USD",
-                    "expiresAt", expireTime,
-                    "quantity", 1,
-                    "variantID", variantId,
-                    "inventoryType", "STANDARD",
-                    "actionContext", "ASK"
-            ));
-        }
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
-        extensions.put("persistedQuery", persistedQuery);
-        body.put("extensions", extensions);
-        JSONObject jsonObject = queryPro(body.toJSONString());
-        if (jsonObject == null) {
-            return;
-        }
-        if (jsonObject.containsKey("data")) {
-            String batchId = jsonObject.getJSONObject("data").getJSONObject("createBatchListings").getString("id");
-            log.info("createListingV2 success, batchId:{}", batchId);
-        }
-    }
-
     public boolean deleteItems(List<String> idList) {
         return deleteItems(idList, null);
     }
@@ -247,12 +207,23 @@ public class StockXClient {
             return false;
         }
         JSONObject result = JSON.parseObject(rawResult);
-        String status = result.getString("status");
-        JSONObject itemStatuses = result.getJSONObject("itemStatuses");
-        if ("COMPLETED".equals(status)) {
-            return true;
+        return "COMPLETED".equals(result.getString("status"));
+    }
+
+    public boolean queryListing(String batchId, StockXAccount account) {
+        LimiterHelper.limitStockxApi(account.getName());
+        String url = StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId);
+        String rawResult = HttpUtil.doGet(url, buildHeaders(account));
+        if (rawResult == null) {
+            return false;
         }
-        return false;
+        try {
+            JSONObject result = JSON.parseObject(rawResult);
+            return "COMPLETED".equals(result.getString("status"));
+        } catch (Exception e) {
+            log.error("queryListing[{}] response非JSON, batchId:{}", account.getName(), batchId);
+            return false;
+        }
     }
 
     public String createListing(List<Pair<String, Integer>> items) {
@@ -1051,6 +1022,55 @@ public class StockXClient {
             log.error("queryBatchUpdateStatus[{}] response非JSON, batchId:{}, response:{}", account.getName(), batchId, rawResult.substring(0, Math.min(200, rawResult.length())));
             return null;
         }
+    }
+
+    public String createListingV2(List<Pair<String, Integer>> itemList, StockXAccount account) {
+        if (CollectionUtils.isEmpty(itemList)) {
+            return null;
+        }
+        LimiterHelper.limitStockxApi(account.getName());
+        JSONObject body = new JSONObject();
+        body.put("operationName", "CreateBatchListings");
+        JSONObject variables = new JSONObject();
+        body.put("variables", variables);
+        List<Map<String, Object>> data = new ArrayList<>();
+        variables.put("items", data);
+        for (Pair<String, Integer> item : itemList) {
+            String variantId = item.getKey();
+            String amount = String.valueOf(item.getValue());
+            data.add(Map.of(
+                    "active", true,
+                    "amount", amount,
+                    "currency", "USD",
+                    "expiresAt", expireTime,
+                    "quantity", 1,
+                    "variantID", variantId,
+                    "inventoryType", "STANDARD",
+                    "actionContext", "ASK"
+            ));
+        }
+        JSONObject extensions = new JSONObject();
+        JSONObject persistedQuery = new JSONObject();
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
+        extensions.put("persistedQuery", persistedQuery);
+        body.put("extensions", extensions);
+        JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName());
+        if (jsonObject == null) {
+            return null;
+        }
+        JSONObject respData = jsonObject.getJSONObject("data");
+        if (respData != null) {
+            JSONObject batch = respData.getJSONObject("createBatchListings");
+            if (batch != null) {
+                String batchId = batch.getString("id");
+                log.info("[{}] createListingV2 success, batchId:{}", account.getName(), batchId);
+                return batchId;
+            }
+        }
+        log.error("[{}] createListingV2 unexpected response: {}", account.getName(),
+                jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
+        return null;
     }
 
     @Data

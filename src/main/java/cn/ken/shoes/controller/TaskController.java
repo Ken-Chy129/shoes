@@ -198,4 +198,50 @@ public class TaskController {
         return Result.buildSuccess(true);
     }
 
+    // ==================== StockX 搜索上架 ====================
+
+    @PostMapping("stockx/startSearchList")
+    public Result<String> startSearchList(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String keywords = body.getString("keywords");
+        String sorts = body.getString("sorts");
+        Integer pageCount = body.getInteger("pageCount");
+        String searchType = body.getString("searchType");
+        Boolean autoList = body.getBoolean("autoList");
+
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords) || StrUtil.isBlank(sorts)) {
+            return Result.buildError("accountId、keywords和sorts不能为空");
+        }
+
+        Long taskId = taskExecutorManager.startSearchList(
+                accountId, keywords, sorts,
+                pageCount != null ? pageCount : 3,
+                searchType != null ? searchType : "shoes",
+                autoList != null ? autoList : true);
+
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    @PostMapping("stockx/cancelSearchList")
+    public Result<Boolean> cancelSearchList(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        taskExecutorManager.cancelSearchList(accountId);
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx/searchListStatus")
+    public Result<JSONObject> getSearchListStatus(@RequestParam("accountId") String accountId) {
+        JSONObject status = new JSONObject();
+        status.put("running", taskExecutorManager.isSearchListRunning(accountId));
+        Long taskId = taskExecutorManager.getSearchListTaskId(accountId);
+        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
+        return Result.buildSuccess(status);
+    }
+
 }

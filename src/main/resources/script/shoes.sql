@@ -187,7 +187,11 @@ CREATE TABLE task
     end_time     DATETIME    NULL     COMMENT '任务结束时间',
     cost         VARCHAR(32) NULL     COMMENT '任务耗时',
     status       VARCHAR(16) NOT NULL COMMENT '任务状态：running/success/failed/stop/cancel',
-    round        INT         DEFAULT 0 COMMENT '执行轮次'
+    round        INT         DEFAULT 0 COMMENT '执行轮次',
+    account_name VARCHAR(64) NULL     COMMENT '账号名称',
+    fail_reason  VARCHAR(500) NULL    COMMENT '失败原因',
+    params       TEXT        NULL     COMMENT '任务输入参数(JSON)',
+    attributes   TEXT        NULL     COMMENT '任务运行态属性(JSON)'
 ) COMMENT '任务执行记录表';
 
 -- -------------------------------------------

@@ -42,6 +42,10 @@ public class TaskDO {
      */
     private Integer round;
 
+    private String params;
+
+    private String attributes;
+
     @Getter
     public enum TaskTypeEnum {
         REFRESH_ALL_ITEMS("全量刷新商品", "refreshAllItems"),
