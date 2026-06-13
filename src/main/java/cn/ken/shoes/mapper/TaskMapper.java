@@ -4,6 +4,7 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.task.TaskRequest;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 
 import java.util.List;
 
