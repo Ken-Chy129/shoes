@@ -7,13 +7,9 @@ public class PriceVO {
 
     private String euSize;
 
-    private Integer cachedPrice;
-
-    private String cacheTime;
+    private Integer businessPrice;
 
     private Integer latestPrice;
-
-    private Integer businessPrice;
 
     private String remark;
 }
