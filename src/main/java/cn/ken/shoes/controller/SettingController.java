@@ -245,6 +245,12 @@ public class SettingController {
             "notCompare", 2
     );
 
+    private static final Map<String, String> CATEGORY_LABEL_MAP = Map.of(
+            "必爬", "mustCrawl",
+            "禁爬", "forbidden",
+            "不比价", "notCompare"
+    );
+
     @GetMapping("specialModelPage")
     public PageResult<List<Map<String, String>>> specialModelPage(
             @RequestParam(required = false) String category,
@@ -348,30 +354,24 @@ public class SettingController {
     }
 
     @PostMapping("importSpecialModelExcel")
-    public Result<Integer> importSpecialModelExcel(@RequestParam("file") MultipartFile file,
-                                                    @RequestParam("category") String category) throws IOException {
-        if (StrUtil.isBlank(category)) {
-            return Result.buildError("category不能为空");
-        }
+    public Result<Integer> importSpecialModelExcel(@RequestParam("file") MultipartFile file) throws IOException {
         List<SpecialModelExcel> list = EasyExcel.read(file.getInputStream())
                 .head(SpecialModelExcel.class).sheet().doReadSync();
         if (CollectionUtils.isEmpty(list)) {
             return Result.buildSuccess(0);
         }
         int count = 0;
-        if ("mustCrawl".equals(category)) {
-            for (SpecialModelExcel row : list) {
-                if (StrUtil.isBlank(row.getModelNo())) continue;
+        for (SpecialModelExcel row : list) {
+            if (StrUtil.isBlank(row.getModelNo()) || StrUtil.isBlank(row.getCategory())) continue;
+            String category = CATEGORY_LABEL_MAP.getOrDefault(row.getCategory().trim(), row.getCategory().trim());
+            if ("mustCrawl".equals(category)) {
                 MustCrawlDO crawlDO = new MustCrawlDO();
                 crawlDO.setPlatform("kc");
                 crawlDO.setModelNo(row.getModelNo().trim());
                 mustCrawlMapper.insertIgnore(crawlDO);
                 count++;
-            }
-        } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
-            int type = CATEGORY_TYPE_MAP.get(category);
-            for (SpecialModelExcel row : list) {
-                if (StrUtil.isBlank(row.getModelNo())) continue;
+            } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
+                int type = CATEGORY_TYPE_MAP.get(category);
                 CustomModelDO customModelDO = new CustomModelDO();
                 customModelDO.setType(type);
                 customModelDO.setModelNo(row.getModelNo().trim());
@@ -381,8 +381,6 @@ public class SettingController {
                 customModelMapper.insertIgnore(customModelDO);
                 count++;
             }
-        } else {
-            return Result.buildError("无效的category: " + category);
         }
         return Result.buildSuccess(count);
     }
@@ -392,6 +390,20 @@ public class SettingController {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setHeader("Content-Disposition", "attachment;filename=" +
                 URLEncoder.encode("特殊货号导入模板.xlsx", StandardCharsets.UTF_8));
-        EasyExcel.write(response.getOutputStream(), SpecialModelExcel.class).sheet("模板").doWrite(List.of());
+        List<SpecialModelExcel> samples = new ArrayList<>();
+        SpecialModelExcel s1 = new SpecialModelExcel();
+        s1.setCategory("必爬");
+        s1.setModelNo("DV0833-105");
+        samples.add(s1);
+        SpecialModelExcel s2 = new SpecialModelExcel();
+        s2.setCategory("禁爬");
+        s2.setModelNo("FD8775-100");
+        s2.setEuSize("42");
+        samples.add(s2);
+        SpecialModelExcel s3 = new SpecialModelExcel();
+        s3.setCategory("不比价");
+        s3.setModelNo("HQ4540");
+        samples.add(s3);
+        EasyExcel.write(response.getOutputStream(), SpecialModelExcel.class).sheet("模板").doWrite(samples);
     }
 }

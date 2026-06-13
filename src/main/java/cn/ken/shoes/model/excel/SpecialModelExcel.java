@@ -6,6 +6,9 @@ import lombok.Data;
 @Data
 public class SpecialModelExcel {
 
+    @ExcelProperty("类型")
+    private String category;
+
     @ExcelProperty("货号")
     private String modelNo;
 

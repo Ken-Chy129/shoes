@@ -42,7 +42,6 @@ const ModelPage = () => {
     const [addModelNos, setAddModelNos] = useState('');
     const [adding, setAdding] = useState(false);
 
-    const [importCategory, setImportCategory] = useState('mustCrawl');
     const [importModalVisible, setImportModalVisible] = useState(false);
 
     useEffect(() => {
@@ -101,7 +100,7 @@ const ModelPage = () => {
     };
 
     const handleImport = (file: any) => {
-        doUploadRequestWithParams(SETTING_API.IMPORT_SPECIAL_MODEL_EXCEL, file, {category: importCategory}, {
+        doUploadRequestWithParams(SETTING_API.IMPORT_SPECIAL_MODEL_EXCEL, file, {}, {
             onSuccess: res => {
                 message.success(`成功导入 ${res.data} 条`);
                 setImportModalVisible(false);
@@ -202,11 +201,7 @@ const ModelPage = () => {
             title="导入Excel" open={importModalVisible}
             onCancel={() => setImportModalVisible(false)} footer={null} width={400}
         >
-            <div style={{marginBottom: 16}}>
-                <span style={{marginRight: 8}}>类型：</span>
-                <Select value={importCategory} onChange={setImportCategory} style={{width: 120}}
-                    options={CATEGORY_OPTIONS.filter(o => o.value !== '')}/>
-            </div>
+            <p style={{color: '#666', marginBottom: 16}}>Excel中需包含"类型"列（必爬/禁爬/不比价），可先下载模板查看格式</p>
             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
                 <Button icon={<UploadOutlined/>}>选择文件并上传</Button>
             </Upload>
