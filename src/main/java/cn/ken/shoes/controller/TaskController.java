@@ -207,6 +207,7 @@ public class TaskController {
         String sorts = body.getString("sorts");
         Integer pageCount = body.getInteger("pageCount");
         String searchType = body.getString("searchType");
+        Integer maxListCount = body.getInteger("maxListCount");
 
         if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords) || StrUtil.isBlank(sorts)) {
             return Result.buildError("accountId、keywords和sorts不能为空");
@@ -215,7 +216,8 @@ public class TaskController {
         Long taskId = taskExecutorManager.startSearchList(
                 accountId, keywords, sorts,
                 pageCount != null ? pageCount : 3,
-                searchType != null ? searchType : "shoes");
+                searchType != null ? searchType : "shoes",
+                maxListCount != null ? maxListCount : 0);
 
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");

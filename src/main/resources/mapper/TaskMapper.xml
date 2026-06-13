@@ -65,6 +65,11 @@
         where id = #{id}
     </update>
 
+    <update id="updateTaskFailReason">
+        update task set fail_reason = #{failReason}
+        where id = #{id}
+    </update>
+
     <update id="updateTaskAttributes">
         update task set attributes = #{attributes}
         where id = #{id}

@@ -850,10 +850,6 @@ public class StockXClient {
         }
     }
 
-    private JSONObject queryPro(String body, Headers headers) {
-        return queryPro(body, headers, null);
-    }
-
     private JSONObject queryPro(String body, Headers headers, String accountName) {
         LimiterHelper.limitStockxGraphql(accountName);
         String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);

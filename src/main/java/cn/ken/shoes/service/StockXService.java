@@ -425,8 +425,8 @@ public class StockXService {
 
     // ==================== 搜索上架 ====================
 
-    public void searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
-                              int pageCount, String searchType) {
+    public boolean searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
+                                 int pageCount, String searchType, int maxListCount) {
         String accountName = account.getName();
         String country = account.getCountry() != null ? account.getCountry() : "US";
         int minExpectProfit = account.getMinProfit();
@@ -437,7 +437,7 @@ public class StockXService {
         int page = 1;
         boolean hasMore = true;
         while (hasMore) {
-            if (TaskSwitch.isSearchListCancelled(accountName)) return;
+            if (TaskSwitch.isSearchListCancelled(accountName)) return false;
             JSONObject result = stockXClient.querySellingItemsByInventoryType("STANDARD", page, account);
             if (result == null || result.getBooleanValue("_unauthorized")) break;
             com.alibaba.fastjson.JSONArray itemsArr = result.getJSONArray("items");
@@ -456,9 +456,11 @@ public class StockXService {
         String[] keywordArr = keywords.split("\n");
         String[] sortArr = sorts.split(",");
         int totalProcessed = 0;
+        int totalListed = 0;
         Set<String> processedVariantIds = new HashSet<>();
         List<Pair<String, Integer>> toList = new ArrayList<>();
         Map<String, Long> variantToTaskItemId = new HashMap<>();
+        boolean reachedLimit = false;
 
         for (String keyword : keywordArr) {
             keyword = keyword.trim();
@@ -557,6 +559,16 @@ public class StockXService {
                         toList.add(Pair.of(variantId, listPrice));
                         variantToTaskItemId.put(variantId, taskItemDO.getId());
                         existingVariantIds.add(variantId);
+                        totalListed++;
+
+                        if (maxListCount > 0 && totalListed >= maxListCount) {
+                            batchCreateListings(toList, variantToTaskItemId, account);
+                            toList.clear();
+                            variantToTaskItemId.clear();
+                            reachedLimit = true;
+                            log.info("[{}] 搜索上架达到上限({}/{}条)，停止搜索", accountName, totalListed, maxListCount);
+                            break;
+                        }
 
                         if (toList.size() >= 50) {
                             batchCreateListings(toList, variantToTaskItemId, account);
@@ -565,10 +577,13 @@ public class StockXService {
                         }
                     }
 
+                    if (reachedLimit) break;
                     int totalPages = searchResult.getKey();
                     if (pageIdx >= totalPages) break;
                 }
+                if (reachedLimit) break;
             }
+            if (reachedLimit) break;
         }
 
         // 3. 处理剩余待上架
@@ -576,7 +591,8 @@ public class StockXService {
             batchCreateListings(toList, variantToTaskItemId, account);
         }
 
-        log.info("[{}] 搜索上架完成，共处理{}条", accountName, totalProcessed);
+        log.info("[{}] 搜索上架完成，共处理{}条，上架{}条", accountName, totalProcessed, totalListed);
+        return reachedLimit;
     }
 
     private void batchCreateListings(List<Pair<String, Integer>> items,

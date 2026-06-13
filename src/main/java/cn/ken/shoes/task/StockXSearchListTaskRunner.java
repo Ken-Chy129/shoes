@@ -17,12 +17,13 @@ public class StockXSearchListTaskRunner implements Runnable {
     private final String sorts;
     private final int pageCount;
     private final String searchType;
+    private final int maxListCount;
     private final StockXService stockXService;
     private final TaskMapper taskMapper;
 
     public StockXSearchListTaskRunner(StockXAccount account, Long taskId,
                                       String keywords, String sorts, int pageCount,
-                                      String searchType,
+                                      String searchType, int maxListCount,
                                       StockXService stockXService, TaskMapper taskMapper) {
         this.account = account;
         this.taskId = taskId;
@@ -30,6 +31,7 @@ public class StockXSearchListTaskRunner implements Runnable {
         this.sorts = sorts;
         this.pageCount = pageCount;
         this.searchType = searchType;
+        this.maxListCount = maxListCount;
         this.stockXService = stockXService;
         this.taskMapper = taskMapper;
     }
@@ -39,7 +41,7 @@ public class StockXSearchListTaskRunner implements Runnable {
         String accountName = account.getName();
         try {
             long startTime = System.currentTimeMillis();
-            stockXService.searchAndList(account, taskId, keywords, sorts, pageCount, searchType);
+            boolean reachedLimit = stockXService.searchAndList(account, taskId, keywords, sorts, pageCount, searchType, maxListCount);
             String cost = TimeUtil.getCostMin(startTime);
 
             if (TaskSwitch.isSearchListCancelled(accountName)) {
@@ -49,6 +51,9 @@ public class StockXSearchListTaskRunner implements Runnable {
             } else {
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
                 taskMapper.updateTaskCost(taskId, cost);
+                if (reachedLimit) {
+                    taskMapper.updateTaskFailReason(taskId, "达到上架上限(" + maxListCount + "条)");
+                }
                 log.info("[{}] 搜索上架任务完成，耗时:{}", accountName, cost);
             }
         } catch (Exception e) {

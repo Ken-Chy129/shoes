@@ -141,6 +141,7 @@ const TaskPage = () => {
                     sorts: (values.sorts || ['lowest_ask']).join(','),
                     pageCount: values.pageCount || 3,
                     searchType: values.searchType || 'shoes',
+                    maxListCount: values.maxListCount || 0,
                 }, {
                     onSuccess: () => { message.success('任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
@@ -284,6 +285,9 @@ const TaskPage = () => {
                         <Radio.Button value="clothes">服饰</Radio.Button>
                     </Radio.Group>
                 </Form.Item>
+                <Form.Item name="maxListCount" label="最大上架数" extra="不填或填0表示不限制">
+                    <InputNumber min={0} style={{width: 160}} placeholder="不限"/>
+                </Form.Item>
             </>;
         }
 
@@ -330,7 +334,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -338,6 +342,7 @@ const TaskPage = () => {
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
+        if (k === 'maxListCount') return v && v > 0 ? `${v}条` : '不限';
         if (k === 'interval') return `${v}秒`;
         if (k === 'sorts') return String(v).split(',').join(', ');
         if (k === 'keywords') return String(v).split('\n').join(', ');
