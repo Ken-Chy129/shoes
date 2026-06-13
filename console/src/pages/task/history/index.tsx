@@ -46,6 +46,9 @@ const TaskHistoryPage = () => {
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 
+    const [paramsModalVisible, setParamsModalVisible] = useState(false);
+    const [paramsModalData, setParamsModalData] = useState<Record<string, any> | null>(null);
+
     useEffect(() => {
         queryTaskList();
     }, [pageIndex, pageSize]);
@@ -90,7 +93,7 @@ const TaskHistoryPage = () => {
             title: '平台',
             dataIndex: 'platform',
             key: 'platform',
-            width: '10%',
+            width: 80,
         },
         {
             title: '任务类型',
@@ -120,31 +123,6 @@ const TaskHistoryPage = () => {
             key: 'accountName',
             width: '8%',
             render: (name: string) => name || '-',
-        },
-        {
-            title: '参数',
-            dataIndex: 'params',
-            key: 'params',
-            width: '12%',
-            ellipsis: true,
-            render: (params: string) => {
-                if (!params) return '-';
-                try {
-                    const p = JSON.parse(params);
-                    const parts: string[] = [];
-                    if (p.inventoryType) parts.push(p.inventoryType === 'STANDARD' ? '现货' : '寄存');
-                    if (p.keywords) parts.push(`关键词: ${p.keywords.split('\n').length}个`);
-                    if (p.sorts) parts.push(`排序: ${p.sorts.split(',').length}种`);
-                    if (p.pageCount) parts.push(`${p.pageCount}页`);
-                    if (p.autoList === true) parts.push('自动上架');
-                    if (p.autoList === false) parts.push('仅搜索');
-                    return parts.length > 0
-                        ? <Tooltip title={<pre style={{margin: 0, fontSize: 12}}>{JSON.stringify(p, null, 2)}</pre>}>{parts.join(', ')}</Tooltip>
-                        : <Tooltip title={params}>{params.substring(0, 20)}</Tooltip>;
-                } catch {
-                    return params;
-                }
-            },
         },
         {
             title: '开始时间',
@@ -200,10 +178,18 @@ const TaskHistoryPage = () => {
             key: 'action',
             width: '15%',
             render: (_: any, record: TaskRecord) => (
-                <Space>
-                    <Button type="link" onClick={() => handleRowClick(record)}>
+                <Space size={0}>
+                    <Button type="link" size="small" onClick={() => handleRowClick(record)}>
                         查看明细
                     </Button>
+                    {record.params && (
+                        <Button type="link" size="small" onClick={() => {
+                            try { setParamsModalData(JSON.parse(record.params)); } catch { setParamsModalData({raw: record.params}); }
+                            setParamsModalVisible(true);
+                        }}>
+                            参数
+                        </Button>
+                    )}
                     <Popconfirm
                         title="确认删除"
                         description="确定要删除该任务及其所有明细数据吗？"
@@ -211,7 +197,7 @@ const TaskHistoryPage = () => {
                         okText="确定"
                         cancelText="取消"
                     >
-                        <Button type="link" danger>
+                        <Button type="link" size="small" danger>
                             删除
                         </Button>
                     </Popconfirm>
@@ -306,6 +292,53 @@ const TaskHistoryPage = () => {
                 setSelectedTaskId(null);
             }}
         />
+
+        <Modal
+            title="任务参数"
+            open={paramsModalVisible}
+            onCancel={() => setParamsModalVisible(false)}
+            footer={null}
+            width={480}
+        >
+            {paramsModalData && (
+                <table style={{width: '100%', borderCollapse: 'collapse'}}>
+                    <tbody>
+                    {Object.entries(paramsModalData).map(([key, value]) => {
+                        const labelMap: Record<string, string> = {
+                            inventoryType: '库存类型',
+                            keywords: '关键词',
+                            sorts: '排序方式',
+                            pageCount: '查询页数',
+                            searchType: '搜索类型',
+                            autoList: '自动上架',
+                            interval: '执行间隔',
+                            processOutsideExcel: '处理Excel外商品',
+                            unprofitableAction: '不盈利操作',
+                        };
+                        const formatValue = (k: string, v: any): string => {
+                            if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
+                            if (k === 'autoList') return v ? '是' : '否';
+                            if (k === 'processOutsideExcel') return v ? '是' : '否';
+                            if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
+                            if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
+                            if (k === 'interval') return `${v}秒`;
+                            if (k === 'sorts') return String(v).split(',').join(', ');
+                            if (k === 'keywords') return String(v).split('\n').join(', ');
+                            return String(v);
+                        };
+                        return (
+                            <tr key={key} style={{borderBottom: '1px solid #f0f0f0'}}>
+                                <td style={{padding: '10px 12px', color: '#666', width: 140, fontWeight: 500}}>
+                                    {labelMap[key] || key}
+                                </td>
+                                <td style={{padding: '10px 12px'}}>{formatValue(key, value)}</td>
+                            </tr>
+                        );
+                    })}
+                    </tbody>
+                </table>
+            )}
+        </Modal>
     </>
 }
 
