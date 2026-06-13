@@ -22,8 +22,6 @@ import java.util.List;
 @RequestMapping("shoes")
 public class ShoesController {
 
-    private final String token = "a04b2bd3138555154fe3af1e645a2186";
-
     @Resource
     private KickScrewClient kickScrewClient;
     @Resource

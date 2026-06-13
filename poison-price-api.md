@@ -4,7 +4,7 @@
 
 | 项目 | 说明 |
 |---|---|
-| 地址 | `http://43.99.84.114:8081/poison` |
+| 地址 | `http://<your_server_ip>:8081/poison` |
 | Content-Type | `application/json` |
 | 鉴权 | Header 携带 `api-token` |
 | 价格单位 | 元（人民币） |
@@ -35,7 +35,7 @@ api-token: <向管理员获取>
 
 ```bash
 curl -H 'api-token: <your_token>' \
-  'http://43.99.84.114:8081/poison/price?modelNo=JS4442'
+  'http://<your_server_ip>:8081/poison/price?modelNo=JS4442'
 ```
 
 ### 成功响应
@@ -69,7 +69,7 @@ curl -H 'api-token: <your_token>' \
 curl -X POST -H 'api-token: <your_token>' \
   -H 'Content-Type: application/json' \
   -d '["JS4442", "DZ5485-612"]' \
-  'http://43.99.84.114:8081/poison/batchPrice'
+  'http://<your_server_ip>:8081/poison/batchPrice'
 ```
 
 ### 成功响应
