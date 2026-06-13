@@ -31,7 +31,7 @@ const ToolPage = () => {
             message.warning("请输入货号");
             return;
         }
-        doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo, mode: "dbFirst"}, {
+        doGetRequest(PRICE_API.QUERY_BY_MODEL, {modelNo}, {
             onSuccess: res => {
                 setPriceList(res.data || []);
                 setPriceModelNo(modelNo);
@@ -60,11 +60,10 @@ const ToolPage = () => {
     };
 
     const priceColumns = [
-        {title: '尺码', dataIndex: 'size', key: 'size'},
-        {title: '得物价格', dataIndex: 'poisonPrice', key: 'poisonPrice'},
-        {title: 'KC价格', dataIndex: 'kcPrice', key: 'kcPrice'},
-        {title: 'KC盈利(-1)', dataIndex: 'kcEarn', key: 'kcEarn'},
-        {title: '绿叉盈利(-1)', dataIndex: 'stockxEarn', key: 'stockxEarn'},
+        {title: '尺码', dataIndex: 'euSize', key: 'euSize'},
+        {title: '缓存价格', dataIndex: 'cachedPrice', key: 'cachedPrice', render: (v: number) => v ?? '-'},
+        {title: '缓存时间', dataIndex: 'cacheTime', key: 'cacheTime', render: (v: string) => v || '-'},
+        {title: '最新价格', dataIndex: 'latestPrice', key: 'latestPrice', render: (v: number) => v ?? '-'},
     ];
 
     const sizeColumns = [
@@ -131,7 +130,7 @@ const ToolPage = () => {
             <Table
                 columns={priceColumns}
                 dataSource={priceList}
-                rowKey="size"
+                rowKey="euSize"
                 size="small"
                 pagination={false}
             />
