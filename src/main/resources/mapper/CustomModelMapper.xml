@@ -17,4 +17,33 @@
     <delete id="clearByType">
         delete from custom_model where type = #{type}
     </delete>
+
+    <select id="countByType" resultType="java.lang.Long">
+        select count(*) from custom_model
+        where type = #{type}
+        <if test="modelNo != null and modelNo != ''">
+            and model_no like concat('%', #{modelNo}, '%')
+        </if>
+    </select>
+
+    <select id="pageByType" resultType="cn.ken.shoes.model.entity.CustomModelDO">
+        select * from custom_model
+        where type = #{type}
+        <if test="modelNo != null and modelNo != ''">
+            and model_no like concat('%', #{modelNo}, '%')
+        </if>
+        order by model_no, eu_size
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <delete id="deleteByTypeAndModelNo">
+        delete from custom_model
+        where type = #{type} and model_no = #{modelNo}
+        <if test="euSize != null and euSize != ''">
+            and eu_size = #{euSize}
+        </if>
+        <if test="euSize == null or euSize == ''">
+            and (eu_size is null or eu_size = '')
+        </if>
+    </delete>
 </mapper>

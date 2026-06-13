@@ -10,20 +10,27 @@ import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.CustomModelMapper;
+import cn.ken.shoes.mapper.MustCrawlMapper;
 import cn.ken.shoes.model.brand.BrandRequest;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.CustomModelDO;
+import cn.ken.shoes.model.entity.MustCrawlDO;
+import cn.ken.shoes.model.excel.SpecialModelExcel;
 import cn.ken.shoes.model.setting.PriceSetting;
 import cn.ken.shoes.service.KickScrewService;
 import cn.ken.shoes.util.SqlHelper;
+import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 
 @RestController
 @RequestMapping("setting")
@@ -37,6 +44,9 @@ public class SettingController {
 
     @Resource
     private CustomModelMapper customModelMapper;
+
+    @Resource
+    private MustCrawlMapper mustCrawlMapper;
 
     @GetMapping("poison")
     public Result<JSONObject> queryPoisonSetting() {
@@ -226,5 +236,162 @@ public class SettingController {
         }
         StockXConfig.removeAccount(name);
         return Result.buildSuccess(true);
+    }
+
+    // ==================== 特殊货号统一管理 ====================
+
+    private static final Map<String, Integer> CATEGORY_TYPE_MAP = Map.of(
+            "forbidden", 4,
+            "notCompare", 2
+    );
+
+    @GetMapping("specialModelPage")
+    public PageResult<List<Map<String, String>>> specialModelPage(
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String modelNo,
+            @RequestParam(defaultValue = "1") int pageIndex,
+            @RequestParam(defaultValue = "20") int pageSize) {
+
+        List<Map<String, String>> resultList;
+        long total = 0;
+        int startIndex = (pageIndex - 1) * pageSize;
+
+        if (category == null || category.isEmpty()) {
+            long mustCount = mustCrawlMapper.countByPlatform("kc", modelNo);
+            long forbiddenCount = customModelMapper.countByType(4, modelNo);
+            long notCompareCount = customModelMapper.countByType(2, modelNo);
+            total = mustCount + forbiddenCount + notCompareCount;
+
+            List<Map<String, String>> all = new ArrayList<>();
+            for (MustCrawlDO m : mustCrawlMapper.pageByPlatform("kc", modelNo, 0, (int) mustCount)) {
+                all.add(Map.of("modelNo", m.getModelNo(), "euSize", "", "category", "mustCrawl"));
+            }
+            for (CustomModelDO m : customModelMapper.pageByType(4, modelNo, 0, (int) forbiddenCount)) {
+                all.add(Map.of("modelNo", m.getModelNo(), "euSize", Optional.ofNullable(m.getEuSize()).orElse(""), "category", "forbidden"));
+            }
+            for (CustomModelDO m : customModelMapper.pageByType(2, modelNo, 0, (int) notCompareCount)) {
+                all.add(Map.of("modelNo", m.getModelNo(), "euSize", Optional.ofNullable(m.getEuSize()).orElse(""), "category", "notCompare"));
+            }
+            int end = Math.min(startIndex + pageSize, all.size());
+            resultList = startIndex < all.size() ? new ArrayList<>(all.subList(startIndex, end)) : new ArrayList<>();
+        } else if ("mustCrawl".equals(category)) {
+            total = mustCrawlMapper.countByPlatform("kc", modelNo);
+            resultList = new ArrayList<>();
+            for (MustCrawlDO m : mustCrawlMapper.pageByPlatform("kc", modelNo, startIndex, pageSize)) {
+                resultList.add(Map.of("modelNo", m.getModelNo(), "euSize", "", "category", "mustCrawl"));
+            }
+        } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
+            int type = CATEGORY_TYPE_MAP.get(category);
+            total = customModelMapper.countByType(type, modelNo);
+            resultList = new ArrayList<>();
+            for (CustomModelDO m : customModelMapper.pageByType(type, modelNo, startIndex, pageSize)) {
+                resultList.add(Map.of("modelNo", m.getModelNo(), "euSize", Optional.ofNullable(m.getEuSize()).orElse(""), "category", category));
+            }
+        } else {
+            resultList = new ArrayList<>();
+        }
+
+        PageResult<List<Map<String, String>>> result = PageResult.buildSuccess(resultList);
+        result.setTotal(total);
+        return result;
+    }
+
+    @PostMapping("addSpecialModel")
+    public Result<Integer> addSpecialModel(@RequestBody JSONObject body) {
+        String category = body.getString("category");
+        String modelNos = body.getString("modelNos");
+        if (StrUtil.isBlank(category) || StrUtil.isBlank(modelNos)) {
+            return Result.buildError("category和modelNos不能为空");
+        }
+        List<String> lines = Arrays.stream(modelNos.split("\n")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+        int count = 0;
+        if ("mustCrawl".equals(category)) {
+            for (String line : lines) {
+                MustCrawlDO crawlDO = new MustCrawlDO();
+                crawlDO.setPlatform("kc");
+                crawlDO.setModelNo(line.split(":")[0].trim());
+                mustCrawlMapper.insertIgnore(crawlDO);
+                count++;
+            }
+        } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
+            int type = CATEGORY_TYPE_MAP.get(category);
+            for (String line : lines) {
+                CustomModelDO customModelDO = new CustomModelDO();
+                customModelDO.setType(type);
+                String[] parts = line.split(":");
+                customModelDO.setModelNo(parts[0].trim());
+                if (parts.length >= 2 && !parts[1].trim().isEmpty()) {
+                    customModelDO.setEuSize(parts[1].trim());
+                }
+                customModelMapper.insertIgnore(customModelDO);
+                count++;
+            }
+        } else {
+            return Result.buildError("无效的category: " + category);
+        }
+        return Result.buildSuccess(count);
+    }
+
+    @DeleteMapping("deleteSpecialModel")
+    public Result<Boolean> deleteSpecialModel(@RequestParam String category,
+                                               @RequestParam String modelNo,
+                                               @RequestParam(required = false) String euSize) {
+        if ("mustCrawl".equals(category)) {
+            mustCrawlMapper.deleteByPlatformAndModelNo("kc", modelNo);
+        } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
+            int type = CATEGORY_TYPE_MAP.get(category);
+            customModelMapper.deleteByTypeAndModelNo(type, modelNo, euSize);
+        } else {
+            return Result.buildError("无效的category: " + category);
+        }
+        return Result.buildSuccess(true);
+    }
+
+    @PostMapping("importSpecialModelExcel")
+    public Result<Integer> importSpecialModelExcel(@RequestParam("file") MultipartFile file,
+                                                    @RequestParam("category") String category) throws IOException {
+        if (StrUtil.isBlank(category)) {
+            return Result.buildError("category不能为空");
+        }
+        List<SpecialModelExcel> list = EasyExcel.read(file.getInputStream())
+                .head(SpecialModelExcel.class).sheet().doReadSync();
+        if (CollectionUtils.isEmpty(list)) {
+            return Result.buildSuccess(0);
+        }
+        int count = 0;
+        if ("mustCrawl".equals(category)) {
+            for (SpecialModelExcel row : list) {
+                if (StrUtil.isBlank(row.getModelNo())) continue;
+                MustCrawlDO crawlDO = new MustCrawlDO();
+                crawlDO.setPlatform("kc");
+                crawlDO.setModelNo(row.getModelNo().trim());
+                mustCrawlMapper.insertIgnore(crawlDO);
+                count++;
+            }
+        } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
+            int type = CATEGORY_TYPE_MAP.get(category);
+            for (SpecialModelExcel row : list) {
+                if (StrUtil.isBlank(row.getModelNo())) continue;
+                CustomModelDO customModelDO = new CustomModelDO();
+                customModelDO.setType(type);
+                customModelDO.setModelNo(row.getModelNo().trim());
+                if (StrUtil.isNotBlank(row.getEuSize())) {
+                    customModelDO.setEuSize(row.getEuSize().trim());
+                }
+                customModelMapper.insertIgnore(customModelDO);
+                count++;
+            }
+        } else {
+            return Result.buildError("无效的category: " + category);
+        }
+        return Result.buildSuccess(count);
+    }
+
+    @GetMapping("specialModelTemplate")
+    public void specialModelTemplate(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setHeader("Content-Disposition", "attachment;filename=" +
+                URLEncoder.encode("特殊货号导入模板.xlsx", StandardCharsets.UTF_8));
+        EasyExcel.write(response.getOutputStream(), SpecialModelExcel.class).sheet("模板").doWrite(List.of());
     }
 }

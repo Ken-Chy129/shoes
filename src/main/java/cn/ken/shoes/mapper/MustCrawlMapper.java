@@ -17,4 +17,11 @@ public interface MustCrawlMapper extends BaseMapper<MustCrawlDO> {
     int deleteByPlatform(@Param("platform") String platform);
 
     List<String> selectAllModelNos();
+
+    long countByPlatform(@Param("platform") String platform, @Param("modelNo") String modelNo);
+
+    List<MustCrawlDO> pageByPlatform(@Param("platform") String platform, @Param("modelNo") String modelNo,
+                                      @Param("startIndex") int startIndex, @Param("pageSize") int pageSize);
+
+    int deleteByPlatformAndModelNo(@Param("platform") String platform, @Param("modelNo") String modelNo);
 }

@@ -1,32 +1,19 @@
 import {
-    Button, Card, DatePicker,
+    Button, Card,
     Form,
     Input,
     message,
-    Modal,
-    Radio,
     Select,
-    Space,
     Table,
-    Tabs,
-    Tooltip
 } from "antd";
-import React, {useEffect, useState} from "react";
-import {doDeleteRequest, doGetRequest, doPostRequest} from "@/util/http";
-import {TEMPLATE_API} from "@/services/management";
-import {FieldSelect, MachineSelect, NamespaceSelect} from "@/components";
-import {PRICE_API, SETTING_API} from "@/services/shoes";
+import React, {useState} from "react";
+import {doGetRequest} from "@/util/http";
+import {PRICE_API} from "@/services/shoes";
 
 const PricePage = () => {
     const [conditionForm] = Form.useForm();
-    const [crawlCntForm] = Form.useForm();
 
     const [priceList, setPriceList] = useState<[]>([]);
-
-    const [showDefaultCntModifiedModal, setShowDefaultCntModifiedModal] = useState(false);
-
-    useEffect(() => {
-    }, []);
 
 
     const queryPriceByModel = () => {
@@ -42,15 +29,6 @@ const PricePage = () => {
             }
         });
     }
-
-    const updateBrandSetting = (brandSetting: any) => {
-        doPostRequest(SETTING_API.UPDATE_BRAND_SETTING, brandSetting, {
-            onSuccess: _ => {
-                message.success("修改成功").then();
-            }
-        });
-    }
-
 
     const columns = [
         {
@@ -83,28 +61,6 @@ const PricePage = () => {
             key: 'stockxEarn',
             width: '10%', // 设置列宽为30%
         },
-        {
-            title: '操作',
-            key: 'action',
-            render: (text: string, brandSetting: { name: string, needCrawl: boolean }) => (
-                <span>
-                  <Button onClick={() => updateBrandSetting(
-                      {
-                          name: brandSetting.name,
-                          needCrawl: !brandSetting.needCrawl
-                      }
-                  )}>
-                    KC改价
-                  </Button>
-                  <Button style={{marginLeft: 20}} onClick={() => {
-                      crawlCntForm.setFieldValue("name", brandSetting.name);
-                  }}>
-                    绿叉改价
-                  </Button>
-                </span>
-            ),
-            width: '30%', // 设置列宽为30%
-        }
     ];
 
     return <>
@@ -142,18 +98,6 @@ const PricePage = () => {
                         </Button>
                     </Form.Item>
                 </div>
-                <div style={{display: "flex"}}>
-                    <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
-                            一键改价（KC）
-                        </Button>
-                    </Form.Item>
-                    <Form.Item style={{marginLeft: 30}}>
-                        <Button onClick={() => setShowDefaultCntModifiedModal(true)}>
-                            一键改价（绿叉）
-                        </Button>
-                    </Form.Item>
-                </div>
             </Form>
             <Table
                 columns={columns}
@@ -162,32 +106,6 @@ const PricePage = () => {
             />
         </Card>
 
-        {/*<Modal*/}
-        {/*    title="设置上架利润条件"*/}
-        {/*    open={showDefaultCntModifiedModal}*/}
-        {/*    onOk={handleModalClose}*/}
-        {/*    onCancel={handleModalClose}*/}
-        {/*    footer={[*/}
-        {/*        <Space>*/}
-        {/*            <Button key="push" onClick={() => {*/}
-        {/*                updateDefaultCrawlCntModelNos();*/}
-        {/*                defaultCntForm.resetFields();*/}
-        {/*                handleModalClose();*/}
-        {/*            }}>*/}
-        {/*                修改*/}
-        {/*            </Button>*/}
-        {/*            <Button key="close" onClick={handleModalClose}>*/}
-        {/*                关闭*/}
-        {/*            </Button>*/}
-        {/*        </Space>*/}
-        {/*    ]}*/}
-        {/*>*/}
-        {/*    <Form form={defaultCntForm} style={{margin: 30}}>*/}
-        {/*        <Form.Item name={"defaultCnt"} label={"默认爬取数量"}>*/}
-        {/*            <Input/>*/}
-        {/*        </Form.Item>*/}
-        {/*    </Form>*/}
-        {/*</Modal>*/}
     </>
 }
 

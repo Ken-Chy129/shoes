@@ -33,7 +33,6 @@
 │   └── util/             # 工具类（HTTP、代理、尺码转换等）
 ├── console/              # 前端管理控制台
 ├── Dockerfile            # Docker 构建文件
-└── search_task.sql       # 数据库初始化脚本
 ```
 
 ## 快速开始
@@ -41,9 +40,6 @@
 ### 后端
 
 ```bash
-# 初始化数据库
-mysql -u root -p < search_task.sql
-
 # 修改 application.yml 配置数据库、代理等信息后启动
 mvn spring-boot:run
 ```

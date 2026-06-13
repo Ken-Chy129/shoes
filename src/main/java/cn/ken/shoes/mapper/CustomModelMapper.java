@@ -16,4 +16,11 @@ public interface CustomModelMapper extends BaseMapper<CustomModelDO> {
     List<CustomModelDO> selectByType(@Param("type") int type);
 
     int clearByType(@Param("type") int type);
+
+    long countByType(@Param("type") int type, @Param("modelNo") String modelNo);
+
+    List<CustomModelDO> pageByType(@Param("type") int type, @Param("modelNo") String modelNo,
+                                    @Param("startIndex") int startIndex, @Param("pageSize") int pageSize);
+
+    int deleteByTypeAndModelNo(@Param("type") int type, @Param("modelNo") String modelNo, @Param("euSize") String euSize);
 }

@@ -22,4 +22,26 @@
     <select id="selectAllModelNos" resultType="java.lang.String">
         select model_no from must_crawl;
     </select>
+
+    <select id="countByPlatform" resultType="java.lang.Long">
+        select count(*) from must_crawl
+        where platform = #{platform}
+        <if test="modelNo != null and modelNo != ''">
+            and model_no like concat('%', #{modelNo}, '%')
+        </if>
+    </select>
+
+    <select id="pageByPlatform" resultType="cn.ken.shoes.model.entity.MustCrawlDO">
+        select * from must_crawl
+        where platform = #{platform}
+        <if test="modelNo != null and modelNo != ''">
+            and model_no like concat('%', #{modelNo}, '%')
+        </if>
+        order by model_no
+        limit #{startIndex}, #{pageSize}
+    </select>
+
+    <delete id="deleteByPlatformAndModelNo">
+        delete from must_crawl where platform = #{platform} and model_no = #{modelNo}
+    </delete>
 </mapper>

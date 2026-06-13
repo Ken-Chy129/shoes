@@ -81,11 +81,6 @@ export default [
     ]
   },
   {
-    path: '/poison',
-    layout: true,
-    component: "./poison"
-  },
-  {
     path: '/task',
     layout: true,
     component: './task/history'
@@ -110,11 +105,6 @@ export default [
         component: './tool/sizeChart'
       },
     ]
-  },
-  {
-    path: '/file',
-    layout: true,
-    component: "./file"
   },
   {
     path: '*',

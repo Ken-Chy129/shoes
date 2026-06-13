@@ -1,157 +1,217 @@
 import {
-    Button,
-    Card,
-    Input,
-    message,
-    Upload,
-    Space,
+    Button, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Upload,
 } from "antd";
-import {UploadOutlined} from "@ant-design/icons";
-import React, {useEffect, useRef} from "react";
-import {doGetRequest, doPostRequest} from "@/util/http";
+import {PlusOutlined, UploadOutlined, DownloadOutlined, SearchOutlined} from "@ant-design/icons";
+import React, {useEffect, useRef, useState} from "react";
+import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
 
+interface SpecialModelRecord {
+    modelNo: string;
+    euSize: string;
+    category: string;
+}
+
+const CATEGORY_OPTIONS = [
+    {label: '全部', value: ''},
+    {label: '必爬', value: 'mustCrawl'},
+    {label: '禁爬', value: 'forbidden'},
+    {label: '不比价', value: 'notCompare'},
+];
+
+const CATEGORY_LABELS: Record<string, { text: string; color: string }> = {
+    mustCrawl: {text: '必爬', color: 'blue'},
+    forbidden: {text: '禁爬', color: 'red'},
+    notCompare: {text: '不比价', color: 'orange'},
+};
+
 const ModelPage = () => {
-    const mustCrawlRef = useRef<any>(null);
-    const forbiddenCrawlRef = useRef<any>(null);
-    const notCompareRef = useRef<any>(null);
-    const forbiddenType = 4;
-    const notCompareType = 2;
+    const [dataSource, setDataSource] = useState<SpecialModelRecord[]>([]);
+    const [pageIndex, setPageIndex] = useState(1);
+    const [pageSize, setPageSize] = useState(20);
+    const [total, setTotal] = useState(0);
+    const [loading, setLoading] = useState(false);
+
+    const [filterCategory, setFilterCategory] = useState('');
+    const [filterModelNo, setFilterModelNo] = useState('');
+    const [searchInput, setSearchInput] = useState('');
+    const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+    const [addModalVisible, setAddModalVisible] = useState(false);
+    const [addCategory, setAddCategory] = useState('mustCrawl');
+    const [addModelNos, setAddModelNos] = useState('');
+    const [adding, setAdding] = useState(false);
+
+    const [importCategory, setImportCategory] = useState('mustCrawl');
+    const [importModalVisible, setImportModalVisible] = useState(false);
 
     useEffect(() => {
-        queryMustCrawlModelNos();
-        queryForbiddenCrawlModelNos();
-        queryNotCompareModelNos();
-    }, []);
+        queryList();
+    }, [pageIndex, pageSize, filterCategory, filterModelNo]);
 
-    const queryMustCrawlModelNos = () => {
-        doGetRequest(SETTING_API.QUERY_MUST_CRAWL_MODEL_NOS, {}, {
+    const queryList = () => {
+        setLoading(true);
+        const params: any = {pageIndex, pageSize};
+        if (filterCategory) params.category = filterCategory;
+        if (filterModelNo) params.modelNo = filterModelNo;
+        doGetRequest(SETTING_API.SPECIAL_MODEL_PAGE, params, {
             onSuccess: res => {
-                if (mustCrawlRef.current) {
-                    mustCrawlRef.current.resizableTextArea.textArea.value = res.data || '';
-                }
-            }
+                setDataSource(res.data || []);
+                setTotal(res.total || 0);
+            },
+            onFinally: () => setLoading(false),
         });
-    }
+    };
 
-    const updateMustCrawlModelNos = () => {
-        const modelNos = mustCrawlRef.current?.resizableTextArea?.textArea?.value || '';
-        doPostRequest(SETTING_API.UPDATE_MUST_CRAWL_MODEL_NOS, {modelNos}, {
-            onSuccess: _ => {
-                message.success("修改成功").then();
-            }
+    const handleSearchChange = (value: string) => {
+        setSearchInput(value);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        debounceRef.current = setTimeout(() => {
+            setFilterModelNo(value);
+            setPageIndex(1);
+        }, 500);
+    };
+
+    const handleDelete = (record: SpecialModelRecord) => {
+        const params: any = {category: record.category, modelNo: record.modelNo};
+        if (record.euSize) params.euSize = record.euSize;
+        doDeleteRequest(SETTING_API.DELETE_SPECIAL_MODEL, params, {
+            onSuccess: () => {
+                message.success('删除成功');
+                queryList();
+            },
         });
-    }
+    };
 
-    const handleFileUpload = (file: File) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target?.result as string;
-            if (content && mustCrawlRef.current) {
-                const currentValue = mustCrawlRef.current.resizableTextArea.textArea.value || '';
-                const newLines = content.split(/\r?\n/).filter(line => line.trim());
-                const newValue = currentValue ? currentValue + '\n' + newLines.join('\n') : newLines.join('\n');
-                mustCrawlRef.current.resizableTextArea.textArea.value = newValue;
-                message.success(`导入 ${newLines.length} 条货号`);
-            }
-        };
-        reader.readAsText(file);
-        return false; // 阻止默认上传行为
-    }
-
-    const queryForbiddenCrawlModelNos = () => {
-        doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: forbiddenType}, {
+    const handleAdd = () => {
+        if (!addModelNos.trim()) {
+            message.warning('请输入货号');
+            return;
+        }
+        setAdding(true);
+        doPostRequest(SETTING_API.ADD_SPECIAL_MODEL, {category: addCategory, modelNos: addModelNos}, {
             onSuccess: res => {
-                if (forbiddenCrawlRef.current) {
-                    forbiddenCrawlRef.current.resizableTextArea.textArea.value = res.data || '';
-                }
-            }
+                message.success(`成功添加 ${res.data} 条`);
+                setAddModalVisible(false);
+                setAddModelNos('');
+                queryList();
+            },
+            onFinally: () => setAdding(false),
         });
-    }
+    };
 
-    const updateForbiddenCrawlModelNos = () => {
-        const modelNos = forbiddenCrawlRef.current?.resizableTextArea?.textArea?.value || '';
-        doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: forbiddenType}, {
-            onSuccess: _ => {
-                message.success("修改成功").then();
-            }
-        });
-    }
-
-    const queryNotCompareModelNos = () => {
-        doGetRequest(SETTING_API.QUERY_CUSTOM_MODEL_NOS, {type: notCompareType}, {
+    const handleImport = (file: any) => {
+        doUploadRequestWithParams(SETTING_API.IMPORT_SPECIAL_MODEL_EXCEL, file, {category: importCategory}, {
             onSuccess: res => {
-                if (notCompareRef.current) {
-                    notCompareRef.current.resizableTextArea.textArea.value = res.data || '';
-                }
-            }
+                message.success(`成功导入 ${res.data} 条`);
+                setImportModalVisible(false);
+                queryList();
+            },
+            onError: () => message.error('导入失败'),
         });
-    }
+        return false;
+    };
 
-    const updateNotCompareModelNos = () => {
-        const modelNos = notCompareRef.current?.resizableTextArea?.textArea?.value || '';
-        doPostRequest(SETTING_API.UPDATE_CUSTOM_MODEL_NOS, {modelNos, type: notCompareType}, {
-            onSuccess: _ => {
-                message.success("修改成功").then();
-            }
-        });
-    }
+    const columns = [
+        {
+            title: '货号', dataIndex: 'modelNo', key: 'modelNo', width: 200,
+        },
+        {
+            title: '尺码', dataIndex: 'euSize', key: 'euSize', width: 100,
+            render: (v: string) => v || '-',
+        },
+        {
+            title: '类型', dataIndex: 'category', key: 'category', width: 100,
+            render: (category: string) => {
+                const info = CATEGORY_LABELS[category];
+                return info ? <Tag color={info.color}>{info.text}</Tag> : category;
+            },
+        },
+        {
+            title: '操作', key: 'action', width: 80,
+            render: (_: any, record: SpecialModelRecord) => (
+                <Popconfirm title="确认删除？" onConfirm={() => handleDelete(record)} okText="确定" cancelText="取消">
+                    <Button type="link" size="small" danger>删除</Button>
+                </Popconfirm>
+            ),
+        },
+    ];
 
     return <>
-        <Card title={"必爬货号"}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea ref={mustCrawlRef} rows={15} />
+        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
+            <Space>
+                <Select
+                    value={filterCategory}
+                    onChange={v => { setFilterCategory(v); setPageIndex(1); }}
+                    style={{width: 120}}
+                    options={CATEGORY_OPTIONS}
+                />
+                <Input
+                    placeholder="搜索货号"
+                    prefix={<SearchOutlined/>}
+                    value={searchInput}
+                    onChange={e => handleSearchChange(e.target.value)}
+                    style={{width: 200}}
+                    allowClear
+                />
+            </Space>
+            <Space>
+                <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
+                    下载模板
+                </Button>
+                <Button icon={<UploadOutlined/>} onClick={() => setImportModalVisible(true)}>
+                    导入Excel
+                </Button>
+                <Button type="primary" icon={<PlusOutlined/>} onClick={() => setAddModalVisible(true)}>
+                    添加
+                </Button>
+            </Space>
+        </div>
 
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                    <Space>
-                        <Upload
-                            accept=".txt"
-                            showUploadList={false}
-                            beforeUpload={handleFileUpload}
-                        >
-                            <Button icon={<UploadOutlined />}>导入TXT</Button>
-                        </Upload>
-                        <Button
-                            key="push"
-                            onClick={updateMustCrawlModelNos}
-                        >
-                            修改
-                        </Button>
-                    </Space>
-                </div>
+        <Table
+            columns={columns}
+            dataSource={dataSource}
+            loading={loading}
+            rowKey={(r) => `${r.category}:${r.modelNo}:${r.euSize}`}
+            size="middle"
+            pagination={{
+                current: pageIndex, pageSize, total, showSizeChanger: true,
+                showTotal: t => `共 ${t} 条`,
+                onChange: (c, s) => { setPageIndex(c); setPageSize(s); },
+            }}
+        />
+
+        {/* 添加 Modal */}
+        <Modal
+            title="添加货号" open={addModalVisible} onCancel={() => setAddModalVisible(false)}
+            onOk={handleAdd} confirmLoading={adding} okText="添加" cancelText="取消" width={480}
+        >
+            <div style={{marginBottom: 16}}>
+                <span style={{marginRight: 8}}>类型：</span>
+                <Select value={addCategory} onChange={setAddCategory} style={{width: 120}}
+                    options={CATEGORY_OPTIONS.filter(o => o.value !== '')}/>
             </div>
-        </Card>
+            <Input.TextArea
+                rows={10} value={addModelNos} onChange={e => setAddModelNos(e.target.value)}
+                placeholder={"每行一个货号，支持 货号:尺码 格式\n例如：\nDV0833-105\nFD8775-100:42"}
+            />
+        </Modal>
 
-        <Card title={"禁爬货号"} style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea ref={forbiddenCrawlRef} rows={15} />
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                    <Button
-                        key="push"
-                        onClick={updateForbiddenCrawlModelNos}
-                    >
-                        修改
-                    </Button>
-                </div>
+        {/* 导入 Modal */}
+        <Modal
+            title="导入Excel" open={importModalVisible}
+            onCancel={() => setImportModalVisible(false)} footer={null} width={400}
+        >
+            <div style={{marginBottom: 16}}>
+                <span style={{marginRight: 8}}>类型：</span>
+                <Select value={importCategory} onChange={setImportCategory} style={{width: 120}}
+                    options={CATEGORY_OPTIONS.filter(o => o.value !== '')}/>
             </div>
-        </Card>
-
-        <Card title={"不比价货号"} style={{ marginTop: 10 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch' }}>
-                <Input.TextArea ref={notCompareRef} rows={15} />
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
-                    <Button
-                        key="push"
-                        onClick={updateNotCompareModelNos}
-                    >
-                        修改
-                    </Button>
-                </div>
-            </div>
-        </Card>
-    </>
-}
+            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
+                <Button icon={<UploadOutlined/>}>选择文件并上传</Button>
+            </Upload>
+        </Modal>
+    </>;
+};
 
 export default ModelPage;
