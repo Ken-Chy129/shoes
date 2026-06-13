@@ -11,6 +11,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 import org.springframework.stereotype.Service;
 
+import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -27,19 +28,33 @@ public class PriceService {
     public Result<List<PriceVO>> queryByModelNo(String modelNo) {
         Map<String, Integer> latestMap = queryLatestPrices(modelNo);
 
+        Map<String, PoisonPriceDO> cachedMap = priceManager.loadPrice(modelNo);
         Set<String> allSizes = new TreeSet<>(latestMap.keySet());
-        allSizes.addAll(priceManager.loadPrice(modelNo).keySet());
+        allSizes.addAll(cachedMap.keySet());
 
         if (allSizes.isEmpty()) {
             return Result.buildError("未找到该货号的得物价格");
         }
 
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         List<PriceVO> result = new ArrayList<>();
         for (String euSize : allSizes) {
             PriceVO vo = new PriceVO();
             vo.setEuSize(euSize);
-            vo.setBusinessPrice(priceManager.getPoisonPrice(modelNo, euSize));
+
+            Integer businessPrice = priceManager.getPoisonPrice(modelNo, euSize);
+            vo.setBusinessPrice(businessPrice);
             vo.setLatestPrice(latestMap.get(euSize));
+
+            PoisonPriceDO cached = cachedMap.get(euSize);
+            if (cached != null && cached.getUpdateTime() != null) {
+                vo.setCacheTime(sdf.format(cached.getUpdateTime()));
+            }
+
+            if (businessPrice != null && latestMap.get(euSize) != null) {
+                vo.setPriceDiff(businessPrice - latestMap.get(euSize));
+            }
+
             if (ShoesContext.isFlawsModel(modelNo, euSize)) {
                 vo.setRemark("禁爬货号");
             } else if (ShoesContext.isNotCompareModel(modelNo, euSize)) {

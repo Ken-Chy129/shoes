@@ -115,9 +115,6 @@ public class TaskExecutorManager {
     }
 
     private Long createTask(String platform, String taskType, String accountName, String params) {
-        List<Long> validTaskIds = collectValidTaskIds();
-        taskMapper.shelveHistoryTasks(validTaskIds);
-
         TaskDO taskDO = new TaskDO();
         taskDO.setPlatform(platform);
         taskDO.setTaskType(taskType);
@@ -131,30 +128,6 @@ public class TaskExecutorManager {
         return taskDO.getId();
     }
 
-    /**
-     * 收集当前内存中所有有效的任务ID
-     */
-    private List<Long> collectValidTaskIds() {
-        List<Long> validIds = new ArrayList<>();
-        if (TaskSwitch.CURRENT_KC_LISTING_TASK_ID != null) {
-            validIds.add(TaskSwitch.CURRENT_KC_LISTING_TASK_ID);
-        }
-        if (TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID != null) {
-            validIds.add(TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID);
-        }
-        validIds.addAll(TaskSwitch.getAllExcelTaskIds());
-        validIds.addAll(TaskSwitch.getAllSearchListTaskIds());
-        return validIds;
-    }
-
-    /**
-     * 更新任务状态
-     */
-    private void updateTaskStatus(Long taskId, String status) {
-        if (taskId != null) {
-            taskMapper.updateTaskStatus(taskId, status);
-        }
-    }
 
     // ==================== StockX Excel 多账号压价 ====================
 

@@ -44,4 +44,6 @@ public interface SearchTaskMapper extends BaseMapper<SearchTaskDO> {
     void updateStartStatus(@Param("id") Long id,
                            @Param("status") String status,
                            @Param("startTime") Date startTime);
+
+    void shelveRunningTasks(@Param("excludeId") Long excludeId);
 }

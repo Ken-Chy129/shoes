@@ -4,8 +4,10 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.CustomPriceTypeEnum;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.mapper.CustomModelMapper;
+import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
 import cn.ken.shoes.mapper.SpecialPriceMapper;
+import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
@@ -41,6 +43,12 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Resource
     private SpecialPriceMapper specialPriceMapper;
 
+    @Resource
+    private SearchTaskMapper searchTaskMapper;
+
+    @Resource
+    private TaskMapper taskMapper;
+
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.USE_V3_API) {
@@ -49,6 +57,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
             poisonService.importPriceToCache();
         }
+        taskMapper.shelveHistoryTasks(List.of());
+        searchTaskMapper.shelveRunningTasks(null);
         initSizeMap();
         initCustomModel();
         initSpecialPrice();

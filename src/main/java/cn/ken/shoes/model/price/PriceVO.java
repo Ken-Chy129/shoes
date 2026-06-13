@@ -11,5 +11,9 @@ public class PriceVO {
 
     private Integer latestPrice;
 
+    private Integer priceDiff;
+
+    private String cacheTime;
+
     private String remark;
 }

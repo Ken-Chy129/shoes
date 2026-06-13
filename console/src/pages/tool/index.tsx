@@ -60,10 +60,22 @@ const ToolPage = () => {
     };
 
     const priceColumns = [
-        {title: '尺码', dataIndex: 'euSize', key: 'euSize'},
-        {title: '业务价格', dataIndex: 'businessPrice', key: 'businessPrice', render: (v: number) => v != null ? `¥${v}` : '-'},
-        {title: '实时价格', dataIndex: 'latestPrice', key: 'latestPrice', render: (v: number) => v != null ? `¥${v}` : '-'},
-        {title: '备注', dataIndex: 'remark', key: 'remark', render: (v: string) => v ? <span style={{color: '#faad14'}}>{v}</span> : '-'},
+        {title: '尺码', dataIndex: 'euSize', key: 'euSize', width: 70},
+        {title: '业务价格', dataIndex: 'businessPrice', key: 'businessPrice', width: 90,
+            render: (v: number) => v != null ? `¥${v}` : '-'},
+        {title: '实时价格', dataIndex: 'latestPrice', key: 'latestPrice', width: 90,
+            render: (v: number) => v != null ? `¥${v}` : '-'},
+        {title: '偏差', dataIndex: 'priceDiff', key: 'priceDiff', width: 80,
+            render: (v: number) => {
+                if (v == null || v === 0) return '-';
+                const color = v > 0 ? '#f5222d' : '#52c41a';
+                const prefix = v > 0 ? '+' : '';
+                return <span style={{color, fontWeight: 500}}>{prefix}¥{v}</span>;
+            }},
+        {title: '缓存时间', dataIndex: 'cacheTime', key: 'cacheTime', width: 150,
+            render: (v: string) => v || '-'},
+        {title: '备注', dataIndex: 'remark', key: 'remark', width: 100,
+            render: (v: string) => v ? <span style={{color: '#faad14'}}>{v}</span> : '-'},
     ];
 
     const sizeColumns = [
@@ -125,7 +137,7 @@ const ToolPage = () => {
             open={priceModalVisible}
             onCancel={() => setPriceModalVisible(false)}
             footer={null}
-            width={700}
+            width={900}
         >
             <Table
                 columns={priceColumns}
