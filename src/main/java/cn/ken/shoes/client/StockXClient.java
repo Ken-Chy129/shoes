@@ -269,6 +269,10 @@ public class StockXClient {
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            log.error("searchItemWithPrice|Token已过期或无效，请更新Token");
+            return null;
+        }
         JSONObject data = jsonObject.getJSONObject("data");
         if (data == null || data.getJSONObject("browse") == null || data.getJSONObject("browse").getJSONObject("results") == null) {
             log.error("searchItemWithPrice unexpected response, query:{}, response:{}", query, jsonObject.toJSONString());

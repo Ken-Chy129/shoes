@@ -452,7 +452,10 @@ public class StockXService {
         while (hasMore) {
             if (TaskSwitch.isSearchListCancelled(accountName)) return false;
             JSONObject result = stockXClient.querySellingItemsByInventoryType("STANDARD", page, account);
-            if (result == null || result.getBooleanValue("_unauthorized")) break;
+            if (result == null) break;
+            if (result.getBooleanValue("_unauthorized")) {
+                throw new RuntimeException("StockX Token已过期或无效，请更新Token");
+            }
             com.alibaba.fastjson.JSONArray itemsArr = result.getJSONArray("items");
             if (itemsArr == null || itemsArr.isEmpty()) break;
             List<JSONObject> items = itemsArr.toJavaList(JSONObject.class);
@@ -491,7 +494,9 @@ public class StockXService {
 
                     Pair<Integer, List<StockXPriceExcel>> searchResult =
                             stockXClient.searchItemWithPrice(keyword, pageIdx, sort, searchType, country, account);
-                    if (searchResult == null) continue;
+                    if (searchResult == null) {
+                        throw new RuntimeException("StockX Token已过期或无效，请更新Token");
+                    }
 
                     List<StockXPriceExcel> items = searchResult.getValue();
                     if (items == null || items.isEmpty()) break;
