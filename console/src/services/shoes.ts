@@ -1,6 +1,3 @@
-import { request } from '@umijs/max';
-
-
 enum PRICE_API {
     SAVE = '/api/app/save',
     LIST = '/api/app/list',
@@ -37,4 +34,4 @@ enum SIZE_CHART_API {
     DELETE = '/api/sizeChart/delete',
 }
 
-export {PRICE_API, SETTING_API, KC_API, POISON_API, SIZE_CHART_API}
+export {PRICE_API, SETTING_API, KC_API, SIZE_CHART_API}
