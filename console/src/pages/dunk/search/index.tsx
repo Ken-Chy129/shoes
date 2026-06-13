@@ -217,6 +217,7 @@ const SearchPage = () => {
             success: {color: 'success', text: '执行成功'},
             failed: {color: 'error', text: '执行失败'},
             cancelled: {color: 'warning', text: '已取消'},
+            shelved: {color: 'default', text: '已搁置'},
         };
         const config = statusConfig[status] || {color: 'default', text: status};
         return <Tag color={config.color}>{config.text}</Tag>;
@@ -366,6 +367,7 @@ const SearchPage = () => {
                                 {label: '运行成功', value: 'success'},
                                 {label: '运行失败', value: 'failed'},
                                 {label: '已取消', value: 'cancelled'},
+                                {label: '已搁置', value: 'shelved'},
                             ]}
                         />
                     </Form.Item>
