@@ -235,23 +235,22 @@ const TaskPage = () => {
     const renderCreateForm = () => {
         if (createPlatform === 'stockx' && createTaskType === 'listing') {
             return <>
-                <Form.Item name="keywords" label="关键词（每行一个）" rules={[{required: true, message: '请输入关键词'}]}>
+                <Form.Item name="keywords" label="关键词" rules={[{required: true, message: '请输入关键词'}]}
+                           extra="每行一个关键词">
                     <Input.TextArea rows={3} placeholder={"jordan retro\nyeezy slides"}/>
                 </Form.Item>
                 <Form.Item name="sorts" label="排序方式" initialValue={['lowest_ask']}>
                     <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
                 </Form.Item>
-                <div style={{display: 'flex', gap: 24}}>
-                    <Form.Item name="pageCount" label="查询页数" initialValue={3}>
-                        <InputNumber min={1} max={50} style={{width: 100}}/>
-                    </Form.Item>
-                    <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
-                        <Radio.Group>
-                            <Radio.Button value="shoes">鞋类</Radio.Button>
-                            <Radio.Button value="clothes">服饰</Radio.Button>
-                        </Radio.Group>
-                    </Form.Item>
-                </div>
+                <Form.Item name="pageCount" label="查询页数" initialValue={3}>
+                    <InputNumber min={1} max={50} style={{width: 120}}/>
+                </Form.Item>
+                <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
+                    <Radio.Group>
+                        <Radio.Button value="shoes">鞋类</Radio.Button>
+                        <Radio.Button value="clothes">服饰</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
             </>;
         }
 
@@ -269,14 +268,12 @@ const TaskPage = () => {
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
                 </Form.Item>
-                <div style={{display: 'flex', gap: 24}}>
-                    <Form.Item name="interval" label="轮询间隔(秒)" initialValue={1800}>
-                        <InputNumber min={10} style={{width: 120}}/>
-                    </Form.Item>
-                    <Form.Item name="processOutsideExcel" label="处理Excel外商品" valuePropName="checked" initialValue={false}>
-                        <Switch size="small"/>
-                    </Form.Item>
-                </div>
+                <Form.Item name="interval" label="轮询间隔" initialValue={1800}>
+                    <InputNumber min={10} style={{width: 120}} addonAfter="秒"/>
+                </Form.Item>
+                <Form.Item name="processOutsideExcel" label="Excel外商品" valuePropName="checked" initialValue={false}>
+                    <Switch checkedChildren="处理" unCheckedChildren="跳过"/>
+                </Form.Item>
                 <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel}>
                     {({getFieldValue}) => getFieldValue('processOutsideExcel') && (
                         <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup">
@@ -290,8 +287,9 @@ const TaskPage = () => {
             </>;
         }
 
-        // KC 任务无额外参数
-        return <div style={{color: '#999', padding: '12px 0'}}>该任务类型无需额外配置，直接创建即可。</div>;
+        return <div style={{color: '#999', padding: '8px 0', textAlign: 'center'}}>
+            该任务类型无需额外配置，直接点击创建即可
+        </div>;
     };
 
     // ==================== 参数 Modal ====================
@@ -355,33 +353,31 @@ const TaskPage = () => {
 
         {/* 新建任务 Modal */}
         <Modal
-            title="新建任务" open={createModalVisible} width={520}
+            title="新建任务" open={createModalVisible} width={500}
             onCancel={() => setCreateModalVisible(false)}
             onOk={handleCreateTask} confirmLoading={creating}
-            okText="创建" cancelText="取消"
+            okText="创建任务" cancelText="取消"
         >
-            <Form form={createForm} layout="vertical" style={{marginTop: 16}}>
-                <div style={{display: 'flex', gap: 16, marginBottom: 8}}>
-                    <Form.Item label="平台" style={{flex: 1, marginBottom: 12}}>
-                        <Select value={createPlatform} onChange={(v) => { setCreatePlatform(v); createForm.resetFields(); }}>
-                            <Select.Option value="stockx">StockX</Select.Option>
-                            <Select.Option value="kickscrew">KickScrew</Select.Option>
-                        </Select>
+            <Form form={createForm} layout="horizontal" labelCol={{span: 5}} wrapperCol={{span: 18}}
+                  style={{marginTop: 24}}>
+                <Form.Item label="平台">
+                    <Select value={createPlatform} onChange={(v) => { setCreatePlatform(v); createForm.resetFields(); }}>
+                        <Select.Option value="stockx">StockX</Select.Option>
+                        <Select.Option value="kickscrew">KickScrew</Select.Option>
+                    </Select>
+                </Form.Item>
+                {createPlatform === 'stockx' && (
+                    <Form.Item name="accountId" label="账号" rules={[{required: true, message: '请选择账号'}]}>
+                        <Select placeholder="选择账号" options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}/>
                     </Form.Item>
-                    {createPlatform === 'stockx' && (
-                        <Form.Item name="accountId" label="账号" style={{flex: 1, marginBottom: 12}}
-                                   rules={[{required: true, message: '请选择账号'}]}>
-                            <Select placeholder="选择账号" options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}/>
-                        </Form.Item>
-                    )}
-                    <Form.Item label="类型" style={{flex: 1, marginBottom: 12}}>
-                        <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); createForm.resetFields(); }}>
-                            <Select.Option value="listing">上架</Select.Option>
-                            <Select.Option value="price_down">压价</Select.Option>
-                        </Select>
-                    </Form.Item>
-                </div>
-                <Divider style={{margin: '4px 0 16px'}}/>
+                )}
+                <Form.Item label="任务类型">
+                    <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); createForm.resetFields(); }}>
+                        <Select.Option value="listing">搜索上架</Select.Option>
+                        <Select.Option value="price_down">压价</Select.Option>
+                    </Select>
+                </Form.Item>
+                <Divider style={{margin: '8px 0 20px'}}/>
                 {renderCreateForm()}
             </Form>
         </Modal>
