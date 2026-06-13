@@ -93,18 +93,7 @@ export default [
   {
     path: '/tool',
     layout: true,
-    routes: [
-      {
-        path: '/tool/price',
-        layout: true,
-        component: './tool/price'
-      },
-      {
-        path: '/tool/sizeChart',
-        layout: true,
-        component: './tool/sizeChart'
-      },
-    ]
+    component: './tool'
   },
   {
     path: '*',

@@ -171,16 +171,7 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
         },
         {
           name: "工具",
-          children: [
-            {
-              name: "查价",
-              path: "/tool/price"
-            },
-            {
-              name: "尺码表",
-              path: "/tool/sizeChart"
-            },
-          ]
+          path: "/tool"
         }
       ]
       return data;

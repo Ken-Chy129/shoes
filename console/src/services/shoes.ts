@@ -1,6 +1,4 @@
 enum PRICE_API {
-    SAVE = '/api/app/save',
-    LIST = '/api/app/list',
     QUERY_BY_MODEL = '/api/price/queryByModelNo',
 }
 
@@ -9,8 +7,6 @@ enum SETTING_API {
     POISON = '/api/setting/poison',
     QUERY_BRAND_SETTING = '/api/setting/queryBrandSetting',
     UPDATE_BRAND_SETTING = '/api/setting/updateBrandSetting',
-    QUERY_MUST_CRAWL_MODEL_NOS = '/api/setting/queryMustCrawlModelNos',
-    UPDATE_MUST_CRAWL_MODEL_NOS = '/api/setting/updateMustCrawlModelNos',
     UPDATE_DEFAULT_CRAWL_CNT = '/api/setting/updateDefaultCrawlCnt',
     QUERY_KC_TOKEN = '/api/setting/kc/getAuthorization',
     UPDATE_KC_TOKEN = '/api/setting/kc/updateAuthorization',
@@ -29,9 +25,6 @@ enum KC_API {
 enum SIZE_CHART_API {
     BRANDS = '/api/sizeChart/brands',
     LIST = '/api/sizeChart/list',
-    ADD = '/api/sizeChart/add',
-    UPDATE = '/api/sizeChart/update',
-    DELETE = '/api/sizeChart/delete',
 }
 
 export {PRICE_API, SETTING_API, KC_API, SIZE_CHART_API}
