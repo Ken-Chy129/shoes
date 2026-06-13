@@ -6,6 +6,7 @@ import {
     message,
     Radio,
     Select,
+    Space,
     Switch,
     Divider,
     Upload,
@@ -42,6 +43,11 @@ const TaskExecutorPage = () => {
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [currentViewTaskId, setCurrentViewTaskId] = useState<string | null>(null);
 
+    // 搜索上架
+    const [searchListStates, setSearchListStates] = useState<Record<string, any>>({});
+    const [searchListForm] = Form.useForm();
+    const searchListAccountId = Form.useWatch('accountId', searchListForm);
+
     useEffect(() => {
         queryAllTaskStatus();
         queryAllTaskInterval();
@@ -51,12 +57,12 @@ const TaskExecutorPage = () => {
     // ==================== 统一查询方法 ====================
 
     const queryAllTaskStatus = () => {
-        queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId);
-        queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
+        queryTaskStatus(TASK_TYPE.LISTING, setKcTaskStatus, setKcCurrentTaskId);
+        queryTaskStatus(TASK_TYPE.PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId);
     }
 
     const queryAllTaskInterval = () => {
-        queryTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval");
+        queryTaskInterval(TASK_TYPE.PRICE_DOWN, "kcPriceDownTaskInterval");
     }
 
     const loadStockXAccounts = () => {
@@ -149,11 +155,11 @@ const TaskExecutorPage = () => {
     // ==================== KC 任务 ====================
 
     const handleKcStart = () => {
-        startTask(TASK_TYPE.KC_LISTING, () => queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId));
+        startTask(TASK_TYPE.LISTING, () => queryTaskStatus(TASK_TYPE.LISTING, setKcTaskStatus, setKcCurrentTaskId));
     }
 
     const handleKcCancel = () => {
-        cancelTask(TASK_TYPE.KC_LISTING, () => queryTaskStatus(TASK_TYPE.KC_LISTING, setKcTaskStatus, setKcCurrentTaskId));
+        cancelTask(TASK_TYPE.LISTING, () => queryTaskStatus(TASK_TYPE.LISTING, setKcTaskStatus, setKcCurrentTaskId));
     }
 
     const handleViewKcTaskDetail = () => {
@@ -166,11 +172,11 @@ const TaskExecutorPage = () => {
     // ==================== KC 压价任务 ====================
 
     const handleKcPriceDownStart = () => {
-        startTask(TASK_TYPE.KC_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
+        startTask(TASK_TYPE.PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
     }
 
     const handleKcPriceDownCancel = () => {
-        cancelTask(TASK_TYPE.KC_PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.KC_PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
+        cancelTask(TASK_TYPE.PRICE_DOWN, () => queryTaskStatus(TASK_TYPE.PRICE_DOWN, setKcPriceDownTaskStatus, setKcPriceDownCurrentTaskId));
     }
 
     const handleViewKcPriceDownTaskDetail = () => {
@@ -239,6 +245,62 @@ const TaskExecutorPage = () => {
         return excelTaskStates[`${accountId}:${inventoryType}`] || {};
     }
 
+    // ==================== 搜索上架 ====================
+    const sortOptions = [
+        {label: '精选', value: 'featured'},
+        {label: 'Top Selling', value: 'most-active'},
+        {label: 'Price: Low to High', value: 'lowest_ask'},
+        {label: '出价: 从高到低', value: 'highest_bid'},
+        {label: 'Recent Price Drops', value: 'recent_asks'},
+        {label: 'Total Sold: High to Low', value: 'deadstock_sold'},
+        {label: '发布日期', value: 'release_date'},
+        {label: 'Last Sale: High to Low', value: 'last_sale'},
+    ];
+
+    const loadSearchListStatus = (accountId: string) => {
+        doGetRequest(TASK_API.SEARCH_LIST_STATUS, {accountId}, {
+            onSuccess: (res: any) => {
+                setSearchListStates(prev => ({...prev, [accountId]: res.data}));
+            },
+        });
+    };
+
+    const handleStartSearchList = () => {
+        searchListForm.validateFields().then((values: any) => {
+            const {accountId, keywords, sorts, pageCount, searchType, autoList} = values;
+            doPostRequest(TASK_API.START_SEARCH_LIST, {
+                accountId,
+                keywords,
+                sorts: (sorts || ['lowest_ask']).join(','),
+                pageCount: pageCount || 3,
+                searchType: searchType || 'shoes',
+                autoList: autoList !== false,
+            }, {
+                onSuccess: () => {
+                    message.success('搜索上架任务已启动');
+                    loadSearchListStatus(accountId);
+                },
+            });
+        });
+    };
+
+    const handleCancelSearchList = (accountId: string) => {
+        doPostRequest(TASK_API.CANCEL_SEARCH_LIST, {accountId}, {
+            onSuccess: () => {
+                message.info('已发送取消请求');
+                setTimeout(() => loadSearchListStatus(accountId), 2000);
+            },
+        });
+    };
+
+    const handleViewSearchListDetail = (accountId: string) => {
+        const state = searchListStates[accountId];
+        if (state?.taskId) {
+            setCurrentViewTaskId(state.taskId);
+            setTaskItemModalVisible(true);
+        }
+    };
+
     return <>
         <Card title={"KC"}>
             <Form form={taskForm}>
@@ -266,7 +328,7 @@ const TaskExecutorPage = () => {
                             <Input/>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 30}}>
-                            <Button onClick={() => updateTaskInterval(TASK_TYPE.KC_PRICE_DOWN, "kcPriceDownTaskInterval")}>修改配置</Button>
+                            <Button onClick={() => updateTaskInterval(TASK_TYPE.PRICE_DOWN, "kcPriceDownTaskInterval")}>修改配置</Button>
                         </Form.Item>
                         <Form.Item style={{marginLeft: 30}}>
                             <Button type="primary" onClick={handleKcPriceDownStart} disabled={kcPriceDownTaskStatus}>开启压价</Button>
@@ -383,6 +445,63 @@ const TaskExecutorPage = () => {
                     })}
                 </div>
             ))}
+        </Card>
+        <br/>
+        <Card title={"StockX 搜索上架"}>
+            {stockxAccounts.length === 0 && <div style={{color: '#999'}}>暂无已启用的 StockX 账号，请在首页配置中添加</div>}
+            <Form form={searchListForm} layout="vertical" style={{maxWidth: 600}}>
+                <Form.Item name="accountId" label="账号" rules={[{required: true, message: '请选择账号'}]}>
+                    <Select
+                        placeholder="选择 StockX 账号"
+                        options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}
+                        onChange={(v) => loadSearchListStatus(v)}
+                    />
+                </Form.Item>
+                <Form.Item name="keywords" label="关键词（每行一个）" rules={[{required: true, message: '请输入关键词'}]}>
+                    <Input.TextArea rows={3} placeholder={"jordan retro\nyeezy slides"}/>
+                </Form.Item>
+                <Form.Item name="sorts" label="排序方式" initialValue={['lowest_ask']}>
+                    <Select mode="multiple" placeholder="选择排序方式" options={sortOptions}/>
+                </Form.Item>
+                <Form.Item name="pageCount" label="每种排序查询页数" initialValue={3}>
+                    <InputNumber min={1} max={50} style={{width: '100%'}}/>
+                </Form.Item>
+                <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
+                    <Radio.Group>
+                        <Radio value="shoes">鞋类</Radio>
+                        <Radio value="clothes">服饰</Radio>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item name="autoList" label="自动上架" valuePropName="checked" initialValue={true}>
+                    <Switch checkedChildren="开启" unCheckedChildren="关闭"/>
+                </Form.Item>
+                <Form.Item>
+                    <Space>
+                        <Button
+                            type="primary"
+                            onClick={handleStartSearchList}
+                            disabled={!searchListAccountId || searchListStates[searchListAccountId]?.running}
+                        >
+                            开始搜索上架
+                        </Button>
+                        <Button
+                            danger
+                            onClick={() => handleCancelSearchList(searchListAccountId)}
+                            disabled={!searchListAccountId || !searchListStates[searchListAccountId]?.running}
+                        >
+                            终止
+                        </Button>
+                        {searchListStates[searchListAccountId]?.taskId && (
+                            <Button
+                                type="link"
+                                onClick={() => handleViewSearchListDetail(searchListAccountId)}
+                            >
+                                查看明细
+                            </Button>
+                        )}
+                    </Space>
+                </Form.Item>
+            </Form>
         </Card>
 
         <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)}

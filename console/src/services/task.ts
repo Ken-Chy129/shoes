@@ -1,7 +1,7 @@
 // 任务类型常量
 const TASK_TYPE = {
-    KC_LISTING: 'kc_listing',
-    KC_PRICE_DOWN: 'kc_price_down',
+    LISTING: 'listing',
+    PRICE_DOWN: 'price_down',
 };
 
 enum TASK_API {
@@ -26,6 +26,10 @@ enum TASK_API {
     TASK_ITEM_OPERATE_RESULTS = '/api/taskItem/operateResults',
     // 删除任务
     DELETE = '/api/task/delete',
+    // StockX 搜索上架
+    START_SEARCH_LIST = '/api/task/stockx/startSearchList',
+    CANCEL_SEARCH_LIST = '/api/task/stockx/cancelSearchList',
+    SEARCH_LIST_STATUS = '/api/task/stockx/searchListStatus',
 }
 
 export {TASK_API, TASK_TYPE}

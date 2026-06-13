@@ -26,12 +26,6 @@ public class TaskSwitch {
     public static Long CURRENT_KC_PRICE_DOWN_TASK_ID = null;
     public static int CURRENT_KC_PRICE_DOWN_ROUND = 0;
 
-    // ==================== StockX上架任务 ====================
-    public static boolean CANCEL_STOCK_LISTING_TASK = false;
-    public static long STOCK_LISTING_TASK_INTERVAL = 30 * 60 * 1000;
-    public static Long CURRENT_STOCK_LISTING_TASK_ID = null;
-    public static int CURRENT_STOCK_LISTING_ROUND = 0;
-
     // ==================== StockX Excel 多账号压价任务（动态Map） ====================
     private static final ConcurrentHashMap<String, Boolean> EXCEL_CANCEL_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Long> EXCEL_TASK_ID_MAP = new ConcurrentHashMap<>();
@@ -149,5 +143,47 @@ public class TaskSwitch {
 
     public static void setUnprofitableAction(String accountId, String inventoryType, String action) {
         EXCEL_UNPROFITABLE_ACTION_MAP.put(buildExcelKey(accountId, inventoryType), action);
+    }
+
+    // ==================== StockX 搜索上架任务 ====================
+    private static final ConcurrentHashMap<String, Long> SEARCH_LIST_TASK_ID_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_RUNNING_MAP = new ConcurrentHashMap<>();
+
+    public static void setSearchListTaskId(String accountId, Long taskId) {
+        SEARCH_LIST_TASK_ID_MAP.put(accountId, taskId);
+    }
+
+    public static Long getSearchListTaskId(String accountId) {
+        return SEARCH_LIST_TASK_ID_MAP.get(accountId);
+    }
+
+    public static List<Long> getAllSearchListTaskIds() {
+        return new ArrayList<>(SEARCH_LIST_TASK_ID_MAP.values());
+    }
+
+    public static boolean isSearchListCancelled(String accountId) {
+        return Boolean.TRUE.equals(SEARCH_LIST_CANCELLED_MAP.get(accountId));
+    }
+
+    public static void cancelSearchList(String accountId) {
+        SEARCH_LIST_CANCELLED_MAP.put(accountId, true);
+    }
+
+    public static void resetSearchListCancel(String accountId) {
+        SEARCH_LIST_CANCELLED_MAP.remove(accountId);
+    }
+
+    public static boolean isSearchListRunning(String accountId) {
+        return Boolean.TRUE.equals(SEARCH_LIST_RUNNING_MAP.get(accountId));
+    }
+
+    public static void setSearchListRunning(String accountId, boolean running) {
+        SEARCH_LIST_RUNNING_MAP.put(accountId, running);
+    }
+
+    public static void clearSearchListRunState(String accountId) {
+        SEARCH_LIST_CANCELLED_MAP.remove(accountId);
+        SEARCH_LIST_RUNNING_MAP.remove(accountId);
     }
 }
