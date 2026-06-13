@@ -88,7 +88,7 @@ const TaskPage = () => {
         const platform = conditionForm.getFieldValue("platform");
         const status = conditionForm.getFieldValue("status");
         doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
-            onSuccess: res => { setTaskList(res.data); setTotal(res.total); }
+            onSuccess: res => { setTaskList(res.data || []); setTotal(res.total || 0); }
         });
     }
 

@@ -944,6 +944,7 @@ public class StockXClient {
         return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account), country, account.getName());
     }
 
+    // api压价，容易触发限流，改用graphql压价
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
         LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxApi(account.getName());
