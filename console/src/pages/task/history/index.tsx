@@ -239,10 +239,10 @@ const TaskPage = () => {
                            extra="每行一个关键词">
                     <Input.TextArea rows={3} placeholder={"jordan retro\nyeezy slides"}/>
                 </Form.Item>
-                <Form.Item name="sorts" label="排序方式" initialValue={['lowest_ask']}>
+                <Form.Item name="sorts" label="排序方式" initialValue={['featured']}>
                     <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
                 </Form.Item>
-                <Form.Item name="pageCount" label="查询页数" initialValue={3}>
+                <Form.Item name="pageCount" label="查询页数" initialValue={25}>
                     <InputNumber min={1} max={50} style={{width: 120}}/>
                 </Form.Item>
                 <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
