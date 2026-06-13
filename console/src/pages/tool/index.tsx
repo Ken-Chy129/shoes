@@ -108,11 +108,11 @@ const ToolPage = () => {
                             allowClear
                             style={{width: 120}}
                             options={[
-                                {label: '男', value: 'MENS'},
-                                {label: '女', value: 'WOMENS'},
-                                {label: '通用', value: 'UNISEX'},
-                                {label: '儿童', value: 'KIDS'},
-                                {label: '婴儿', value: 'BABY'},
+                                {label: 'MENS', value: 'MENS'},
+                                {label: 'WOMENS', value: 'WOMENS'},
+                                {label: 'UNISEX', value: 'UNISEX'},
+                                {label: 'KIDS', value: 'KIDS'},
+                                {label: 'BABY', value: 'BABY'},
                             ]}
                         />
                     </Form.Item>
