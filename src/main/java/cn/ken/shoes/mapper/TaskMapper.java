@@ -33,5 +33,4 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
 
     List<Long> selectIdsBeforeDate(@Param("beforeDate") java.util.Date beforeDate);
 
-    void deleteByIds(@Param("ids") List<Long> ids);
 }
