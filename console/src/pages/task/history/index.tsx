@@ -51,6 +51,10 @@ const TaskPage = () => {
     const [paramsModalVisible, setParamsModalVisible] = useState(false);
     const [paramsModalData, setParamsModalData] = useState<Record<string, any> | null>(null);
 
+    const [previewVisible, setPreviewVisible] = useState(false);
+    const [previewData, setPreviewData] = useState<any[]>([]);
+    const [previewTitle, setPreviewTitle] = useState('');
+
     // 新建任务
     const [createModalVisible, setCreateModalVisible] = useState(false);
     const [createForm] = Form.useForm();
@@ -60,6 +64,20 @@ const TaskPage = () => {
     const [creating, setCreating] = useState(false);
 
     useEffect(() => { queryTaskList(); }, [pageIndex, pageSize]);
+
+    useEffect(() => {
+        const hasRunning = taskList.some(t => t.status === 'running' || t.status === '运行中');
+        if (!hasRunning) return;
+        const timer = setInterval(queryTaskList, 30000);
+        return () => clearInterval(timer);
+    }, [taskList]);
+
+    useEffect(() => {
+        const hasRunning = taskList.some(t => t.status === 'running' || t.status === '运行中');
+        if (!hasRunning) return;
+        const timer = setInterval(queryTaskList, 5000);
+        return () => clearInterval(timer);
+    }, [taskList]);
 
     const queryTaskList = () => {
         let startTime = conditionForm.getFieldValue("startTime");
@@ -217,7 +235,22 @@ const TaskPage = () => {
                             setParamsModalVisible(true);
                         }}>参数</Button>
                     )}
-                    {record.status === 'running' && (
+                    {record.taskType === 'price_down' && record.platform === 'stockx' && (
+                        <Button type="link" size="small" onClick={() => {
+                            try {
+                                const p = JSON.parse(record.params || '{}');
+                                doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_DATA, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
+                                    onSuccess: (res: any) => {
+                                        setParamsModalData(null);
+                                        setPreviewData(res.data || []);
+                                        setPreviewTitle(`${record.accountName} ${(p.inventoryType === 'CUSTODIAL' ? '寄存' : '现货')} Excel`);
+                                        setPreviewVisible(true);
+                                    }
+                                });
+                            } catch {}
+                        }}>Excel</Button>
+                    )}
+                    {(record.status === 'running' || record.status === '运行中') && (
                         <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>
@@ -398,6 +431,18 @@ const TaskPage = () => {
                     </tbody>
                 </table>
             )}
+        </Modal>
+
+        {/* Excel预览 Modal */}
+        <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)} footer={null} width={600}>
+            <Table dataSource={previewData} rowKey={(r) => `${r.styleId}:${r.size}`} size="small"
+                pagination={{pageSize: 20, showTotal: (t: number) => `共 ${t} 条`}}
+                columns={[
+                    {title: '货号', dataIndex: 'styleId', key: 'styleId'},
+                    {title: '尺码', dataIndex: 'size', key: 'size'},
+                    {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice', render: (v: number) => v === -1 ? '跳过' : `$${v}`},
+                ]}
+            />
         </Modal>
 
         {/* 任务明细 Modal */}
