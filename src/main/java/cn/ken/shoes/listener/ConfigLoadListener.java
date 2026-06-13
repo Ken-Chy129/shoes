@@ -51,8 +51,8 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
             }
             for (Long taskId : expiredTaskIds) {
                 taskItemMapper.deleteByTaskId(taskId);
+                taskMapper.deleteById(taskId);
             }
-            taskMapper.deleteByIds(expiredTaskIds);
             log.info("已清理一周前的历史任务数据，共{}条", expiredTaskIds.size());
         } catch (Exception e) {
             log.error("清理历史任务数据失败", e);

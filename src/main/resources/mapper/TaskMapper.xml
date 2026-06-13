@@ -106,10 +106,4 @@
         SELECT id FROM task WHERE start_time &lt; #{beforeDate} AND status != 'running'
     </select>
 
-    <delete id="deleteByIds">
-        DELETE FROM task WHERE id IN
-        <foreach collection="ids" item="id" open="(" separator="," close=")">
-            #{id}
-        </foreach>
-    </delete>
 </mapper>
