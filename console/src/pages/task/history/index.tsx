@@ -25,6 +25,7 @@ interface TaskRecord {
     platform: string;
     taskType: string;
     accountName: string;
+    params: string;
     startTime: string;
     endTime: string;
     cost: string;
@@ -119,6 +120,31 @@ const TaskHistoryPage = () => {
             key: 'accountName',
             width: '8%',
             render: (name: string) => name || '-',
+        },
+        {
+            title: '参数',
+            dataIndex: 'params',
+            key: 'params',
+            width: '12%',
+            ellipsis: true,
+            render: (params: string) => {
+                if (!params) return '-';
+                try {
+                    const p = JSON.parse(params);
+                    const parts: string[] = [];
+                    if (p.inventoryType) parts.push(p.inventoryType === 'STANDARD' ? '现货' : '寄存');
+                    if (p.keywords) parts.push(`关键词: ${p.keywords.split('\n').length}个`);
+                    if (p.sorts) parts.push(`排序: ${p.sorts.split(',').length}种`);
+                    if (p.pageCount) parts.push(`${p.pageCount}页`);
+                    if (p.autoList === true) parts.push('自动上架');
+                    if (p.autoList === false) parts.push('仅搜索');
+                    return parts.length > 0
+                        ? <Tooltip title={<pre style={{margin: 0, fontSize: 12}}>{JSON.stringify(p, null, 2)}</pre>}>{parts.join(', ')}</Tooltip>
+                        : <Tooltip title={params}>{params.substring(0, 20)}</Tooltip>;
+                } catch {
+                    return params;
+                }
+            },
         },
         {
             title: '开始时间',
