@@ -11,6 +11,7 @@ import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
+import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.util.ShoesUtil;
@@ -47,6 +48,9 @@ public class StockXService {
 
     @Resource
     private TaskItemMapper taskItemMapper;
+
+    @Resource
+    private TaskMapper taskMapper;
 
     public void extendAllItems() {
         boolean hasMore;
@@ -431,8 +435,17 @@ public class StockXService {
         String country = account.getCountry() != null ? account.getCountry() : "US";
         int minExpectProfit = account.getMinProfit();
 
+        // 计算预估总步数（关键词数 × 排序数 × 页数）
+        String[] keywordArr = keywords.split("\n");
+        String[] sortArr = sorts.split(",");
+        long validKeywords = Arrays.stream(keywordArr).map(String::trim).filter(s -> !s.isEmpty()).count();
+        long validSorts = Arrays.stream(sortArr).map(String::trim).filter(s -> !s.isEmpty()).count();
+        int totalSteps = (int) (validKeywords * validSorts * pageCount);
+        int currentStep = 0;
+
         // 1. 构建已在售 variantId 集合（去重用）
         Set<String> existingVariantIds = new HashSet<>();
+        updateSearchProgress(taskId, 0, totalSteps, currentStep, 0, "正在收集已在售商品...");
         log.info("[{}] 搜索上架：开始收集已在售商品...", accountName);
         int page = 1;
         boolean hasMore = true;
@@ -453,8 +466,6 @@ public class StockXService {
         log.info("[{}] 搜索上架：已在售商品{}条", accountName, existingVariantIds.size());
 
         // 2. 搜索并处理
-        String[] keywordArr = keywords.split("\n");
-        String[] sortArr = sorts.split(",");
         int totalProcessed = 0;
         int totalListed = 0;
         Set<String> processedVariantIds = new HashSet<>();
@@ -473,6 +484,10 @@ public class StockXService {
 
                 for (int pageIdx = 1; pageIdx <= pageCount; pageIdx++) {
                     if (TaskSwitch.isSearchListCancelled(accountName)) break;
+                    currentStep++;
+                    int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
+                    String detail = STR."关键词: \{keyword} | 排序: \{sort} | 页码: \{pageIdx}/\{pageCount}";
+                    updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, detail);
 
                     Pair<Integer, List<StockXPriceExcel>> searchResult =
                             stockXClient.searchItemWithPrice(keyword, pageIdx, sort, searchType, country, account);
@@ -591,8 +606,27 @@ public class StockXService {
             batchCreateListings(toList, variantToTaskItemId, account);
         }
 
+        if (reachedLimit) {
+            String detail = STR."达到上架上限(\{maxListCount}条)";
+            int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
+            updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, detail);
+        } else {
+            updateSearchProgress(taskId, 100, totalSteps, currentStep, totalListed, "完成");
+        }
+
         log.info("[{}] 搜索上架完成，共处理{}条，上架{}条", accountName, totalProcessed, totalListed);
         return reachedLimit;
+    }
+
+    private void updateSearchProgress(Long taskId, int progress, int totalSteps, int currentStep, int listed, String detail) {
+        if (taskId == null) return;
+        JSONObject attrs = new JSONObject();
+        attrs.put("progress", progress);
+        attrs.put("total", totalSteps);
+        attrs.put("current", currentStep);
+        attrs.put("listed", listed);
+        attrs.put("detail", detail);
+        taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
     }
 
     private void batchCreateListings(List<Pair<String, Integer>> items,

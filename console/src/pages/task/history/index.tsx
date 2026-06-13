@@ -22,6 +22,7 @@ interface TaskRecord {
     status: string;
     failReason: string;
     round: number;
+    attributes: string;
 }
 
 const SORT_OPTIONS = [
@@ -47,6 +48,7 @@ const TaskPage = () => {
 
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+    const [selectedTaskRecord, setSelectedTaskRecord] = useState<TaskRecord | null>(null);
 
     const [paramsModalVisible, setParamsModalVisible] = useState(false);
     const [paramsModalData, setParamsModalData] = useState<Record<string, any> | null>(null);
@@ -88,7 +90,15 @@ const TaskPage = () => {
         const platform = conditionForm.getFieldValue("platform");
         const status = conditionForm.getFieldValue("status");
         doGetRequest(TASK_API.PAGE, {taskType, platform, startTime, endTime, status, pageIndex, pageSize}, {
-            onSuccess: res => { setTaskList(res.data || []); setTotal(res.total || 0); }
+            onSuccess: res => {
+                const data = res.data || [];
+                setTaskList(data);
+                setTotal(res.total || 0);
+                if (selectedTaskId) {
+                    const updated = data.find((t: TaskRecord) => t.id === selectedTaskId);
+                    if (updated) setSelectedTaskRecord(updated);
+                }
+            }
         });
     }
 
@@ -221,13 +231,24 @@ const TaskPage = () => {
             }
         },
         {
-            title: '轮次', dataIndex: 'round', key: 'round', width: 60,
+            title: '进度', key: 'progress', width: 100,
+            render: (_: any, record: TaskRecord) => {
+                if (record.taskType === 'listing' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        const pct = attrs.progress ?? 0;
+                        const tip = `${attrs.detail || ''}${attrs.listed != null ? ` | 已上架: ${attrs.listed}` : ''}`;
+                        return <Tooltip title={tip}><span style={{cursor: 'pointer'}}>{pct}%</span></Tooltip>;
+                    } catch { return '-'; }
+                }
+                return record.round != null ? `第${record.round}轮` : '-';
+            },
         },
         {
             title: '操作', key: 'action', width: 200,
             render: (_: any, record: TaskRecord) => (
                 <Space size={0}>
-                    <Button type="link" size="small" onClick={() => { setSelectedTaskId(record.id); setTaskItemModalVisible(true); }}>
+                    <Button type="link" size="small" onClick={() => { setSelectedTaskId(record.id); setSelectedTaskRecord(record); setTaskItemModalVisible(true); }}>
                         明细
                     </Button>
                     {record.params && (
@@ -453,7 +474,10 @@ const TaskPage = () => {
         {/* 任务明细 Modal */}
         <TaskItemModal
             visible={taskItemModalVisible} taskId={selectedTaskId}
-            onClose={() => { setTaskItemModalVisible(false); setSelectedTaskId(null); }}
+            onClose={() => { setTaskItemModalVisible(false); setSelectedTaskId(null); setSelectedTaskRecord(null); }}
+            taskType={selectedTaskRecord?.taskType}
+            attributes={selectedTaskRecord?.attributes}
+            round={selectedTaskRecord?.round}
         />
     </>
 }

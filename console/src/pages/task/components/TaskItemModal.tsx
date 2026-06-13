@@ -1,5 +1,5 @@
-import React, {useEffect, useState, useRef, useCallback} from "react";
-import {Modal, Table, Input, Select, Space, Button, Switch} from "antd";
+import React, {useEffect, useState, useRef, useCallback, useMemo} from "react";
+import {Modal, Table, Input, Select, Space, Button, Switch, Tooltip, Progress} from "antd";
 import {ReloadOutlined, DownloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
@@ -29,9 +29,12 @@ interface TaskItemModalProps {
     taskId: string | null;
     onClose: () => void;
     defaultAutoRefresh?: boolean;
+    taskType?: string;
+    attributes?: string;
+    round?: number;
 }
 
-const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false}) => {
+const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false, taskType, attributes, round}) => {
     const [taskItems, setTaskItems] = useState<TaskItemRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(20);
@@ -281,6 +284,18 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     </Button>
                 </Space>
                 <Space>
+                    {taskType === 'listing' && attributes && (() => {
+                        try {
+                            const attrs = JSON.parse(attributes);
+                            const tip = `${attrs.detail || ''}${attrs.listed != null ? ` | 已上架: ${attrs.listed}` : ''}`;
+                            return <Tooltip title={tip}>
+                                <Progress type="circle" percent={attrs.progress ?? 0} size={32}/>
+                            </Tooltip>;
+                        } catch { return null; }
+                    })()}
+                    {taskType === 'price_down' && round != null && (
+                        <span style={{color: '#1677ff', fontWeight: 500}}>第{round}轮</span>
+                    )}
                     <span>自动刷新</span>
                     <Switch checked={autoRefresh} onChange={setAutoRefresh}/>
                 </Space>
