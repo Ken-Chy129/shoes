@@ -426,33 +426,31 @@ public class StockXService {
     // ==================== 搜索上架 ====================
 
     public void searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
-                              int pageCount, String searchType, boolean autoList) {
+                              int pageCount, String searchType) {
         String accountName = account.getName();
         String country = account.getCountry() != null ? account.getCountry() : "US";
         int minExpectProfit = account.getMinProfit();
 
         // 1. 构建已在售 variantId 集合（去重用）
         Set<String> existingVariantIds = new HashSet<>();
-        if (autoList) {
-            log.info("[{}] 搜索上架：开始收集已在售商品...", accountName);
-            int page = 1;
-            boolean hasMore = true;
-            while (hasMore) {
-                if (TaskSwitch.isSearchListCancelled(accountName)) return;
-                JSONObject result = stockXClient.querySellingItemsByInventoryType("STANDARD", page, account);
-                if (result == null || result.getBooleanValue("_unauthorized")) break;
-                com.alibaba.fastjson.JSONArray itemsArr = result.getJSONArray("items");
-                if (itemsArr == null || itemsArr.isEmpty()) break;
-                List<JSONObject> items = itemsArr.toJavaList(JSONObject.class);
-                for (JSONObject item : items) {
-                    String variantId = item.getString("variantId");
-                    if (variantId != null) existingVariantIds.add(variantId);
-                }
-                hasMore = result.getBooleanValue("hasMore");
-                page++;
+        log.info("[{}] 搜索上架：开始收集已在售商品...", accountName);
+        int page = 1;
+        boolean hasMore = true;
+        while (hasMore) {
+            if (TaskSwitch.isSearchListCancelled(accountName)) return;
+            JSONObject result = stockXClient.querySellingItemsByInventoryType("STANDARD", page, account);
+            if (result == null || result.getBooleanValue("_unauthorized")) break;
+            com.alibaba.fastjson.JSONArray itemsArr = result.getJSONArray("items");
+            if (itemsArr == null || itemsArr.isEmpty()) break;
+            List<JSONObject> items = itemsArr.toJavaList(JSONObject.class);
+            for (JSONObject item : items) {
+                String variantId = item.getString("variantId");
+                if (variantId != null) existingVariantIds.add(variantId);
             }
-            log.info("[{}] 搜索上架：已在售商品{}条", accountName, existingVariantIds.size());
+            hasMore = result.getBooleanValue("hasMore");
+            page++;
         }
+        log.info("[{}] 搜索上架：已在售商品{}条", accountName, existingVariantIds.size());
 
         // 2. 搜索并处理
         String[] keywordArr = keywords.split("\n");
@@ -522,7 +520,7 @@ public class StockXService {
                         }
 
                         // 已在售检查
-                        if (autoList && existingVariantIds.contains(variantId)) {
+                        if (existingVariantIds.contains(variantId)) {
                             taskItemDO.setCurrentPrice(BigDecimal.valueOf(lowestAsk));
                             taskItemDO.setOperateResult("跳过-已在售");
                             taskItemMapper.insert(taskItemDO);
@@ -554,22 +552,16 @@ public class StockXService {
                             continue;
                         }
 
-                        if (autoList) {
-                            taskItemDO.setOperateResult("待上架");
-                            taskItemMapper.insert(taskItemDO);
-                            toList.add(Pair.of(variantId, listPrice));
-                            variantToTaskItemId.put(variantId, taskItemDO.getId());
-                            existingVariantIds.add(variantId);
+                        taskItemDO.setOperateResult("待上架");
+                        taskItemMapper.insert(taskItemDO);
+                        toList.add(Pair.of(variantId, listPrice));
+                        variantToTaskItemId.put(variantId, taskItemDO.getId());
+                        existingVariantIds.add(variantId);
 
-                            // 每50个批量上架一次
-                            if (toList.size() >= 50) {
-                                batchCreateListings(toList, variantToTaskItemId, account);
-                                toList.clear();
-                                variantToTaskItemId.clear();
-                            }
-                        } else {
-                            taskItemDO.setOperateResult("盈利-未开启自动上架");
-                            taskItemMapper.insert(taskItemDO);
+                        if (toList.size() >= 50) {
+                            batchCreateListings(toList, variantToTaskItemId, account);
+                            toList.clear();
+                            variantToTaskItemId.clear();
                         }
                     }
 

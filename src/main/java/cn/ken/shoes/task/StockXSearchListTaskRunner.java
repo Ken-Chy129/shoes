@@ -17,13 +17,12 @@ public class StockXSearchListTaskRunner implements Runnable {
     private final String sorts;
     private final int pageCount;
     private final String searchType;
-    private final boolean autoList;
     private final StockXService stockXService;
     private final TaskMapper taskMapper;
 
     public StockXSearchListTaskRunner(StockXAccount account, Long taskId,
                                       String keywords, String sorts, int pageCount,
-                                      String searchType, boolean autoList,
+                                      String searchType,
                                       StockXService stockXService, TaskMapper taskMapper) {
         this.account = account;
         this.taskId = taskId;
@@ -31,7 +30,6 @@ public class StockXSearchListTaskRunner implements Runnable {
         this.sorts = sorts;
         this.pageCount = pageCount;
         this.searchType = searchType;
-        this.autoList = autoList;
         this.stockXService = stockXService;
         this.taskMapper = taskMapper;
     }
@@ -41,7 +39,7 @@ public class StockXSearchListTaskRunner implements Runnable {
         String accountName = account.getName();
         try {
             long startTime = System.currentTimeMillis();
-            stockXService.searchAndList(account, taskId, keywords, sorts, pageCount, searchType, autoList);
+            stockXService.searchAndList(account, taskId, keywords, sorts, pageCount, searchType);
             String cost = TimeUtil.getCostMin(startTime);
 
             if (TaskSwitch.isSearchListCancelled(accountName)) {

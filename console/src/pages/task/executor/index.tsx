@@ -214,13 +214,12 @@ const TaskExecutorPage = () => {
     const handleStartSearchList = () => {
         if (!selectedAccount) { message.warning('请先选择账号'); return; }
         searchListForm.validateFields().then((values: any) => {
-            const {keywords, sorts, pageCount, searchType, autoList} = values;
+            const {keywords, sorts, pageCount, searchType} = values;
             doPostRequest(TASK_API.START_SEARCH_LIST, {
                 accountId: selectedAccount, keywords,
                 sorts: (sorts || ['lowest_ask']).join(','),
                 pageCount: pageCount || 3,
                 searchType: searchType || 'shoes',
-                autoList: autoList !== false,
             }, { onSuccess: () => { message.success('搜索上架任务已启动'); loadSearchListStatus(selectedAccount!); } });
         });
     };
@@ -402,9 +401,6 @@ const TaskExecutorPage = () => {
                                                     <Radio.Button value="shoes">鞋类</Radio.Button>
                                                     <Radio.Button value="clothes">服饰</Radio.Button>
                                                 </Radio.Group>
-                                            </Form.Item>
-                                            <Form.Item name="autoList" label="自动上架" valuePropName="checked" initialValue={true} style={{marginBottom: 16}}>
-                                                <Switch checkedChildren="开启" unCheckedChildren="关闭"/>
                                             </Form.Item>
                                         </div>
                                         <Divider style={{margin: '8px 0 16px'}}/>

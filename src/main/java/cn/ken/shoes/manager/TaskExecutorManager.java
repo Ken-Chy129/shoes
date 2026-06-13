@@ -205,7 +205,7 @@ public class TaskExecutorManager {
     // ==================== StockX 搜索上架 ====================
 
     public Long startSearchList(String accountId, String keywords, String sorts,
-                                int pageCount, String searchType, boolean autoList) {
+                                int pageCount, String searchType) {
         if (TaskSwitch.isSearchListRunning(accountId)) {
             log.info("搜索上架任务已在运行: {}", accountId);
             return null;
@@ -220,7 +220,6 @@ public class TaskExecutorManager {
                 .fluentPut("sorts", sorts)
                 .fluentPut("pageCount", pageCount)
                 .fluentPut("searchType", searchType)
-                .fluentPut("autoList", autoList)
                 .toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.LISTING.getCode(), account.getName(), params);
         TaskSwitch.setSearchListTaskId(accountId, taskId);
@@ -228,7 +227,7 @@ public class TaskExecutorManager {
         TaskSwitch.setSearchListRunning(accountId, true);
 
         StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
-                account, taskId, keywords, sorts, pageCount, searchType, autoList,
+                account, taskId, keywords, sorts, pageCount, searchType,
                 stockXService, taskMapper);
         new Thread(runner, "StockX-SearchList-" + account.getName()).start();
         log.info("搜索上架任务已启动: [{}]", account.getName());

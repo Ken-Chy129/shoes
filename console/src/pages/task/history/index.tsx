@@ -310,14 +310,12 @@ const TaskHistoryPage = () => {
                             sorts: '排序方式',
                             pageCount: '查询页数',
                             searchType: '搜索类型',
-                            autoList: '自动上架',
                             interval: '执行间隔',
                             processOutsideExcel: '处理Excel外商品',
                             unprofitableAction: '不盈利操作',
                         };
                         const formatValue = (k: string, v: any): string => {
                             if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
-                            if (k === 'autoList') return v ? '是' : '否';
                             if (k === 'processOutsideExcel') return v ? '是' : '否';
                             if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
                             if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
