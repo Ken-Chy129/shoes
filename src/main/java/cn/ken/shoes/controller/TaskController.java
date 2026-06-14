@@ -8,6 +8,7 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
@@ -240,6 +241,101 @@ public class TaskController {
         JSONObject status = new JSONObject();
         status.put("running", taskExecutorManager.isSearchListRunning(accountId));
         Long taskId = taskExecutorManager.getSearchListTaskId(accountId);
+        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
+        return Result.buildSuccess(status);
+    }
+
+    // ==================== StockX 获取上架商品 ====================
+
+    @PostMapping("stockx/startFetchListings")
+    public Result<String> startFetchListings(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
+        Long taskId = taskExecutorManager.startFetchListings(accountId, inventoryType);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    @PostMapping("stockx/cancelFetchListings")
+    public Result<Boolean> cancelFetchListings(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
+        taskExecutorManager.cancelFetchListings(accountId, inventoryType);
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx/fetchListingsStatus")
+    public Result<JSONObject> getFetchListingsStatus(@RequestParam("accountId") String accountId,
+                                                      @RequestParam("inventoryType") String inventoryType) {
+        JSONObject status = new JSONObject();
+        status.put("running", taskExecutorManager.isFetchListingsRunning(accountId, inventoryType));
+        Long taskId = taskExecutorManager.getFetchListingsTaskId(accountId, inventoryType);
+        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
+        return Result.buildSuccess(status);
+    }
+
+    // ==================== StockX Excel下架 ====================
+
+    @PostMapping("stockx/uploadDelistExcel")
+    public Result<Integer> uploadDelistExcel(@RequestParam("file") MultipartFile file,
+                                              @RequestParam("accountId") String accountId,
+                                              @RequestParam("inventoryType") String inventoryType) throws IOException {
+        List<StockXDelistInputExcel> list = EasyExcel.read(file.getInputStream())
+                .head(StockXDelistInputExcel.class)
+                .sheet()
+                .doReadSync();
+        ShoesContext.loadDelistExcel(accountId, inventoryType, list);
+        return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
+    }
+
+    @GetMapping("stockx/delistExcelCount")
+    public Result<Integer> getDelistExcelCount(@RequestParam("accountId") String accountId,
+                                                @RequestParam("inventoryType") String inventoryType) {
+        return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
+    }
+
+    @PostMapping("stockx/startExcelDelist")
+    public Result<String> startExcelDelist(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
+        if (ShoesContext.getDelistList(accountId, inventoryType).isEmpty()) {
+            return Result.buildError("请先上传下架Excel");
+        }
+        Long taskId = taskExecutorManager.startExcelDelist(accountId, inventoryType);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    @PostMapping("stockx/cancelExcelDelist")
+    public Result<Boolean> cancelExcelDelist(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String inventoryType = body.getString("inventoryType");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
+            return Result.buildError("accountId和inventoryType不能为空");
+        }
+        taskExecutorManager.cancelExcelDelist(accountId, inventoryType);
+        return Result.buildSuccess(true);
+    }
+
+    @GetMapping("stockx/excelDelistStatus")
+    public Result<JSONObject> getExcelDelistStatus(@RequestParam("accountId") String accountId,
+                                                    @RequestParam("inventoryType") String inventoryType) {
+        JSONObject status = new JSONObject();
+        status.put("running", taskExecutorManager.isExcelDelistRunning(accountId, inventoryType));
+        Long taskId = taskExecutorManager.getExcelDelistTaskId(accountId, inventoryType);
         status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
         return Result.buildSuccess(status);
     }

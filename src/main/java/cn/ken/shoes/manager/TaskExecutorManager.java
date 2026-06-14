@@ -1,8 +1,10 @@
 package cn.ken.shoes.manager;
 
+import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -27,6 +29,9 @@ public class TaskExecutorManager {
     private StockXService stockXService;
 
     @Resource
+    private StockXClient stockXClient;
+
+    @Resource
     private KcTaskRunner kcTaskRunner;
 
     @Resource
@@ -34,6 +39,9 @@ public class TaskExecutorManager {
 
     @Resource
     private TaskMapper taskMapper;
+
+    @Resource
+    private TaskItemMapper taskItemMapper;
 
     /**
      * 启动任务（KC平台）
@@ -58,6 +66,7 @@ public class TaskExecutorManager {
                     new Thread(kcPriceDownTaskRunner, "KC-PriceDown-Task").start();
                 }
             }
+            default -> log.warn("startTask不支持的任务类型: {}", taskType);
         }
     }
 
@@ -65,6 +74,7 @@ public class TaskExecutorManager {
         switch (taskType) {
             case LISTING -> TaskSwitch.CANCEL_KC_LISTING_TASK = true;
             case PRICE_DOWN -> TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK = true;
+            default -> log.warn("cancelTask不支持的任务类型: {}", taskType);
         }
     }
 
@@ -72,6 +82,7 @@ public class TaskExecutorManager {
         return switch (taskType) {
             case LISTING -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_LISTING_TASK;
             case PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
+            default -> false;
         };
     }
 
@@ -79,6 +90,7 @@ public class TaskExecutorManager {
         return switch (taskType) {
             case LISTING -> TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
             case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
+            default -> null;
         };
     }
 
@@ -86,6 +98,7 @@ public class TaskExecutorManager {
         return switch (taskType) {
             case LISTING -> TaskSwitch.CURRENT_KC_LISTING_ROUND;
             case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
+            default -> 0;
         };
     }
 
@@ -93,6 +106,7 @@ public class TaskExecutorManager {
         return switch (taskType) {
             case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL;
             case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
+            default -> 0;
         };
     }
 
@@ -100,6 +114,7 @@ public class TaskExecutorManager {
         switch (taskType) {
             case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL = interval;
             case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
+            default -> log.warn("setTaskInterval不支持的任务类型: {}", taskType);
         }
     }
 
@@ -218,5 +233,81 @@ public class TaskExecutorManager {
 
     public Long getSearchListTaskId(String accountId) {
         return TaskSwitch.getSearchListTaskId(accountId);
+    }
+
+    // ==================== StockX 获取上架商品 ====================
+
+    public Long startFetchListings(String accountId, String inventoryType) {
+        String key = accountId + ":" + inventoryType;
+        if (TaskSwitch.isFetchListingsRunning(key)) {
+            log.info("获取上架商品任务已在运行: {}", key);
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        String params = STR."""
+                {"inventoryType":"\{inventoryType}"}""";
+        Long taskId = createTask("stockx", TaskTypeEnum.FETCH_LISTINGS.getCode(), account.getName(), params);
+        TaskSwitch.setFetchListingsTaskId(key, taskId);
+        TaskSwitch.resetFetchListingsCancel(key);
+
+        StockXFetchListingsTaskRunner runner = new StockXFetchListingsTaskRunner(
+                account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper);
+        new Thread(runner, "StockX-FetchListings-" + account.getName() + "-" + inventoryType).start();
+        log.info("获取上架商品任务已启动: [{}] {}", account.getName(), inventoryType);
+        return taskId;
+    }
+
+    public void cancelFetchListings(String accountId, String inventoryType) {
+        TaskSwitch.cancelFetchListings(accountId + ":" + inventoryType);
+    }
+
+    public boolean isFetchListingsRunning(String accountId, String inventoryType) {
+        return TaskSwitch.isFetchListingsRunning(accountId + ":" + inventoryType);
+    }
+
+    public Long getFetchListingsTaskId(String accountId, String inventoryType) {
+        return TaskSwitch.getFetchListingsTaskId(accountId + ":" + inventoryType);
+    }
+
+    // ==================== StockX Excel下架 ====================
+
+    public Long startExcelDelist(String accountId, String inventoryType) {
+        String key = accountId + ":" + inventoryType;
+        if (TaskSwitch.isExcelDelistRunning(key)) {
+            log.info("Excel下架任务已在运行: {}", key);
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        String params = STR."""
+                {"inventoryType":"\{inventoryType}"}""";
+        Long taskId = createTask("stockx", TaskTypeEnum.EXCEL_DELIST.getCode(), account.getName(), params);
+        TaskSwitch.setExcelDelistTaskId(key, taskId);
+        TaskSwitch.resetExcelDelistCancel(key);
+
+        StockXExcelDelistTaskRunner runner = new StockXExcelDelistTaskRunner(
+                account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper);
+        new Thread(runner, "StockX-ExcelDelist-" + account.getName() + "-" + inventoryType).start();
+        log.info("Excel下架任务已启动: [{}] {}", account.getName(), inventoryType);
+        return taskId;
+    }
+
+    public void cancelExcelDelist(String accountId, String inventoryType) {
+        TaskSwitch.cancelExcelDelist(accountId + ":" + inventoryType);
+    }
+
+    public boolean isExcelDelistRunning(String accountId, String inventoryType) {
+        return TaskSwitch.isExcelDelistRunning(accountId + ":" + inventoryType);
+    }
+
+    public Long getExcelDelistTaskId(String accountId, String inventoryType) {
+        return TaskSwitch.getExcelDelistTaskId(accountId + ":" + inventoryType);
     }
 }

@@ -6,6 +6,9 @@ import lombok.Data;
 @Data
 public class TaskItemExcel {
 
+    @ExcelProperty("listingId")
+    private String listingId;
+
     @ExcelProperty("轮次")
     private Integer round;
 

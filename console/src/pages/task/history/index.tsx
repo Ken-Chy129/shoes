@@ -36,7 +36,7 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
-const TYPE_LABELS: Record<string, string> = { listing: '上架', price_down: '压价' };
+const TYPE_LABELS: Record<string, string> = { listing: '上架', price_down: '压价', fetch_listings: '获取商品', excel_delist: 'Excel下架' };
 const PLATFORM_LABELS: Record<string, string> = { stockx: 'StockX', kickscrew: 'KC' };
 
 const TaskPage = () => {
@@ -114,6 +114,20 @@ const TaskPage = () => {
             doPostRequest(TASK_API.CANCEL_SEARCH_LIST, {accountId: record.accountName}, {
                 onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
             });
+        } else if (record.platform === 'stockx' && record.taskType === 'fetch_listings') {
+            try {
+                const p = JSON.parse(record.params || '{}');
+                doPostRequest(TASK_API.CANCEL_FETCH_LISTINGS, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
+                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
+                });
+            } catch { message.error('无法解析任务参数'); }
+        } else if (record.platform === 'stockx' && record.taskType === 'excel_delist') {
+            try {
+                const p = JSON.parse(record.params || '{}');
+                doPostRequest(TASK_API.CANCEL_EXCEL_DELIST, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
+                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
+                });
+            } catch { message.error('无法解析任务参数'); }
         } else {
             doPostRequest(`${TASK_API.CANCEL}?taskType=${record.taskType}`, {}, {
                 onSuccess: () => { message.success('已终止'); setTimeout(queryTaskList, 2000); }
@@ -169,6 +183,29 @@ const TaskPage = () => {
                             unprofitableAction: values.unprofitableAction || 'markup',
                         }, {
                             onSuccess: () => { message.success('压价任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                            onFinally: () => setCreating(false),
+                        });
+                    },
+                    onError: () => { message.error('Excel上传失败'); setCreating(false); },
+                });
+            } else if (createPlatform === 'stockx' && createTaskType === 'fetch_listings') {
+                doPostRequest(TASK_API.START_FETCH_LISTINGS, {
+                    accountId: values.accountId,
+                    inventoryType: values.inventoryType || 'STANDARD',
+                }, {
+                    onSuccess: () => { message.success('任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
+            } else if (createPlatform === 'stockx' && createTaskType === 'excel_delist') {
+                const accountId = values.accountId;
+                const inventoryType = values.inventoryType || 'STANDARD';
+                const file = values.delistExcelFile?.[0]?.originFileObj;
+                if (!file) { message.error('请上传下架Excel文件'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.UPLOAD_DELIST_EXCEL, file, {accountId, inventoryType}, {
+                    onSuccess: (res: any) => {
+                        message.success(`已加载${res.data}条下架规则`);
+                        doPostRequest(TASK_API.START_EXCEL_DELIST, {accountId, inventoryType}, {
+                            onSuccess: () => { message.success('Excel下架任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                             onFinally: () => setCreating(false),
                         });
                     },
@@ -345,6 +382,35 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'fetch_listings') {
+            return <>
+                <Form.Item name="inventoryType" label="库存类型" initialValue="STANDARD">
+                    <Radio.Group>
+                        <Radio.Button value="STANDARD">现货</Radio.Button>
+                        <Radio.Button value="CUSTODIAL">寄存</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+            </>;
+        }
+
+        if (createPlatform === 'stockx' && createTaskType === 'excel_delist') {
+            return <>
+                <Form.Item name="inventoryType" label="库存类型" initialValue="STANDARD">
+                    <Radio.Group>
+                        <Radio.Button value="STANDARD">现货</Radio.Button>
+                        <Radio.Button value="CUSTODIAL">寄存</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
+                           extra="使用获取上架商品导出的Excel，需包含listingId列">
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择文件</Button>
+                    </Upload>
+                </Form.Item>
+            </>;
+        }
+
         return <div style={{color: '#999', padding: '8px 0', textAlign: 'center'}}>
             该任务类型无需额外配置，直接点击创建即可
         </div>;
@@ -380,8 +446,11 @@ const TaskPage = () => {
                         options={[{label: 'KickScrew', value: 'kickscrew'}, {label: 'StockX', value: 'stockx'}]}/>
                 </Form.Item>
                 <Form.Item name="taskType" label="类型">
-                    <Select style={{width: 100}} placeholder="全部" allowClear
-                        options={[{label: '上架', value: 'listing'}, {label: '压价', value: 'price_down'}]}/>
+                    <Select style={{width: 130}} placeholder="全部" allowClear
+                        options={[
+                            {label: '上架', value: 'listing'}, {label: '压价', value: 'price_down'},
+                            {label: '获取商品', value: 'fetch_listings'}, {label: 'Excel下架', value: 'excel_delist'},
+                        ]}/>
                 </Form.Item>
                 <Form.Item name="status" label="状态">
                     <Select style={{width: 110}} placeholder="全部" allowClear
@@ -431,9 +500,11 @@ const TaskPage = () => {
                     </Form.Item>
                 )}
                 <Form.Item label="任务类型">
-                    <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); createForm.resetFields(); }}>
+                    <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}>
                         <Select.Option value="listing">搜索上架</Select.Option>
                         <Select.Option value="price_down">压价</Select.Option>
+                        <Select.Option value="fetch_listings">获取上架商品</Select.Option>
+                        <Select.Option value="excel_delist">Excel下架</Select.Option>
                     </Select>
                 </Form.Item>
                 <Divider style={{margin: '8px 0 20px'}}/>

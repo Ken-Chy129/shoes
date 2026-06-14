@@ -186,4 +186,80 @@ public class TaskSwitch {
         SEARCH_LIST_CANCELLED_MAP.remove(accountId);
         SEARCH_LIST_RUNNING_MAP.remove(accountId);
     }
+
+    // ==================== StockX 获取上架商品任务 ====================
+    private static final ConcurrentHashMap<String, Long> FETCH_LISTINGS_TASK_ID_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> FETCH_LISTINGS_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> FETCH_LISTINGS_RUNNING_MAP = new ConcurrentHashMap<>();
+
+    public static void setFetchListingsTaskId(String key, Long taskId) {
+        FETCH_LISTINGS_TASK_ID_MAP.put(key, taskId);
+    }
+
+    public static Long getFetchListingsTaskId(String key) {
+        return FETCH_LISTINGS_TASK_ID_MAP.get(key);
+    }
+
+    public static boolean isFetchListingsCancelled(String key) {
+        return Boolean.TRUE.equals(FETCH_LISTINGS_CANCELLED_MAP.get(key));
+    }
+
+    public static void cancelFetchListings(String key) {
+        FETCH_LISTINGS_CANCELLED_MAP.put(key, true);
+    }
+
+    public static void resetFetchListingsCancel(String key) {
+        FETCH_LISTINGS_CANCELLED_MAP.remove(key);
+    }
+
+    public static boolean isFetchListingsRunning(String key) {
+        return Boolean.TRUE.equals(FETCH_LISTINGS_RUNNING_MAP.get(key));
+    }
+
+    public static void setFetchListingsRunning(String key, boolean running) {
+        FETCH_LISTINGS_RUNNING_MAP.put(key, running);
+    }
+
+    public static void clearFetchListingsState(String key) {
+        FETCH_LISTINGS_CANCELLED_MAP.remove(key);
+        FETCH_LISTINGS_RUNNING_MAP.remove(key);
+    }
+
+    // ==================== StockX Excel下架任务 ====================
+    private static final ConcurrentHashMap<String, Long> EXCEL_DELIST_TASK_ID_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> EXCEL_DELIST_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> EXCEL_DELIST_RUNNING_MAP = new ConcurrentHashMap<>();
+
+    public static void setExcelDelistTaskId(String key, Long taskId) {
+        EXCEL_DELIST_TASK_ID_MAP.put(key, taskId);
+    }
+
+    public static Long getExcelDelistTaskId(String key) {
+        return EXCEL_DELIST_TASK_ID_MAP.get(key);
+    }
+
+    public static boolean isExcelDelistCancelled(String key) {
+        return Boolean.TRUE.equals(EXCEL_DELIST_CANCELLED_MAP.get(key));
+    }
+
+    public static void cancelExcelDelist(String key) {
+        EXCEL_DELIST_CANCELLED_MAP.put(key, true);
+    }
+
+    public static void resetExcelDelistCancel(String key) {
+        EXCEL_DELIST_CANCELLED_MAP.remove(key);
+    }
+
+    public static boolean isExcelDelistRunning(String key) {
+        return Boolean.TRUE.equals(EXCEL_DELIST_RUNNING_MAP.get(key));
+    }
+
+    public static void setExcelDelistRunning(String key, boolean running) {
+        EXCEL_DELIST_RUNNING_MAP.put(key, running);
+    }
+
+    public static void clearExcelDelistState(String key) {
+        EXCEL_DELIST_CANCELLED_MAP.remove(key);
+        EXCEL_DELIST_RUNNING_MAP.remove(key);
+    }
 }

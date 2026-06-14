@@ -5,6 +5,7 @@ import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 
+import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 
 import java.util.*;
@@ -178,5 +179,20 @@ public class ShoesContext {
         ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> outerMap =
                 "CUSTODIAL".equals(inventoryType) ? CUSTODIAL_PRICE_DOWN_MAP : STANDARD_PRICE_DOWN_MAP;
         return outerMap.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>());
+    }
+
+    // Excel 下架数据（按账号+库存类型隔离），直接存 listingId 列表
+    private final static ConcurrentHashMap<String, List<StockXDelistInputExcel>> DELIST_EXCEL_MAP = new ConcurrentHashMap<>();
+
+    public static void loadDelistExcel(String accountId, String inventoryType, List<StockXDelistInputExcel> list) {
+        String key = STR."\{accountId}:\{inventoryType}";
+        DELIST_EXCEL_MAP.put(key, list.stream()
+                .filter(item -> StrUtil.isNotBlank(item.getListingId()))
+                .toList());
+    }
+
+    public static List<StockXDelistInputExcel> getDelistList(String accountId, String inventoryType) {
+        String key = STR."\{accountId}:\{inventoryType}";
+        return DELIST_EXCEL_MAP.getOrDefault(key, Collections.emptyList());
     }
 }

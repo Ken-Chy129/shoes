@@ -160,7 +160,7 @@ public class StockXClient {
         persistedQuery.put("sha256Hash", "c6e5f5ce76a05d8877c3f61c5e98678c31855ee46276011e9b8f047eefdad036");
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
-        Headers headers = account != null ? buildProHeaders(account, account.getCountry()) : buildProHeaders();
+        Headers headers = account != null ? buildViperHeaders(account) : buildProHeaders();
         String accName = account != null ? account.getName() : null;
         JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName);
         log.info("deleteItems, result:{}", jsonObject);
