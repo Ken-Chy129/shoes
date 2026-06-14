@@ -147,9 +147,12 @@ public class PriceManager {
         CACHE.putAll(modelNoPriceMap);
     }
 
-    public long invalidateAll() {
+    public long invalidateAll(boolean clearDb) {
         long size = CACHE.size();
         CACHE.invalidateAll();
+        if (clearDb) {
+            poisonPriceMapper.delete(new QueryWrapper<>());
+        }
         return size;
     }
 

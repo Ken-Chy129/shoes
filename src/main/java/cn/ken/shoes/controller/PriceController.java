@@ -28,8 +28,12 @@ public class PriceController {
     }
 
     @PostMapping("invalidateCache")
-    public Result<String> invalidateCache() {
-        long count = priceManager.invalidateAll();
-        return Result.buildSuccess("已清除" + count + "条缓存");
+    public Result<String> invalidateCache(@RequestParam(defaultValue = "false") boolean clearDb) {
+        long count = priceManager.invalidateAll(clearDb);
+        String msg = "已清除" + count + "条内存缓存";
+        if (clearDb) {
+            msg += "，数据库已清空";
+        }
+        return Result.buildSuccess(msg);
     }
 }
