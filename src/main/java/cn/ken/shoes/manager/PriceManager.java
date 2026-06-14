@@ -78,6 +78,13 @@ public class PriceManager {
 
         // 普通货号，直接查询
         List<PoisonPriceDO> poisonPriceDOList = poisonClient.queryPriceByModelNo(modelNo);
+        if ((poisonPriceDOList == null || poisonPriceDOList.isEmpty())) {
+            // Salomon特殊处理：StockX货号L47XXXX00，得物可能是47XXXX
+            String altModelNo = toSalomonPoisonModelNo(modelNo);
+            if (altModelNo != null) {
+                poisonPriceDOList = poisonClient.queryPriceByModelNo(altModelNo);
+            }
+        }
         if (poisonPriceDOList == null || poisonPriceDOList.isEmpty()) {
             return Map.of();
         }
@@ -89,6 +96,17 @@ public class PriceManager {
                                 (existing, replacement) -> existing
                         )
                 );
+    }
+
+    /**
+     * Salomon货号转换：L47XXXX00 → 47XXXX
+     */
+    private String toSalomonPoisonModelNo(String modelNo) {
+        if (modelNo != null && modelNo.length() > 3
+                && modelNo.startsWith("L") && modelNo.endsWith("00")) {
+            return modelNo.substring(1, modelNo.length() - 2);
+        }
+        return null;
     }
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
