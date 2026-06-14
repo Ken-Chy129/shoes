@@ -302,6 +302,20 @@ public class TaskController {
         return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
     }
 
+    @GetMapping("stockx/delistExcelData")
+    public Result<List<Map<String, Object>>> getDelistExcelData(@RequestParam("accountId") String accountId,
+                                                                 @RequestParam("inventoryType") String inventoryType) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (var item : ShoesContext.getDelistList(accountId, inventoryType)) {
+            result.add(Map.of(
+                    "listingId", item.getListingId() != null ? item.getListingId() : "",
+                    "styleId", item.getStyleId() != null ? item.getStyleId() : "",
+                    "size", item.getSize() != null ? item.getSize() : ""
+            ));
+        }
+        return Result.buildSuccess(result);
+    }
+
     @PostMapping("stockx/startExcelDelist")
     public Result<String> startExcelDelist(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");

@@ -39,6 +39,7 @@ enum TASK_API {
     // StockX Excel下架
     UPLOAD_DELIST_EXCEL = '/api/task/stockx/uploadDelistExcel',
     DELIST_EXCEL_COUNT = '/api/task/stockx/delistExcelCount',
+    DELIST_EXCEL_DATA = '/api/task/stockx/delistExcelData',
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
     CANCEL_EXCEL_DELIST = '/api/task/stockx/cancelExcelDelist',
     EXCEL_DELIST_STATUS = '/api/task/stockx/excelDelistStatus',

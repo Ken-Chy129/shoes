@@ -56,6 +56,7 @@ const TaskPage = () => {
     const [previewVisible, setPreviewVisible] = useState(false);
     const [previewData, setPreviewData] = useState<any[]>([]);
     const [previewTitle, setPreviewTitle] = useState('');
+    const [previewColumns, setPreviewColumns] = useState<any[]>([]);
 
     // 新建任务
     const [createModalVisible, setCreateModalVisible] = useState(false);
@@ -300,9 +301,32 @@ const TaskPage = () => {
                                 const p = JSON.parse(record.params || '{}');
                                 doGetRequest(TASK_API.STOCKX_PRICE_DOWN_EXCEL_DATA, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
                                     onSuccess: (res: any) => {
-                                        setParamsModalData(null);
                                         setPreviewData(res.data || []);
-                                        setPreviewTitle(`${record.accountName} ${(p.inventoryType === 'CUSTODIAL' ? '寄存' : '现货')} Excel`);
+                                        setPreviewTitle(`${record.accountName} ${(p.inventoryType === 'CUSTODIAL' ? '寄存' : '现货')} 压价Excel`);
+                                        setPreviewColumns([
+                                            {title: '货号', dataIndex: 'styleId', key: 'styleId'},
+                                            {title: '尺码', dataIndex: 'size', key: 'size'},
+                                            {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice', render: (v: number) => v === -1 ? '跳过' : `$${v}`},
+                                        ]);
+                                        setPreviewVisible(true);
+                                    }
+                                });
+                            } catch {}
+                        }}>Excel</Button>
+                    )}
+                    {record.taskType === 'excel_delist' && record.platform === 'stockx' && (
+                        <Button type="link" size="small" onClick={() => {
+                            try {
+                                const p = JSON.parse(record.params || '{}');
+                                doGetRequest(TASK_API.DELIST_EXCEL_DATA, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
+                                    onSuccess: (res: any) => {
+                                        setPreviewData(res.data || []);
+                                        setPreviewTitle(`${record.accountName} ${(p.inventoryType === 'CUSTODIAL' ? '寄存' : '现货')} 下架Excel`);
+                                        setPreviewColumns([
+                                            {title: 'listingId', dataIndex: 'listingId', key: 'listingId'},
+                                            {title: '货号', dataIndex: 'styleId', key: 'styleId'},
+                                            {title: '尺码', dataIndex: 'size', key: 'size'},
+                                        ]);
                                         setPreviewVisible(true);
                                     }
                                 });
@@ -532,13 +556,9 @@ const TaskPage = () => {
 
         {/* Excel预览 Modal */}
         <Modal title={previewTitle} open={previewVisible} onCancel={() => setPreviewVisible(false)} footer={null} width={600}>
-            <Table dataSource={previewData} rowKey={(r) => `${r.styleId}:${r.size}`} size="small"
+            <Table dataSource={previewData} rowKey={(r, i) => `${r.listingId || r.styleId}:${r.size}:${i}`} size="small"
                 pagination={{pageSize: 20, showTotal: (t: number) => `共 ${t} 条`}}
-                columns={[
-                    {title: '货号', dataIndex: 'styleId', key: 'styleId'},
-                    {title: '尺码', dataIndex: 'size', key: 'size'},
-                    {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice', render: (v: number) => v === -1 ? '跳过' : `$${v}`},
-                ]}
+                columns={previewColumns}
             />
         </Modal>
 
