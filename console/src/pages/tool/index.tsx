@@ -1,6 +1,6 @@
-import {Button, Card, Form, Input, message, Modal, Select, Space, Table} from "antd";
+import {Button, Card, Form, Input, message, Modal, Popconfirm, Select, Space, Table} from "antd";
 import React, {useEffect, useState} from "react";
-import {doGetRequest} from "@/util/http";
+import {doGetRequest, doPostRequest} from "@/util/http";
 import {PRICE_API, SIZE_CHART_API} from "@/services/shoes";
 
 const ToolPage = () => {
@@ -98,6 +98,13 @@ const ToolPage = () => {
                     </Form.Item>
                 </Form>
                 <Button type="primary" onClick={queryPrice}>查询</Button>
+                <Popconfirm title="确认清除所有得物价格缓存？" onConfirm={() => {
+                    doPostRequest(PRICE_API.INVALIDATE_CACHE, {}, {
+                        onSuccess: (res: any) => message.success(res.data || '缓存已清除'),
+                    });
+                }} okText="确定" cancelText="取消">
+                    <Button danger>清除价格缓存</Button>
+                </Popconfirm>
             </Space>
         </Card>
 

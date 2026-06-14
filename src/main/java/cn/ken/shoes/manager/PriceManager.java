@@ -147,6 +147,12 @@ public class PriceManager {
         CACHE.putAll(modelNoPriceMap);
     }
 
+    public long invalidateAll() {
+        long size = CACHE.size();
+        CACHE.invalidateAll();
+        return size;
+    }
+
     /**
      * 批量预加载缺失的价格到缓存
      * 1. 遍历货号集合，找出缓存中不存在的货号

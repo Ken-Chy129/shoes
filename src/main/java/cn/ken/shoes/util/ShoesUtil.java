@@ -31,16 +31,28 @@ public class ShoesUtil {
         if (rawSize == null) {
             return null;
         }
-        // 正则表达式匹配整数和小数
+        rawSize = normalizeUnicodeFraction(rawSize);
         Matcher matcher = SHOES_SIZE_PATTEN.matcher(rawSize);
-
         if (matcher.find()) {
-            // 返回找到的数值字符串
             return matcher.group();
         } else {
-            // 如果没有找到匹配项，可以根据需求抛出异常或返回特定值
-            return null; // 或者可以选择抛出异常等其他处理方式
+            return null;
         }
+    }
+
+    /**
+     * 将Unicode分数字符转为数值：⅓ → 取整，⅔ → .5
+     * 例：39⅓ → 39，42⅔ → 42.5
+     */
+    public static String normalizeUnicodeFraction(String size) {
+        if (size == null) return null;
+        if (size.contains("⅓")) {
+            return size.replace("⅓", "").trim();
+        }
+        if (size.contains("⅔")) {
+            return size.replace("⅔", ".5").trim();
+        }
+        return size;
     }
 
     public static String getClothesSize(String rawSize) {

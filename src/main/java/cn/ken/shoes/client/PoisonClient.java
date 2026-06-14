@@ -185,7 +185,7 @@ public class PoisonClient {
             }
             PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
             poisonPriceDO.setModelNo(modelNo);
-            poisonPriceDO.setEuSize(euSize);
+            poisonPriceDO.setEuSize(ShoesUtil.normalizeUnicodeFraction(euSize));
             poisonPriceDO.setPrice(price);
             poisonPriceDO.setUpdateTime(time);
             poisonPriceDOList.add(poisonPriceDO);
@@ -355,7 +355,7 @@ public class PoisonClient {
                         if (minBidPrice == null || minBidPrice <= 0 || minBidPrice > PoisonSwitch.MAX_PRICE * 100L) {
                             continue;
                         }
-                        String euSize = extractDistApiSize(sku);
+                        String euSize = ShoesUtil.normalizeUnicodeFraction(extractDistApiSize(sku));
                         if (euSize == null) {
                             continue;
                         }
@@ -564,7 +564,7 @@ public class PoisonClient {
                 }
                 PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
                 poisonPriceDO.setModelNo(modelNo);
-                poisonPriceDO.setEuSize(item.getString("size"));
+                poisonPriceDO.setEuSize(ShoesUtil.normalizeUnicodeFraction(item.getString("size")));
                 poisonPriceDO.setPrice(price.intValue());
                 poisonPriceDO.setUpdateTime(updateTime);
                 poisonPriceDOList.add(poisonPriceDO);
@@ -642,7 +642,7 @@ public class PoisonClient {
         if (size == null || size.isEmpty()) {
             return size;
         }
-        // 匹配尺码数字，支持整数和小数，如 35、35.5、36 1/3
+        size = ShoesUtil.normalizeUnicodeFraction(size);
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\d+(\\.\\d+|\\s*\\d*/\\d*)?");
         java.util.regex.Matcher matcher = pattern.matcher(size);
         if (matcher.find()) {
