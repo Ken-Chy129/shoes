@@ -1,7 +1,11 @@
 package cn.ken.shoes.controller;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.mapper.TaskItemMapper;
+import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
 import com.alibaba.excel.EasyExcel;
@@ -24,6 +28,9 @@ public class TaskItemController {
 
     @Resource
     private TaskItemMapper taskItemMapper;
+
+    @Resource
+    private TaskMapper taskMapper;
 
     @GetMapping("page")
     public PageResult<List<TaskItemDO>> queryTaskItems(
@@ -79,15 +86,49 @@ public class TaskItemController {
             excelList.add(excel);
         }
 
-        // 设置响应头
+        // 构建文件名：平台_任务类型_账号_时间
+        String fileName = buildExportFileName(taskId);
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
-        String fileName = URLEncoder.encode("任务明细_" + taskId, StandardCharsets.UTF_8).replace("\\+", "%20");
-        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
 
         // 写入 Excel
         EasyExcel.write(response.getOutputStream(), TaskItemExcel.class)
                 .sheet("任务明细")
                 .doWrite(excelList);
+    }
+
+    private String buildExportFileName(Long taskId) {
+        TaskDO task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return "任务明细_" + taskId;
+        }
+        StringBuilder sb = new StringBuilder();
+        // 平台
+        String platform = task.getPlatform();
+        if ("stockx".equals(platform)) {
+            sb.append("StockX");
+        } else if ("kickscrew".equals(platform)) {
+            sb.append("KC");
+        } else if (StrUtil.isNotBlank(platform)) {
+            sb.append(platform);
+        }
+        // 任务类型
+        TaskTypeEnum type = TaskTypeEnum.fromCode(task.getTaskType());
+        if (type != null) {
+            sb.append("_").append(type.getDesc());
+        } else if (StrUtil.isNotBlank(task.getTaskType())) {
+            sb.append("_").append(task.getTaskType());
+        }
+        // 账号
+        if (StrUtil.isNotBlank(task.getAccountName())) {
+            sb.append("_").append(task.getAccountName());
+        }
+        // 时间
+        if (task.getStartTime() != null) {
+            sb.append("_").append(new SimpleDateFormat("MMdd_HHmm").format(task.getStartTime()));
+        }
+        return sb.toString();
     }
 }
