@@ -707,7 +707,11 @@ public class StockXService {
         if (isStandard) {
             Integer sl = item.getInteger("standardLowest");
             Integer el = item.getInteger("expressStandardLowest");
-            lowestPrice = (sl != null && el != null) ? Math.min(sl, el) : (sl != null ? sl : el);
+            if (sl != null && el != null) {
+                lowestPrice = Math.min(sl, el);
+            } else {
+                lowestPrice = sl != null ? sl : el;
+            }
         } else {
             lowestPrice = item.getInteger("expressStandardLowest");
         }
