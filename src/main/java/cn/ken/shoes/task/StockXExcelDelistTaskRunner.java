@@ -18,7 +18,7 @@ import java.util.List;
 @Slf4j
 public class StockXExcelDelistTaskRunner implements Runnable {
 
-    private static final int BATCH_SIZE = 100;
+    private static final int BATCH_SIZE = 50;
 
     private final StockXAccount account;
     private final Long taskId;

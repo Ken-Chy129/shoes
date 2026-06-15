@@ -145,6 +145,8 @@ public class StockXClient {
         if (idList.isEmpty()) {
             return false;
         }
+        String accName = account != null ? account.getName() : null;
+        LimiterHelper.limitStockxBatch(accName, idList.size());
         JSONObject body = new JSONObject(true);
         body.put("operationName", "BulkDeleteSellerListings");
         JSONObject variables = new JSONObject(true);
@@ -161,10 +163,12 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
         Headers headers = account != null ? buildViperHeaders(account) : buildProHeaders();
-        String accName = account != null ? account.getName() : null;
         JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName);
         log.info("deleteItems, result:{}", jsonObject);
-        return jsonObject != null && jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
+        if (jsonObject == null || jsonObject.containsKey("errors")) {
+            return false;
+        }
+        return jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
