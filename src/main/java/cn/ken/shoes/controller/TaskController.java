@@ -44,6 +44,12 @@ public class TaskController {
         return Result.buildSuccess();
     }
 
+    @PostMapping("cancelById")
+    public Result<Void> cancelTaskById(@RequestParam Long taskId) {
+        taskService.cancelTaskById(taskId);
+        return Result.buildSuccess();
+    }
+
     // ==================== 统一任务管理接口 ====================
 
     @PostMapping("start")

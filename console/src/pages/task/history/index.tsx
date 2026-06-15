@@ -104,36 +104,9 @@ const TaskPage = () => {
     }
 
     const handleCancelTask = (record: TaskRecord) => {
-        if (record.platform === 'stockx' && record.taskType === 'price_down') {
-            try {
-                const p = JSON.parse(record.params || '{}');
-                doPostRequest(TASK_API.STOCKX_CANCEL_EXCEL_PRICE_DOWN, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
-                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
-                });
-            } catch { message.error('无法解析任务参数'); }
-        } else if (record.platform === 'stockx' && record.taskType === 'listing') {
-            doPostRequest(TASK_API.CANCEL_SEARCH_LIST, {accountId: record.accountName}, {
-                onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
-            });
-        } else if (record.platform === 'stockx' && record.taskType === 'fetch_listings') {
-            try {
-                const p = JSON.parse(record.params || '{}');
-                doPostRequest(TASK_API.CANCEL_FETCH_LISTINGS, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
-                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
-                });
-            } catch { message.error('无法解析任务参数'); }
-        } else if (record.platform === 'stockx' && record.taskType === 'excel_delist') {
-            try {
-                const p = JSON.parse(record.params || '{}');
-                doPostRequest(TASK_API.CANCEL_EXCEL_DELIST, {accountId: record.accountName, inventoryType: p.inventoryType || 'STANDARD'}, {
-                    onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
-                });
-            } catch { message.error('无法解析任务参数'); }
-        } else {
-            doPostRequest(`${TASK_API.CANCEL}?taskType=${record.taskType}`, {}, {
-                onSuccess: () => { message.success('已终止'); setTimeout(queryTaskList, 2000); }
-            });
-        }
+        doPostRequest(`${TASK_API.CANCEL_BY_ID}?taskId=${record.id}`, {}, {
+            onSuccess: () => { message.success('已发送取消信号'); setTimeout(queryTaskList, 2000); }
+        });
     }
 
     const handleDeleteTask = (record: TaskRecord) => {

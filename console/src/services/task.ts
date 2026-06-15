@@ -28,6 +28,8 @@ enum TASK_API {
     TASK_ITEM_OPERATE_RESULTS = '/api/taskItem/operateResults',
     // 删除任务
     DELETE = '/api/task/delete',
+    // 按taskId取消任务
+    CANCEL_BY_ID = '/api/task/cancelById',
     // StockX 搜索上架
     START_SEARCH_LIST = '/api/task/stockx/startSearchList',
     CANCEL_SEARCH_LIST = '/api/task/stockx/cancelSearchList',
