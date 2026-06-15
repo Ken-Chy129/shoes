@@ -99,12 +99,17 @@ public class StockXExcelDelistTaskRunner implements Runnable {
             log.info("[{}] Excel下架任务完成, inventoryType:{}, total:{}, delist:{}, failed:{}, 耗时:{}",
                     accountId, inventoryType, delistList.size(), totalDelist, totalFailed, cost);
         } catch (Exception e) {
-            log.error("[{}] Excel下架任务异常: {}", accountId, e.getMessage(), e);
-            String reason = e.getMessage();
-            if (reason != null && reason.length() > 200) {
-                reason = reason.substring(0, 200);
+            if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                log.error("[{}] Excel下架任务因Token过期终止，请更新Token后重新启动", accountId);
+                taskMapper.updateTaskFailed(taskId, "Token已过期，请更新Token");
+            } else {
+                log.error("[{}] Excel下架任务异常: {}", accountId, e.getMessage(), e);
+                String reason = e.getMessage();
+                if (reason != null && reason.length() > 200) {
+                    reason = reason.substring(0, 200);
+                }
+                taskMapper.updateTaskFailed(taskId, reason);
             }
-            taskMapper.updateTaskFailed(taskId, reason);
         } finally {
             TaskSwitch.clearExcelDelistState(key);
         }

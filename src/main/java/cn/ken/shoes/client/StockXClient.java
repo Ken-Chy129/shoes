@@ -165,6 +165,9 @@ public class StockXClient {
         Headers headers = account != null ? buildViperHeaders(account) : buildProHeaders();
         JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName);
         log.info("deleteItems, result:{}", jsonObject);
+        if (jsonObject != null && "Unauthorized".equals(jsonObject.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
+        }
         if (jsonObject == null || jsonObject.containsKey("errors")) {
             return false;
         }
@@ -1063,6 +1066,9 @@ public class StockXClient {
         JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName());
         if (jsonObject == null) {
             return null;
+        }
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
         }
         JSONObject respData = jsonObject.getJSONObject("data");
         if (respData != null) {
