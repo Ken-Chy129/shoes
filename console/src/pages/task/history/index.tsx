@@ -279,7 +279,13 @@ const TaskPage = () => {
                         return <Tooltip title={tip}><span style={{cursor: 'pointer'}}>{pct}%</span></Tooltip>;
                     } catch { return '-'; }
                 }
-                return record.round != null ? `第${record.round}轮` : '-';
+                if (record.round == null) return '-';
+                const unitMap: Record<string, string> = {
+                    fetch_listings: '页',
+                    excel_delist: '批',
+                };
+                const unit = unitMap[record.taskType] || '轮';
+                return `第${record.round}${unit}`;
             },
         },
         {
