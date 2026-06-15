@@ -1,6 +1,7 @@
 enum PRICE_API {
     QUERY_BY_MODEL = '/api/price/queryByModelNo',
     INVALIDATE_CACHE = '/api/price/invalidateCache',
+    CLEAR_NO_PRICE_CACHE = '/api/price/clearNoPriceCache',
 }
 
 enum SETTING_API {

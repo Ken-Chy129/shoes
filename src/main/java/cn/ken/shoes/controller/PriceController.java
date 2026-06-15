@@ -1,5 +1,6 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.model.price.PriceVO;
@@ -35,5 +36,12 @@ public class PriceController {
             msg += "，数据库已清空";
         }
         return Result.buildSuccess(msg);
+    }
+
+    @PostMapping("clearNoPriceCache")
+    public Result<String> clearNoPriceCache() {
+        int count = ShoesContext.getNoPriceModelSet().size();
+        ShoesContext.clearNoPriceModelSet();
+        return Result.buildSuccess("已清除" + count + "个无价缓存货号");
     }
 }

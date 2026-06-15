@@ -98,7 +98,12 @@ const ToolPage = () => {
                     </Form.Item>
                 </Form>
                 <Button type="primary" onClick={queryPrice}>查询</Button>
-                <Popconfirm title="仅清除内存缓存" onConfirm={() => {
+            </Space>
+        </Card>
+
+        <Card title="缓存管理" style={{marginTop: 16}}>
+            <Space>
+                <Popconfirm title="仅清除得物价格内存缓存" onConfirm={() => {
                     doPostRequest(`${PRICE_API.INVALIDATE_CACHE}?clearDb=false`, {}, {
                         onSuccess: (res: any) => message.success(res.data || '缓存已清除'),
                     });
@@ -111,6 +116,13 @@ const ToolPage = () => {
                     });
                 }} okText="确定" cancelText="取消">
                     <Button danger>清除全部缓存</Button>
+                </Popconfirm>
+                <Popconfirm title="将清除所有无价货号缓存，确认？" onConfirm={() => {
+                    doPostRequest(PRICE_API.CLEAR_NO_PRICE_CACHE, {}, {
+                        onSuccess: (res: any) => message.success(res.data || '无价缓存已清除'),
+                    });
+                }} okText="确定" cancelText="取消">
+                    <Button danger>清除无价缓存</Button>
                 </Popconfirm>
             </Space>
         </Card>
