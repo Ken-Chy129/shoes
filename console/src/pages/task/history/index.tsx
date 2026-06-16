@@ -36,8 +36,8 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
-const TYPE_LABELS: Record<string, string> = { listing: '上架', price_down: '压价', fetch_listings: '获取商品', excel_delist: 'Excel下架' };
-const PLATFORM_LABELS: Record<string, string> = { stockx: 'StockX', kickscrew: 'KC' };
+const TYPE_LABELS: Record<string, string> = { listing: '搜索上架', price_down: '压价', fetch_listings: '获取上架商品', excel_delist: 'Excel下架' };
+
 
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
@@ -200,14 +200,11 @@ const TaskPage = () => {
     const columns = [
         {
             title: '平台', dataIndex: 'platform', key: 'platform', width: 80,
+            render: (platform: string) => ({ stockx: 'StockX', kickscrew: 'KC' }[platform] || platform),
         },
         {
             title: '任务类型', dataIndex: 'taskType', key: 'type', width: 120,
-            render: (taskType: string, record: TaskRecord) => {
-                const label = TYPE_LABELS[taskType];
-                if (label) return `${PLATFORM_LABELS[record.platform] || record.platform} ${label}`;
-                return taskType;
-            },
+            render: (taskType: string) => TYPE_LABELS[taskType] || taskType,
         },
         {
             title: '账号', dataIndex: 'accountName', key: 'accountName', width: 90,
@@ -451,8 +448,8 @@ const TaskPage = () => {
                 <Form.Item name="taskType" label="类型">
                     <Select style={{width: 130}} placeholder="全部" allowClear
                         options={[
-                            {label: '上架', value: 'listing'}, {label: '压价', value: 'price_down'},
-                            {label: '获取商品', value: 'fetch_listings'}, {label: 'Excel下架', value: 'excel_delist'},
+                            {label: '搜索上架', value: 'listing'}, {label: '压价', value: 'price_down'},
+                            {label: '获取上架商品', value: 'fetch_listings'}, {label: 'Excel下架', value: 'excel_delist'},
                         ]}/>
                 </Form.Item>
                 <Form.Item name="status" label="状态">

@@ -1,5 +1,6 @@
 package cn.ken.shoes.manager;
 
+import com.alibaba.fastjson.JSONObject;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
@@ -146,7 +147,7 @@ public class TaskExecutorManager {
 
     // ==================== StockX Excel 多账号压价 ====================
 
-    public void startExcelPriceDown(String accountId, String inventoryType) {
+    public void startExcelPriceDown(String accountId, String inventoryType, boolean processOutsideExcel, String unprofitableAction) {
         if (TaskSwitch.isExcelRunning(accountId, inventoryType)) {
             log.info("Excel压价任务已在运行: {}:{}", accountId, inventoryType);
             return;
@@ -156,8 +157,11 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return;
         }
-        String params = STR."""
-                {"inventoryType":"\{inventoryType}"}""";
+        String params = new JSONObject()
+                .fluentPut("inventoryType", inventoryType)
+                .fluentPut("processOutsideExcel", processOutsideExcel)
+                .fluentPut("unprofitableAction", unprofitableAction)
+                .toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
         TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
         TaskSwitch.resetExcelCancel(accountId, inventoryType);
@@ -248,8 +252,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        String params = STR."""
-                {"inventoryType":"\{inventoryType}"}""";
+        String params = new JSONObject().fluentPut("inventoryType", inventoryType).toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.FETCH_LISTINGS.getCode(), account.getName(), params);
         TaskSwitch.setFetchListingsTaskId(key, taskId);
         TaskSwitch.resetFetchListingsCancel(key);
@@ -286,8 +289,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        String params = STR."""
-                {"inventoryType":"\{inventoryType}"}""";
+        String params = new JSONObject().fluentPut("inventoryType", inventoryType).toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.EXCEL_DELIST.getCode(), account.getName(), params);
         TaskSwitch.setExcelDelistTaskId(key, taskId);
         TaskSwitch.resetExcelDelistCancel(key);

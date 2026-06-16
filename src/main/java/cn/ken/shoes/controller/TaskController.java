@@ -170,7 +170,7 @@ public class TaskController {
         String unprofitableAction = body.getString("unprofitableAction");
         TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, processOutside);
         TaskSwitch.setUnprofitableAction(accountId, inventoryType, unprofitableAction != null ? unprofitableAction : "markup");
-        taskExecutorManager.startExcelPriceDown(accountId, inventoryType);
+        taskExecutorManager.startExcelPriceDown(accountId, inventoryType, processOutside, unprofitableAction != null ? unprofitableAction : "markup");
         return Result.buildSuccess(true);
     }
 
