@@ -76,6 +76,7 @@ public class StockXFetchListingsTaskRunner implements Runnable {
                     taskItemDO.setListingId(item.getString("id"));
                     taskItemDO.setStyleId(item.getString("styleId"));
                     taskItemDO.setTitle(item.getString("productName"));
+                    taskItemDO.setBrand(item.getString("brand"));
                     taskItemDO.setSize(item.getString("size"));
                     taskItemDO.setEuSize(item.getString("euSize"));
                     Integer amount = item.getInteger("amount");

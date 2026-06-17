@@ -10,6 +10,9 @@ import lombok.Data;
 @Data
 public class StockXPriceExcel {
 
+    @ExcelProperty("品牌")
+    private String brand;
+
     @ExcelProperty("产品名称")
     private String title;
 

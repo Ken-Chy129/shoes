@@ -32,6 +32,11 @@ public class TaskItemDO {
     private Integer round;
 
     /**
+     * 品牌
+     */
+    private String brand;
+
+    /**
      * 商品标题
      */
     private String title;

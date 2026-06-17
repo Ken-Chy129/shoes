@@ -543,6 +543,7 @@ public class StockXService {
                         taskItemDO.setTaskId(taskId);
                         taskItemDO.setRound(1);
                         taskItemDO.setTitle(item.getTitle());
+                        taskItemDO.setBrand(item.getBrand());
                         taskItemDO.setProductId(variantId);
                         taskItemDO.setStyleId(modelNo);
                         taskItemDO.setSize(item.getUsmSize());
@@ -694,6 +695,7 @@ public class StockXService {
         taskItemDO.setTaskId(taskId);
         taskItemDO.setRound(round);
         taskItemDO.setTitle(item.getString("productName"));
+        taskItemDO.setBrand(item.getString("brand"));
         taskItemDO.setListingId(item.getString("id"));
         taskItemDO.setProductId(item.getString("variantId"));
         taskItemDO.setStyleId(item.getString("styleId"));

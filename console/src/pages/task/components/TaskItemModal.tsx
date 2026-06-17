@@ -8,6 +8,7 @@ interface TaskItemRecord {
     id: string;
     taskId: string;
     round: number;
+    brand: string;
     title: string;
     listingId: string;
     productId: string;
@@ -142,6 +143,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             dataIndex: 'round',
             key: 'round',
             width: 50,
+        },
+        {
+            title: '品牌',
+            dataIndex: 'brand',
+            key: 'brand',
+            width: 80,
+            ellipsis: true,
         },
         {
             title: '标题',

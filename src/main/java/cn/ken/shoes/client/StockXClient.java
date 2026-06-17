@@ -383,6 +383,7 @@ public class StockXClient {
             }
             StockXPriceExcel excel = new StockXPriceExcel();
             excel.setTitle(title);
+            excel.setBrand(product.getString("brand"));
             excel.setId(variantId);
             excel.setUk(urlKey);
             excel.setModelNo(modelNo);
@@ -765,6 +766,7 @@ public class StockXClient {
                 continue;
             }
             item.put("styleId", product.getString("styleId"));
+            item.put("brand", product.getString("brand"));
             item.put("productName", product.getString("model"));
 
             String size = Optional.ofNullable(productVariant.getJSONObject("traits"))
