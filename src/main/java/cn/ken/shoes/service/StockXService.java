@@ -446,7 +446,7 @@ public class StockXService {
     // ==================== 搜索上架 ====================
 
     public boolean searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
-                                 int pageCount, String searchType, int maxListCount) {
+                                 int pageCount, String searchType, int maxListCount, boolean modelNoSearch) {
         String accountName = account.getName();
         String country = account.getCountry() != null ? account.getCountry() : "US";
         int minExpectProfit = account.getMinProfit();
@@ -535,6 +535,9 @@ public class StockXService {
                         processedVariantIds.add(variantId);
 
                         String modelNo = item.getModelNo();
+                        if (modelNoSearch && (modelNo == null || !modelNo.equalsIgnoreCase(keyword))) {
+                            continue;
+                        }
                         String euSize = item.getEuSize();
                         Integer lowestAsk = item.getPrice();
 

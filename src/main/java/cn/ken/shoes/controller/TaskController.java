@@ -8,6 +8,7 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -228,7 +230,8 @@ public class TaskController {
                 accountId, keywords, sorts,
                 pageCount != null ? pageCount : 3,
                 searchType != null ? searchType : "shoes",
-                maxListCount != null ? maxListCount : 0);
+                maxListCount != null ? maxListCount : 0,
+                false);
 
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
@@ -244,6 +247,32 @@ public class TaskController {
         }
         taskExecutorManager.cancelSearchList(accountId);
         return Result.buildSuccess(true);
+    }
+
+    // ==================== StockX 货号搜索上架 ====================
+
+    @PostMapping("stockx/startModelNoSearchList")
+    public Result<String> startModelNoSearchList(@RequestParam("file") MultipartFile file,
+                                                  @RequestParam("accountId") String accountId,
+                                                  @RequestParam(value = "maxListCount", required = false, defaultValue = "0") Integer maxListCount) throws IOException {
+        List<ModelNoSearchExcel> list = EasyExcel.read(file.getInputStream())
+                .head(ModelNoSearchExcel.class)
+                .sheet()
+                .doReadSync();
+        String keywords = list.stream()
+                .map(ModelNoSearchExcel::getModelNo)
+                .filter(m -> m != null && !m.trim().isEmpty())
+                .distinct()
+                .collect(Collectors.joining("\n"));
+        if (keywords.isEmpty()) {
+            return Result.buildError("Excel中未找到有效货号");
+        }
+        Long taskId = taskExecutorManager.startSearchList(
+                accountId, keywords, "featured", 1, "shoes", maxListCount, true);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
     }
 
     @GetMapping("stockx/searchListStatus")

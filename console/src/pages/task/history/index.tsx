@@ -36,7 +36,7 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
-const TYPE_LABELS: Record<string, string> = { listing: '搜索上架', price_down: '压价', fetch_listings: '获取上架商品', excel_delist: 'Excel下架' };
+const TYPE_LABELS: Record<string, string> = { listing: '搜索上架', model_search: '货号搜索上架', price_down: '压价', fetch_listings: '获取上架商品', excel_delist: 'Excel下架' };
 
 
 const TaskPage = () => {
@@ -143,6 +143,16 @@ const TaskPage = () => {
                 }, {
                     onSuccess: () => { message.success('任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
+                });
+            } else if (createPlatform === 'stockx' && createTaskType === 'model_search') {
+                const file = values.modelNoExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传货号Excel'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.START_MODEL_NO_SEARCH_LIST, file, {
+                    accountId: values.accountId,
+                    maxListCount: values.maxListCount || 0,
+                }, {
+                    onSuccess: () => { message.success('货号搜索上架任务已创建'); setCreateModalVisible(false); queryTaskList(); setCreating(false); },
+                    onError: () => { message.error('任务创建失败'); setCreating(false); },
                 });
             } else if (createPlatform === 'stockx' && createTaskType === 'price_down') {
                 const accountId = values.accountId;
@@ -354,6 +364,21 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'model_search') {
+            return <>
+                <Form.Item name="modelNoExcel" label="货号Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传货号Excel'}]}
+                           extra="Excel需包含「货号」列">
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择文件</Button>
+                    </Upload>
+                </Form.Item>
+                <Form.Item name="maxListCount" label="最大上架数" extra="不填或填0表示不限制">
+                    <InputNumber min={0} style={{width: 160}} placeholder="不限"/>
+                </Form.Item>
+            </>;
+        }
+
         if (createPlatform === 'stockx' && createTaskType === 'price_down') {
             return <>
                 <Form.Item name="inventoryType" label="库存类型" initialValue="STANDARD">
@@ -431,7 +456,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -512,6 +537,7 @@ const TaskPage = () => {
                 <Form.Item label="任务类型">
                     <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}>
                         <Select.Option value="listing">搜索上架</Select.Option>
+                        <Select.Option value="model_search">货号搜索上架</Select.Option>
                         <Select.Option value="price_down">压价</Select.Option>
                         <Select.Option value="fetch_listings">获取上架商品</Select.Option>
                         <Select.Option value="excel_delist">Excel下架</Select.Option>

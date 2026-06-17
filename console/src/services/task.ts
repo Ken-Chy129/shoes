@@ -4,6 +4,7 @@ const TASK_TYPE = {
     PRICE_DOWN: 'price_down',
     FETCH_LISTINGS: 'fetch_listings',
     EXCEL_DELIST: 'excel_delist',
+    MODEL_SEARCH: 'model_search',
 };
 
 enum TASK_API {
@@ -31,6 +32,7 @@ enum TASK_API {
     // 按taskId取消任务
     CANCEL_BY_ID = '/api/task/cancelById',
     // StockX 搜索上架
+    START_MODEL_NO_SEARCH_LIST = '/api/task/stockx/startModelNoSearchList',
     START_SEARCH_LIST = '/api/task/stockx/startSearchList',
     CANCEL_SEARCH_LIST = '/api/task/stockx/cancelSearchList',
     SEARCH_LIST_STATUS = '/api/task/stockx/searchListStatus',

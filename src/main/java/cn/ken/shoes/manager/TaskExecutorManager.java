@@ -197,7 +197,7 @@ public class TaskExecutorManager {
     // ==================== StockX 搜索上架 ====================
 
     public Long startSearchList(String accountId, String keywords, String sorts,
-                                int pageCount, String searchType, int maxListCount) {
+                                int pageCount, String searchType, int maxListCount, boolean modelNoSearch) {
         if (TaskSwitch.isSearchListRunning(accountId)) {
             log.info("搜索上架任务已在运行: {}", accountId);
             return null;
@@ -207,20 +207,22 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
+        String taskTypeCode = modelNoSearch ? TaskTypeEnum.MODEL_SEARCH.getCode() : TaskTypeEnum.LISTING.getCode();
         String params = new com.alibaba.fastjson.JSONObject()
                 .fluentPut("keywords", keywords)
                 .fluentPut("sorts", sorts)
                 .fluentPut("pageCount", pageCount)
                 .fluentPut("searchType", searchType)
                 .fluentPut("maxListCount", maxListCount)
+                .fluentPut("modelNoSearch", modelNoSearch)
                 .toJSONString();
-        Long taskId = createTask("stockx", TaskTypeEnum.LISTING.getCode(), account.getName(), params);
+        Long taskId = createTask("stockx", taskTypeCode, account.getName(), params);
         TaskSwitch.setSearchListTaskId(accountId, taskId);
         TaskSwitch.resetSearchListCancel(accountId);
         TaskSwitch.setSearchListRunning(accountId, true);
 
         StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
-                account, taskId, keywords, sorts, pageCount, searchType, maxListCount,
+                account, taskId, keywords, sorts, pageCount, searchType, maxListCount, modelNoSearch,
                 stockXService, taskMapper);
         new Thread(runner, "StockX-SearchList-" + account.getName()).start();
         log.info("搜索上架任务已启动: [{}]", account.getName());

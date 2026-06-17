@@ -14,6 +14,7 @@ public enum TaskTypeEnum {
     PRICE_DOWN("price_down", "压价"),
     FETCH_LISTINGS("fetch_listings", "获取上架商品"),
     EXCEL_DELIST("excel_delist", "Excel下架"),
+    MODEL_SEARCH("model_search", "货号搜索上架"),
     ;
 
     private final String code;
