@@ -72,6 +72,7 @@ public class TaskItemController {
             TaskItemExcel excel = new TaskItemExcel();
             excel.setListingId(item.getListingId());
             excel.setBrand(item.getBrand());
+            excel.setTitle(item.getTitle());
             excel.setRound(item.getRound());
             excel.setStyleId(item.getStyleId());
             excel.setSize(item.getSize());
