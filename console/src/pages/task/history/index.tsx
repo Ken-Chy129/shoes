@@ -151,7 +151,7 @@ const TaskPage = () => {
                 const startPriceDown = () => {
                     const hasExcel = !!file;
                     doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {
-                        accountId, inventoryType,
+                        accountId, inventoryType, hasExcel,
                         processOutsideExcel: hasExcel ? (values.processOutsideExcel || false) : true,
                         unprofitableAction: values.unprofitableAction || 'markup',
                     }, {
