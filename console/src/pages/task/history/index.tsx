@@ -148,20 +148,25 @@ const TaskPage = () => {
                 const accountId = values.accountId;
                 const inventoryType = values.inventoryType || 'STANDARD';
                 const file = values.excelFile?.[0]?.originFileObj;
-                if (!file) { message.error('请上传Excel文件'); setCreating(false); return; }
-                doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {accountId, inventoryType}, {
-                    onSuccess: () => {
-                        doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {
-                            accountId, inventoryType,
-                            processOutsideExcel: values.processOutsideExcel || false,
-                            unprofitableAction: values.unprofitableAction || 'markup',
-                        }, {
-                            onSuccess: () => { message.success('压价任务已创建'); setCreateModalVisible(false); queryTaskList(); },
-                            onFinally: () => setCreating(false),
-                        });
-                    },
-                    onError: () => { message.error('Excel上传失败'); setCreating(false); },
-                });
+                const startPriceDown = () => {
+                    const hasExcel = !!file;
+                    doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {
+                        accountId, inventoryType,
+                        processOutsideExcel: hasExcel ? (values.processOutsideExcel || false) : true,
+                        unprofitableAction: values.unprofitableAction || 'markup',
+                    }, {
+                        onSuccess: () => { message.success('压价任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                        onFinally: () => setCreating(false),
+                    });
+                };
+                if (file) {
+                    doUploadRequestWithParams(TASK_API.STOCKX_UPLOAD_PRICE_DOWN_EXCEL, file, {accountId, inventoryType}, {
+                        onSuccess: startPriceDown,
+                        onError: () => { message.error('Excel上传失败'); setCreating(false); },
+                    });
+                } else {
+                    startPriceDown();
+                }
             } else if (createPlatform === 'stockx' && createTaskType === 'fetch_listings') {
                 doPostRequest(TASK_API.START_FETCH_LISTINGS, {
                     accountId: values.accountId,
@@ -358,7 +363,8 @@ const TaskPage = () => {
                     </Radio.Group>
                 </Form.Item>
                 <Form.Item name="excelFile" label="压价Excel" valuePropName="fileList"
-                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}>
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           extra="不上传则对所有在售商品按得物比价压价">
                     <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
@@ -366,11 +372,15 @@ const TaskPage = () => {
                 <Form.Item name="interval" label="轮询间隔" initialValue={1800}>
                     <InputNumber min={10} style={{width: 120}} addonAfter="秒"/>
                 </Form.Item>
-                <Form.Item name="processOutsideExcel" label="Excel外商品" valuePropName="checked" initialValue={false}>
-                    <Switch checkedChildren="处理" unCheckedChildren="跳过"/>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.excelFile !== cur.excelFile}>
+                    {({getFieldValue}) => getFieldValue('excelFile')?.length > 0 && (
+                        <Form.Item name="processOutsideExcel" label="Excel外商品" valuePropName="checked" initialValue={false}>
+                            <Switch checkedChildren="处理" unCheckedChildren="跳过"/>
+                        </Form.Item>
+                    )}
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel}>
-                    {({getFieldValue}) => getFieldValue('processOutsideExcel') && (
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel || prev.excelFile !== cur.excelFile}>
+                    {({getFieldValue}) => (getFieldValue('processOutsideExcel') || !(getFieldValue('excelFile')?.length > 0)) && (
                         <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup">
                             <Radio.Group>
                                 <Radio.Button value="markup">加价$100</Radio.Button>
