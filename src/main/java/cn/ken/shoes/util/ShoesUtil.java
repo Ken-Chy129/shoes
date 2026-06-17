@@ -46,13 +46,17 @@ public class ShoesUtil {
      */
     public static String normalizeUnicodeFraction(String size) {
         if (size == null) return null;
+        // ASCII fractions: "42 2/3" → "42.5", "39 1/3" → "39"
+        size = size.replaceAll("\\s*2/3", ".5");
+        size = size.replaceAll("\\s*1/3", "");
+        // Unicode fractions: 42⅔ → 42.5, 39⅓ → 39
         if (size.contains("⅓")) {
             return size.replace("⅓", "").trim();
         }
         if (size.contains("⅔")) {
             return size.replace("⅔", ".5").trim();
         }
-        return size;
+        return size.trim();
     }
 
     public static String getClothesSize(String rawSize) {
