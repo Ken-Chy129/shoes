@@ -9,6 +9,9 @@ public class TaskItemExcel {
     @ExcelProperty("listingId")
     private String listingId;
 
+    @ExcelProperty("品牌")
+    private String brand;
+
     @ExcelProperty("轮次")
     private Integer round;
 
