@@ -1012,7 +1012,7 @@ public class StockXClient {
             return false;
         }
         if (result.containsKey("data")) {
-            log.info("batchUpdateListingsGraphql[{}] success, totalItems:{}", account.getName(), items.size());
+            log.info("batchUpdateListingsGraphql[{}] success, totalItems:{}, response:{}", account.getName(), items.size(), result.toJSONString());
             return true;
         }
         log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, response:{}", account.getName(), items.size(),
@@ -1078,7 +1078,7 @@ public class StockXClient {
             JSONObject batch = respData.getJSONObject("createBatchListings");
             if (batch != null) {
                 String batchId = batch.getString("id");
-                log.info("[{}] createListingV2 success, batchId:{}", account.getName(), batchId);
+                log.info("[{}] createListingV2 success, batchId:{}, response:{}", account.getName(), batchId, jsonObject.toJSONString());
                 return batchId;
             }
         }

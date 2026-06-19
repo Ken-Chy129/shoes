@@ -62,8 +62,8 @@ public class ApplicationStartListener implements ApplicationListener<Application
         initSizeMap();
         initCustomModel();
         initSpecialPrice();
-        // 异步不断更新kc商品
-        asyncUpdateKcItems();
+        // 异步不断更新kc商品（暂时关闭）
+        // asyncUpdateKcItems();
     }
 
     private void asyncUpdateKcItems() {
