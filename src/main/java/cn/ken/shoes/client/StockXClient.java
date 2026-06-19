@@ -981,6 +981,7 @@ public class StockXClient {
     }
 
     public boolean batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
+        LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxGraphql(account.getName());
         JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "BulkUpdateListings");

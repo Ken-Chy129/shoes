@@ -275,6 +275,9 @@ public class KickScrewService {
         kickScrewPriceMapper.delete(new QueryWrapper<>());
         // 查询要比价的货号
         List<String> modelNoList = queryAllModels();
+        // 构建 modelNo -> brand 映射
+        Map<String, String> modelNoBrandMap = kickScrewItemMapper.selectList(new QueryWrapper<KickScrewItemDO>().select("model_no", "brand"))
+                .stream().collect(Collectors.toMap(KickScrewItemDO::getModelNo, KickScrewItemDO::getBrand, (a, b) -> a));
         List<List<String>> partition = Lists.partition(modelNoList, 60);
         int uploadCnt = 0;
         // 查询价格并上架盈利商品
@@ -294,6 +297,7 @@ public class KickScrewService {
                     TaskItemDO taskItemDO = new TaskItemDO();
                     taskItemDO.setTaskId(taskId);
                     taskItemDO.setRound(round);
+                    taskItemDO.setBrand(modelNoBrandMap.get(priceDO.getModelNo()));
                     taskItemDO.setStyleId(priceDO.getModelNo());
                     taskItemDO.setEuSize(priceDO.getEuSize());
                     taskItemDO.setCurrentPrice(priceDO.getPrice() != null ? java.math.BigDecimal.valueOf(priceDO.getPrice()) : null);
@@ -480,6 +484,8 @@ public class KickScrewService {
         int pages = (int) Math.ceil(total / (double) pageSize);
         Long taskId = TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
         int round = TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
+        Map<String, String> modelNoBrandMap = kickScrewItemMapper.selectList(new QueryWrapper<KickScrewItemDO>().select("model_no", "brand"))
+                .stream().collect(Collectors.toMap(KickScrewItemDO::getModelNo, KickScrewItemDO::getBrand, (a, b) -> a));
 
         for (int i = 0; i < pages; i++) {
             // 检查暂停或取消状态
@@ -504,6 +510,7 @@ public class KickScrewService {
                     TaskItemDO taskItemDO = new TaskItemDO();
                     taskItemDO.setTaskId(taskId);
                     taskItemDO.setRound(round);
+                    taskItemDO.setBrand(modelNoBrandMap.get(modelNo));
                     taskItemDO.setStyleId(modelNo);
                     taskItemDO.setEuSize(euSize);
                     taskItemDO.setCurrentPrice(price != null ? java.math.BigDecimal.valueOf(price) : null);
