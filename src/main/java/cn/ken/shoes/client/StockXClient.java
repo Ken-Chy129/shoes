@@ -766,8 +766,12 @@ public class StockXClient {
                 continue;
             }
             item.put("styleId", product.getString("styleId"));
-            item.put("brand", product.getString("brand"));
             item.put("productName", product.getString("model"));
+            String itemBrand = BrandUtil.extractStockXBrand(product.getString("model"));
+            if (itemBrand == null) {
+                itemBrand = BrandUtil.extractStockXBrand(product.getString("primaryCategory"));
+            }
+            item.put("brand", itemBrand);
 
             String size = Optional.ofNullable(productVariant.getJSONObject("traits"))
                     .map(traits -> traits.getString("size"))
