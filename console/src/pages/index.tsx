@@ -1,4 +1,5 @@
-import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
+import {Badge, Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
+import {ClockCircleOutlined, ExclamationCircleOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
@@ -25,6 +26,16 @@ function decodeJwtTimes(auth?: string): {iat: number | null; exp: number | null}
 }
 
 const fmtTime = (sec: number) => new Date(sec * 1000).toLocaleString('zh-CN', {hour12: false});
+
+// 相对时间（如“3分钟前”），用于"上次刷新"列，精确时刻放 tooltip。
+const relTime = (sec: number) => {
+    const diff = Date.now() / 1000 - sec;
+    if (diff < 0) return '刚刚';
+    if (diff < 60) return '刚刚';
+    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
+    return `${Math.floor(diff / 86400)} 天前`;
+};
 
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
@@ -166,28 +177,33 @@ const SettingPage = () => {
         {title: '平台运费', dataIndex: 'platformShippingFee', key: 'platformShippingFee', width: 80, render: (v: number) => `$${v}`},
         {title: '运费(¥)', dataIndex: 'freight', key: 'freight', width: 70, render: (v: number) => `¥${v}`},
         {title: '最小利润', dataIndex: 'minProfit', key: 'minProfit', width: 80, render: (v: number) => `¥${v}`},
-        {title: '上次刷新', dataIndex: 'authorization', key: 'tokenIat', width: 150,
+        {title: '上次刷新', dataIndex: 'authorization', key: 'tokenIat', width: 110,
             render: (auth: string) => {
                 const {iat} = decodeJwtTimes(auth);
-                if (!iat) return <Tag>—</Tag>;
-                return <span style={{fontSize: 12}}>{fmtTime(iat)}</span>;
+                if (!iat) return <span style={{color: '#bfbfbf'}}>—</span>;
+                return <Tooltip title={fmtTime(iat)}>
+                    <span style={{color: '#8c8c8c', fontSize: 13}}>{relTime(iat)}</span>
+                </Tooltip>;
             }},
-        {title: 'Token到期', dataIndex: 'authorization', key: 'tokenExp', width: 180,
+        {title: 'Token到期', dataIndex: 'authorization', key: 'tokenExp', width: 120,
             render: (auth: string) => {
                 const {exp} = decodeJwtTimes(auth);
-                if (!exp) return <Tag>无 / 无效</Tag>;
+                if (!exp) return <Tag bordered={false} color="default">无</Tag>;
                 const leftMs = exp * 1000 - Date.now();
-                const text = fmtTime(exp);
-                if (leftMs <= 0) return <Tooltip title={text}><Tag color="red">已过期</Tag></Tooltip>;
+                if (leftMs <= 0) return <Tooltip title={fmtTime(exp)}>
+                    <Tag bordered={false} color="error" icon={<ExclamationCircleOutlined/>}>已过期</Tag>
+                </Tooltip>;
                 const hours = leftMs / 3600000;
-                const left = hours < 1 ? `${Math.round(leftMs / 60000)}分钟` : `${hours.toFixed(1)}小时`;
-                const color = hours < 2 ? 'orange' : 'green';
-                return <Tooltip title={`到期：${text}`}><Tag color={color}>剩 {left}</Tag></Tooltip>;
+                const left = hours < 1 ? `${Math.round(leftMs / 60000)} 分钟` : `${hours.toFixed(1)} 小时`;
+                const color = hours < 2 ? 'warning' : 'success';
+                return <Tooltip title={`到期 ${fmtTime(exp)}`}>
+                    <Tag bordered={false} color={color} icon={<ClockCircleOutlined/>}>{left}</Tag>
+                </Tooltip>;
             }},
-        {title: '自动刷新', dataIndex: 'autoRefresh', key: 'autoRefresh', width: 100,
+        {title: '自动刷新', dataIndex: 'autoRefresh', key: 'autoRefresh', width: 90,
             render: (v: boolean) => v
-                ? <Tag color="green">自动刷新中</Tag>
-                : <Tag color="default">手动</Tag>},
+                ? <Badge status="success" text={<span style={{color: '#52c41a', fontSize: 13}}>自动</span>}/>
+                : <Badge status="default" text={<span style={{color: '#bfbfbf', fontSize: 13}}>手动</span>}/>},
         {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
