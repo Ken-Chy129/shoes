@@ -1,7 +1,30 @@
-import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table} from "antd";
+import {Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
+
+// 解码 StockX bearer token(JWT)的 iat(签发=上次刷新)与 exp(过期)时间戳，单位秒。
+// 纯前端解码，无需后端改动。
+function decodeJwtTimes(auth?: string): {iat: number | null; exp: number | null} {
+    const empty = {iat: null, exp: null};
+    if (!auth) return empty;
+    const jwt = auth.replace(/^Bearer\s+/i, '').trim();
+    const parts = jwt.split('.');
+    if (parts.length !== 3) return empty;
+    try {
+        let b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (b64.length % 4) b64 += '=';
+        const payload = JSON.parse(atob(b64));
+        return {
+            iat: typeof payload.iat === 'number' ? payload.iat : null,
+            exp: typeof payload.exp === 'number' ? payload.exp : null,
+        };
+    } catch {
+        return empty;
+    }
+}
+
+const fmtTime = (sec: number) => new Date(sec * 1000).toLocaleString('zh-CN', {hour12: false});
 
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
@@ -143,6 +166,24 @@ const SettingPage = () => {
         {title: '平台运费', dataIndex: 'platformShippingFee', key: 'platformShippingFee', width: 80, render: (v: number) => `$${v}`},
         {title: '运费(¥)', dataIndex: 'freight', key: 'freight', width: 70, render: (v: number) => `¥${v}`},
         {title: '最小利润', dataIndex: 'minProfit', key: 'minProfit', width: 80, render: (v: number) => `¥${v}`},
+        {title: '上次刷新', dataIndex: 'authorization', key: 'tokenIat', width: 150,
+            render: (auth: string) => {
+                const {iat} = decodeJwtTimes(auth);
+                if (!iat) return <Tag>—</Tag>;
+                return <span style={{fontSize: 12}}>{fmtTime(iat)}</span>;
+            }},
+        {title: 'Token到期', dataIndex: 'authorization', key: 'tokenExp', width: 180,
+            render: (auth: string) => {
+                const {exp} = decodeJwtTimes(auth);
+                if (!exp) return <Tag>无 / 无效</Tag>;
+                const leftMs = exp * 1000 - Date.now();
+                const text = fmtTime(exp);
+                if (leftMs <= 0) return <Tooltip title={text}><Tag color="red">已过期</Tag></Tooltip>;
+                const hours = leftMs / 3600000;
+                const left = hours < 1 ? `${Math.round(leftMs / 60000)}分钟` : `${hours.toFixed(1)}小时`;
+                const color = hours < 2 ? 'orange' : 'green';
+                return <Tooltip title={`到期：${text}`}><Tag color={color}>剩 {left}</Tag></Tooltip>;
+            }},
         {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
