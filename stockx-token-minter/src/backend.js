@@ -18,6 +18,7 @@ async function pushTokenToBackend({ baseUrl, apiToken, accountName, bearer }) {
   }
 
   account.authorization = bearer;
+  account.autoRefresh = true; // 标记此账号由发token机托管，前端据此显示"自动刷新中"
 
   const putRes = await fetch(`${baseUrl}/setting/stockx/accounts/${encodeURIComponent(accountName)}`, {
     method: 'PUT',

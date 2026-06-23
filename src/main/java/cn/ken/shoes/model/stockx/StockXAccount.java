@@ -13,6 +13,9 @@ public class StockXAccount {
 
     private boolean enabled;
 
+    // 是否由"发token机"自动续期托管（由 token minter 推送时置 true）
+    private boolean autoRefresh = false;
+
     private String country = "US";
 
     private double transferFeeRate = 0.03;
