@@ -6,13 +6,13 @@
   "useRealChrome": true,
   "accounts": [
     {
-      "name": "美区",
-      "profileDir": "./profiles/meiqu",
+      "name": "<后端账号名，需与后端完全一致>",
+      "profileDir": "./profiles/account-a",
       "enabled": true
     },
     {
-      "name": "港大",
-      "profileDir": "./profiles/gangda",
+      "name": "<另一个账号名>",
+      "profileDir": "./profiles/account-b",
       "enabled": true
     }
   ]

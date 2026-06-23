@@ -4,7 +4,7 @@
 // 登录态会保存进该账号的 profileDir，之后 index.js 即可无人值守签 token（约 3.5 个月内免再登录）。
 //
 // 用法：
-//   node login.js 美区
+//   node login.js "<账号名>"
 //   node login.js            # 不带参数则依次为 config 里所有账号登录
 
 const fs = require('fs');

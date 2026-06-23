@@ -6,7 +6,7 @@
 // 解 Cloudflare 拿到本机 IP 的 cf_clearance。
 //
 // 用法：
-//   node seed.js "美区" ./seed-cookies.json
+//   node seed.js "<账号名>" ./seed-cookies.json
 //
 // 之后用 node index.js --once 验证能否签出 token。
 
