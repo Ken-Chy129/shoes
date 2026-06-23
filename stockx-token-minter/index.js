@@ -43,8 +43,17 @@ async function refreshOne(account, cfg) {
 
     const page = context.pages()[0] || (await context.newPage());
     await page.goto(LISTINGS_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // 等 Cloudflare 放行 cookie(__cf_bm 等)就绪，否则静默授权偶发 403
+    await page.waitForTimeout(3000);
 
-    const token = await mintFreshToken(page);
+    let token;
+    try {
+      token = await mintFreshToken(page);
+    } catch (e) {
+      log(`[${account.name}] 首次签发失败(${e.message.split('\n')[0]})，5s 后重试`);
+      await page.waitForTimeout(5000);
+      token = await mintFreshToken(page);
+    }
     log(`[${account.name}] 签发成功 azp=${token.azp.slice(0, 8)}… 到期=${token.expiresAt} scope=${token.scope}`);
 
     await pushTokenToBackend({
