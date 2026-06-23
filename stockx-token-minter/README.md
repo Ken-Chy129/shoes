@@ -18,6 +18,12 @@ StockX 的 graphql 网关（`gateway.stockx.com`）只认其**网页端 SPA**（
 [后端不变] 用 token 经现有代理打 gateway.stockx.com graphql
 ```
 
+## 新增账号怎么做？
+
+完整分步流程见 **[ONBOARDING.md](./ONBOARDING.md)**（含本机导出 cookie 脚本 `tools/extract-chrome-cookies.py`、
+uuid 核验、推送、验证）。一句话版：本机登录该号的 Chrome profile → `extract-chrome-cookies.py` 导出 →
+scp 到服务器 → 加进 config.json → `seed.js` 注入并核验 uuid → `index.js --once` 推送。
+
 ## 安装
 
 ```bash

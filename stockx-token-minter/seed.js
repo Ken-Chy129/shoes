@@ -57,7 +57,8 @@ function loadConfig() {
       console.log('⚠️ 注入后仍未检测到登录态。尝试直接静默签发以确认……');
     }
     const token = await mintFreshToken(page);
-    console.log(`✅ 注入成功并签出 token：azp=${token.azp.slice(0, 8)}… 到期=${token.expiresAt} scope=${token.scope}`);
+    console.log(`✅ 注入成功并签出 token：customer_uuid=${token.customerUuid} 到期=${token.expiresAt}`);
+    console.log(`   ⚠️ 请核对上面 customer_uuid 确实是后端账号「${name}」对应的 StockX 账号，避免张冠李戴！`);
     console.log('登录态已保存进 profile，后续 node index.js 即可无人值守刷新。');
   } catch (e) {
     console.error('❌ seed 失败:', e.message);

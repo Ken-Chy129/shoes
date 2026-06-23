@@ -2,6 +2,9 @@
 profiles/
 # 真实配置（含 backend token / 账号映射）
 config.json
+# 导出的会话 cookie（含登录凭据）
+seed_*.json
+seed-cookies*.json
 # 依赖
 node_modules/
 # 日志
