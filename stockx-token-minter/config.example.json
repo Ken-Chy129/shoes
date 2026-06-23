@@ -1,0 +1,19 @@
+{
+  "backendBaseUrl": "http://127.0.0.1:8080",
+  "apiToken": "",
+  "refreshIntervalMs": 39600000,
+  "headless": true,
+  "useRealChrome": true,
+  "accounts": [
+    {
+      "name": "美区",
+      "profileDir": "./profiles/meiqu",
+      "enabled": true
+    },
+    {
+      "name": "港大",
+      "profileDir": "./profiles/gangda",
+      "enabled": true
+    }
+  ]
+}

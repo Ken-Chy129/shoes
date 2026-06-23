@@ -1,0 +1,8 @@
+# 浏览器持久化配置目录（含登录 cookie，敏感！绝不入库）
+profiles/
+# 真实配置（含 backend token / 账号映射）
+config.json
+# 依赖
+node_modules/
+# 日志
+*.log
