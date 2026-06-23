@@ -18,7 +18,15 @@ async function openContext({ profileDir, headless, useRealChrome }) {
     userAgent: USER_AGENT,
     viewport: { width: 1440, height: 900 },
     locale: 'en-US',
-    args: ['--disable-blink-features=AutomationControlled'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      // 省内存：小内存服务器上避免 Chrome 尖峰挤爆 MySQL/后端
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--no-sandbox',
+      '--disable-extensions',
+      '--disable-background-networking',
+    ],
   };
   if (useRealChrome) opts.channel = 'chrome';
   return await chromium.launchPersistentContext(path.resolve(profileDir), opts);

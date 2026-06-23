@@ -66,6 +66,17 @@ node index.js
 - **关键自洽要求**：**同一账号的"登录"和"签发"必须在同一个 profile/同一出口 IP 上**完成，
   否则 `cf_clearance`（绑 IP）失配会触发 Cloudflare 重新挑战。
 
+## ⚠️ 小内存服务器防护（HK 生产 3.5G 已配置）
+
+Chrome 内存尖峰曾在 3.5G 机器上 OOM 掉 MySQL，拖垮后端。已加三道防护：
+1. **发 token 机 systemd 服务限内存**：`/etc/systemd/system/sx-token-minter.service.d/limits.conf`
+   设 `MemoryHigh=1000M`、`MemoryMax=1300M`——超限只杀它自己的 Chrome，不殃及 MySQL/后端。
+2. **MySQL 容器加重启策略**：`docker update --restart unless-stopped mysql8`（原为 no，被杀后不自愈）。
+3. **Chrome 省内存 flags**：`--disable-dev-shm-usage --disable-gpu --no-sandbox` 等（见 src/browser.js）。
+
+> 注意：生产运行目录是 `/opt/stockx-token-minter/`，与 git 仓库内的 `stockx-token-minter/` 是两份拷贝；
+> 改动需 scp 同步到运行目录（systemd 服务从该目录跑），git pull 不会更新它。
+
 ## ⚠️ 风险
 
 - 属于模拟登录的灰色地带；StockX 若改前端授权流程或加强风控，需相应调整。
