@@ -184,6 +184,17 @@ const SettingPage = () => {
                 const color = hours < 2 ? 'orange' : 'green';
                 return <Tooltip title={`到期：${text}`}><Tag color={color}>剩 {left}</Tag></Tooltip>;
             }},
+        {title: '自动刷新', dataIndex: 'authorization', key: 'autoRefresh', width: 110,
+            render: (auth: string) => {
+                // 推断：发token机每8h刷新一次，被托管账号的 token iat 永远在近 9h 内；
+                // 手动账号的 token 会逐渐变旧/过期。故用 iat 新鲜度判断（非后端显式标记）。
+                const {iat} = decodeJwtTimes(auth);
+                if (!iat) return <Tooltip title="无有效 token"><Tag>未托管</Tag></Tooltip>;
+                const ageH = (Date.now() - iat * 1000) / 3600000;
+                return ageH < 9
+                    ? <Tooltip title={`最近 ${ageH < 1 ? Math.round(ageH * 60) + ' 分钟' : ageH.toFixed(1) + ' 小时'}前刷新`}><Tag color="green">自动刷新中</Tag></Tooltip>
+                    : <Tooltip title="token 较旧，未被发token机托管"><Tag color="default">手动</Tag></Tooltip>;
+            }},
         {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
