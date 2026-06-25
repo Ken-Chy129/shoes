@@ -40,7 +40,14 @@ public class StockXConfig {
     }
 
     public static void updateAccount(StockXAccount updated) {
-        ACCOUNTS.replaceAll(a -> a.getName().equals(updated.getName()) ? updated : a);
+        StockXAccount existing = getAccount(updated.getName());
+        if (existing == null) {
+            ACCOUNTS.add(updated);
+        } else {
+            // 原地更新字段而非替换引用：正在运行的长跑任务(如压价)持有的同一 account 引用，
+            // 才能立即用上发token机刷新后的新 token，避免任务跑到旧 token 过期而报"Token已过期"。
+            cn.hutool.core.bean.BeanUtil.copyProperties(updated, existing);
+        }
         saveAccounts();
     }
 
