@@ -1,10 +1,12 @@
 package cn.ken.shoes.task;
 
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
+import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -28,6 +30,14 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
     public void run() {
         String accountId = account.getName();
         TaskSwitch.setExcelRunning(accountId, inventoryType, true);
+        StockXRateLimitGuard.beginTaskContext(account,
+                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType),
+                reason -> {
+                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    if (tid != null) {
+                        taskMapper.updateTaskFailReason(tid, reason);
+                    }
+                });
         try {
             while (true) {
                 try {
@@ -51,6 +61,9 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                 } catch (InterruptedException e) {
                     log.error(e.getMessage(), e);
                     return;
+                } catch (TaskCancelledException ce) {
+                    detectCancel();
+                    return;
                 } catch (Exception e) {
                     Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
                     if ("TOKEN_EXPIRED".equals(e.getMessage())) {
@@ -72,6 +85,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                 }
             }
         } finally {
+            StockXRateLimitGuard.endTaskContext();
             TaskSwitch.setExcelRunning(accountId, inventoryType, false);
         }
     }

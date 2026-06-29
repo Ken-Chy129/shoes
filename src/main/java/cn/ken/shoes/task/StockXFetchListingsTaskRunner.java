@@ -2,11 +2,13 @@ package cn.ken.shoes.task;
 
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
@@ -39,6 +41,9 @@ public class StockXFetchListingsTaskRunner implements Runnable {
     public void run() {
         String key = account.getName() + ":" + inventoryType;
         TaskSwitch.setFetchListingsRunning(key, true);
+        StockXRateLimitGuard.beginTaskContext(account,
+                () -> TaskSwitch.isFetchListingsCancelled(key),
+                reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
             int pageNumber = 1;
@@ -96,6 +101,9 @@ public class StockXFetchListingsTaskRunner implements Runnable {
             taskMapper.updateTaskCost(taskId, cost);
             taskMapper.updateTaskFailReason(taskId, "共获取" + totalCount + "条商品");
             log.info("[{}] 获取上架商品任务完成, inventoryType:{}, total:{}, 耗时:{}", account.getName(), inventoryType, totalCount, cost);
+        } catch (TaskCancelledException ce) {
+            log.info("[{}] 获取上架商品任务在限流冷却中被取消", account.getName());
+            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
         } catch (Exception e) {
             log.error("[{}] 获取上架商品任务异常: {}", account.getName(), e.getMessage(), e);
             String reason = e.getMessage();
@@ -104,6 +112,7 @@ public class StockXFetchListingsTaskRunner implements Runnable {
             }
             taskMapper.updateTaskFailed(taskId, reason);
         } finally {
+            StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearFetchListingsState(key);
         }
     }

@@ -83,6 +83,12 @@
         </foreach>
     </update>
 
+    <update id="markPendingResult">
+        UPDATE task_item
+        SET operate_result = #{result}, operate_time = NOW()
+        WHERE task_id = #{taskId} AND operate_result IS NULL
+    </update>
+
     <delete id="deleteByTaskId">
         DELETE FROM task_item WHERE task_id = #{taskId}
     </delete>

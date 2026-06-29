@@ -15,6 +15,7 @@ import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
+import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.SizeConvertUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSON;
@@ -163,7 +164,7 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
         Headers headers = account != null ? buildViperHeaders(account) : buildProHeaders();
-        JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName);
+        JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName, true);
         log.info("deleteItems, result:{}", jsonObject);
         if (jsonObject != null && "Unauthorized".equals(jsonObject.getString("message"))) {
             throw new RuntimeException("TOKEN_EXPIRED");
@@ -868,8 +869,25 @@ public class StockXClient {
     }
 
     private JSONObject queryPro(String body, Headers headers, String accountName) {
+        // 默认按"读"处理：不进限流冷却 Guard。StockX 的 "Batch usage limit" 429 只对批量写计数，读不消耗该配额。
+        return queryPro(body, headers, accountName, false);
+    }
+
+    /**
+     * @param rateLimited true 仅用于批量写操作(deleteItems 下架 / batchUpdateListingsGraphql 压价 / createListingV2 上架)：
+     *                    经 {@link StockXRateLimitGuard} 做 429 退避+冷却。读操作传 false，直接发请求，不受写配额冷却影响。
+     */
+    private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited) {
         LimiterHelper.limitStockxGraphql(accountName);
-        String rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);
+        String rawResult;
+        if (rateLimited) {
+            StockXAccount acc = accountName != null ? StockXConfig.getAccount(accountName) : null;
+            rawResult = StockXRateLimitGuard.execute(
+                    () -> HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers),
+                    accountName, StockXRateLimitGuard.RateLimitPolicy.of(acc));
+        } else {
+            rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);
+        }
         if (rawResult == null) {
             return null;
         }
@@ -1010,7 +1028,7 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
 
-        JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (result == null) {
             log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
             return false;
@@ -1070,7 +1088,7 @@ public class StockXClient {
         persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
-        JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName());
+        JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (jsonObject == null) {
             return null;
         }

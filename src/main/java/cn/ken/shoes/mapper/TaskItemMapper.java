@@ -36,6 +36,11 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
     void batchUpdateResult(@Param("ids") List<Long> ids, @Param("operateResult") String operateResult);
 
     /**
+     * 将任务下结果仍为 null 的明细统一标记（用于任务限流/异常中断后清理孤儿明细）
+     */
+    void markPendingResult(@Param("taskId") Long taskId, @Param("result") String result);
+
+    /**
      * 根据任务ID删除所有明细
      */
     void deleteByTaskId(@Param("taskId") Long taskId);

@@ -7,8 +7,10 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
+import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
@@ -43,6 +45,9 @@ public class StockXExcelDelistTaskRunner implements Runnable {
         String accountId = account.getName();
         String key = accountId + ":" + inventoryType;
         TaskSwitch.setExcelDelistRunning(key, true);
+        StockXRateLimitGuard.beginTaskContext(account,
+                () -> TaskSwitch.isExcelDelistCancelled(key),
+                reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
             List<StockXDelistInputExcel> delistList = ShoesContext.getDelistList(accountId, inventoryType);
@@ -98,6 +103,9 @@ public class StockXExcelDelistTaskRunner implements Runnable {
             taskMapper.updateTaskFailReason(taskId, summary);
             log.info("[{}] Excel下架任务完成, inventoryType:{}, total:{}, delist:{}, failed:{}, 耗时:{}",
                     accountId, inventoryType, delistList.size(), totalDelist, totalFailed, cost);
+        } catch (TaskCancelledException ce) {
+            log.info("[{}] Excel下架任务在限流冷却中被取消", accountId);
+            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
         } catch (Exception e) {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 log.error("[{}] Excel下架任务因Token过期终止，请更新Token后重新启动", accountId);
@@ -111,6 +119,9 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                 taskMapper.updateTaskFailed(taskId, reason);
             }
         } finally {
+            // 限流/异常中断会留下已insert但未写结果的孤儿明细，统一标记，避免明细出现 null
+            taskItemMapper.markPendingResult(taskId, "中断");
+            StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearExcelDelistState(key);
         }
     }
