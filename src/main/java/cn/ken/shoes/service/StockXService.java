@@ -5,6 +5,8 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.exception.StockXRateLimitException;
+import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.BrandMapper;
@@ -494,12 +496,24 @@ public class StockXService {
                 for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
                     if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
                     List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
-                    String batchId = stockXClient.batchUpdateListingsGraphql(subBatch, account);
-                    if (batchId == null) {
+                    String batchId;
+                    try {
+                        batchId = stockXClient.batchUpdateListingsGraphql(subBatch, account);
+                    } catch (StockXRateLimitException | TaskCancelledException e) {
+                        throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理，不当作单批失败
+                    } catch (RuntimeException e) {
+                        if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                            throw e; // Token 过期：终止本轮，runner 置任务失败"Token已过期"
+                        }
+                        // 其它失败：本批软失败并写入具体原因，继续下一批
+                        String reason = e.getMessage() != null ? e.getMessage() : "提交失败";
+                        if (reason.length() > 100) {
+                            reason = reason.substring(0, 100);
+                        }
                         for (Map<String, String> item : subBatch) {
                             Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
                             if (info != null) {
-                                updateTaskItemResult(info.getKey(), "提交失败");
+                                updateTaskItemResult(info.getKey(), reason);
                             }
                         }
                         continue;

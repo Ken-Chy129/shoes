@@ -1121,7 +1121,10 @@ public class StockXClient {
         JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (result == null) {
             log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
-            return null;
+            throw new RuntimeException("提交失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(result.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
         }
         JSONObject data = result.getJSONObject("data");
         JSONObject updateBatch = data != null ? data.getJSONObject("updateBatchListings") : null;
@@ -1131,9 +1134,30 @@ public class StockXClient {
                     account.getName(), batchId, items.size(), updateBatch.getString("status"));
             return batchId;
         }
-        log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, response:{}", account.getName(), items.size(),
-                result.toJSONString().substring(0, Math.min(300, result.toJSONString().length())));
-        return null;
+        String reason = extractGraphqlError(result);
+        log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, reason:{}, response:{}", account.getName(), items.size(),
+                reason, result.toJSONString().substring(0, Math.min(300, result.toJSONString().length())));
+        throw new RuntimeException("提交失败:" + reason);
+    }
+
+    /** 从 GraphQL 响应中提取简要错误信息(优先 errors[0].message)，用于写入明细 */
+    private String extractGraphqlError(JSONObject result) {
+        String reason = null;
+        try {
+            JSONArray errors = result.getJSONArray("errors");
+            if (errors != null && !errors.isEmpty()) {
+                reason = errors.getJSONObject(0).getString("message");
+            }
+        } catch (Exception ignore) {
+            // fallthrough
+        }
+        if (StrUtil.isBlank(reason)) {
+            reason = result.getString("message");
+        }
+        if (StrUtil.isBlank(reason)) {
+            reason = result.toJSONString();
+        }
+        return reason.length() > 120 ? reason.substring(0, 120) : reason;
     }
 
     /**
