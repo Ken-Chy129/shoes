@@ -526,12 +526,25 @@ public class StockXService {
 
             // ===== 批量下架 =====
             if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                String delBatchId = stockXClient.deleteItems(toDelete, account);
-                Map<String, String> delResult;
-                if (delBatchId == null) {
-                    delResult = new HashMap<>();
+                String delBatchId = null;
+                String delFailReason = null;
+                try {
+                    delBatchId = stockXClient.deleteItems(toDelete, account);
+                } catch (StockXRateLimitException | TaskCancelledException e) {
+                    throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理
+                } catch (RuntimeException e) {
+                    if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                        throw e; // Token 过期：终止本轮
+                    }
+                    delFailReason = e.getMessage() != null ? e.getMessage() : "下架失败";
+                    if (delFailReason.length() > 100) {
+                        delFailReason = delFailReason.substring(0, 100);
+                    }
+                }
+                Map<String, String> delResult = new HashMap<>();
+                if (delFailReason != null) {
                     for (String lid : toDelete) {
-                        delResult.put(lid, "下架失败");
+                        delResult.put(lid, delFailReason);
                     }
                 } else {
                     // 已受理(QUEUED)，按 batchId 回查校验是否真正下架
@@ -777,19 +790,30 @@ public class StockXService {
     private void batchCreateListings(List<Pair<String, Integer>> items,
                                      Map<String, Long> variantToTaskItemId,
                                      StockXAccount account) {
-        String batchId = stockXClient.createListingV2(items, account);
-        if (batchId != null) {
-            waitForCreateBatchComplete(batchId, account);
-            verifyCreateBatch(batchId, account, items, variantToTaskItemId);
-        } else {
+        String batchId;
+        try {
+            batchId = stockXClient.createListingV2(items, account);
+        } catch (StockXRateLimitException | TaskCancelledException e) {
+            throw e; // 限流冷却耗尽 / 取消：交给 runner 处理
+        } catch (RuntimeException e) {
+            if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                throw e; // Token 过期：终止任务
+            }
+            String reason = e.getMessage() != null ? e.getMessage() : "上架失败";
+            if (reason.length() > 100) {
+                reason = reason.substring(0, 100);
+            }
             for (Pair<String, Integer> item : items) {
                 Long taskItemId = variantToTaskItemId.get(item.getKey());
                 if (taskItemId != null) {
-                    updateTaskItemResult(taskItemId, "上架失败");
+                    updateTaskItemResult(taskItemId, reason);
                 }
             }
-            log.error("[{}] 批量上架失败, 共{}条", account.getName(), items.size());
+            log.error("[{}] 批量上架失败, 共{}条, 原因:{}", account.getName(), items.size(), reason);
+            return;
         }
+        waitForCreateBatchComplete(batchId, account);
+        verifyCreateBatch(batchId, account, items, variantToTaskItemId);
     }
 
     /**

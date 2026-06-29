@@ -7,6 +7,7 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -82,9 +83,23 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                     taskItemIds.add(taskItemDO.getId());
                 }
 
-                String batchId = stockXClient.deleteItems(listingIds, account);
-                if (batchId == null) {
-                    taskItemMapper.batchUpdateResult(taskItemIds, "下架失败");
+                String batchId = null;
+                String submitFailReason = null;
+                try {
+                    batchId = stockXClient.deleteItems(listingIds, account);
+                } catch (StockXRateLimitException | TaskCancelledException e) {
+                    throw e; // 限流冷却耗尽 / 取消：交给 runner 处理
+                } catch (RuntimeException e) {
+                    if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                        throw e; // Token 过期：终止任务
+                    }
+                    submitFailReason = e.getMessage() != null ? e.getMessage() : "下架失败";
+                    if (submitFailReason.length() > 100) {
+                        submitFailReason = submitFailReason.substring(0, 100);
+                    }
+                }
+                if (submitFailReason != null) {
+                    taskItemMapper.batchUpdateResult(taskItemIds, submitFailReason);
                     totalFailed += listingIds.size();
                 } else {
                     // 已受理(QUEUED)，按 batchId 回查校验是否真正下架（成功=从结果消失）

@@ -170,15 +170,20 @@ public class StockXClient {
         Headers headers = account != null ? buildViperHeaders(account) : buildProHeaders();
         JSONObject jsonObject = queryPro(body.toJSONString(), headers, accName, true);
         log.info("deleteItems, result:{}", jsonObject);
-        if (jsonObject != null && "Unauthorized".equals(jsonObject.getString("message"))) {
-            throw new RuntimeException("TOKEN_EXPIRED");
+        if (jsonObject == null) {
+            throw new RuntimeException("下架失败:无响应(网络异常或被拦截)");
         }
-        if (jsonObject == null || jsonObject.containsKey("errors")) {
-            return null;
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
         }
         JSONObject data = jsonObject.getJSONObject("data");
         JSONObject deleteBatch = data != null ? data.getJSONObject("deleteBatchListings") : null;
-        return deleteBatch != null ? deleteBatch.getString("id") : null;
+        if (deleteBatch != null && deleteBatch.getString("id") != null) {
+            return deleteBatch.getString("id");
+        }
+        String reason = extractGraphqlError(jsonObject);
+        log.error("deleteItems[{}] failed, reason:{}", accName, reason);
+        throw new RuntimeException("下架失败:" + reason);
     }
 
     /** 下架校验轮询参数 */
@@ -1271,7 +1276,7 @@ public class StockXClient {
         // 上架(批量创建listing)同样是 asks 批量写，受 "Batch usage limit" 429 约束 → 走限流 Guard
         JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (jsonObject == null) {
-            return null;
+            throw new RuntimeException("上架失败:无响应(网络异常或被拦截)");
         }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {
             throw new RuntimeException("TOKEN_EXPIRED");
@@ -1279,15 +1284,16 @@ public class StockXClient {
         JSONObject respData = jsonObject.getJSONObject("data");
         if (respData != null) {
             JSONObject batch = respData.getJSONObject("createBatchListings");
-            if (batch != null) {
+            if (batch != null && batch.getString("id") != null) {
                 String batchId = batch.getString("id");
                 log.info("[{}] createListingV2 success, batchId:{}, response:{}", account.getName(), batchId, jsonObject.toJSONString());
                 return batchId;
             }
         }
-        log.error("[{}] createListingV2 unexpected response: {}", account.getName(),
+        String reason = extractGraphqlError(jsonObject);
+        log.error("[{}] createListingV2 failed, reason:{}, response:{}", account.getName(), reason,
                 jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
-        return null;
+        throw new RuntimeException("上架失败:" + reason);
     }
 
     @Data
