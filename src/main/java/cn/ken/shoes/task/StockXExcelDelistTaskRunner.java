@@ -15,7 +15,9 @@ import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 public class StockXExcelDelistTaskRunner implements Runnable {
@@ -80,13 +82,25 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                     taskItemIds.add(taskItemDO.getId());
                 }
 
-                boolean success = stockXClient.deleteItems(listingIds, account);
-                String result = success ? "下架成功" : "下架失败";
-                taskItemMapper.batchUpdateResult(taskItemIds, result);
-                if (success) {
-                    totalDelist += listingIds.size();
-                } else {
+                String batchId = stockXClient.deleteItems(listingIds, account);
+                if (batchId == null) {
+                    taskItemMapper.batchUpdateResult(taskItemIds, "下架失败");
                     totalFailed += listingIds.size();
+                } else {
+                    // 已受理(QUEUED)，按 batchId 回查校验是否真正下架（成功=从结果消失）
+                    Map<String, String> verify = stockXClient.verifyDeleteBatch(batchId, listingIds, account,
+                            () -> TaskSwitch.isExcelDelistCancelled(key));
+                    Map<String, List<Long>> resultToItemIds = new HashMap<>();
+                    for (int j = 0; j < listingIds.size(); j++) {
+                        String r = verify.getOrDefault(listingIds.get(j), "下架未确认");
+                        resultToItemIds.computeIfAbsent(r, k -> new ArrayList<>()).add(taskItemIds.get(j));
+                        if (r.startsWith("下架成功")) {
+                            totalDelist++;
+                        } else {
+                            totalFailed++;
+                        }
+                    }
+                    resultToItemIds.forEach((r, ids) -> taskItemMapper.batchUpdateResult(ids, r));
                 }
 
                 batchIndex++;

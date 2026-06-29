@@ -138,13 +138,17 @@ public class StockXClient {
         queryPro(body.toJSONString());
     }
 
-    public boolean deleteItems(List<String> idList) {
+    public String deleteItems(List<String> idList) {
         return deleteItems(idList, null);
     }
 
-    public boolean deleteItems(List<String> idList, StockXAccount account) {
+    /**
+     * 批量下架，返回 StockX 批次id(QUEUED)；失败返回 null。
+     * 注意：返回非null只代表"已受理"，是否真正下架需用 {@link #verifyDeleteBatch} 按 batchId 回查。
+     */
+    public String deleteItems(List<String> idList, StockXAccount account) {
         if (idList.isEmpty()) {
-            return false;
+            return null;
         }
         String accName = account != null ? account.getName() : null;
         LimiterHelper.limitStockxBatch(accName, idList.size());
@@ -170,9 +174,91 @@ public class StockXClient {
             throw new RuntimeException("TOKEN_EXPIRED");
         }
         if (jsonObject == null || jsonObject.containsKey("errors")) {
-            return false;
+            return null;
         }
-        return jsonObject.containsKey("data") && jsonObject.getJSONObject("data").containsKey("deleteBatchListings");
+        JSONObject data = jsonObject.getJSONObject("data");
+        JSONObject deleteBatch = data != null ? data.getJSONObject("deleteBatchListings") : null;
+        return deleteBatch != null ? deleteBatch.getString("id") : null;
+    }
+
+    /** 下架校验轮询参数 */
+    private static final int DELETE_VERIFY_MAX_ATTEMPTS = 5;
+    private static final long DELETE_VERIFY_DELAY_MS = 2000;
+
+    /**
+     * 按 batchId 回查校验批量下架是否真正生效。
+     * <p>Ground truth(已实测)：下架成功的 listing 会从 SellerListings(batchId) 结果中<b>消失</b>；
+     * 仍在结果里且 status=ACTIVE 说明没删掉。
+     *
+     * @param cancelled 取消判定（可空），轮询期间响应取消
+     * @return Map&lt;listingId, 结果文案&gt;：下架成功 / 下架失败 / 下架失败:{原因} / 下架未确认
+     */
+    public Map<String, String> verifyDeleteBatch(String batchId, List<String> listingIds, StockXAccount account,
+                                                 java.util.function.Supplier<Boolean> cancelled) {
+        Set<String> pending = new HashSet<>(listingIds);
+        Map<String, JSONObject> states = null; // 最近一次"成功读到"的结果；null 表示从未读到
+        for (int attempt = 1; attempt <= DELETE_VERIFY_MAX_ATTEMPTS && !pending.isEmpty(); attempt++) {
+            if (cancelled != null && Boolean.TRUE.equals(cancelled.get())) {
+                break;
+            }
+            Map<String, JSONObject> current = verifyBatchListings(batchId, account);
+            if (current == null) {
+                // 校验查询失败，本轮无法判定：不可当作"已删除"，重试
+                log.warn("verifyDeleteBatch 本轮查询失败, account:{}, batchId:{}, attempt:{}", account.getName(), batchId, attempt);
+            } else {
+                states = current;
+                pending.removeIf(id -> !current.containsKey(id)); // 已从结果消失 = 已删除
+            }
+            if (pending.isEmpty() || attempt == DELETE_VERIFY_MAX_ATTEMPTS) {
+                break;
+            }
+            long waited = 0;
+            while (waited < DELETE_VERIFY_DELAY_MS) {
+                if (cancelled != null && Boolean.TRUE.equals(cancelled.get())) {
+                    break;
+                }
+                try {
+                    Thread.sleep(Math.min(500, DELETE_VERIFY_DELAY_MS - waited));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                waited += 500;
+            }
+        }
+
+        Map<String, String> result = new HashMap<>();
+        int ok = 0, fail = 0, unconfirmed = 0;
+        for (String id : listingIds) {
+            if (states == null) {
+                // 从未成功读到校验结果，不能误判成功/失败
+                result.put(id, "下架未确认");
+                unconfirmed++;
+                continue;
+            }
+            JSONObject node = states.get(id);
+            if (node == null) {
+                result.put(id, "下架成功"); // 已从 batch 结果消失
+                ok++;
+                continue;
+            }
+            JSONObject lastOp = node.getJSONObject("lastOperation");
+            String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+            if (errCode != null) {
+                String msg = lastOp.getString("displayMessage");
+                result.put(id, "下架失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode));
+                fail++;
+            } else if (Boolean.TRUE.equals(node.getBoolean("synced"))) {
+                result.put(id, "下架失败"); // 仍在架且已同步，没删掉
+                fail++;
+            } else {
+                result.put(id, "下架未确认"); // 仍在处理
+                unconfirmed++;
+            }
+        }
+        log.info("verifyDeleteBatch 完成, account:{}, batchId:{}, 总数:{}, 下架成功:{}, 失败:{}, 未确认:{}",
+                account.getName(), batchId, listingIds.size(), ok, fail, unconfirmed);
+        return result;
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
@@ -1002,7 +1088,11 @@ public class StockXClient {
         return batchId;
     }
 
-    public boolean batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
+    /**
+     * 批量压价(GraphQL)，返回 StockX 批次id(QUEUED)；失败返回 null。
+     * 注意：返回非null只代表"已受理"，是否真正同步需用 {@link #verifyBatchListings} 按 batchId 回查。
+     */
+    public String batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
         LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxGraphql(account.getName());
         JSONObject requestJson = new JSONObject(true);
@@ -1031,15 +1121,81 @@ public class StockXClient {
         JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (result == null) {
             log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
-            return false;
+            return null;
         }
-        if (result.containsKey("data")) {
-            log.info("batchUpdateListingsGraphql[{}] success, totalItems:{}, response:{}", account.getName(), items.size(), result.toJSONString());
-            return true;
+        JSONObject data = result.getJSONObject("data");
+        JSONObject updateBatch = data != null ? data.getJSONObject("updateBatchListings") : null;
+        if (updateBatch != null && updateBatch.getString("id") != null) {
+            String batchId = updateBatch.getString("id");
+            log.info("batchUpdateListingsGraphql[{}] queued, batchId:{}, totalItems:{}, status:{}",
+                    account.getName(), batchId, items.size(), updateBatch.getString("status"));
+            return batchId;
         }
         log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, response:{}", account.getName(), items.size(),
                 result.toJSONString().substring(0, Math.min(300, result.toJSONString().length())));
-        return false;
+        return null;
+    }
+
+    /**
+     * 按 StockX 批次id回查该批次涉及的 listing 当前状态，用于校验异步操作是否真正同步。
+     * 复用网页 Pro 的 SellerListings(filters.batchId) 查询。
+     *
+     * @return Map&lt;listingId, node&gt;，node 含 synced/status/amount/unsyncedAmount/lastOperation 等字段；查询失败返回空Map
+     */
+    public Map<String, JSONObject> verifyBatchListings(String batchId, StockXAccount account) {
+        Map<String, JSONObject> resultMap = new HashMap<>();
+        if (batchId == null || account == null) {
+            return resultMap;
+        }
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        JSONObject requestJson = new JSONObject(true);
+        requestJson.put("operationName", "SellerListings");
+        JSONObject variables = new JSONObject(true);
+        variables.put("skipGuidance", false);
+        variables.put("skipFlexEligible", true);
+        variables.put("country", country);
+        variables.put("market", country);
+        variables.put("currencyCode", "USD");
+        variables.put("pageSize", 100);
+        JSONObject filters = new JSONObject(true);
+        filters.put("batchId", Map.of("in", List.of(batchId)));
+        variables.put("filters", filters);
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        if (jsonObject == null) {
+            // 查询失败(网络/被拦截)，返回 null 表示"无法判定"，调用方不可据此当作"无此listing"
+            log.warn("verifyBatchListings 查询失败(响应为null), account:{}, batchId:{}", account.getName(), batchId);
+            return null;
+        }
+        JSONObject data = jsonObject.getJSONObject("data");
+        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+        JSONObject sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
+        if (sellerListings == null) {
+            log.warn("verifyBatchListings 响应无 sellerListings(无法判定), account:{}, batchId:{}, resp:{}",
+                    account.getName(), batchId, jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
+            return null;
+        }
+        if (sellerListings.getJSONArray("edges") == null) {
+            return resultMap; // 有 sellerListings 但无 edges = 该批次下确实没有 listing（空结果，可信）
+        }
+        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            JSONObject node = edge.getJSONObject("node");
+            if (node == null) {
+                continue;
+            }
+            String id = node.getString("id");
+            if (id != null) {
+                resultMap.put(id, node);
+            }
+        }
+        return resultMap;
     }
 
     public JSONObject queryBatchUpdateStatus(String batchId, StockXAccount account) {
@@ -1088,6 +1244,7 @@ public class StockXClient {
         persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
         extensions.put("persistedQuery", persistedQuery);
         body.put("extensions", extensions);
+        // 上架(批量创建listing)同样是 asks 批量写，受 "Batch usage limit" 429 约束 → 走限流 Guard
         JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (jsonObject == null) {
             return null;

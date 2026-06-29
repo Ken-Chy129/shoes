@@ -93,6 +93,94 @@ public class StockXService {
         taskItemMapper.updateById(updateItem);
     }
 
+    /** 压价校验轮询：最多查 5 次，每次间隔 2 秒，等待 StockX 异步同步完成 */
+    private static final int PRICE_DOWN_VERIFY_MAX_ATTEMPTS = 5;
+    private static final long PRICE_DOWN_VERIFY_DELAY_MS = 2000;
+
+    /**
+     * 提交压价后按 batchId 回查校验该批是否真正同步（synced），把每条明细从"已提交"升级为真实结果。
+     * StockX 压价是异步的：mutation 只返回 QUEUED，需回查 listing 的 synced/lastOperation 才知道是否真正生效。
+     *
+     * @return 本批真实压价成功(已同步)的条数
+     */
+    private int verifyPriceDownBatch(String batchId, StockXAccount account, String inventoryType,
+                                     List<Map<String, String>> subBatch,
+                                     Map<String, Pair<Long, String>> listingToTaskInfo) {
+        // 先标记"压价已提交"作为中间态（校验若中途异常，至少不会是 null）
+        for (Map<String, String> item : subBatch) {
+            Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
+            if (info != null) {
+                updateTaskItemResult(info.getKey(), "压价已提交");
+            }
+        }
+
+        Set<String> pending = new HashSet<>();
+        for (Map<String, String> item : subBatch) {
+            pending.add(item.get("listingId"));
+        }
+        Map<String, JSONObject> states = new HashMap<>();
+        for (int attempt = 1; attempt <= PRICE_DOWN_VERIFY_MAX_ATTEMPTS && !pending.isEmpty(); attempt++) {
+            if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType)) {
+                break;
+            }
+            Map<String, JSONObject> current = stockXClient.verifyBatchListings(batchId, account);
+            if (current != null) {
+                states = current;
+                pending.removeIf(id -> {
+                    JSONObject node = current.get(id);
+                    return node != null && Boolean.TRUE.equals(node.getBoolean("synced"));
+                });
+            }
+            if (pending.isEmpty() || attempt == PRICE_DOWN_VERIFY_MAX_ATTEMPTS) {
+                break;
+            }
+            // 分片等待，期间响应取消
+            long waited = 0;
+            while (waited < PRICE_DOWN_VERIFY_DELAY_MS) {
+                if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType)) {
+                    break;
+                }
+                try {
+                    Thread.sleep(Math.min(500, PRICE_DOWN_VERIFY_DELAY_MS - waited));
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                waited += 500;
+            }
+        }
+
+        int success = 0;
+        for (Map<String, String> item : subBatch) {
+            String listingId = item.get("listingId");
+            Pair<Long, String> info = listingToTaskInfo.get(listingId);
+            if (info == null) {
+                continue;
+            }
+            JSONObject node = states.get(listingId);
+            String resultText;
+            if (node == null) {
+                resultText = "压价未确认";
+            } else if (Boolean.TRUE.equals(node.getBoolean("synced"))) {
+                // synced 为权威成功信号，优先判定
+                resultText = "压价成功";
+                success++;
+            } else {
+                JSONObject lastOp = node.getJSONObject("lastOperation");
+                String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+                if (errCode != null) {
+                    String msg = lastOp.getString("displayMessage");
+                    resultText = "压价失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
+                } else {
+                    resultText = "压价未同步";
+                }
+            }
+            updateTaskItemResult(info.getKey(), resultText);
+        }
+        log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 真实成功:{}", account.getName(), batchId, subBatch.size(), success);
+        return success;
+    }
+
     /**
      * 多账号 Excel 压价：对指定账号的在售商品进行压价
      */
@@ -406,34 +494,40 @@ public class StockXService {
                 for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
                     if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
                     List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
-                    boolean success = stockXClient.batchUpdateListingsGraphql(subBatch, account);
-                    if (success) {
-                        for (Map<String, String> item : subBatch) {
-                            Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
-                            if (info != null) {
-                                updateTaskItemResult(info.getKey(), "压价已提交");
-                            }
-                        }
-                        totalPriceDown += subBatch.size();
-                    } else {
+                    String batchId = stockXClient.batchUpdateListingsGraphql(subBatch, account);
+                    if (batchId == null) {
                         for (Map<String, String> item : subBatch) {
                             Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
                             if (info != null) {
                                 updateTaskItemResult(info.getKey(), "提交失败");
                             }
                         }
+                        continue;
                     }
+                    // 已受理(QUEUED)，按 batchId 回查校验是否真正同步，得到真实成功/失败
+                    int confirmed = verifyPriceDownBatch(batchId, account, inventoryType, subBatch, listingToTaskInfo);
+                    totalPriceDown += confirmed;
                 }
             }
 
             // ===== 批量下架 =====
             if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                boolean isSuccess = stockXClient.deleteItems(toDelete, account);
-                String result = isSuccess ? "下架成功" : "下架失败";
+                String delBatchId = stockXClient.deleteItems(toDelete, account);
+                Map<String, String> delResult;
+                if (delBatchId == null) {
+                    delResult = new HashMap<>();
+                    for (String lid : toDelete) {
+                        delResult.put(lid, "下架失败");
+                    }
+                } else {
+                    // 已受理(QUEUED)，按 batchId 回查校验是否真正下架
+                    delResult = stockXClient.verifyDeleteBatch(delBatchId, toDelete, account,
+                            () -> TaskSwitch.isExcelCancelled(accountId, inventoryType));
+                }
                 for (String lid : toDelete) {
                     Long tid = deleteToTaskInfo.get(lid);
                     if (tid != null) {
-                        updateTaskItemResult(tid, result);
+                        updateTaskItemResult(tid, delResult.getOrDefault(lid, "下架未确认"));
                     }
                 }
             }
@@ -672,13 +766,7 @@ public class StockXService {
         String batchId = stockXClient.createListingV2(items, account);
         if (batchId != null) {
             waitForCreateBatchComplete(batchId, account);
-            for (Pair<String, Integer> item : items) {
-                Long taskItemId = variantToTaskItemId.get(item.getKey());
-                if (taskItemId != null) {
-                    updateTaskItemResult(taskItemId, "已上架");
-                }
-            }
-            log.info("[{}] 批量上架{}条, batchId:{}", account.getName(), items.size(), batchId);
+            verifyCreateBatch(batchId, account, items, variantToTaskItemId);
         } else {
             for (Pair<String, Integer> item : items) {
                 Long taskItemId = variantToTaskItemId.get(item.getKey());
@@ -688,6 +776,80 @@ public class StockXService {
             }
             log.error("[{}] 批量上架失败, 共{}条", account.getName(), items.size());
         }
+    }
+
+    /**
+     * 提交上架后按 batchId 回查校验是否真正上架（按 variantID 对回明细）。
+     * <p>Ground truth(已实测)：上架成功的 listing 会出现在 SellerListings(batchId) 里且 synced=true；
+     * 未出现说明该 variant 没创建成功。
+     */
+    private void verifyCreateBatch(String batchId, StockXAccount account,
+                                   List<Pair<String, Integer>> items, Map<String, Long> variantToTaskItemId) {
+        Set<String> expectVariants = new HashSet<>();
+        for (Pair<String, Integer> item : items) {
+            expectVariants.add(item.getKey());
+        }
+        Map<String, JSONObject> byVariant = new HashMap<>();
+        boolean everRead = false;
+        for (int attempt = 1; attempt <= PRICE_DOWN_VERIFY_MAX_ATTEMPTS; attempt++) {
+            Map<String, JSONObject> states = stockXClient.verifyBatchListings(batchId, account);
+            if (states != null) {
+                everRead = true;
+                byVariant.clear();
+                for (JSONObject node : states.values()) {
+                    String vid = node.getString("variantID");
+                    if (vid != null) {
+                        byVariant.put(vid, node);
+                    }
+                }
+            }
+            boolean allSynced = everRead;
+            for (String v : expectVariants) {
+                JSONObject n = byVariant.get(v);
+                if (n == null || !Boolean.TRUE.equals(n.getBoolean("synced"))) {
+                    allSynced = false;
+                    break;
+                }
+            }
+            if (allSynced || attempt == PRICE_DOWN_VERIFY_MAX_ATTEMPTS) {
+                break;
+            }
+            try {
+                Thread.sleep(PRICE_DOWN_VERIFY_DELAY_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+
+        int ok = 0;
+        for (Pair<String, Integer> item : items) {
+            Long taskItemId = variantToTaskItemId.get(item.getKey());
+            if (taskItemId == null) {
+                continue;
+            }
+            JSONObject node = byVariant.get(item.getKey());
+            String r;
+            if (!everRead) {
+                r = "上架处理中"; // 校验查询始终失败，无法判定，不误判失败
+            } else if (node == null) {
+                r = "上架失败"; // 该 variant 未生成 listing
+            } else if (Boolean.TRUE.equals(node.getBoolean("synced"))) {
+                r = "已上架";
+                ok++;
+            } else {
+                JSONObject lastOp = node.getJSONObject("lastOperation");
+                String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+                if (errCode != null) {
+                    String msg = lastOp.getString("displayMessage");
+                    r = "上架失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
+                } else {
+                    r = "上架处理中";
+                }
+            }
+            updateTaskItemResult(taskItemId, r);
+        }
+        log.info("[{}] 批量上架校验完成{}条, batchId:{}, 真实成功:{}", account.getName(), items.size(), batchId, ok);
     }
 
     private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
