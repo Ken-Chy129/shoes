@@ -8,6 +8,7 @@ import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
@@ -79,6 +80,7 @@ public class StockXFetchListingsTaskRunner implements Runnable {
                     taskItemDO.setTaskId(taskId);
                     taskItemDO.setRound(0);
                     taskItemDO.setListingId(item.getString("id"));
+                    taskItemDO.setProductId(item.getString("variantId"));
                     taskItemDO.setStyleId(item.getString("styleId"));
                     taskItemDO.setTitle(item.getString("productName"));
                     taskItemDO.setBrand(item.getString("brand"));
@@ -86,6 +88,10 @@ public class StockXFetchListingsTaskRunner implements Runnable {
                     taskItemDO.setEuSize(item.getString("euSize"));
                     Integer amount = item.getInteger("amount");
                     taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
+                    Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
+                            item.getInteger("standardLowest"),
+                            item.getInteger("expressStandardLowest"));
+                    taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
                     taskItemDO.setOperateResult("已获取");
                     taskItemMapper.insert(taskItemDO);
                 }

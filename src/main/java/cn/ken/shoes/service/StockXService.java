@@ -213,7 +213,6 @@ public class StockXService {
         long taskStartTime = System.currentTimeMillis();
         int totalPriceDown = 0, totalSkip = 0;
 
-        boolean isStandard = "STANDARD".equals(inventoryType);
         Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
         int pageNumber = 1;
         boolean hasMore = true;
@@ -344,18 +343,9 @@ public class StockXService {
                         continue;
                     }
                     // 有得物价，按利润判断
-                    Integer lowestPrice;
-                    if (isStandard) {
-                        Integer standardLowest = listings.get(0).getInteger("standardLowest");
-                        Integer expressLowest = listings.get(0).getInteger("expressStandardLowest");
-                        if (standardLowest != null && expressLowest != null) {
-                            lowestPrice = Math.min(standardLowest, expressLowest);
-                        } else {
-                            lowestPrice = standardLowest != null ? standardLowest : expressLowest;
-                        }
-                    } else {
-                        lowestPrice = listings.get(0).getInteger("expressStandardLowest");
-                    }
+                    Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
+                            listings.get(0).getInteger("standardLowest"),
+                            listings.get(0).getInteger("expressStandardLowest"));
 
                     listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
                     int minExpectProfit = account.getMinProfit();
@@ -446,18 +436,9 @@ public class StockXService {
                 listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
                 JSONObject bestListing = listings.get(0);
 
-                Integer lowestPrice;
-                if (isStandard) {
-                    Integer standardLowest = bestListing.getInteger("standardLowest");
-                    Integer expressLowest = bestListing.getInteger("expressStandardLowest");
-                    if (standardLowest != null && expressLowest != null) {
-                        lowestPrice = Math.min(standardLowest, expressLowest);
-                    } else {
-                        lowestPrice = standardLowest != null ? standardLowest : expressLowest;
-                    }
-                } else {
-                    lowestPrice = bestListing.getInteger("expressStandardLowest");
-                }
+                Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
+                        bestListing.getInteger("standardLowest"),
+                        bestListing.getInteger("expressStandardLowest"));
 
                 boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
                         && listings.stream().anyMatch(l -> l.getIntValue("amount") <= lowestPrice);
@@ -1048,19 +1029,9 @@ public class StockXService {
         Integer amount = item.getInteger("amount");
         taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
 
-        boolean isStandard = "STANDARD".equals(inventoryType);
-        Integer lowestPrice;
-        if (isStandard) {
-            Integer sl = item.getInteger("standardLowest");
-            Integer el = item.getInteger("expressStandardLowest");
-            if (sl != null && el != null) {
-                lowestPrice = Math.min(sl, el);
-            } else {
-                lowestPrice = sl != null ? sl : el;
-            }
-        } else {
-            lowestPrice = item.getInteger("expressStandardLowest");
-        }
+        Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
+                item.getInteger("standardLowest"),
+                item.getInteger("expressStandardLowest"));
         taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
 
         taskItemDO.setOperateTime(new Date());

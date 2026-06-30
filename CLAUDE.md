@@ -33,9 +33,12 @@ This is a full-stack application for sneaker price tracking and management acros
 ## Development Commands
 
 ### Backend (Java/Spring Boot)
+> ⚠️ 本机默认 JDK 若为 26，直接跑 `mvn` 会报 "源发行版 21 与 --enable-preview 一起使用时无效"。
+> 本地编译请用 `./build.sh <maven-args>`（自动用 JDK 21 跑 Maven）。生产部署走 Docker(JDK21)，不受影响。
 ```bash
 # Build the project
-mvn clean compile
+./build.sh clean compile   # 本地推荐：强制 JDK21
+mvn clean compile          # 仅当默认 JAVA_HOME 已是 JDK21 时可用
 
 # Run tests
 mvn test

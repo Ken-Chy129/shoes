@@ -9,6 +9,9 @@ public class TaskItemExcel {
     @ExcelProperty("listingId")
     private String listingId;
 
+    @ExcelProperty("商品ID(variantId)")
+    private String variantId;
+
     @ExcelProperty("品牌")
     private String brand;
 

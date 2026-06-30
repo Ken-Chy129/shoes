@@ -122,6 +122,22 @@ public class ShoesUtil {
         return getFromPlatform - account.getFreight() - poisonPrice;
     }
 
+    /**
+     * 按库存类型解析 StockX 最低价口径：
+     * - STANDARD(卖家自发货)：取 standardLowest 与 expressStandardLowest 的较小值(任一为空则取非空者)
+     * - CUSTODIAL(寄存/StockX仓发货)：只看 expressStandardLowest
+     * 与压价决策口径保持一致，避免导出展示的最低价与压价所用最低价不一致。
+     */
+    public static Integer resolveStockxLowest(String inventoryType, Integer standardLowest, Integer expressStandardLowest) {
+        if ("STANDARD".equals(inventoryType)) {
+            if (standardLowest != null && expressStandardLowest != null) {
+                return Math.min(standardLowest, expressStandardLowest);
+            }
+            return standardLowest != null ? standardLowest : expressStandardLowest;
+        }
+        return expressStandardLowest;
+    }
+
     public static Integer getThreeFivePrice(Integer normalPrice) {
         return (int) (normalPrice * 0.955 - 38 - 8.9);
     }
