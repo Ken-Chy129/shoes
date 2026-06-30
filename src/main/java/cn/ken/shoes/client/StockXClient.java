@@ -1227,6 +1227,68 @@ public class StockXClient {
         return resultMap;
     }
 
+    /**
+     * 按 variantID 列表回查当前挂单状态（返回 Map 的 key = variantID）。
+     * <p>相比按 batchId 过滤更可靠：SellerListings(batchId) 是临时视图，提交后异步落地慢且会随时间衰减
+     * （已实测同一批 50 条提交后只逐渐出现、又陆续从该 batchId 视图消失），按 batchId 会把"还没落地"误判成失败；
+     * 而按 variantID 查的是该 variant 当前真实挂单（synced / status=ACTIVE / lastOperation.errorCode）。
+     * <p>返回 null = 查询失败(无法判定)；空 Map = 这些 variant 当前都无挂单。
+     */
+    public Map<String, JSONObject> verifyListingsByVariantIds(List<String> variantIds, StockXAccount account) {
+        Map<String, JSONObject> resultMap = new HashMap<>();
+        if (CollectionUtils.isEmpty(variantIds) || account == null) {
+            return resultMap;
+        }
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        JSONObject requestJson = new JSONObject(true);
+        requestJson.put("operationName", "SellerListings");
+        JSONObject variables = new JSONObject(true);
+        variables.put("skipGuidance", false);
+        variables.put("skipFlexEligible", true);
+        variables.put("country", country);
+        variables.put("market", country);
+        variables.put("currencyCode", "USD");
+        variables.put("pageSize", 100);
+        JSONObject filters = new JSONObject(true);
+        filters.put("variantId", Map.of("in", variantIds));
+        variables.put("filters", filters);
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        if (jsonObject == null) {
+            log.warn("verifyListingsByVariantIds 查询失败(响应为null), account:{}, variantCnt:{}", account.getName(), variantIds.size());
+            return null;
+        }
+        JSONObject data = jsonObject.getJSONObject("data");
+        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+        JSONObject sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
+        if (sellerListings == null) {
+            log.warn("verifyListingsByVariantIds 响应无 sellerListings(无法判定), account:{}, resp:{}",
+                    account.getName(), jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
+            return null;
+        }
+        if (sellerListings.getJSONArray("edges") == null) {
+            return resultMap; // 有 sellerListings 但无 edges = 这些 variant 当前都无挂单（空结果，可信）
+        }
+        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            JSONObject node = edge.getJSONObject("node");
+            if (node == null) {
+                continue;
+            }
+            String vid = node.getString("variantID");
+            if (vid != null) {
+                resultMap.put(vid, node);
+            }
+        }
+        return resultMap;
+    }
+
     public JSONObject queryBatchUpdateStatus(String batchId, StockXAccount account) {
         LimiterHelper.limitStockxApi(account.getName());
         String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);
@@ -1246,6 +1308,9 @@ public class StockXClient {
         if (CollectionUtils.isEmpty(itemList)) {
             return null;
         }
+        // 上架与压价共用 StockX 账号的 "Batch usage limit"，必须同样计入 5 分钟批量写窗口，
+        // 否则上架会绕过共享配额、悄悄吃光额度，导致压价被 429 挤到冷却失败。
+        LimiterHelper.limitStockxBatch(account.getName(), itemList.size());
         LimiterHelper.limitStockxApi(account.getName());
         JSONObject body = new JSONObject();
         body.put("operationName", "CreateBatchListings");

@@ -1,5 +1,5 @@
 import React, {useEffect, useState, useRef, useCallback, useMemo} from "react";
-import {Modal, Table, Input, Select, Space, Button, Switch, Tooltip, Progress} from "antd";
+import {Modal, Table, Input, Select, Space, Button, Switch, Tooltip} from "antd";
 import {ReloadOutlined, DownloadOutlined} from "@ant-design/icons";
 import {doGetRequest} from "@/util/http";
 import {TASK_API} from "@/services/task";
@@ -295,9 +295,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     {taskType === 'listing' && attributes && (() => {
                         try {
                             const attrs = JSON.parse(attributes);
-                            const tip = `${attrs.detail || ''}${attrs.listed != null ? ` | 已上架: ${attrs.listed}` : ''}`;
+                            const tip = `${attrs.detail || ''} | 搜索进度 ${attrs.progress ?? 0}%`;
                             return <Tooltip title={tip}>
-                                <Progress type="circle" percent={attrs.progress ?? 0} size={32}/>
+                                <span style={{cursor: 'pointer', color: '#1677ff', fontWeight: 500}}>
+                                    已上架 {attrs.listed ?? 0}
+                                    {attrs.processed != null ? ` | 已处理 ${attrs.processed}` : ''}
+                                    {attrs.keywordTotal != null ? ` | 词 ${attrs.keywordIdx ?? 0}/${attrs.keywordTotal}` : ''}
+                                </span>
                             </Tooltip>;
                         } catch { return null; }
                     })()}

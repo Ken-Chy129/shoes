@@ -259,9 +259,14 @@ const TaskPage = () => {
                 if (record.taskType === 'listing' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
-                        const pct = attrs.progress ?? 0;
-                        const tip = `${attrs.detail || ''}${attrs.listed != null ? ` | 已上架: ${attrs.listed}` : ''}`;
-                        return <Tooltip title={tip}><span style={{cursor: 'pointer'}}>{pct}%</span></Tooltip>;
+                        const tip = `${attrs.detail || ''} | 搜索进度 ${attrs.progress ?? 0}%`;
+                        return <Tooltip title={tip}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                已上架 {attrs.listed ?? 0}
+                                {attrs.processed != null && <><br/>已处理 {attrs.processed}</>}
+                                {attrs.keywordTotal != null && <><br/>词 {attrs.keywordIdx ?? 0}/{attrs.keywordTotal}</>}
+                            </span>
+                        </Tooltip>;
                     } catch { return '-'; }
                 }
                 if (record.round == null) return '-';

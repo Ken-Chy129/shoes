@@ -99,6 +99,10 @@ public class StockXService {
     private static final int PRICE_DOWN_VERIFY_MAX_ATTEMPTS = 5;
     private static final long PRICE_DOWN_VERIFY_DELAY_MS = 2000;
 
+    /** 上架校验轮询：最多查 18 次、每次间隔 5 秒(约 90s，全部落定即提前结束)，等待 StockX 异步创建 listing 落地 */
+    private static final int CREATE_VERIFY_MAX_ATTEMPTS = 18;
+    private static final long CREATE_VERIFY_DELAY_MS = 5000;
+
     /**
      * 提交压价后按 batchId 回查校验该批是否真正同步（synced），把每条明细从"已提交"升级为真实结果。
      * StockX 压价是异步的：mutation 只返回 QUEUED，需回查 listing 的 synced/lastOperation 才知道是否真正生效。
@@ -582,7 +586,7 @@ public class StockXService {
 
         // 1. 构建已在售 variantId 集合（去重用）
         Set<String> existingVariantIds = new HashSet<>();
-        updateSearchProgress(taskId, 0, totalSteps, currentStep, 0, "正在收集已在售商品...");
+        updateSearchProgress(taskId, 0, totalSteps, currentStep, 0, 0, 0, (int) validKeywords, "正在收集已在售商品...");
         log.info("[{}] 搜索上架：开始收集已在售商品...", accountName);
         int page = 1;
         boolean hasMore = true;
@@ -608,6 +612,7 @@ public class StockXService {
         // 2. 搜索并处理
         int totalProcessed = 0;
         int totalListed = 0;
+        int keywordIdx = 0;
         Set<String> processedVariantIds = new HashSet<>();
         List<Pair<String, Integer>> toList = new ArrayList<>();
         Map<String, Long> variantToTaskItemId = new HashMap<>();
@@ -616,6 +621,7 @@ public class StockXService {
         for (String keyword : keywordArr) {
             keyword = keyword.trim();
             if (keyword.isEmpty()) continue;
+            keywordIdx++;
             if (TaskSwitch.isSearchListCancelled(accountName)) break;
 
             for (String sort : sortArr) {
@@ -627,7 +633,7 @@ public class StockXService {
                     currentStep++;
                     int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
                     String detail = STR."关键词: \{keyword} | 排序: \{sort} | 页码: \{pageIdx}/\{pageCount}";
-                    updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, detail);
+                    updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, totalProcessed, keywordIdx, (int) validKeywords, detail);
 
                     Pair<Integer, List<StockXPriceExcel>> searchResult =
                             stockXClient.searchItemWithPrice(keyword, pageIdx, sort, searchType, country, account);
@@ -767,22 +773,26 @@ public class StockXService {
         if (reachedLimit) {
             String detail = STR."达到上架上限(\{maxListCount}条)";
             int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
-            updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, detail);
+            updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, totalProcessed, keywordIdx, (int) validKeywords, detail);
         } else {
-            updateSearchProgress(taskId, 100, totalSteps, currentStep, totalListed, "完成");
+            updateSearchProgress(taskId, 100, totalSteps, currentStep, totalListed, totalProcessed, keywordIdx, (int) validKeywords, "完成");
         }
 
         log.info("[{}] 搜索上架完成，共处理{}条，上架{}条", accountName, totalProcessed, totalListed);
         return reachedLimit;
     }
 
-    private void updateSearchProgress(Long taskId, int progress, int totalSteps, int currentStep, int listed, String detail) {
+    private void updateSearchProgress(Long taskId, int progress, int totalSteps, int currentStep, int listed,
+                                      int processed, int keywordIdx, int keywordTotal, String detail) {
         if (taskId == null) return;
         JSONObject attrs = new JSONObject();
-        attrs.put("progress", progress);
+        attrs.put("progress", progress);     // 步数百分比(保留兼容)
         attrs.put("total", totalSteps);
         attrs.put("current", currentStep);
-        attrs.put("listed", listed);
+        attrs.put("listed", listed);         // 已上架数
+        attrs.put("processed", processed);   // 已处理(搜索到并判断过)的商品数
+        attrs.put("keywordIdx", keywordIdx); // 当前进行到第几个关键词
+        attrs.put("keywordTotal", keywordTotal);
         attrs.put("detail", detail);
         taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
     }
@@ -812,55 +822,51 @@ public class StockXService {
             log.error("[{}] 批量上架失败, 共{}条, 原因:{}", account.getName(), items.size(), reason);
             return;
         }
-        waitForCreateBatchComplete(batchId, account);
+        // 不再等 REST 批次完成：GraphQL 创建的 batchId 在官方 REST 接口查不到，queryListing 永远 timeout。
+        // 直接按 variantID 回查真实挂单状态，verifyCreateBatch 内部自带重试等待异步落地。
         verifyCreateBatch(batchId, account, items, variantToTaskItemId);
     }
 
     /**
-     * 提交上架后按 batchId 回查校验是否真正上架（按 variantID 对回明细）。
-     * <p>Ground truth(已实测)：上架成功的 listing 会出现在 SellerListings(batchId) 里且 synced=true；
-     * 未出现说明该 variant 没创建成功。
+     * 提交上架后回查校验是否真正上架（按 variantID 查当前挂单，不再按 batchId 过滤）。
+     * <p>已实测：SellerListings(batchId) 是临时视图、异步落地慢且会随时间衰减，按 batchId 会把"还没落地"
+     * 误判成失败（曾出现已 ACTIVE 的 listing 被标"上架失败"）；按 variantID 查的是该 variant 的真实挂单。
+     * <p>分类：synced/ACTIVE→已上架；node 带 errorCode→上架失败:原因；查询失败或暂未落地→上架处理中（不误判失败）。
      */
     private void verifyCreateBatch(String batchId, StockXAccount account,
                                    List<Pair<String, Integer>> items, Map<String, Long> variantToTaskItemId) {
-        Set<String> expectVariants = new HashSet<>();
+        List<String> expectVariants = new ArrayList<>();
         for (Pair<String, Integer> item : items) {
             expectVariants.add(item.getKey());
         }
         Map<String, JSONObject> byVariant = new HashMap<>();
         boolean everRead = false;
-        for (int attempt = 1; attempt <= PRICE_DOWN_VERIFY_MAX_ATTEMPTS; attempt++) {
-            Map<String, JSONObject> states = stockXClient.verifyBatchListings(batchId, account);
+        for (int attempt = 1; attempt <= CREATE_VERIFY_MAX_ATTEMPTS; attempt++) {
+            Map<String, JSONObject> states = stockXClient.verifyListingsByVariantIds(expectVariants, account);
             if (states != null) {
                 everRead = true;
-                byVariant.clear();
-                for (JSONObject node : states.values()) {
-                    String vid = node.getString("variantID");
-                    if (vid != null) {
-                        byVariant.put(vid, node);
-                    }
-                }
+                byVariant = states;
             }
-            boolean allSynced = everRead;
+            // 全部已落定（已生效 或 带 errorCode 的真失败）即可提前结束等待
+            boolean allResolved = everRead;
             for (String v : expectVariants) {
-                JSONObject n = byVariant.get(v);
-                if (n == null || !Boolean.TRUE.equals(n.getBoolean("synced"))) {
-                    allSynced = false;
+                if (!isListingResolved(byVariant.get(v))) {
+                    allResolved = false;
                     break;
                 }
             }
-            if (allSynced || attempt == PRICE_DOWN_VERIFY_MAX_ATTEMPTS) {
+            if (allResolved || attempt == CREATE_VERIFY_MAX_ATTEMPTS) {
                 break;
             }
             try {
-                Thread.sleep(PRICE_DOWN_VERIFY_DELAY_MS);
+                Thread.sleep(CREATE_VERIFY_DELAY_MS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 break;
             }
         }
 
-        int ok = 0;
+        int ok = 0, fail = 0, pending = 0;
         for (Pair<String, Integer> item : items) {
             Long taskItemId = variantToTaskItemId.get(item.getKey());
             if (taskItemId == null) {
@@ -870,9 +876,11 @@ public class StockXService {
             String r;
             if (!everRead) {
                 r = "上架处理中"; // 校验查询始终失败，无法判定，不误判失败
+                pending++;
             } else if (node == null) {
-                r = "上架失败"; // 该 variant 未生成 listing
-            } else if (Boolean.TRUE.equals(node.getBoolean("synced"))) {
+                r = "上架处理中"; // 暂未查到该 variant 挂单：异步还没落地，按"处理中"而非失败
+                pending++;
+            } else if (isListingActive(node)) {
                 r = "已上架";
                 ok++;
             } else {
@@ -881,13 +889,35 @@ public class StockXService {
                 if (errCode != null) {
                     String msg = lastOp.getString("displayMessage");
                     r = "上架失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
+                    fail++;
                 } else {
-                    r = "上架处理中";
+                    r = "上架处理中"; // 已落地但尚未生效、也无错误码：继续算处理中
+                    pending++;
                 }
             }
             updateTaskItemResult(taskItemId, r);
         }
-        log.info("[{}] 批量上架校验完成{}条, batchId:{}, 真实成功:{}", account.getName(), items.size(), batchId, ok);
+        log.info("[{}] 批量上架校验完成{}条, batchId:{}, 已上架:{}, 失败:{}, 处理中:{}",
+                account.getName(), items.size(), batchId, ok, fail, pending);
+    }
+
+    /** listing 已生效：synced=true 或 status=ACTIVE */
+    private boolean isListingActive(JSONObject node) {
+        return node != null
+                && (Boolean.TRUE.equals(node.getBoolean("synced"))
+                || "ACTIVE".equalsIgnoreCase(node.getString("status")));
+    }
+
+    /** listing 已落定（已生效 或 带 errorCode 的真失败），可结束等待 */
+    private boolean isListingResolved(JSONObject node) {
+        if (node == null) {
+            return false;
+        }
+        if (isListingActive(node)) {
+            return true;
+        }
+        JSONObject lastOp = node.getJSONObject("lastOperation");
+        return lastOp != null && lastOp.getString("errorCode") != null;
     }
 
     private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
@@ -926,22 +956,6 @@ public class StockXService {
         taskItemDO.setOperateResult("待处理");
         taskItemMapper.insert(taskItemDO);
         return taskItemDO.getId();
-    }
-
-    private void waitForCreateBatchComplete(String batchId, StockXAccount account) {
-        for (int i = 0; i < 12; i++) {
-            try {
-                Thread.sleep(5000);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
-            if (stockXClient.queryListing(batchId, account)) {
-                log.info("[{}] batch create completed, batchId:{}", account.getName(), batchId);
-                return;
-            }
-        }
-        log.warn("[{}] batch create timeout, batchId:{}", account.getName(), batchId);
     }
 
     private void waitForBatchComplete(String batchId, StockXAccount account) {
