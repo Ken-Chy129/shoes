@@ -4,6 +4,7 @@ import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.TaskCancelledException;
@@ -19,6 +20,7 @@ import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import jakarta.annotation.Resource;
 import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +29,7 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -102,6 +105,20 @@ public class StockXService {
     /** 上架校验轮询：最多查 18 次、每次间隔 5 秒(约 90s，全部落定即提前结束)，等待 StockX 异步创建 listing 落地 */
     private static final int CREATE_VERIFY_MAX_ATTEMPTS = 18;
     private static final long CREATE_VERIFY_DELAY_MS = 5000;
+
+    /**
+     * 上架校验后台线程池：提交上架(QUEUED)后不阻塞搜索上架主任务，由后台线程按 variantID 异步回查并回填结果。
+     * 有界(3线程+大队列)：校验读请求仍走账号级 1qps 限流，限制并发数避免把搜索读饿死；队列满时回退到调用线程执行(背压)。
+     */
+    private final ExecutorService listingVerifyExecutor = new ThreadPoolExecutor(
+            3, 3, 0L, TimeUnit.MILLISECONDS,
+            new LinkedBlockingQueue<>(2000),
+            r -> {
+                Thread t = new Thread(r, "StockX-ListVerify");
+                t.setDaemon(true);
+                return t;
+            },
+            new ThreadPoolExecutor.CallerRunsPolicy());
 
     /**
      * 提交压价后按 batchId 回查校验该批是否真正同步（synced），把每条明细从"已提交"升级为真实结果。
@@ -822,23 +839,40 @@ public class StockXService {
             log.error("[{}] 批量上架失败, 共{}条, 原因:{}", account.getName(), items.size(), reason);
             return;
         }
-        // 不再等 REST 批次完成：GraphQL 创建的 batchId 在官方 REST 接口查不到，queryListing 永远 timeout。
-        // 直接按 variantID 回查真实挂单状态，verifyCreateBatch 内部自带重试等待异步落地。
-        verifyCreateBatch(batchId, account, items, variantToTaskItemId);
+        // 提交成功(QUEUED)：先把这批全部标"上架处理中"，再丢给后台线程异步按 variantID 回查回填，
+        // 主任务不阻塞、继续往下搜索上架。(不再等 REST 批次完成——GraphQL 的 batchId 在官方 REST 查不到、永远 timeout)
+        List<String> variantsSnapshot = new ArrayList<>(items.size());
+        Map<String, Long> idSnapshot = new HashMap<>();
+        for (Pair<String, Integer> item : items) {
+            String variantId = item.getKey();
+            Long taskItemId = variantToTaskItemId.get(variantId);
+            if (taskItemId != null) {
+                variantsSnapshot.add(variantId);
+                idSnapshot.put(variantId, taskItemId);
+                updateTaskItemResult(taskItemId, "上架处理中");
+            }
+        }
+        if (variantsSnapshot.isEmpty()) {
+            return;
+        }
+        String finalBatchId = batchId;
+        listingVerifyExecutor.submit(() -> {
+            try {
+                verifyCreateBatchAsync(finalBatchId, account, variantsSnapshot, idSnapshot);
+            } catch (Exception e) {
+                log.error("[{}] 异步上架校验异常, batchId:{}", account.getName(), finalBatchId, e);
+            }
+        });
     }
 
     /**
-     * 提交上架后回查校验是否真正上架（按 variantID 查当前挂单，不再按 batchId 过滤）。
+     * 后台异步校验上架结果（按 variantID 查当前挂单，不再按 batchId 过滤）。运行在 listingVerifyExecutor 线程上，不阻塞主任务。
      * <p>已实测：SellerListings(batchId) 是临时视图、异步落地慢且会随时间衰减，按 batchId 会把"还没落地"
      * 误判成失败（曾出现已 ACTIVE 的 listing 被标"上架失败"）；按 variantID 查的是该 variant 的真实挂单。
-     * <p>分类：synced/ACTIVE→已上架；node 带 errorCode→上架失败:原因；查询失败或暂未落地→上架处理中（不误判失败）。
+     * <p>分类：synced/ACTIVE→已上架；node 带 errorCode→上架失败:原因；查询失败或暂未落地→保持"上架处理中"（不误判失败）。
      */
-    private void verifyCreateBatch(String batchId, StockXAccount account,
-                                   List<Pair<String, Integer>> items, Map<String, Long> variantToTaskItemId) {
-        List<String> expectVariants = new ArrayList<>();
-        for (Pair<String, Integer> item : items) {
-            expectVariants.add(item.getKey());
-        }
+    private void verifyCreateBatchAsync(String batchId, StockXAccount account,
+                                        List<String> expectVariants, Map<String, Long> variantToTaskItemId) {
         Map<String, JSONObject> byVariant = new HashMap<>();
         boolean everRead = false;
         for (int attempt = 1; attempt <= CREATE_VERIFY_MAX_ATTEMPTS; attempt++) {
@@ -867,38 +901,24 @@ public class StockXService {
         }
 
         int ok = 0, fail = 0, pending = 0;
-        for (Pair<String, Integer> item : items) {
-            Long taskItemId = variantToTaskItemId.get(item.getKey());
+        for (String variantId : expectVariants) {
+            Long taskItemId = variantToTaskItemId.get(variantId);
             if (taskItemId == null) {
                 continue;
             }
-            JSONObject node = byVariant.get(item.getKey());
-            String r;
-            if (!everRead) {
-                r = "上架处理中"; // 校验查询始终失败，无法判定，不误判失败
+            String r = everRead ? resolveListingResult(byVariant.get(variantId)) : null;
+            if (r == null) {
+                r = "上架处理中"; // 查询失败 / 暂未落地：不误判失败，保持处理中(后台对账会继续重查)
                 pending++;
-            } else if (node == null) {
-                r = "上架处理中"; // 暂未查到该 variant 挂单：异步还没落地，按"处理中"而非失败
-                pending++;
-            } else if (isListingActive(node)) {
-                r = "已上架";
+            } else if ("已上架".equals(r)) {
                 ok++;
             } else {
-                JSONObject lastOp = node.getJSONObject("lastOperation");
-                String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
-                if (errCode != null) {
-                    String msg = lastOp.getString("displayMessage");
-                    r = "上架失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
-                    fail++;
-                } else {
-                    r = "上架处理中"; // 已落地但尚未生效、也无错误码：继续算处理中
-                    pending++;
-                }
+                fail++;
             }
             updateTaskItemResult(taskItemId, r);
         }
-        log.info("[{}] 批量上架校验完成{}条, batchId:{}, 已上架:{}, 失败:{}, 处理中:{}",
-                account.getName(), items.size(), batchId, ok, fail, pending);
+        log.info("[{}] 异步上架校验完成{}条, batchId:{}, 已上架:{}, 失败:{}, 处理中:{}",
+                account.getName(), expectVariants.size(), batchId, ok, fail, pending);
     }
 
     /** listing 已生效：synced=true 或 status=ACTIVE */
@@ -918,6 +938,97 @@ public class StockXService {
         }
         JSONObject lastOp = node.getJSONObject("lastOperation");
         return lastOp != null && lastOp.getString("errorCode") != null;
+    }
+
+    /**
+     * 根据挂单 node 判定终态结果：已上架 / 上架失败:原因。
+     * 返回 null = 未落定(node 为空或还在同步、无错误码)，调用方应保持"上架处理中"等待下次重查。
+     */
+    private String resolveListingResult(JSONObject node) {
+        if (node == null) {
+            return null;
+        }
+        if (isListingActive(node)) {
+            return "已上架";
+        }
+        JSONObject lastOp = node.getJSONObject("lastOperation");
+        String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+        if (errCode != null) {
+            String msg = lastOp.getString("displayMessage");
+            return "上架失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
+        }
+        return null;
+    }
+
+    /** 对账：只重查 "上架处理中" 超过该时长的条目(给同步内联校验留出时间) */
+    private static final long RECONCILE_MIN_AGE_MS = 3 * 60 * 1000;
+    /** "上架处理中" 超过该时长仍查不到挂单，判为终态失败，避免永远卡处理中 */
+    private static final long RECONCILE_TIMEOUT_MS = 30 * 60 * 1000;
+    private static final int RECONCILE_BATCH_LIMIT = 500;
+
+    /**
+     * 对账"上架处理中"：按 variantID 重查当前挂单，回填 已上架/上架失败:原因；超过 {@link #RECONCILE_TIMEOUT_MS}
+     * 仍查不到挂单则判终态失败，避免永远卡处理中。<b>只读不重发</b>，无限流螺旋风险；
+     * 同时补掉"进程重启导致后台异步校验丢失、条目永久卡处理中"的缺口。由 PriceScheduler 定时调用。
+     */
+    public void reconcilePendingListings() {
+        long now = System.currentTimeMillis();
+        Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
+        List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
+                .eq("operate_result", "上架处理中")
+                .lt("operate_time", ageCutoff)
+                .orderByAsc("operate_time")
+                .last("LIMIT " + RECONCILE_BATCH_LIMIT));
+        if (pending.isEmpty()) {
+            return;
+        }
+        // taskId -> accountName
+        Set<Long> taskIds = pending.stream().map(TaskItemDO::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> taskAccount = new HashMap<>();
+        if (!taskIds.isEmpty()) {
+            for (TaskDO t : taskMapper.selectBatchIds(taskIds)) {
+                taskAccount.put(t.getId(), t.getAccountName());
+            }
+        }
+        // 按账号分组(校验读走账号级 1qps 限流)
+        Map<String, List<TaskItemDO>> byAccount = new HashMap<>();
+        for (TaskItemDO it : pending) {
+            String acc = taskAccount.get(it.getTaskId());
+            if (acc != null && it.getProductId() != null) {
+                byAccount.computeIfAbsent(acc, k -> new ArrayList<>()).add(it);
+            }
+        }
+        int total = 0, done = 0, failed = 0, timeout = 0;
+        for (Map.Entry<String, List<TaskItemDO>> e : byAccount.entrySet()) {
+            StockXAccount account = StockXConfig.getAccount(e.getKey());
+            if (account == null) {
+                continue;
+            }
+            List<TaskItemDO> items = e.getValue();
+            for (int i = 0; i < items.size(); i += 100) {
+                List<TaskItemDO> chunk = items.subList(i, Math.min(i + 100, items.size()));
+                List<String> variantIds = chunk.stream().map(TaskItemDO::getProductId).collect(Collectors.toList());
+                Map<String, JSONObject> states = stockXClient.verifyListingsByVariantIds(variantIds, account);
+                if (states == null) {
+                    continue; // 查询失败，本轮跳过，下轮再试
+                }
+                for (TaskItemDO it : chunk) {
+                    total++;
+                    String r = resolveListingResult(states.get(it.getProductId()));
+                    if (r != null) {
+                        updateTaskItemResult(it.getId(), r);
+                        if ("已上架".equals(r)) done++; else failed++;
+                    } else if (it.getOperateTime() != null && it.getOperateTime().getTime() < now - RECONCILE_TIMEOUT_MS) {
+                        updateTaskItemResult(it.getId(), "上架失败:超时未确认生成挂单");
+                        timeout++;
+                    }
+                    // 否则保持"上架处理中"(不改 operate_time，保留 age 计时)，下轮再查
+                }
+            }
+        }
+        if (total > 0) {
+            log.info("上架对账完成: 扫描{}, 已上架{}, 失败{}, 超时判失败{}", total, done, failed, timeout);
+        }
     }
 
     private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
