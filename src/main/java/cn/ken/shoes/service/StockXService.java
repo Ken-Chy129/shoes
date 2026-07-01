@@ -528,8 +528,8 @@ public class StockXService {
 
             // ===== 批量下架 =====
             if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                // StockX 每批上限 100，分批下架；每批各自回查校验，结果汇总
-                int delBatchLimit = 100;
+                // StockX 每批上限 100，此处按 50/批分批下架；每批各自回查校验，结果汇总
+                int delBatchLimit = 50;
                 Map<String, String> delResult = new HashMap<>();
                 for (int i = 0; i < toDelete.size(); i += delBatchLimit) {
                     if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
