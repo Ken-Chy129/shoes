@@ -38,6 +38,16 @@ public class StockXRateLimitGuard {
     /** 冷却/取消等待时的分片粒度，保证取消与关闭能及时响应 */
     private static final long WAIT_SLICE_MS = 5000;
 
+    /**
+     * 限流重试等待梯度(ms)：首次秒级快重试抓瞬时抖动；其后按 StockX 5分钟窗口尺度递增，末位封顶重复。
+     * Batch 配额是分钟级窗口(约500件/5min)，秒级重试对它无意义，故第2次起直接进分钟级探测。
+     */
+    private static final long[] RETRY_LADDER_MS = {5_000L, 30_000L, 60_000L, 120_000L, 300_000L};
+    /** ≥此值视为"分钟级窗口等待"：广播账号冷却并更新UI提示；小于则为秒级快重试(仅日志)。 */
+    private static final long WINDOW_SCALE_WAIT_MS = 30_000L;
+    /** 单次调用累计等待预算，超过仍限流则终止本轮(进度保留)，约15分钟。成功即重置(下次调用从梯度0重来)。 */
+    private static final long MAX_TOTAL_WAIT_MS = 15 * 60 * 1000L;
+
     /** 账号 -> 冷却截止时间戳（ms）。某账号在此之前的调用应等待/快速失败。 */
     private static final ConcurrentHashMap<String, Long> COOLDOWN_UNTIL = new ConcurrentHashMap<>();
     /** 账号 -> 连续命中 429 次数（成功即清零，仅用于观测） */
@@ -89,7 +99,6 @@ public class StockXRateLimitGuard {
         final Supplier<Boolean> cancelled;
         final Consumer<String> onCooldown;
         final Runnable onRecover;
-        int cyclesUsed = 0;
         boolean coolingNotified = false;
 
         TaskContext(RateLimitPolicy policy, Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
@@ -151,7 +160,8 @@ public class StockXRateLimitGuard {
         // 前置：账号已被（可能是其它线程）置于冷却中
         awaitOrThrowIfCoolingDown(key, accountName, ctx, policy);
 
-        int attempt = 0;
+        int hit = 0;              // 本次调用已命中限流的次数，决定退避梯度
+        long totalWaitMs = 0;     // 本次调用累计等待，超预算则终止本轮(进度保留)
         boolean firstHitHandled = false;
         while (true) {
             String raw = httpCall.get();
@@ -161,7 +171,7 @@ public class StockXRateLimitGuard {
             if (!isRateLimited(raw)) {
                 onSuccess(key);
                 if (ctx != null) {
-                    // 从冷却恢复(此前提示过冷却)：清除任务的"冷却中"提示
+                    // 成功即视为恢复：清除"冷却中"提示；下次调用从梯度0重来，即"成功即重置"
                     if (ctx.coolingNotified && ctx.onRecover != null) {
                         try {
                             ctx.onRecover.run();
@@ -170,9 +180,6 @@ public class StockXRateLimitGuard {
                         }
                     }
                     ctx.coolingNotified = false;
-                    // 成功即清零冷却轮次：cyclesUsed 只统计"连续未恢复"的冷却，
-                    // 避免长任务因周期性(可恢复)限流累计到上限被误杀。
-                    ctx.cyclesUsed = 0;
                 }
                 return raw;
             }
@@ -192,33 +199,39 @@ public class StockXRateLimitGuard {
                     }
                 }
             }
-            if (attempt < policy.maxRetries) {
-                attempt++;
-                long backoff = backoffMs(policy, attempt);
-                log.warn("StockX限流[{}]: 第{}次短退避重试，等待{}ms (连续{}次)", key, attempt, backoff, consecutive);
-                sleepCancellable(backoff, ctx);
-                continue;
+
+            long waitMs = RETRY_LADDER_MS[Math.min(hit, RETRY_LADDER_MS.length - 1)];
+
+            if (ctx == null) {
+                // 同步调用(无任务上下文，如前端搜索)：仅一次秒级快重试抓瞬时抖动，仍限则快速失败，不做分钟级等待
+                if (hit >= 1) {
+                    throw new StockXRateLimitException(accountName, waitMs);
+                }
+            } else if (totalWaitMs + waitMs > MAX_TOTAL_WAIT_MS) {
+                // 任务线程：累计等待超预算仍限流，判定为持续限流(疑似撞当日总配额)，终止本轮
+                throw new StockXRateLimitException(accountName, waitMs,
+                        "StockX持续限流，累计等待超" + (MAX_TOTAL_WAIT_MS / 60000) + "分钟仍失败，任务终止(进度已保留)");
             }
 
-            // 短退避耗尽 -> 长冷却
-            markCooldown(key, policy.cooldownMs);
-            if (ctx == null) {
-                // 同步调用：快速失败
-                throw new StockXRateLimitException(accountName, policy.cooldownMs);
+            if (waitMs >= WINDOW_SCALE_WAIT_MS) {
+                // 分钟级窗口等待：广播账号级冷却(让同账号其它调用也退避) + 更新任务"冷却中"提示
+                markCooldown(key, waitMs);
+                if (ctx != null) {
+                    String msg = String.format("StockX限流冷却中，约%d分钟后自动重试 (已累计等待%d秒)",
+                            Math.max(1, waitMs / 60000), totalWaitMs / 1000);
+                    log.warn("[{}] {}", key, msg);
+                    notifyCooldown(ctx, msg);
+                }
+            } else {
+                // 秒级快重试：仅记日志，不更新UI提示
+                log.warn("StockX限流[{}]: {}秒后快速重试 (连续{}次)", key, waitMs / 1000, consecutive);
             }
-            ctx.cyclesUsed++;
-            if (ctx.cyclesUsed > policy.maxCooldownCycles) {
-                throw new StockXRateLimitException(accountName, policy.cooldownMs,
-                        "StockX持续限流，已冷却重试" + policy.maxCooldownCycles + "次仍失败，任务终止(进度已保留)");
-            }
-            String msg = String.format("StockX限流冷却中，约%d分钟后自动重试 (第%d/%d次连续冷却)",
-                    Math.max(1, policy.cooldownMs / 60000), ctx.cyclesUsed, policy.maxCooldownCycles);
-            log.warn("[{}] {}", key, msg);
-            notifyCooldown(ctx, msg);
-            if (!awaitCooldownOrCancel(policy.cooldownMs, ctx.cancelled)) {
+
+            if (!awaitCooldownOrCancel(waitMs, ctx != null ? ctx.cancelled : null)) {
                 throw new TaskCancelledException();
             }
-            attempt = 0; // 冷却结束，原地重试
+            totalWaitMs += waitMs;
+            hit++;
         }
     }
 
@@ -317,20 +330,6 @@ public class StockXRateLimitGuard {
             }
         }
         return true;
-    }
-
-    private static long backoffMs(RateLimitPolicy policy, int attempt) {
-        long base = policy.backoffBaseMs * (1L << Math.min(attempt - 1, 16));
-        long capped = Math.min(base, policy.backoffMaxMs);
-        long jitter = (long) (capped * 0.2 * Math.random());
-        return capped + jitter;
-    }
-
-    private static void sleepCancellable(long ms, TaskContext ctx) {
-        Supplier<Boolean> cancelled = ctx != null ? ctx.cancelled : null;
-        if (!awaitCooldownOrCancel(ms, cancelled)) {
-            throw new TaskCancelledException();
-        }
     }
 
     private static void notifyCooldown(TaskContext ctx, String message) {
