@@ -143,7 +143,9 @@ const SettingPage = () => {
     const handleAccountSubmit = () => {
         accountForm.validateFields().then(values => {
             if (editingAccount) {
-                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.name}`, values, {
+                // 合并原账号字段：autoRefresh 等无对应 Form.Item 的字段不在 values 里，
+                // 直接 PUT values 会把它们丢成默认值(如自动刷新被清成"手动")，故先展开原对象再覆盖。
+                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.name}`, {...editingAccount, ...values}, {
                     onSuccess: () => {
                         message.success('已更新');
                         setAccountModalVisible(false);
