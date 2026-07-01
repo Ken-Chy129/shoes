@@ -50,8 +50,8 @@ public class StockXAccount {
     /** 短退避封顶时长(ms) */
     private long rateLimitBackoffMaxMs = 60000;
 
-    /** 短退避耗尽后的长冷却时长(ms)，默认1小时 */
-    private long rateLimitCooldownMs = 3600000;
+    /** 短退避耗尽后的长冷却时长(ms)，默认5分钟(对齐StockX的5分钟窗口限流，等窗口整体复位再重试) */
+    private long rateLimitCooldownMs = 300000;
 
     /** 长冷却循环上限，超过仍限流则任务失败(保留进度)，默认3次(约3小时) */
     private int maxCooldownCycles = 3;

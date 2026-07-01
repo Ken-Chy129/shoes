@@ -14,7 +14,7 @@ public class StockXConfig {
     public static final int DEFAULT_RATE_LIMIT_MAX_RETRIES = 5;
     public static final long DEFAULT_RATE_LIMIT_BACKOFF_BASE_MS = 2000;
     public static final long DEFAULT_RATE_LIMIT_BACKOFF_MAX_MS = 60000;
-    public static final long DEFAULT_RATE_LIMIT_COOLDOWN_MS = 3600000;
+    public static final long DEFAULT_RATE_LIMIT_COOLDOWN_MS = 300000;
     public static final int DEFAULT_MAX_COOLDOWN_CYCLES = 3;
 
     private static final List<StockXAccount> ACCOUNTS = new CopyOnWriteArrayList<>();

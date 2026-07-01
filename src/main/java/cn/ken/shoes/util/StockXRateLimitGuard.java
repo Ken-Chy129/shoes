@@ -125,6 +125,15 @@ public class StockXRateLimitGuard {
      * @param fallbackPolicy 无任务上下文时使用的策略（通常由账号或全局默认推导）
      */
     public static String execute(Supplier<String> httpCall, String accountName, RateLimitPolicy fallbackPolicy) {
+        return execute(httpCall, accountName, fallbackPolicy, null, null);
+    }
+
+    /**
+     * @param label            调用标识(如 GraphQL operationName)，仅用于限流日志定位到底是哪个操作被限
+     * @param onFirstRateLimit 本次调用首次命中限流时触发一次的回调(如立即用 REST 通道探测)，可为 null
+     */
+    public static String execute(Supplier<String> httpCall, String accountName, RateLimitPolicy fallbackPolicy,
+                                 String label, Runnable onFirstRateLimit) {
         String key = accountName != null ? accountName : GLOBAL_KEY;
         TaskContext ctx = TASK_CONTEXT.get();
         RateLimitPolicy policy = ctx != null ? ctx.policy : fallbackPolicy;
@@ -133,6 +142,7 @@ public class StockXRateLimitGuard {
         awaitOrThrowIfCoolingDown(key, accountName, ctx, policy);
 
         int attempt = 0;
+        boolean firstHitHandled = false;
         while (true) {
             String raw = httpCall.get();
             if (raw == null) {
@@ -140,11 +150,29 @@ public class StockXRateLimitGuard {
             }
             if (!isRateLimited(raw)) {
                 onSuccess(key);
+                // 成功即清零冷却轮次：cyclesUsed 只统计"连续未恢复"的冷却，
+                // 避免长任务因周期性(可恢复)限流累计到上限被误杀。
+                if (ctx != null) {
+                    ctx.cyclesUsed = 0;
+                }
                 return raw;
             }
 
             // 命中限流
             int consecutive = incrConsecutive(key);
+            if (!firstHitHandled) {
+                firstHitHandled = true;
+                // 打印原始信号，便于事后定位到底是哪种限流(429节流 / Batch配额 / TooMany)、哪个操作触发
+                log.warn("StockX限流命中[{}] op={} signal={} raw={}", key, label, matchedSignal(raw),
+                        raw.substring(0, Math.min(300, raw.length())));
+                if (onFirstRateLimit != null) {
+                    try {
+                        onFirstRateLimit.run();
+                    } catch (Exception e) {
+                        log.warn("[{}] onFirstRateLimit 回调异常: {}", key, e.getMessage());
+                    }
+                }
+            }
             if (attempt < policy.maxRetries) {
                 attempt++;
                 long backoff = backoffMs(policy, attempt);
@@ -164,7 +192,7 @@ public class StockXRateLimitGuard {
                 throw new StockXRateLimitException(accountName, policy.cooldownMs,
                         "StockX持续限流，已冷却重试" + policy.maxCooldownCycles + "次仍失败，任务终止(进度已保留)");
             }
-            String msg = String.format("StockX限流冷却中，约%d分钟后自动重试 (第%d/%d次冷却)",
+            String msg = String.format("StockX限流冷却中，约%d分钟后自动重试 (第%d/%d次连续冷却)",
                     Math.max(1, policy.cooldownMs / 60000), ctx.cyclesUsed, policy.maxCooldownCycles);
             log.warn("[{}] {}", key, msg);
             notifyCooldown(ctx, msg);
@@ -184,6 +212,23 @@ public class StockXRateLimitGuard {
         return rawBody.contains("\"httpStatusCode\":429")
                 || rawBody.contains("Too Many Requests")
                 || rawBody.contains("Batch usage limit exceeded");
+    }
+
+    /** 返回命中的限流信号类型，仅用于日志区分 429节流 / Batch配额 / TooMany。 */
+    public static String matchedSignal(String rawBody) {
+        if (rawBody == null) {
+            return "none";
+        }
+        if (rawBody.contains("\"httpStatusCode\":429")) {
+            return "429";
+        }
+        if (rawBody.contains("Too Many Requests")) {
+            return "TooManyRequests";
+        }
+        if (rawBody.contains("Batch usage limit exceeded")) {
+            return "BatchUsageLimit";
+        }
+        return "other";
     }
 
     // ==================== 冷却状态（账号级共享） ====================
