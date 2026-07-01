@@ -191,28 +191,39 @@ public class StockXClient {
     private static final long DELETE_VERIFY_DELAY_MS = 2000;
 
     /**
-     * 按 batchId 回查校验批量下架是否真正生效。
-     * <p>Ground truth(已实测)：下架成功的 listing 会从 SellerListings(batchId) 结果中<b>消失</b>；
-     * 仍在结果里且 status=ACTIVE 说明没删掉。
+     * 按 listingId 回查校验批量下架是否真正生效。
+     * <p>Ground truth(已实测)：删除成功的 listing 会以 <b>status=DELETED</b> 返回(或查不到)；
+     * 仍是 status=ACTIVE 说明没删掉。改用 listingId 精确查当前状态(不再用会衰减的 batchId 视图，
+     * 那会把"还没落地"误判成"已删除")，与官方 Pro 网页判定一致。
      *
+     * @param batchId 仅用于日志定位(不再参与查询)
      * @param cancelled 取消判定（可空），轮询期间响应取消
      * @return Map&lt;listingId, 结果文案&gt;：下架成功 / 下架失败 / 下架失败:{原因} / 下架未确认
      */
     public Map<String, String> verifyDeleteBatch(String batchId, List<String> listingIds, StockXAccount account,
                                                  java.util.function.Supplier<Boolean> cancelled) {
         Set<String> pending = new HashSet<>(listingIds);
-        Map<String, JSONObject> states = null; // 最近一次"成功读到"的结果；null 表示从未读到
+        Map<String, JSONObject> states = new HashMap<>(); // 累积每条最近一次读到的 node
+        boolean everRead = false;
+        int attemptsUsed = 0, queryFails = 0;
         for (int attempt = 1; attempt <= DELETE_VERIFY_MAX_ATTEMPTS && !pending.isEmpty(); attempt++) {
             if (cancelled != null && Boolean.TRUE.equals(cancelled.get())) {
                 break;
             }
-            Map<String, JSONObject> current = verifyBatchListings(batchId, account);
+            attemptsUsed = attempt;
+            Map<String, JSONObject> current = verifyListingsByListingIds(new ArrayList<>(pending), account);
             if (current == null) {
                 // 校验查询失败，本轮无法判定：不可当作"已删除"，重试
-                log.warn("verifyDeleteBatch 本轮查询失败, account:{}, batchId:{}, attempt:{}", account.getName(), batchId, attempt);
+                queryFails++;
+                log.warn("verifyDeleteBatch 本轮查询失败, account:{}, batchId:{}, attempt:{}, 待确认{}条", account.getName(), batchId, attempt, pending.size());
             } else {
-                states = current;
-                pending.removeIf(id -> !current.containsKey(id)); // 已从结果消失 = 已删除
+                everRead = true;
+                states.putAll(current);
+                // 已删除 = 查不到 或 status 已非 ACTIVE(DELETED/CANCELED/INACTIVE)
+                pending.removeIf(id -> {
+                    JSONObject node = current.get(id);
+                    return node == null || !"ACTIVE".equalsIgnoreCase(node.getString("status"));
+                });
             }
             if (pending.isEmpty() || attempt == DELETE_VERIFY_MAX_ATTEMPTS) {
                 break;
@@ -235,16 +246,24 @@ public class StockXClient {
         Map<String, String> result = new HashMap<>();
         int ok = 0, fail = 0, unconfirmed = 0;
         for (String id : listingIds) {
-            if (states == null) {
+            if (!everRead) {
                 // 从未成功读到校验结果，不能误判成功/失败
                 result.put(id, "下架未确认");
                 unconfirmed++;
                 continue;
             }
+            if (!pending.contains(id)) {
+                // 轮询中已确认删除(某轮查不到 或 status 已非 ACTIVE)。以 pending 归属为准，
+                // 不再读 states——states 可能残留更早一轮的 ACTIVE 快照，会把已删的误判成"仍在架"。
+                result.put(id, "下架成功");
+                ok++;
+                continue;
+            }
+            // 仍在 pending = 多轮后仍是 ACTIVE(或该条始终没被单独读到)
             JSONObject node = states.get(id);
             if (node == null) {
-                result.put(id, "下架成功"); // 已从 batch 结果消失
-                ok++;
+                result.put(id, "下架未确认");
+                unconfirmed++;
                 continue;
             }
             JSONObject lastOp = node.getJSONObject("lastOperation");
@@ -261,8 +280,8 @@ public class StockXClient {
                 unconfirmed++;
             }
         }
-        log.info("verifyDeleteBatch 完成, account:{}, batchId:{}, 总数:{}, 下架成功:{}, 失败:{}, 未确认:{}",
-                account.getName(), batchId, listingIds.size(), ok, fail, unconfirmed);
+        log.info("verifyDeleteBatch 完成, account:{}, batchId:{}, 总数:{}, 用了{}/{}轮(查询失败{}次), 下架成功:{}, 失败:{}, 未确认:{}",
+                account.getName(), batchId, listingIds.size(), attemptsUsed, DELETE_VERIFY_MAX_ATTEMPTS, queryFails, ok, fail, unconfirmed);
         return result;
     }
 
@@ -973,9 +992,12 @@ public class StockXClient {
     }
 
     private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited, Runnable onFirstRateLimit) {
-        LimiterHelper.limitStockxGraphql(accountName);
         String rawResult;
         if (rateLimited) {
+            // 只有批量写(压价/上架/下架)才占用 GraphQL 令牌并走 429 冷却 Guard。
+            // 读(校验/对账/搜索)不占令牌：已实测 StockX 不对读计 Batch 配额、也不 429 读，
+            // 让读与写抢同一令牌桶只会互相拖慢(校验读被写饿死 → 大量"未确认")。
+            LimiterHelper.limitStockxGraphql(accountName);
             String label = null;
             try {
                 label = JSON.parseObject(body).getString("operationName");
@@ -1103,7 +1125,7 @@ public class StockXClient {
 
     /**
      * 批量压价(GraphQL)，返回 StockX 批次id(QUEUED)；失败返回 null。
-     * 注意：返回非null只代表"已受理"，是否真正同步需用 {@link #verifyBatchListings} 按 batchId 回查。
+     * 注意：返回非null只代表"已受理"，是否真正同步需用 {@link #verifyListingsByListingIds} 按 listingId 回查。
      */
     public String batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
         LimiterHelper.limitStockxBatch(account.getName(), items.size());
@@ -1174,68 +1196,6 @@ public class StockXClient {
     }
 
     /**
-     * 按 StockX 批次id回查该批次涉及的 listing 当前状态，用于校验异步操作是否真正同步。
-     * 复用网页 Pro 的 SellerListings(filters.batchId) 查询。
-     *
-     * @return Map&lt;listingId, node&gt;，node 含 synced/status/amount/unsyncedAmount/lastOperation 等字段；查询失败返回空Map
-     */
-    public Map<String, JSONObject> verifyBatchListings(String batchId, StockXAccount account) {
-        Map<String, JSONObject> resultMap = new HashMap<>();
-        if (batchId == null || account == null) {
-            return resultMap;
-        }
-        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
-        JSONObject requestJson = new JSONObject(true);
-        requestJson.put("operationName", "SellerListings");
-        JSONObject variables = new JSONObject(true);
-        variables.put("skipGuidance", false);
-        variables.put("skipFlexEligible", true);
-        variables.put("country", country);
-        variables.put("market", country);
-        variables.put("currencyCode", "USD");
-        variables.put("pageSize", 100);
-        JSONObject filters = new JSONObject(true);
-        filters.put("batchId", Map.of("in", List.of(batchId)));
-        variables.put("filters", filters);
-        requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733");
-        extensions.put("persistedQuery", persistedQuery);
-        requestJson.put("extensions", extensions);
-
-        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
-        if (jsonObject == null) {
-            // 查询失败(网络/被拦截)，返回 null 表示"无法判定"，调用方不可据此当作"无此listing"
-            log.warn("verifyBatchListings 查询失败(响应为null), account:{}, batchId:{}", account.getName(), batchId);
-            return null;
-        }
-        JSONObject data = jsonObject.getJSONObject("data");
-        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
-        JSONObject sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
-        if (sellerListings == null) {
-            log.warn("verifyBatchListings 响应无 sellerListings(无法判定), account:{}, batchId:{}, resp:{}",
-                    account.getName(), batchId, jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
-            return null;
-        }
-        if (sellerListings.getJSONArray("edges") == null) {
-            return resultMap; // 有 sellerListings 但无 edges = 该批次下确实没有 listing（空结果，可信）
-        }
-        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
-            JSONObject node = edge.getJSONObject("node");
-            if (node == null) {
-                continue;
-            }
-            String id = node.getString("id");
-            if (id != null) {
-                resultMap.put(id, node);
-            }
-        }
-        return resultMap;
-    }
-
-    /**
      * 按 variantID 列表回查当前挂单状态（返回 Map 的 key = variantID）。
      * <p>相比按 batchId 过滤更可靠：SellerListings(batchId) 是临时视图，提交后异步落地慢且会随时间衰减
      * （已实测同一批 50 条提交后只逐渐出现、又陆续从该 batchId 视图消失），按 batchId 会把"还没落地"误判成失败；
@@ -1284,16 +1244,106 @@ public class StockXClient {
         if (sellerListings.getJSONArray("edges") == null) {
             return resultMap; // 有 sellerListings 但无 edges = 这些 variant 当前都无挂单（空结果，可信）
         }
+        // 同一 variant 可能同时返回多条挂单(历史 DELETED/INACTIVE/CANCELED + 新建 ACTIVE)，
+        // 且死挂单的 synced 也是 true。若简单"后写覆盖"，死挂单会盖掉真正的 ACTIVE 挂单，
+        // 导致上架校验/对账把已上架误判、或把死挂单当成结果。按 variant 归并时优先保留 ACTIVE，
+        // 都不是 ACTIVE 时保留 listingUpdated 最新的一条(以便 errorCode 等终态信息仍可被读到)。
         for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
             JSONObject node = edge.getJSONObject("node");
             if (node == null) {
                 continue;
             }
             String vid = node.getString("variantID");
-            if (vid != null) {
+            if (vid == null) {
+                continue;
+            }
+            JSONObject existing = resultMap.get(vid);
+            if (existing == null || preferListingNode(node, existing)) {
                 resultMap.put(vid, node);
             }
         }
+        return resultMap;
+    }
+
+    /** 归并同一 variant 的多条挂单：candidate 是否应取代 existing。ACTIVE 优先，其次取 listingUpdated 更晚者。 */
+    private static boolean preferListingNode(JSONObject candidate, JSONObject existing) {
+        boolean candActive = "ACTIVE".equalsIgnoreCase(candidate.getString("status"));
+        boolean existActive = "ACTIVE".equalsIgnoreCase(existing.getString("status"));
+        if (candActive != existActive) {
+            return candActive;
+        }
+        String c = candidate.getString("listingUpdated");
+        String e = existing.getString("listingUpdated");
+        if (c == null) {
+            return false;
+        }
+        if (e == null) {
+            return true;
+        }
+        return c.compareTo(e) > 0; // ISO-8601 时间串可直接字典序比较
+    }
+
+    /**
+     * 按 listingId 列表回查挂单当前真实状态（返回 Map 的 key = listingId）。
+     * <p>相比按 batchId 查(临时视图)：batchId、异步落地慢且会随时间衰减，
+     * 校验窗口内常查不到→误判"未确认"；而按 listingId 精确查这几条挂单的<b>当前真实状态</b>，
+     * 1:1 返回、不带该 variant 的历史挂单、不撞 pageSize，且已删除的挂单会以 status=DELETED 返回（权威）。
+     * 官方 Pro 网页判定挂单状态用的也是"查当前状态"，本方法与之对齐。
+     * <p>返回 null = 查询失败(无法判定)；空 Map = 这些 listing 当前都查不到。
+     */
+    public Map<String, JSONObject> verifyListingsByListingIds(List<String> listingIds, StockXAccount account) {
+        Map<String, JSONObject> resultMap = new HashMap<>();
+        if (CollectionUtils.isEmpty(listingIds) || account == null) {
+            return resultMap;
+        }
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        JSONObject requestJson = new JSONObject(true);
+        requestJson.put("operationName", "SellerListings");
+        JSONObject variables = new JSONObject(true);
+        variables.put("skipGuidance", false);
+        variables.put("skipFlexEligible", true);
+        variables.put("country", country);
+        variables.put("market", country);
+        variables.put("currencyCode", "USD");
+        variables.put("pageSize", 100);
+        JSONObject filters = new JSONObject(true);
+        filters.put("listingIds", Map.of("in", listingIds)); // 实测 StockX 该查询的过滤字段名为 listingIds
+        variables.put("filters", filters);
+        requestJson.put("variables", variables);
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+
+        JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        if (jsonObject == null) {
+            log.warn("verifyListingsByListingIds 查询失败(响应为null), account:{}, cnt:{}", account.getName(), listingIds.size());
+            return null;
+        }
+        JSONObject data = jsonObject.getJSONObject("data");
+        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+        JSONObject sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
+        if (sellerListings == null) {
+            log.warn("verifyListingsByListingIds 响应无 sellerListings(无法判定), account:{}, resp:{}",
+                    account.getName(), jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
+            return null;
+        }
+        if (sellerListings.getJSONArray("edges") == null) {
+            return resultMap; // 有 sellerListings 但无 edges = 这些 listing 当前都查不到（空结果，可信）
+        }
+        for (JSONObject edge : sellerListings.getJSONArray("edges").toJavaList(JSONObject.class)) {
+            JSONObject node = edge.getJSONObject("node");
+            if (node == null) {
+                continue;
+            }
+            String id = node.getString("id");
+            if (id != null) {
+                resultMap.put(id, node); // listingId 唯一，无需归并
+            }
+        }
+        log.info("verifyListingsByListingIds[{}] 查询完成: 请求{}条, 命中{}条", account.getName(), listingIds.size(), resultMap.size());
         return resultMap;
     }
 

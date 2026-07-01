@@ -47,7 +47,7 @@ public class TaskItemDO {
     private String listingId;
 
     /**
-     * 商品ID
+     * 变体ID(variantId)：字段名沿用历史命名 productId，但实际存的是 StockX variantId（具体尺码维度）
      */
     private String productId;
 
@@ -70,6 +70,13 @@ public class TaskItemDO {
      * 当前售价
      */
     private BigDecimal currentPrice;
+
+    /**
+     * 压价目标价：本轮提交给 StockX 的新报价。用于校验/对账时比对 amount==目标价，
+     * 判断 StockX 是否真按预期价生效(而非被下限钳制成别的价)。
+     */
+    @TableField("target_price")
+    private BigDecimal targetPrice;
 
     /**
      * 最低价

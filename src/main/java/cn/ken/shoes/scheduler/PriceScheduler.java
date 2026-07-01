@@ -33,4 +33,24 @@ public class PriceScheduler {
         }
     }
 
+    /** 对账"压价未确认/未同步/已提交"条目：按 listingId 重查回填最终结果，补内联窗口没确认到的成功/失败 */
+    @Scheduled(initialDelay = 5 * 60 * 1000, fixedDelay = 5 * 60 * 1000)
+    public void reconcilePendingPriceDown() {
+        try {
+            stockXService.reconcilePendingPriceDown();
+        } catch (Exception e) {
+            log.error("压价对账任务异常", e);
+        }
+    }
+
+    /** 对账"下架未确认"条目：按 listingId 重查回填 下架成功/失败(压价链路下架 + Excel 下架都覆盖) */
+    @Scheduled(initialDelay = 5 * 60 * 1000, fixedDelay = 5 * 60 * 1000)
+    public void reconcilePendingDelist() {
+        try {
+            stockXService.reconcilePendingDelist();
+        } catch (Exception e) {
+            log.error("下架对账任务异常", e);
+        }
+    }
+
 }

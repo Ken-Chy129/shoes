@@ -209,6 +209,7 @@ CREATE TABLE task_item
     size           VARCHAR(16)  NULL     COMMENT '尺码',
     eu_size        VARCHAR(16)  NULL     COMMENT 'EU码',
     current_price  DECIMAL(10,2) NULL    COMMENT '当前售价',
+    target_price   DECIMAL(10,2) NULL    COMMENT '压价目标价(本轮提交的新报价，用于校验/对账比对amount)',
     lowest_price   DECIMAL(10,2) NULL    COMMENT '最低价',
     poison_price   DECIMAL(10,2) NULL    COMMENT '毒价格',
     poison_35_price DECIMAL(10,2) NULL   COMMENT '毒3.5价格',

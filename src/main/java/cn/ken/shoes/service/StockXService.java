@@ -88,6 +88,11 @@ public class StockXService {
      * 更新 TaskItem 操作结果
      */
     private void updateTaskItemResult(Long taskItemId, String result) {
+        updateTaskItemResult(taskItemId, result, null);
+    }
+
+    /** 更新结果，并可选地记录压价目标价(targetPrice 非空时写入，供后续对账比对 amount==目标价) */
+    private void updateTaskItemResult(Long taskItemId, String result, Integer targetPrice) {
         if (taskItemId == null) {
             return;
         }
@@ -95,6 +100,9 @@ public class StockXService {
         updateItem.setId(taskItemId);
         updateItem.setOperateResult(result);
         updateItem.setOperateTime(new Date());
+        if (targetPrice != null) {
+            updateItem.setTargetPrice(BigDecimal.valueOf(targetPrice));
+        }
         taskItemMapper.updateById(updateItem);
     }
 
@@ -142,13 +150,21 @@ public class StockXService {
             pending.add(item.get("listingId"));
         }
         Map<String, JSONObject> states = new HashMap<>();
+        int attemptsUsed = 0;
+        int queryFails = 0;
         for (int attempt = 1; attempt <= PRICE_DOWN_VERIFY_MAX_ATTEMPTS && !pending.isEmpty(); attempt++) {
             if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType)) {
                 break;
             }
-            Map<String, JSONObject> current = stockXClient.verifyBatchListings(batchId, account);
+            attemptsUsed = attempt;
+            // 按 listingId 查当前真实状态(不再用会衰减的 batchId 视图)：只查还没确认的那几条
+            Map<String, JSONObject> current = stockXClient.verifyListingsByListingIds(new ArrayList<>(pending), account);
+            if (current == null) {
+                queryFails++;
+                log.warn("[{}] 压价校验第{}轮查询失败, batchId:{}, 待确认{}条", account.getName(), attempt, batchId, pending.size());
+            }
             if (current != null) {
-                states = current;
+                states.putAll(current);
                 pending.removeIf(id -> {
                     JSONObject node = current.get(id);
                     return node != null && Boolean.TRUE.equals(node.getBoolean("synced"));
@@ -173,34 +189,50 @@ public class StockXService {
             }
         }
 
-        int success = 0;
+        int success = 0, unsynced = 0, unconfirmed = 0, clampFail = 0, opFail = 0;
         for (Map<String, String> item : subBatch) {
             String listingId = item.get("listingId");
             Pair<Long, String> info = listingToTaskInfo.get(listingId);
             if (info == null) {
                 continue;
             }
+            Integer target = null;
+            try {
+                target = Integer.valueOf(info.getValue());
+            } catch (NumberFormatException ignore) {
+                // 目标价解析失败(理论上不会)：跳过 amount 比对，退回按 synced 判定
+            }
             JSONObject node = states.get(listingId);
             String resultText;
             if (node == null) {
                 resultText = "压价未确认";
-            } else if (Boolean.TRUE.equals(node.getBoolean("synced"))) {
-                // synced 为权威成功信号，优先判定
-                resultText = "压价成功";
-                success++;
+                unconfirmed++;
             } else {
                 JSONObject lastOp = node.getJSONObject("lastOperation");
                 String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+                Integer amount = node.getInteger("amount");
                 if (errCode != null) {
+                    // 真失败优先
                     String msg = lastOp.getString("displayMessage");
                     resultText = "压价失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
-                } else {
+                    opFail++;
+                } else if (!Boolean.TRUE.equals(node.getBoolean("synced"))) {
                     resultText = "压价未同步";
+                    unsynced++;
+                } else if (target != null && amount != null && !amount.equals(target)) {
+                    // 已 synced 但生效价 != 目标价：被 StockX 下限钳制/未按预期生效，不能算成功
+                    resultText = "压价失败:价格未生效(实际$" + amount + ")";
+                    clampFail++;
+                } else {
+                    resultText = "压价成功";
+                    success++;
                 }
             }
-            updateTaskItemResult(info.getKey(), resultText);
+            updateTaskItemResult(info.getKey(), resultText, target);
         }
-        log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 真实成功:{}", account.getName(), batchId, subBatch.size(), success);
+        log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 用了{}/{}轮(查询失败{}次), 成功:{}, 未同步:{}, 未确认:{}, 价格未生效:{}, 报错失败:{}",
+                account.getName(), batchId, subBatch.size(), attemptsUsed, PRICE_DOWN_VERIFY_MAX_ATTEMPTS, queryFails,
+                success, unsynced, unconfirmed, clampFail, opFail);
         return success;
     }
 
@@ -910,11 +942,14 @@ public class StockXService {
                 account.getName(), expectVariants.size(), batchId, ok, fail, pending);
     }
 
-    /** listing 已生效：synced=true 或 status=ACTIVE */
+    /**
+     * listing 是否真的在架。只认 status==ACTIVE。
+     * <p>不能用 synced==true 判活——已实测 DELETED / INACTIVE / CANCELED 的挂单 synced 同样是 true；
+     * synced 只表示"无挂起操作、已落定"，与死活正交。用 synced 判活会把死挂单误判成"已上架"
+     * （曾实测：某 variant 零活跃挂单、仅剩历史死挂单，却被判"已上架"的假阳性）。
+     */
     private boolean isListingActive(JSONObject node) {
-        return node != null
-                && (Boolean.TRUE.equals(node.getBoolean("synced"))
-                || "ACTIVE".equalsIgnoreCase(node.getString("status")));
+        return node != null && "ACTIVE".equalsIgnoreCase(node.getString("status"));
     }
 
     /** listing 已落定（已生效 或 带 errorCode 的真失败），可结束等待 */
@@ -1018,6 +1053,180 @@ public class StockXService {
         if (total > 0) {
             log.info("上架对账完成: 扫描{}, 已上架{}, 失败{}, 超时判失败{}", total, done, failed, timeout);
         }
+    }
+
+    /** 压价对账：需要重查的中间态(内联校验10s窗口没确认到的) */
+    private static final List<String> PRICE_DOWN_PENDING_RESULTS = List.of("压价未确认", "压价未同步", "压价已提交");
+
+    /**
+     * 对账"压价未确认/未同步/已提交"：内联校验只轮询约10s，StockX 的 batchId 视图异步落地慢且会衰减，
+     * 大批次里常有条目在窗口内还没进视图(未确认)或还没 synced(未同步)——其实几秒后就压成了，
+     * 但这些是终态、没有任何机制回头补确认，会持续堆积。这里按 listingId 重查当前挂单真实状态回填：
+     * status==ACTIVE 且 synced → 压价成功；带 errorCode → 压价失败；超过 {@link #RECONCILE_TIMEOUT_MS}
+     * 仍确认不到 → 判超时失败，避免永远卡中间态。<b>只读不重发</b>，无限流螺旋；同时补进程重启丢失校验的缺口。
+     * 由 PriceScheduler 定时调用。
+     */
+    public void reconcilePendingPriceDown() {
+        long now = System.currentTimeMillis();
+        Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
+        List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
+                .in("operate_result", PRICE_DOWN_PENDING_RESULTS)
+                .lt("operate_time", ageCutoff)
+                .orderByAsc("operate_time")
+                .last("LIMIT " + RECONCILE_BATCH_LIMIT));
+        if (pending.isEmpty()) {
+            return;
+        }
+        Set<Long> taskIds = pending.stream().map(TaskItemDO::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> taskAccount = new HashMap<>();
+        if (!taskIds.isEmpty()) {
+            for (TaskDO t : taskMapper.selectBatchIds(taskIds)) {
+                taskAccount.put(t.getId(), t.getAccountName());
+            }
+        }
+        Map<String, List<TaskItemDO>> byAccount = new HashMap<>();
+        for (TaskItemDO it : pending) {
+            String acc = taskAccount.get(it.getTaskId());
+            if (acc != null && it.getListingId() != null) {
+                byAccount.computeIfAbsent(acc, k -> new ArrayList<>()).add(it);
+            }
+        }
+        int total = 0, done = 0, failed = 0, timeout = 0;
+        for (Map.Entry<String, List<TaskItemDO>> e : byAccount.entrySet()) {
+            StockXAccount account = StockXConfig.getAccount(e.getKey());
+            if (account == null) {
+                continue;
+            }
+            List<TaskItemDO> items = e.getValue();
+            for (int i = 0; i < items.size(); i += 100) {
+                List<TaskItemDO> chunk = items.subList(i, Math.min(i + 100, items.size()));
+                List<String> listingIds = chunk.stream().map(TaskItemDO::getListingId).collect(Collectors.toList());
+                Map<String, JSONObject> states = stockXClient.verifyListingsByListingIds(listingIds, account);
+                if (states == null) {
+                    continue; // 查询失败，本轮跳过，下轮再试
+                }
+                for (TaskItemDO it : chunk) {
+                    total++;
+                    JSONObject node = states.get(it.getListingId());
+                    String r = resolvePriceDownResult(node);
+                    if (r != null) {
+                        updateTaskItemResult(it.getId(), r);
+                        if ("压价成功".equals(r)) done++; else failed++;
+                    } else if (it.getOperateTime() != null && it.getOperateTime().getTime() < now - RECONCILE_TIMEOUT_MS) {
+                        updateTaskItemResult(it.getId(), "压价失败:超时未确认同步");
+                        timeout++;
+                    }
+                    // 否则保持中间态(不改 operate_time，保留 age 计时)，下轮再查
+                }
+            }
+        }
+        if (total > 0) {
+            log.info("压价对账完成: 扫描{}, 压价成功{}, 失败{}, 超时判失败{}", total, done, failed, timeout);
+        }
+    }
+
+    /**
+     * 压价终态判定：压价成功 / 压价失败:原因 / null(未落定，调用方保持中间态或按超时处理)。
+     * 与上架一致——只认 status==ACTIVE，不用 synced 判活(死挂单 synced 也是 true)；
+     * 但价格是否落定需额外要求 synced==true(无挂起的更新操作)。
+     */
+    private String resolvePriceDownResult(JSONObject node) {
+        if (node == null) {
+            return null;
+        }
+        JSONObject lastOp = node.getJSONObject("lastOperation");
+        String errCode = lastOp != null ? lastOp.getString("errorCode") : null;
+        if (errCode != null) {
+            String msg = lastOp.getString("displayMessage");
+            return "压价失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
+        }
+        if ("ACTIVE".equalsIgnoreCase(node.getString("status")) && Boolean.TRUE.equals(node.getBoolean("synced"))) {
+            return "压价成功";
+        }
+        return null; // 仍在同步/未落定
+    }
+
+    /** 下架对账：需要重查的中间态 */
+    private static final List<String> DELIST_PENDING_RESULTS = List.of("下架未确认");
+
+    /**
+     * 对账"下架未确认"：内联校验短窗口内没确认到就留下"未确认"，且是终态无兜底。
+     * 这里按 listingId 重查该挂单当前真实状态：status!=ACTIVE 或查不到 → 下架成功；
+     * 仍 ACTIVE 且 synced 且超过 {@link #RECONCILE_TIMEOUT_MS} → 判"下架失败:仍在架"；否则下轮再查。
+     * <p>按 listingId 查(不用 variantID)，压价链路内下架与 Excel 下架都有 listingId，<b>两条路都能覆盖</b>。
+     * <b>只读不重发</b>。由 PriceScheduler 定时调用。
+     */
+    public void reconcilePendingDelist() {
+        long now = System.currentTimeMillis();
+        Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
+        List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
+                .in("operate_result", DELIST_PENDING_RESULTS)
+                .lt("operate_time", ageCutoff)
+                .orderByAsc("operate_time")
+                .last("LIMIT " + RECONCILE_BATCH_LIMIT));
+        if (pending.isEmpty()) {
+            return;
+        }
+        Set<Long> taskIds = pending.stream().map(TaskItemDO::getTaskId).filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> taskAccount = new HashMap<>();
+        if (!taskIds.isEmpty()) {
+            for (TaskDO t : taskMapper.selectBatchIds(taskIds)) {
+                taskAccount.put(t.getId(), t.getAccountName());
+            }
+        }
+        Map<String, List<TaskItemDO>> byAccount = new HashMap<>();
+        for (TaskItemDO it : pending) {
+            String acc = taskAccount.get(it.getTaskId());
+            if (acc != null && it.getListingId() != null) {
+                byAccount.computeIfAbsent(acc, k -> new ArrayList<>()).add(it);
+            }
+        }
+        int total = 0, done = 0, failed = 0;
+        for (Map.Entry<String, List<TaskItemDO>> e : byAccount.entrySet()) {
+            StockXAccount account = StockXConfig.getAccount(e.getKey());
+            if (account == null) {
+                continue;
+            }
+            List<TaskItemDO> items = e.getValue();
+            for (int i = 0; i < items.size(); i += 100) {
+                List<TaskItemDO> chunk = items.subList(i, Math.min(i + 100, items.size()));
+                List<String> listingIds = chunk.stream().map(TaskItemDO::getListingId).collect(Collectors.toList());
+                Map<String, JSONObject> states = stockXClient.verifyListingsByListingIds(listingIds, account);
+                if (states == null) {
+                    continue;
+                }
+                for (TaskItemDO it : chunk) {
+                    total++;
+                    boolean agedOut = it.getOperateTime() != null && it.getOperateTime().getTime() < now - RECONCILE_TIMEOUT_MS;
+                    String r = resolveDelistResult(states.get(it.getListingId()), it.getListingId(), agedOut);
+                    if (r != null) {
+                        updateTaskItemResult(it.getId(), r);
+                        if ("下架成功".equals(r)) done++; else failed++;
+                    }
+                }
+            }
+        }
+        if (total > 0) {
+            log.info("下架对账完成: 扫描{}, 下架成功{}, 失败{}", total, done, failed);
+        }
+    }
+
+    /**
+     * 下架终态判定：下架成功 / 下架失败:仍在架 / null(仍在处理，保持)。
+     * 该 listing 已不在活跃挂单中(查不到 / 非ACTIVE) → 下架成功；
+     * 仍 ACTIVE 且 synced 且已超时 → 下架失败:仍在架。
+     */
+    private String resolveDelistResult(JSONObject node, String listingId, boolean agedOut) {
+        boolean stillActive = node != null
+                && "ACTIVE".equalsIgnoreCase(node.getString("status"))
+                && listingId != null && listingId.equals(node.getString("id"));
+        if (!stillActive) {
+            return "下架成功";
+        }
+        if (Boolean.TRUE.equals(node.getBoolean("synced")) && agedOut) {
+            return "下架失败:仍在架";
+        }
+        return null; // 仍在处理，下轮再查
     }
 
     private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
