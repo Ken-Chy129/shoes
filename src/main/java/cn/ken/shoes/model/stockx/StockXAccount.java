@@ -40,19 +40,4 @@ public class StockXAccount {
 
     private long custodialInterval = 1800;
 
-    // ==================== 限流(429)处理 ====================
-    /** 命中限流后的秒级短退避重试次数 */
-    private int rateLimitMaxRetries = 5;
-
-    /** 短退避基准时长(ms)，指数增长 */
-    private long rateLimitBackoffBaseMs = 2000;
-
-    /** 短退避封顶时长(ms) */
-    private long rateLimitBackoffMaxMs = 60000;
-
-    /** 短退避耗尽后的长冷却时长(ms)，默认5分钟(对齐StockX的5分钟窗口限流，等窗口整体复位再重试) */
-    private long rateLimitCooldownMs = 300000;
-
-    /** 长冷却循环上限，超过仍限流则任务失败(保留进度)，默认3次(约3小时) */
-    private int maxCooldownCycles = 3;
 }

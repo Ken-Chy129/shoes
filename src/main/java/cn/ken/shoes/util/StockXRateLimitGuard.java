@@ -14,20 +14,20 @@ import java.util.function.Supplier;
 /**
  * StockX 限流（429）统一处理器。
  * <p>
- * 所有 StockX GraphQL 调用都经由 {@link #execute} 包裹：
+ * 所有 StockX GraphQL 写调用都经由 {@link #execute} 包裹：
  * <ol>
  *     <li><b>检测</b>：响应体出现 {@code "httpStatusCode":429} / "Too Many Requests" / "Batch usage limit exceeded" 即判定限流。</li>
- *     <li><b>短退避</b>：秒级指数退避重试（{@link RateLimitPolicy#maxRetries} 次），应对零星 429，对调用方透明。</li>
- *     <li><b>长冷却</b>：仍限流时——
+ *     <li><b>自适应退避</b>：命中限流后按梯度 {@code RETRY_LADDER_MS}（5s 快重试抓瞬时抖动，其后 30s→60s→120s→300s 封顶，
+ *     对齐 StockX 5 分钟窗口配额）在<em>同一调用点</em>重发同一批，因此 service 内部循环的中途进度得以保留。</li>
+ *     <li><b>预算/快失败</b>：
  *         <ul>
- *             <li>任务线程（{@link #beginTaskContext} 已注册上下文）：原地冷却等待 {@link RateLimitPolicy#cooldownMs}（可被取消打断），
- *             然后在<em>同一调用点</em>重试，因此 service 内部循环的中途进度得以保留；累计冷却超过
- *             {@link RateLimitPolicy#maxCooldownCycles} 次仍限流则抛出 {@link StockXRateLimitException}。</li>
- *             <li>同步线程（无上下文，如前端搜索）：立即抛 {@link StockXRateLimitException} 快速失败，不做长等待。</li>
+ *             <li>任务线程（{@link #beginTaskContext} 已注册上下文）：累计等待超 {@code MAX_TOTAL_WAIT_MS}（约15分钟）
+ *             仍限流则抛 {@link StockXRateLimitException}（进度已保留）；任一次成功即重置梯度。</li>
+ *             <li>同步线程（无上下文，如前端搜索）：仅 1 次秒级快重试后立即抛 {@link StockXRateLimitException} 快速失败，不做分钟级等待。</li>
  *         </ul>
  *     </li>
  * </ol>
- * 冷却状态按账号共享：某账号冷却期间，该账号的其它任务/调用也会感知（StockX 配额是账号级累积量）。
+ * 分钟级等待会广播账号级冷却：某账号等待期间，该账号的其它任务/调用也会感知（StockX 配额是账号级累积量）。
  *
  * @author Ken-Chy129
  */
@@ -55,54 +55,13 @@ public class StockXRateLimitGuard {
 
     private static final ThreadLocal<TaskContext> TASK_CONTEXT = new ThreadLocal<>();
 
-    // ==================== 限流策略 ====================
-
-    public static class RateLimitPolicy {
-        public final int maxRetries;
-        public final long backoffBaseMs;
-        public final long backoffMaxMs;
-        public final long cooldownMs;
-        public final int maxCooldownCycles;
-
-        public RateLimitPolicy(int maxRetries, long backoffBaseMs, long backoffMaxMs, long cooldownMs, int maxCooldownCycles) {
-            this.maxRetries = maxRetries;
-            this.backoffBaseMs = backoffBaseMs;
-            this.backoffMaxMs = backoffMaxMs;
-            this.cooldownMs = cooldownMs;
-            this.maxCooldownCycles = maxCooldownCycles;
-        }
-
-        public static RateLimitPolicy of(StockXAccount account) {
-            if (account == null) {
-                return global();
-            }
-            return new RateLimitPolicy(
-                    account.getRateLimitMaxRetries(),
-                    account.getRateLimitBackoffBaseMs(),
-                    account.getRateLimitBackoffMaxMs(),
-                    account.getRateLimitCooldownMs(),
-                    account.getMaxCooldownCycles());
-        }
-
-        public static RateLimitPolicy global() {
-            return new RateLimitPolicy(
-                    StockXConfig.DEFAULT_RATE_LIMIT_MAX_RETRIES,
-                    StockXConfig.DEFAULT_RATE_LIMIT_BACKOFF_BASE_MS,
-                    StockXConfig.DEFAULT_RATE_LIMIT_BACKOFF_MAX_MS,
-                    StockXConfig.DEFAULT_RATE_LIMIT_COOLDOWN_MS,
-                    StockXConfig.DEFAULT_MAX_COOLDOWN_CYCLES);
-        }
-    }
-
     private static class TaskContext {
-        final RateLimitPolicy policy;
         final Supplier<Boolean> cancelled;
         final Consumer<String> onCooldown;
         final Runnable onRecover;
         boolean coolingNotified = false;
 
-        TaskContext(RateLimitPolicy policy, Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
-            this.policy = policy;
+        TaskContext(Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
             this.cancelled = cancelled;
             this.onCooldown = onCooldown;
             this.onRecover = onRecover;
@@ -126,7 +85,8 @@ public class StockXRateLimitGuard {
      * @param onRecover 账号从限流冷却恢复(冷却提示后首次成功)时触发一次，用于清除任务的"冷却中"提示；可为 null
      */
     public static void beginTaskContext(StockXAccount account, Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
-        TASK_CONTEXT.set(new TaskContext(RateLimitPolicy.of(account), cancelled, onCooldown, onRecover));
+        // account 目前仅用于标识任务归属账号（重试梯度/预算已是全局常量，不再从账号读限流策略）
+        TASK_CONTEXT.set(new TaskContext(cancelled, onCooldown, onRecover));
     }
 
     public static void endTaskContext() {
@@ -143,22 +103,16 @@ public class StockXRateLimitGuard {
      * @param accountName    账号名（null 表示无账号的全局调用）
      * @param fallbackPolicy 无任务上下文时使用的策略（通常由账号或全局默认推导）
      */
-    public static String execute(Supplier<String> httpCall, String accountName, RateLimitPolicy fallbackPolicy) {
-        return execute(httpCall, accountName, fallbackPolicy, null, null);
-    }
-
     /**
      * @param label            调用标识(如 GraphQL operationName)，仅用于限流日志定位到底是哪个操作被限
      * @param onFirstRateLimit 本次调用首次命中限流时触发一次的回调(如立即用 REST 通道探测)，可为 null
      */
-    public static String execute(Supplier<String> httpCall, String accountName, RateLimitPolicy fallbackPolicy,
-                                 String label, Runnable onFirstRateLimit) {
+    public static String execute(Supplier<String> httpCall, String accountName, String label, Runnable onFirstRateLimit) {
         String key = accountName != null ? accountName : GLOBAL_KEY;
         TaskContext ctx = TASK_CONTEXT.get();
-        RateLimitPolicy policy = ctx != null ? ctx.policy : fallbackPolicy;
 
         // 前置：账号已被（可能是其它线程）置于冷却中
-        awaitOrThrowIfCoolingDown(key, accountName, ctx, policy);
+        awaitOrThrowIfCoolingDown(key, accountName, ctx);
 
         int hit = 0;              // 本次调用已命中限流的次数，决定退避梯度
         long totalWaitMs = 0;     // 本次调用累计等待，超预算则终止本轮(进度保留)
@@ -291,7 +245,7 @@ public class StockXRateLimitGuard {
 
     // ==================== 等待 / 退避 ====================
 
-    private static void awaitOrThrowIfCoolingDown(String key, String accountName, TaskContext ctx, RateLimitPolicy policy) {
+    private static void awaitOrThrowIfCoolingDown(String key, String accountName, TaskContext ctx) {
         long remaining = getCooldownRemainingMs(key);
         if (remaining <= 0) {
             return;

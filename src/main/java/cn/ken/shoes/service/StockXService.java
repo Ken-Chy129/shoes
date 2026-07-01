@@ -528,30 +528,38 @@ public class StockXService {
 
             // ===== 批量下架 =====
             if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
-                String delBatchId = null;
-                String delFailReason = null;
-                try {
-                    delBatchId = stockXClient.deleteItems(toDelete, account);
-                } catch (StockXRateLimitException | TaskCancelledException e) {
-                    throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理
-                } catch (RuntimeException e) {
-                    if ("TOKEN_EXPIRED".equals(e.getMessage())) {
-                        throw e; // Token 过期：终止本轮
-                    }
-                    delFailReason = e.getMessage() != null ? e.getMessage() : "下架失败";
-                    if (delFailReason.length() > 100) {
-                        delFailReason = delFailReason.substring(0, 100);
-                    }
-                }
+                // StockX 每批上限 100，分批下架；每批各自回查校验，结果汇总
+                int delBatchLimit = 100;
                 Map<String, String> delResult = new HashMap<>();
-                if (delFailReason != null) {
-                    for (String lid : toDelete) {
-                        delResult.put(lid, delFailReason);
+                for (int i = 0; i < toDelete.size(); i += delBatchLimit) {
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+                        break;
                     }
-                } else {
-                    // 已受理(QUEUED)，按 batchId 回查校验是否真正下架
-                    delResult = stockXClient.verifyDeleteBatch(delBatchId, toDelete, account,
-                            () -> TaskSwitch.isExcelCancelled(accountId, inventoryType));
+                    List<String> delChunk = toDelete.subList(i, Math.min(i + delBatchLimit, toDelete.size()));
+                    String delBatchId = null;
+                    String delFailReason = null;
+                    try {
+                        delBatchId = stockXClient.deleteItems(delChunk, account);
+                    } catch (StockXRateLimitException | TaskCancelledException e) {
+                        throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理
+                    } catch (RuntimeException e) {
+                        if ("TOKEN_EXPIRED".equals(e.getMessage())) {
+                            throw e; // Token 过期：终止本轮
+                        }
+                        delFailReason = e.getMessage() != null ? e.getMessage() : "下架失败";
+                        if (delFailReason.length() > 100) {
+                            delFailReason = delFailReason.substring(0, 100);
+                        }
+                    }
+                    if (delFailReason != null) {
+                        for (String lid : delChunk) {
+                            delResult.put(lid, delFailReason);
+                        }
+                    } else {
+                        // 已受理(QUEUED)，按 batchId 回查校验是否真正下架
+                        delResult.putAll(stockXClient.verifyDeleteBatch(delBatchId, delChunk, account,
+                                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType)));
+                    }
                 }
                 for (String lid : toDelete) {
                     Long tid = deleteToTaskInfo.get(lid);

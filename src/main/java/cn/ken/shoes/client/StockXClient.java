@@ -976,7 +976,6 @@ public class StockXClient {
         LimiterHelper.limitStockxGraphql(accountName);
         String rawResult;
         if (rateLimited) {
-            StockXAccount acc = accountName != null ? StockXConfig.getAccount(accountName) : null;
             String label = null;
             try {
                 label = JSON.parseObject(body).getString("operationName");
@@ -985,7 +984,7 @@ public class StockXClient {
             }
             rawResult = StockXRateLimitGuard.execute(
                     () -> HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers),
-                    accountName, StockXRateLimitGuard.RateLimitPolicy.of(acc), label, onFirstRateLimit);
+                    accountName, label, onFirstRateLimit);
         } else {
             rawResult = HttpUtil.doPost(StockXConfig.GRAPHQL, body, headers);
         }
