@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import com.alibaba.fastjson.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
@@ -117,6 +118,91 @@ public class TaskExecutorManager {
             case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
             default -> log.warn("setTaskInterval不支持的任务类型: {}", taskType);
         }
+    }
+
+    /**
+     * 服务重启后自动恢复运行中的任务。
+     * 崩溃/重启会丢失 JVM 内的任务线程与 TaskSwitch 状态，但 DB task 表里 status=running 的行完整保留了恢复所需入参。
+     * 流程：快照 running 行 -> 全部置为 shelved -> 对 resumeOnStartup=true 的类型按 (platform, code) 重新拉起（新建任务行重跑）。
+     * 注意：必须在 StockX 账号配置加载完成后调用（依赖 StockXConfig.getAccount）。
+     */
+    public void resumeRunningTasks() {
+        List<TaskDO> runningTasks = taskMapper.selectList(new QueryWrapper<TaskDO>().eq("status", "running"));
+        // 先把旧的 running 行统一置为 shelved（此时尚未重建新行，不受影响）
+        taskMapper.shelveHistoryTasks(List.of());
+        if (runningTasks == null || runningTasks.isEmpty()) {
+            return;
+        }
+        int resumed = 0;
+        for (TaskDO task : runningTasks) {
+            TaskTypeEnum taskType = TaskTypeEnum.fromCode(task.getTaskType());
+            if (taskType == null || !taskType.isResumeOnStartup()) {
+                continue;
+            }
+            try {
+                if (resumeTask(task, taskType)) {
+                    resumed++;
+                    log.info("重启恢复任务成功: platform={}, type={}, account={}, oldTaskId={}",
+                            task.getPlatform(), taskType.getDesc(), task.getAccountName(), task.getId());
+                }
+            } catch (Exception e) {
+                log.error("重启恢复任务失败: platform={}, type={}, account={}, oldTaskId={}, params={}",
+                        task.getPlatform(), taskType.getDesc(), task.getAccountName(), task.getId(), task.getParams(), e);
+            }
+        }
+        log.info("重启任务恢复完成，共恢复 {} 个任务（扫描 {} 个运行中任务）", resumed, runningTasks.size());
+    }
+
+    /**
+     * 按 (platform, taskType) 分派到对应的 start* 方法重新拉起。返回是否成功分派。
+     */
+    private boolean resumeTask(TaskDO task, TaskTypeEnum taskType) {
+        String platform = task.getPlatform();
+        String account = task.getAccountName();
+        JSONObject params = task.getParams() == null ? new JSONObject() : JSONObject.parseObject(task.getParams());
+        if ("kickscrew".equals(platform)) {
+            switch (taskType) {
+                case LISTING -> startTask(TaskTypeEnum.LISTING);
+                case PRICE_DOWN -> startTask(TaskTypeEnum.PRICE_DOWN);
+                default -> {
+                    log.warn("重启恢复：kickscrew 不支持的任务类型: {}", taskType);
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ("stockx".equals(platform)) {
+            switch (taskType) {
+                case PRICE_DOWN -> startExcelPriceDown(
+                        account,
+                        params.getString("inventoryType"),
+                        params.getBooleanValue("processOutsideExcel"),
+                        params.getString("unprofitableAction"));
+                case MODEL_SEARCH -> startSearchList(
+                        account,
+                        params.getString("keywords"),
+                        params.getString("sorts"),
+                        params.getIntValue("pageCount"),
+                        params.getString("searchType"),
+                        params.getIntValue("maxListCount"),
+                        true);
+                case LISTING -> startSearchList(
+                        account,
+                        params.getString("keywords"),
+                        params.getString("sorts"),
+                        params.getIntValue("pageCount"),
+                        params.getString("searchType"),
+                        params.getIntValue("maxListCount"),
+                        false);
+                default -> {
+                    log.warn("重启恢复：stockx 不支持的任务类型: {}", taskType);
+                    return false;
+                }
+            }
+            return true;
+        }
+        log.warn("重启恢复：不支持的平台: {}", platform);
+        return false;
     }
 
     /**

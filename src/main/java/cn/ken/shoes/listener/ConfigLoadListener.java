@@ -1,6 +1,7 @@
 package cn.ken.shoes.listener;
 
 import cn.ken.shoes.manager.ConfigManager;
+import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import jakarta.annotation.Resource;
@@ -26,6 +27,9 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
     @Resource
     private TaskItemMapper taskItemMapper;
 
+    @Resource
+    private TaskExecutorManager taskExecutorManager;
+
     @Override
     public void onApplicationEvent(ApplicationReadyEvent event) {
         System.out.println("Loading configurations from files...");
@@ -38,6 +42,12 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
             System.err.println("Failed to load configurations: " + e.getMessage());
         }
         cleanExpiredTaskData();
+        // 账号配置加载完成后，自动恢复重启前运行中的任务（依赖 StockXConfig.getAccount，必须在 loadStockXConfig 之后）
+        try {
+            taskExecutorManager.resumeRunningTasks();
+        } catch (Exception e) {
+            log.error("重启恢复运行中任务失败", e);
+        }
     }
 
     private void cleanExpiredTaskData() {

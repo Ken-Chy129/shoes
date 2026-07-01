@@ -10,15 +10,20 @@ import lombok.Getter;
 @AllArgsConstructor
 public enum TaskTypeEnum {
 
-    LISTING("listing", "上架"),
-    PRICE_DOWN("price_down", "压价"),
-    FETCH_LISTINGS("fetch_listings", "获取上架商品"),
-    EXCEL_DELIST("excel_delist", "Excel下架"),
-    MODEL_SEARCH("model_search", "货号搜索上架"),
+    LISTING("listing", "上架", true),
+    PRICE_DOWN("price_down", "压价", true),
+    FETCH_LISTINGS("fetch_listings", "获取上架商品", false),
+    EXCEL_DELIST("excel_delist", "Excel下架", false),
+    MODEL_SEARCH("model_search", "货号搜索上架", true),
     ;
 
     private final String code;
     private final String desc;
+
+    /**
+     * 服务重启时是否自动重新拉起该类型的运行中任务
+     */
+    private final boolean resumeOnStartup;
 
     public static TaskTypeEnum fromCode(String code) {
         for (TaskTypeEnum type : values()) {

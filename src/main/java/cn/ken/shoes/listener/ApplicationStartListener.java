@@ -7,7 +7,6 @@ import cn.ken.shoes.mapper.CustomModelMapper;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.mapper.SizeChartMapper;
 import cn.ken.shoes.mapper.SpecialPriceMapper;
-import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
@@ -46,9 +45,6 @@ public class ApplicationStartListener implements ApplicationListener<Application
     @Resource
     private SearchTaskMapper searchTaskMapper;
 
-    @Resource
-    private TaskMapper taskMapper;
-
     @Override
     public void onApplicationEvent(ApplicationStartedEvent event) {
         if (PoisonSwitch.USE_V3_API) {
@@ -57,7 +53,7 @@ public class ApplicationStartListener implements ApplicationListener<Application
         if (PoisonSwitch.OPEN_IMPORT_DB_DATA) {
             poisonService.importPriceToCache();
         }
-        taskMapper.shelveHistoryTasks(List.of());
+        // task 表的运行中任务改由 ConfigLoadListener.resumeRunningTasks() 处理（需在账号配置加载后 shelve+恢复）
         searchTaskMapper.shelveRunningTasks(null);
         initSizeMap();
         initCustomModel();
