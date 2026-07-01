@@ -7,7 +7,6 @@ import com.google.common.util.concurrent.RateLimiter;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
 @Slf4j
 public class LimiterHelper {
@@ -20,39 +19,15 @@ public class LimiterHelper {
 
     private static final ConcurrentHashMap<String, RateLimiter> STOCKX_GRAPHQL_LIMITERS = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, RateLimiter> STOCKX_API_LIMITERS = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, BatchWindow> STOCKX_BATCH_WINDOWS = new ConcurrentHashMap<>();
+    /** 批量写(压价/上架/下架)匀速限速器: 把 batchItemLimit 件均匀铺满5分钟, 避免翻斗窗口瞬间突发撞穿 StockX 500/5min。 */
+    private static final ConcurrentHashMap<String, RateLimiter> STOCKX_BATCH_LIMITERS = new ConcurrentHashMap<>();
 
     private static final RateLimiter STOCKX_GLOBAL_GRAPHQL_LIMITER = RateLimiter.create(1);
     private static final RateLimiter STOCKX_GLOBAL_API_LIMITER = RateLimiter.create(1);
-    private static final int BATCH_WINDOW_MS = 5 * 60 * 1000;
-
-    private static class BatchWindow {
-        long windowStart;
-        final AtomicInteger itemCount = new AtomicInteger(0);
-        final int limit;
-
-        BatchWindow(int limit) {
-            this.windowStart = System.currentTimeMillis();
-            this.limit = limit;
-        }
-
-        synchronized boolean tryAcquire(int items) {
-            long now = System.currentTimeMillis();
-            if (now - windowStart >= BATCH_WINDOW_MS) {
-                windowStart = now;
-                itemCount.set(0);
-            }
-            if (itemCount.get() + items <= limit) {
-                itemCount.addAndGet(items);
-                return true;
-            }
-            return false;
-        }
-
-        synchronized long waitTimeMs() {
-            return Math.max(0, BATCH_WINDOW_MS - (System.currentTimeMillis() - windowStart));
-        }
-    }
+    /** 5分钟窗口秒数, 用于把 batchItemLimit 换算成匀速 permits/秒 */
+    private static final double BATCH_WINDOW_SEC = 300.0;
+    /** 匀速留 5% 余量, 抗客户端与 StockX 窗口的时钟/计数偏差 */
+    private static final double BATCH_SAFETY = 0.95;
 
     public static void limitPoisonItem() {
         POISON_ITEM_LIMITER.acquire();
@@ -98,6 +73,9 @@ public class LimiterHelper {
     }
 
     public static void limitStockxBatch(String accountName, int itemCount) {
+        if (itemCount <= 0) {
+            return;
+        }
         String key = accountName != null ? accountName : "_global";
         int limit = 500;
         if (accountName != null) {
@@ -106,17 +84,12 @@ public class LimiterHelper {
                 limit = account.getBatchItemLimit();
             }
         }
-        int finalLimit = limit;
-        BatchWindow window = STOCKX_BATCH_WINDOWS.computeIfAbsent(key, k -> new BatchWindow(finalLimit));
-        while (!window.tryAcquire(itemCount)) {
-            long waitMs = window.waitTimeMs();
-            log.info("Batch限流[{}]: 5分钟内已达{}条上限，等待{}秒", key, window.limit, waitMs / 1000);
-            try {
-                Thread.sleep(Math.max(waitMs, 1000));
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
-            }
+        // 匀速: batchItemLimit 件铺满5分钟(留5%余量), 使任意滑动5分钟窗口内不超过上限, 从构造上不撞 StockX,
+        // 而不是翻斗窗口那样窗口内瞬间打满再空转(交界处会被 StockX 的滑动窗看成近2倍而撞穿)。
+        double permitsPerSec = limit * BATCH_SAFETY / BATCH_WINDOW_SEC;
+        double waited = getOrUpdateLimiter(STOCKX_BATCH_LIMITERS, key, permitsPerSec).acquire(itemCount);
+        if (waited > 1.0) {
+            log.info("Batch匀速限速[{}]: {}件, 等待{}秒 (上限{}件/5min)", key, itemCount, String.format("%.1f", waited), limit);
         }
     }
 

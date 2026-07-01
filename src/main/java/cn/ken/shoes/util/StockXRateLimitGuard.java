@@ -88,12 +88,15 @@ public class StockXRateLimitGuard {
         final RateLimitPolicy policy;
         final Supplier<Boolean> cancelled;
         final Consumer<String> onCooldown;
+        final Runnable onRecover;
         int cyclesUsed = 0;
+        boolean coolingNotified = false;
 
-        TaskContext(RateLimitPolicy policy, Supplier<Boolean> cancelled, Consumer<String> onCooldown) {
+        TaskContext(RateLimitPolicy policy, Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
             this.policy = policy;
             this.cancelled = cancelled;
             this.onCooldown = onCooldown;
+            this.onRecover = onRecover;
         }
     }
 
@@ -107,7 +110,14 @@ public class StockXRateLimitGuard {
      * @param onCooldown 进入冷却时的回调（如把任务 failReason 写为"限流冷却中…"，message 由本类生成）
      */
     public static void beginTaskContext(StockXAccount account, Supplier<Boolean> cancelled, Consumer<String> onCooldown) {
-        TASK_CONTEXT.set(new TaskContext(RateLimitPolicy.of(account), cancelled, onCooldown));
+        beginTaskContext(account, cancelled, onCooldown, null);
+    }
+
+    /**
+     * @param onRecover 账号从限流冷却恢复(冷却提示后首次成功)时触发一次，用于清除任务的"冷却中"提示；可为 null
+     */
+    public static void beginTaskContext(StockXAccount account, Supplier<Boolean> cancelled, Consumer<String> onCooldown, Runnable onRecover) {
+        TASK_CONTEXT.set(new TaskContext(RateLimitPolicy.of(account), cancelled, onCooldown, onRecover));
     }
 
     public static void endTaskContext() {
@@ -150,9 +160,18 @@ public class StockXRateLimitGuard {
             }
             if (!isRateLimited(raw)) {
                 onSuccess(key);
-                // 成功即清零冷却轮次：cyclesUsed 只统计"连续未恢复"的冷却，
-                // 避免长任务因周期性(可恢复)限流累计到上限被误杀。
                 if (ctx != null) {
+                    // 从冷却恢复(此前提示过冷却)：清除任务的"冷却中"提示
+                    if (ctx.coolingNotified && ctx.onRecover != null) {
+                        try {
+                            ctx.onRecover.run();
+                        } catch (Exception e) {
+                            log.warn("[{}] onRecover 回调异常: {}", key, e.getMessage());
+                        }
+                    }
+                    ctx.coolingNotified = false;
+                    // 成功即清零冷却轮次：cyclesUsed 只统计"连续未恢复"的冷却，
+                    // 避免长任务因周期性(可恢复)限流累计到上限被误杀。
                     ctx.cyclesUsed = 0;
                 }
                 return raw;
@@ -315,6 +334,7 @@ public class StockXRateLimitGuard {
     }
 
     private static void notifyCooldown(TaskContext ctx, String message) {
+        ctx.coolingNotified = true;
         if (ctx.onCooldown != null) {
             try {
                 ctx.onCooldown.accept(message);

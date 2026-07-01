@@ -37,6 +37,13 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     if (tid != null) {
                         taskMapper.updateTaskFailReason(tid, reason);
                     }
+                },
+                () -> {
+                    // 从限流冷却恢复：清除"冷却中"提示
+                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    if (tid != null) {
+                        taskMapper.updateTaskFailReason(tid, null);
+                    }
                 });
         try {
             while (true) {

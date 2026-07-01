@@ -1103,37 +1103,6 @@ public class StockXClient {
     }
 
     /**
-     * 限流诊断探针：GraphQL 压价命中限流的那一刻，立即用 REST 通道(同账号、同批取1条、同价)提交，
-     * 记录 REST 是否仍可走通——用于判定 GraphQL 429 与 REST 是否共享限流。仅对配置了有效 apiKey 的账号执行。
-     */
-    private Runnable buildRestProbeOnRateLimit(List<Map<String, String>> items, StockXAccount account) {
-        return () -> {
-            String name = account != null ? account.getName() : "?";
-            try {
-                if (account == null || account.getApiKey() == null || account.getApiKey().length() < 10) {
-                    log.warn("[限流探针][{}] 无有效apiKey，跳过REST探测", name);
-                    return;
-                }
-                if (items == null || items.isEmpty()) {
-                    return;
-                }
-                Map<String, String> one = items.get(0);
-                Map<String, String> restItem = new java.util.LinkedHashMap<>();
-                restItem.put("listingId", one.get("listingId"));
-                restItem.put("amount", one.get("amount"));
-                restItem.put("currencyCode", "USD");
-                long t0 = System.currentTimeMillis();
-                String batchId = batchUpdateListings(java.util.List.of(restItem), account);
-                log.warn("[限流探针][{}] GraphQL被限, 立即走REST结果: {} (耗时{}ms, listingId={})", name,
-                        batchId != null ? "✅REST成功 batchId=" + batchId : "❌REST也失败(见上条REST日志)",
-                        System.currentTimeMillis() - t0, one.get("listingId"));
-            } catch (Exception e) {
-                log.warn("[限流探针][{}] REST探测异常: {}", name, e.getMessage());
-            }
-        };
-    }
-
-    /**
      * 批量压价(GraphQL)，返回 StockX 批次id(QUEUED)；失败返回 null。
      * 注意：返回非null只代表"已受理"，是否真正同步需用 {@link #verifyBatchListings} 按 batchId 回查。
      */
@@ -1163,8 +1132,7 @@ public class StockXClient {
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
 
-        JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true,
-                buildRestProbeOnRateLimit(items, account));
+        JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (result == null) {
             log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
             throw new RuntimeException("提交失败:无响应(网络异常或被拦截)");
