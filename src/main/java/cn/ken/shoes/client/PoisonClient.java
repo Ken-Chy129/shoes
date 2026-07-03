@@ -6,11 +6,14 @@ import cn.ken.shoes.common.PoisonApiConstant;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.model.entity.PoisonItemDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.service.ConfigService;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.SignUtil;
 import com.alibaba.fastjson.*;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.Resource;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
@@ -19,6 +22,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
@@ -28,7 +33,7 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class PoisonClient {
 
-    @Value("${poison.url}")
+    @Value("${poison.url:}")
     private String url;
 
     @Value("${poison.appKey}")
@@ -37,111 +42,73 @@ public class PoisonClient {
     @Value("${poison.appSecret}")
     private String appSecret;
 
-    @Value("${poison.token}")
+    @Value("${poison.token:}")
     private String token;
 
-    @Value("${poison.tokenV2}")
+    @Value("${poison.tokenV2:}")
     private String tokenV2;
 
-    @Value("${poison.v3Url}")
+    @Value("${poison.v3Url:}")
     private String v3Url;
 
-    @Value("${poison.tokenV3}")
+    @Value("${poison.tokenV3:}")
     private String tokenV3;
 
-    @Value("${poison.v4Code}")
+    @Value("${poison.v4Code:}")
     private String v4Code;
 
-    @Value("${poison.distToken}")
-    private String distToken;
+    @Value("${poison.popUrl:https://open.poizon.com/dop/api/v1/pop/api/v1/market/channel}")
+    private String popUrl;
 
-    private static final String DIST_API_URL = "https://distopen.poizon.com/open/api/v1/distribute/product/querySpuList";
+    @Value("${poison.popAccessToken:}")
+    private String popAccessToken;
+
+    @Value("${poison.popLanguage:zh}")
+    private String popLanguage;
+
+    @Value("${poison.popTimeZone:Asia/Shanghai}")
+    private String popTimeZone;
+
+    @Value("${poison.popRedirectUri:https://shoes.ken-chy129.cn/poison/callback}")
+    private String popRedirectUri;
+
+    @Resource
+    private ConfigService configService;
+
+    private static final String POP_OAUTH_CONFIG_FILE = "poison-oauth.properties";
+    private static final String POP_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/token";
+    private static final String POP_REFRESH_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/refresh_token";
+    private static final long TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000L;
+
+    private String popRefreshToken;
+    private long popAccessTokenExpiresAt;
+    private long popRefreshTokenExpiresAt;
+    private String popOpenId;
 
     private final ConcurrentHashMap<String, Long> spuIdCache = new ConcurrentHashMap<>();
+
+    @PostConstruct
+    public void loadPopOAuthToken() {
+        Properties properties = configService.loadConfig(POP_OAUTH_CONFIG_FILE);
+        popAccessToken = properties.getProperty("access.token", popAccessToken);
+        popRefreshToken = properties.getProperty("refresh.token", popRefreshToken);
+        popOpenId = properties.getProperty("open.id", popOpenId);
+        popAccessTokenExpiresAt = parseLong(properties.getProperty("access.token.expires.at"), 0L);
+        popRefreshTokenExpiresAt = parseLong(properties.getProperty("refresh.token.expires.at"), 0L);
+    }
 
     public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
         }
-        if (PoisonSwitch.USE_DIST_API) {
-            return batchQueryPriceByDistApi(modelNos);
-        }
-        if (PoisonSwitch.USE_V4_API || PoisonSwitch.USE_V3_API) {
-            return batchQueryPriceOneByOne(modelNos);
-        }
-        // 重试
-        int times = 0;
-        String result;
-        do {
-            LimiterHelper.limitPoisonPrice();
-            JSONObject params = new JSONObject();
-            params.put("artno_list", modelNos);
-            params.put("token", token);
-            result = HttpUtil.doPost(PoisonApiConstant.BATCH_PRICE, params.toJSONString());
-            times++;
-        } while (result == null && times <= 3);
-        if (result == null) {
-            log.error("batchQueryPrice error, no result:{}", modelNos);
-            return Collections.emptyList();
-        }
-        JSONObject jsonObject = JSON.parseObject(result);
-        Integer code = jsonObject.getInteger("code");
-        if (code != 200) {
-            log.error("batchQueryPrice error, result: {}", result);
-            return Collections.emptyList();
-        }
-        List<JSONObject> skuList = jsonObject.getJSONArray("sku_list").toJavaList(JSONObject.class);
-        List<PoisonPriceDO> poisonPriceDOList = new ArrayList<>();
-        for (JSONObject sku : skuList) {
-            Date time = sku.getDate("update_time");
-            LocalDate update = LocalDate.ofInstant(time.toInstant(), ZoneId.systemDefault());
-            LocalDate threeDayAgo = LocalDate.now().minusDays(3);
-            if (update.isBefore(threeDayAgo)) {
-                continue;
-            }
-            String modelNo = sku.getString("article_number");
-            List<JSONObject> priceList = sku.getJSONArray("data").toJavaList(JSONObject.class);
-            for (JSONObject priceData : priceList) {
-                Integer minprice = priceData.getInteger("minprice");
-                if (minprice == null || minprice <= 0 || minprice > 100 * PoisonSwitch.MAX_PRICE) {
-                    continue;
-                }
-                PoisonPriceDO poisonPriceDO = new PoisonPriceDO();
-                poisonPriceDO.setModelNo(modelNo);
-                poisonPriceDO.setEuSize(extractSize(priceData.getString("size")));
-                poisonPriceDO.setPrice(minprice / 100);
-                poisonPriceDO.setUpdateTime(time);
-                poisonPriceDOList.add(poisonPriceDO);
-            }
-        }
-        return poisonPriceDOList;
-    }
-
-    private List<PoisonPriceDO> batchQueryPriceOneByOne(List<String> modelNos) {
-        List<PoisonPriceDO> allPrices = new ArrayList<>();
-        for (String modelNo : modelNos) {
-            List<PoisonPriceDO> prices = queryPriceByModelNo(modelNo);
-            allPrices.addAll(prices);
-        }
-        return allPrices;
+        return batchQueryPriceByDistApi(modelNos);
     }
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
         if (modelNo == null) {
             return Collections.emptyList();
         }
-        if (PoisonSwitch.USE_DIST_API) {
-            return queryPriceByDistApi(modelNo);
-        }
-        if (PoisonSwitch.USE_V4_API) {
-            return queryPriceByModelNoV4(modelNo);
-        } else if (PoisonSwitch.USE_V3_API) {
-            return queryPriceByModelNoV3(modelNo);
-        } else if (PoisonSwitch.USE_V2_API) {
-            return queryPriceByModelNoV2(modelNo);
-        } else {
-            return queryPriceByModelNoV1(modelNo);
-        }
+        return queryPriceByDistApi(modelNo);
     }
 
     public List<PoisonPriceDO> queryPriceByModelNoV2(String modelNo) {
@@ -318,11 +285,9 @@ public class PoisonClient {
             params.put("dwDesignerId", batch);
             params.put("pageSize", 200);
             params.put("querySku", true);
-            Headers headers = Headers.of(
-                    "access-token", distToken,
-                    "Content-Type", "application/json"
-            );
-            String result = HttpUtil.doPost(DIST_API_URL, params.toJSONString(), headers);
+            enhancePopParams(params);
+            String result = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_LIST,
+                    params.toJSONString(), buildHeaders());
             if (result == null) {
                 log.error("batchQueryPriceByDistApi error, no result, modelNos:{}", batch);
                 continue;
@@ -600,6 +565,130 @@ public class PoisonClient {
 
     private Headers buildV3Headers() {
         return Headers.of("Authorization", tokenV3);
+    }
+
+    private void enhancePopParams(JSONObject params) {
+        String accessToken = getValidPopAccessToken();
+        if (accessToken != null && !accessToken.isBlank()) {
+            params.put("access_token", accessToken);
+        } else {
+            log.warn("POP access_token is empty. Open authorize URL and finish /poison/callback first.");
+        }
+        params.put("language", popLanguage);
+        params.put("timeZone", popTimeZone);
+        long timestamp = System.currentTimeMillis();
+        String sign = SignUtil.sign(appKey, appSecret, timestamp, params);
+        params.put("sign", sign);
+    }
+
+    public String buildPopAuthorizeUrl() {
+        return "https://open.poizon.com/authorize?response_type=code"
+                + "&redirect_uri=" + URLEncoder.encode(popRedirectUri, StandardCharsets.UTF_8)
+                + "&client_id=" + appKey
+                + "&scope=all";
+    }
+
+    public synchronized JSONObject exchangePopAuthorizationCode(String authorizationCode) {
+        if (authorizationCode == null || authorizationCode.isBlank()) {
+            throw new IllegalArgumentException("authorizationCode is blank");
+        }
+        JSONObject params = new JSONObject();
+        params.put("client_id", appKey);
+        params.put("client_secret", appSecret);
+        params.put("authorization_code", authorizationCode);
+        String result = HttpUtil.doPost(POP_TOKEN_URL, params.toJSONString(), buildHeaders());
+        JSONObject json = parsePopTokenResponse(result, "exchangePopAuthorizationCode");
+        persistPopOAuthToken(json.getJSONObject("data"));
+        return getPopOAuthStatus();
+    }
+
+    public synchronized String getValidPopAccessToken() {
+        long now = System.currentTimeMillis();
+        if (popAccessToken != null && !popAccessToken.isBlank()
+                && popAccessTokenExpiresAt > now + TOKEN_REFRESH_BUFFER_MS) {
+            return popAccessToken;
+        }
+        if (popRefreshToken == null || popRefreshToken.isBlank()) {
+            return popAccessToken;
+        }
+        if (popRefreshTokenExpiresAt > 0 && popRefreshTokenExpiresAt <= now + TOKEN_REFRESH_BUFFER_MS) {
+            log.warn("POP refresh_token is expired or about to expire. Need re-authorization.");
+            return popAccessToken;
+        }
+        JSONObject params = new JSONObject();
+        params.put("client_id", appKey);
+        params.put("client_secret", appSecret);
+        params.put("refresh_token", popRefreshToken);
+        String result = HttpUtil.doPost(POP_REFRESH_TOKEN_URL, params.toJSONString(), buildHeaders());
+        try {
+            JSONObject json = parsePopTokenResponse(result, "refreshPopAccessToken");
+            persistPopOAuthToken(json.getJSONObject("data"));
+        } catch (Exception e) {
+            log.error("refreshPopAccessToken error, msg:{}", e.getMessage());
+        }
+        return popAccessToken;
+    }
+
+    public JSONObject getPopOAuthStatus() {
+        JSONObject status = new JSONObject();
+        status.put("hasAccessToken", popAccessToken != null && !popAccessToken.isBlank());
+        status.put("hasRefreshToken", popRefreshToken != null && !popRefreshToken.isBlank());
+        status.put("openId", popOpenId);
+        status.put("accessTokenExpiresAt", popAccessTokenExpiresAt);
+        status.put("refreshTokenExpiresAt", popRefreshTokenExpiresAt);
+        status.put("authorizeUrl", buildPopAuthorizeUrl());
+        return status;
+    }
+
+    private JSONObject parsePopTokenResponse(String result, String operation) {
+        if (result == null) {
+            throw new IllegalStateException(operation + " no response");
+        }
+        JSONObject json = JSON.parseObject(result);
+        Integer code = json.getInteger("code");
+        JSONObject data = json.getJSONObject("data");
+        if (code == null || code != 200 || data == null) {
+            throw new IllegalStateException(operation + " failed: " + result);
+        }
+        return json;
+    }
+
+    private void persistPopOAuthToken(JSONObject data) {
+        long now = System.currentTimeMillis();
+        popAccessToken = data.getString("access_token");
+        popRefreshToken = data.getString("refresh_token");
+        popOpenId = data.getString("open_id");
+        Long accessExpiresIn = data.getLong("access_token_expires_in");
+        Long refreshExpiresIn = data.getLong("refresh_token_expires_in");
+        popAccessTokenExpiresAt = accessExpiresIn == null ? 0L : now + accessExpiresIn * 1000L;
+        popRefreshTokenExpiresAt = refreshExpiresIn == null ? 0L : now + refreshExpiresIn * 1000L;
+        log.info("POP OAuth token persisted, openId:{}, accessTokenExpiresIn:{}s expiresAt:{}, refreshTokenExpiresIn:{}s expiresAt:{}",
+                popOpenId, accessExpiresIn, new Date(popAccessTokenExpiresAt),
+                refreshExpiresIn, new Date(popRefreshTokenExpiresAt));
+        if (accessExpiresIn == null || refreshExpiresIn == null) {
+            log.warn("POP token expires_in field missing (accessExpiresIn:{}, refreshExpiresIn:{}), "
+                    + "check field names against POP doc, otherwise every query will trigger a refresh",
+                    accessExpiresIn, refreshExpiresIn);
+        }
+
+        Properties properties = new Properties();
+        properties.setProperty("access.token", Objects.toString(popAccessToken, ""));
+        properties.setProperty("refresh.token", Objects.toString(popRefreshToken, ""));
+        properties.setProperty("open.id", Objects.toString(popOpenId, ""));
+        properties.setProperty("access.token.expires.at", String.valueOf(popAccessTokenExpiresAt));
+        properties.setProperty("refresh.token.expires.at", String.valueOf(popRefreshTokenExpiresAt));
+        configService.saveConfig(POP_OAUTH_CONFIG_FILE, properties);
+    }
+
+    private long parseLong(String value, long defaultValue) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
     }
 
     /**

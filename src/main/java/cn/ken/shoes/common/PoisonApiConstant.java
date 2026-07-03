@@ -61,4 +61,9 @@ public class PoisonApiConstant {
      * V4 API - 按货号查价格
      */
     public static final String V4_PRICE = "http://dewu.ccrotate.com/api/price_sa.php";
+
+    /**
+     * POP 新版分销 API - 查询 SPU 列表
+     */
+    public static final String POP_QUERY_SPU_LIST = "/product/querySpuList";
 }

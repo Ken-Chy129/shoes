@@ -12,11 +12,25 @@ mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
 
 poison:
+  # POP 平台应用 appKey / appSecret
+  appKey: your_pop_app_key
+  appSecret: your_pop_app_secret
+  # 新版 POP 分销接口地址
+  popUrl: https://open.poizon.com/dop/api/v1/pop/api/v1/market/channel
+  # 第三方应用 OAuth 授权后换取的 access_token；商家自研如运营确认无需 token 可留空
+  popAccessToken: your_pop_access_token
+  popLanguage: zh
+  popTimeZone: Asia/Shanghai
+  popRedirectUri: https://shoes.ken-chy129.cn/poison/callback
+
+  # 以下为历史接口配置，查价已统一走上方 POP 分销接口，保留仅供个别老方法引用
   url: https://openapi.dewu.com/dop/api/v1
-  appKey: your_app_key
-  appSecret: your_app_secret
   token: your_token
   tokenV2: your_token_v2
+  v3Url: your_v3_url
+  tokenV3: your_token_v3
+  v4Code: your_v4_code
+  distToken: your_dist_token
 
 kc:
   apiKey: your_api_key

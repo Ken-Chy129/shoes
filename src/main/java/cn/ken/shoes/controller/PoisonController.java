@@ -51,5 +51,24 @@ public class PoisonController {
         return info != null ? Result.buildSuccess(info) : Result.buildError("查询token信息失败");
     }
 
+    @GetMapping("oauth/authorizeUrl")
+    public Result<String> popAuthorizeUrl() {
+        return Result.buildSuccess(poisonClient.buildPopAuthorizeUrl());
+    }
+
+    @GetMapping("oauth/status")
+    public Result<JSONObject> popOAuthStatus() {
+        return Result.buildSuccess(poisonClient.getPopOAuthStatus());
+    }
+
+    @GetMapping("callback")
+    public Result<JSONObject> popOAuthCallback(@RequestParam("code") String code,
+                                               @RequestParam(required = false) String state) {
+        try {
+            return Result.buildSuccess(poisonClient.exchangePopAuthorizationCode(code));
+        } catch (Exception e) {
+            return Result.buildError("得物授权失败：" + e.getMessage());
+        }
+    }
 
 }
