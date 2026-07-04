@@ -49,6 +49,7 @@ public class ConfigManager {
         PoisonSwitch.MIN_PROFIT = configService.getIntProperty(properties, "min.profit", -30);
         PoisonSwitch.MIN_THREE_PROFIT = configService.getIntProperty(properties, "min.three.profit", -30);
         PoisonSwitch.OPEN_ALL_THREE_FIVE = configService.getBooleanProperty(properties, "open.all.three.five", false);
+        PoisonSwitch.USE_POP_API = configService.getBooleanProperty(properties, "use.pop.api", false);
         PoisonSwitch.USE_V2_API = configService.getBooleanProperty(properties, "use.v2.api", true);
         PoisonSwitch.USE_V3_API = configService.getBooleanProperty(properties, "use.v3.api", true);
         PoisonSwitch.USE_V4_API = configService.getBooleanProperty(properties, "use.v4.api", true);
@@ -65,6 +66,7 @@ public class ConfigManager {
         properties.setProperty("min.profit", String.valueOf(PoisonSwitch.MIN_PROFIT));
         properties.setProperty("min.three.profit", String.valueOf(PoisonSwitch.MIN_THREE_PROFIT));
         properties.setProperty("open.all.three.five", String.valueOf(PoisonSwitch.OPEN_ALL_THREE_FIVE));
+        properties.setProperty("use.pop.api", String.valueOf(PoisonSwitch.USE_POP_API));
         properties.setProperty("use.v2.api", String.valueOf(PoisonSwitch.USE_V2_API));
         properties.setProperty("use.v3.api", String.valueOf(PoisonSwitch.USE_V3_API));
         properties.setProperty("use.v4.api", String.valueOf(PoisonSwitch.USE_V4_API));

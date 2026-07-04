@@ -45,6 +45,11 @@ public class PoisonSwitch {
      */
     public static Boolean OPEN_ALL_THREE_FIVE = false;
 
+    /**
+     * 查价走新版 POP 分销接口(需 B2B 权限包)；false 则走旧 distopen 接口(临时回退用)
+     */
+    public static Boolean USE_POP_API = false;
+
     public static Boolean USE_V2_API = false;
 
     public static Boolean USE_V3_API = true;

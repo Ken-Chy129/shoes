@@ -57,6 +57,9 @@ public class PoisonClient {
     @Value("${poison.v4Code:}")
     private String v4Code;
 
+    @Value("${poison.distToken:}")
+    private String distToken;
+
     @Value("${poison.popUrl:https://open.poizon.com/dop/api/v1/pop/api/v1/market/channel}")
     private String popUrl;
 
@@ -76,6 +79,7 @@ public class PoisonClient {
     private ConfigService configService;
 
     private static final String POP_OAUTH_CONFIG_FILE = "poison-oauth.properties";
+    private static final String DIST_API_URL = "https://distopen.poizon.com/open/api/v1/distribute/product/querySpuList";
     private static final String POP_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/token";
     private static final String POP_REFRESH_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/refresh_token";
     private static final long TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000L;
@@ -285,9 +289,15 @@ public class PoisonClient {
             params.put("dwDesignerId", batch);
             params.put("pageSize", 200);
             params.put("querySku", true);
-            enhancePopParams(params);
-            String result = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_LIST,
-                    params.toJSONString(), buildHeaders());
+            String result;
+            if (PoisonSwitch.USE_POP_API) {
+                enhancePopParams(params);
+                result = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_LIST,
+                        params.toJSONString(), buildHeaders());
+            } else {
+                result = HttpUtil.doPost(DIST_API_URL, params.toJSONString(),
+                        Headers.of("access-token", distToken, "Content-Type", "application/json"));
+            }
             if (result == null) {
                 log.error("batchQueryPriceByDistApi error, no result, modelNos:{}", batch);
                 continue;
