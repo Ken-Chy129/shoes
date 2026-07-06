@@ -1,7 +1,5 @@
 package cn.ken.shoes.config;
 
-import cn.ken.shoes.model.stockx.StockXAccount;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -77,31 +75,17 @@ public class TaskSwitch {
     }
 
     public static long getExcelInterval(String accountId, String inventoryType) {
-        String key = buildExcelKey(accountId, inventoryType);
-        Long cached = EXCEL_INTERVAL_MAP.get(key);
-        if (cached != null) return cached;
-        StockXAccount account = StockXConfig.getAccount(accountId);
-        if (account != null) {
-            long val = "STANDARD".equals(inventoryType) ? account.getStandardInterval() : account.getCustodialInterval();
-            long ms = val * 1000;
-            EXCEL_INTERVAL_MAP.put(key, ms);
-            return ms;
-        }
-        return 30 * 60 * 1000L;
+        // 逐任务间隔由 setExcelIntervalRuntime 在建任务时 seed；未 seed 时回退默认 30 分钟
+        Long cached = EXCEL_INTERVAL_MAP.get(buildExcelKey(accountId, inventoryType));
+        return cached != null ? cached : 30 * 60 * 1000L;
     }
 
-    public static void setExcelInterval(String accountId, String inventoryType, long interval) {
+    /**
+     * 仅设置运行时轮询间隔（不回写账号配置），用于「逐任务」间隔：
+     * 建任务时按本次填写的间隔 seed，任务结束由 clearExcelState 清除，不污染账号默认值。
+     */
+    public static void setExcelIntervalRuntime(String accountId, String inventoryType, long interval) {
         EXCEL_INTERVAL_MAP.put(buildExcelKey(accountId, inventoryType), interval);
-        StockXAccount account = StockXConfig.getAccount(accountId);
-        if (account != null) {
-            long seconds = interval / 1000;
-            if ("STANDARD".equals(inventoryType)) {
-                account.setStandardInterval(seconds);
-            } else {
-                account.setCustodialInterval(seconds);
-            }
-            StockXConfig.saveAccounts();
-        }
     }
 
     public static boolean isExcelRunning(String accountId, String inventoryType) {
@@ -127,6 +111,7 @@ public class TaskSwitch {
         EXCEL_RUNNING_MAP.remove(key);
         EXCEL_PROCESS_OUTSIDE_MAP.remove(key);
         EXCEL_UNPROFITABLE_ACTION_MAP.remove(key);
+        EXCEL_INTERVAL_MAP.remove(key);
     }
 
     public static boolean isProcessOutsideExcel(String accountId, String inventoryType) {

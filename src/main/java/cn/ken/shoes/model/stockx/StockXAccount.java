@@ -36,8 +36,4 @@ public class StockXAccount {
 
     private int batchItemLimit = 500;
 
-    private long standardInterval = 1800;
-
-    private long custodialInterval = 1800;
-
 }

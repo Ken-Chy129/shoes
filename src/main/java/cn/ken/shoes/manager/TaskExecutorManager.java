@@ -80,46 +80,6 @@ public class TaskExecutorManager {
         }
     }
 
-    public boolean queryTaskStatus(TaskTypeEnum taskType) {
-        return switch (taskType) {
-            case LISTING -> kcTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_LISTING_TASK;
-            case PRICE_DOWN -> kcPriceDownTaskRunner.isInit() && !TaskSwitch.CANCEL_KC_PRICE_DOWN_TASK;
-            default -> false;
-        };
-    }
-
-    public Long getCurrentTaskId(TaskTypeEnum taskType) {
-        return switch (taskType) {
-            case LISTING -> TaskSwitch.CURRENT_KC_LISTING_TASK_ID;
-            case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_TASK_ID;
-            default -> null;
-        };
-    }
-
-    public int getCurrentRound(TaskTypeEnum taskType) {
-        return switch (taskType) {
-            case LISTING -> TaskSwitch.CURRENT_KC_LISTING_ROUND;
-            case PRICE_DOWN -> TaskSwitch.CURRENT_KC_PRICE_DOWN_ROUND;
-            default -> 0;
-        };
-    }
-
-    public long getTaskInterval(TaskTypeEnum taskType) {
-        return switch (taskType) {
-            case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL;
-            case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL;
-            default -> 0;
-        };
-    }
-
-    public void setTaskInterval(TaskTypeEnum taskType, long interval) {
-        switch (taskType) {
-            case LISTING -> TaskSwitch.KC_LISTING_TASK_INTERVAL = interval;
-            case PRICE_DOWN -> TaskSwitch.KC_PRICE_DOWN_TASK_INTERVAL = interval;
-            default -> log.warn("setTaskInterval不支持的任务类型: {}", taskType);
-        }
-    }
-
     /**
      * 服务重启后自动恢复运行中的任务。
      * 崩溃/重启会丢失 JVM 内的任务线程与 TaskSwitch 状态，但 DB task 表里 status=running 的行完整保留了恢复所需入参。
@@ -177,7 +137,8 @@ public class TaskExecutorManager {
                         account,
                         params.getString("inventoryType"),
                         params.getBooleanValue("processOutsideExcel"),
-                        params.getString("unprofitableAction"));
+                        params.getString("unprofitableAction"),
+                        params.getLongValue("interval"));
                 case MODEL_SEARCH -> startSearchList(
                         account,
                         params.getString("keywords"),
@@ -233,7 +194,7 @@ public class TaskExecutorManager {
 
     // ==================== StockX Excel 多账号压价 ====================
 
-    public void startExcelPriceDown(String accountId, String inventoryType, boolean processOutsideExcel, String unprofitableAction) {
+    public void startExcelPriceDown(String accountId, String inventoryType, boolean processOutsideExcel, String unprofitableAction, long intervalSeconds) {
         if (TaskSwitch.isExcelRunning(accountId, inventoryType)) {
             log.info("Excel压价任务已在运行: {}:{}", accountId, inventoryType);
             return;
@@ -247,8 +208,13 @@ public class TaskExecutorManager {
                 .fluentPut("inventoryType", inventoryType)
                 .fluentPut("processOutsideExcel", processOutsideExcel)
                 .fluentPut("unprofitableAction", unprofitableAction)
+                .fluentPut("interval", intervalSeconds)
                 .toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
+        // 逐任务轮询间隔：>0 时按本次填写的值 seed 运行时缓存（不写账号配置）；<=0 时回退账号配置/默认值
+        if (intervalSeconds > 0) {
+            TaskSwitch.setExcelIntervalRuntime(accountId, inventoryType, intervalSeconds * 1000);
+        }
         TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
         TaskSwitch.resetExcelCancel(accountId, inventoryType);
         TaskSwitch.resetExcelRound(accountId, inventoryType);
@@ -257,27 +223,6 @@ public class TaskExecutorManager {
                 account, inventoryType, stockXService, taskMapper);
         new Thread(runner, "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
         log.info("Excel压价任务已启动: [{}] {}", account.getName(), inventoryType);
-    }
-
-    public void cancelExcelPriceDown(String accountId, String inventoryType) {
-        TaskSwitch.cancelExcel(accountId, inventoryType);
-        log.info("Excel压价任务已发送取消信号: {}:{}", accountId, inventoryType);
-    }
-
-    public boolean isExcelPriceDownRunning(String accountId, String inventoryType) {
-        return TaskSwitch.isExcelRunning(accountId, inventoryType);
-    }
-
-    public Long getExcelPriceDownTaskId(String accountId, String inventoryType) {
-        return TaskSwitch.getExcelTaskId(accountId, inventoryType);
-    }
-
-    public void setExcelPriceDownInterval(String accountId, String inventoryType, long interval) {
-        TaskSwitch.setExcelInterval(accountId, inventoryType, interval);
-    }
-
-    public long getExcelPriceDownInterval(String accountId, String inventoryType) {
-        return TaskSwitch.getExcelInterval(accountId, inventoryType);
     }
 
     // ==================== StockX 搜索上架 ====================
@@ -315,18 +260,6 @@ public class TaskExecutorManager {
         return taskId;
     }
 
-    public void cancelSearchList(String accountId) {
-        TaskSwitch.cancelSearchList(accountId);
-    }
-
-    public boolean isSearchListRunning(String accountId) {
-        return TaskSwitch.isSearchListRunning(accountId);
-    }
-
-    public Long getSearchListTaskId(String accountId) {
-        return TaskSwitch.getSearchListTaskId(accountId);
-    }
-
     // ==================== StockX 获取上架商品 ====================
 
     public Long startFetchListings(String accountId, String inventoryType) {
@@ -350,18 +283,6 @@ public class TaskExecutorManager {
         new Thread(runner, "StockX-FetchListings-" + account.getName() + "-" + inventoryType).start();
         log.info("获取上架商品任务已启动: [{}] {}", account.getName(), inventoryType);
         return taskId;
-    }
-
-    public void cancelFetchListings(String accountId, String inventoryType) {
-        TaskSwitch.cancelFetchListings(accountId + ":" + inventoryType);
-    }
-
-    public boolean isFetchListingsRunning(String accountId, String inventoryType) {
-        return TaskSwitch.isFetchListingsRunning(accountId + ":" + inventoryType);
-    }
-
-    public Long getFetchListingsTaskId(String accountId, String inventoryType) {
-        return TaskSwitch.getFetchListingsTaskId(accountId + ":" + inventoryType);
     }
 
     // ==================== StockX Excel下架 ====================
@@ -389,15 +310,4 @@ public class TaskExecutorManager {
         return taskId;
     }
 
-    public void cancelExcelDelist(String accountId, String inventoryType) {
-        TaskSwitch.cancelExcelDelist(accountId + ":" + inventoryType);
-    }
-
-    public boolean isExcelDelistRunning(String accountId, String inventoryType) {
-        return TaskSwitch.isExcelDelistRunning(accountId + ":" + inventoryType);
-    }
-
-    public Long getExcelDelistTaskId(String accountId, String inventoryType) {
-        return TaskSwitch.getExcelDelistTaskId(accountId + ":" + inventoryType);
-    }
 }

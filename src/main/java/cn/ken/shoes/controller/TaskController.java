@@ -74,53 +74,6 @@ public class TaskController {
         return Result.buildSuccess();
     }
 
-    @GetMapping("status")
-    public Result<Boolean> queryTaskStatus(@RequestParam String taskType) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        return Result.buildSuccess(taskExecutorManager.queryTaskStatus(type));
-    }
-
-    @GetMapping("interval")
-    public Result<Long> queryTaskInterval(@RequestParam String taskType) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        return Result.buildSuccess(taskExecutorManager.getTaskInterval(type));
-    }
-
-    @GetMapping("currentTaskId")
-    public Result<String> getCurrentTaskId(@RequestParam String taskType) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        Long taskId = taskExecutorManager.getCurrentTaskId(type);
-        return Result.buildSuccess(taskId != null ? String.valueOf(taskId) : null);
-    }
-
-    @GetMapping("currentRound")
-    public Result<Integer> getCurrentRound(@RequestParam String taskType) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        return Result.buildSuccess(taskExecutorManager.getCurrentRound(type));
-    }
-
-    @PostMapping("interval")
-    public Result<Void> updateTaskInterval(@RequestParam String taskType, @RequestParam Long interval) {
-        TaskTypeEnum type = TaskTypeEnum.fromCode(taskType);
-        if (type == null) {
-            return Result.buildError("无效的任务类型: " + taskType);
-        }
-        taskExecutorManager.setTaskInterval(type, interval);
-        return Result.buildSuccess();
-    }
-
     // ==================== StockX Excel 压价 ====================
 
     @PostMapping("stockx/uploadPriceDownExcel")
@@ -135,12 +88,6 @@ public class TaskController {
                 .sheet()
                 .doReadSync();
         ShoesContext.loadPriceDownExcel(accountId, inventoryType, list);
-        return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
-    }
-
-    @GetMapping("stockx/priceDownExcelCount")
-    public Result<Integer> getPriceDownExcelCount(@RequestParam("accountId") String accountId,
-                                                  @RequestParam("inventoryType") String inventoryType) {
         return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
     }
 
@@ -171,43 +118,14 @@ public class TaskController {
         boolean hasExcel = body.getBooleanValue("hasExcel");
         boolean processOutside = body.getBooleanValue("processOutsideExcel");
         String unprofitableAction = body.getString("unprofitableAction");
+        // 逐任务轮询间隔（秒）：缺省/<=0 时后端回退账号配置或默认值
+        long interval = body.getLongValue("interval");
         if (!hasExcel) {
             ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
         }
         TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, processOutside);
         TaskSwitch.setUnprofitableAction(accountId, inventoryType, unprofitableAction != null ? unprofitableAction : "markup");
-        taskExecutorManager.startExcelPriceDown(accountId, inventoryType, processOutside, unprofitableAction != null ? unprofitableAction : "markup");
-        return Result.buildSuccess(true);
-    }
-
-    @PostMapping("stockx/cancelExcelPriceDown")
-    public Result<Boolean> cancelExcelPriceDown(@RequestBody JSONObject body) {
-        String accountId = body.getString("accountId");
-        String inventoryType = body.getString("inventoryType");
-        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
-            return Result.buildError("accountId和inventoryType不能为空");
-        }
-        taskExecutorManager.cancelExcelPriceDown(accountId, inventoryType);
-        return Result.buildSuccess(true);
-    }
-
-    @GetMapping("stockx/excelPriceDownStatus")
-    public Result<JSONObject> getExcelPriceDownStatus(@RequestParam("accountId") String accountId,
-                                                      @RequestParam("inventoryType") String inventoryType) {
-        JSONObject status = new JSONObject();
-        status.put("running", taskExecutorManager.isExcelPriceDownRunning(accountId, inventoryType));
-        Long taskId = taskExecutorManager.getExcelPriceDownTaskId(accountId, inventoryType);
-        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
-        status.put("interval", taskExecutorManager.getExcelPriceDownInterval(accountId, inventoryType) / 1000);
-        return Result.buildSuccess(status);
-    }
-
-    @PostMapping("stockx/setExcelPriceDownInterval")
-    public Result<Boolean> setExcelPriceDownInterval(@RequestBody JSONObject body) {
-        String accountId = body.getString("accountId");
-        String inventoryType = body.getString("inventoryType");
-        long intervalSeconds = body.getLongValue("interval");
-        taskExecutorManager.setExcelPriceDownInterval(accountId, inventoryType, intervalSeconds * 1000);
+        taskExecutorManager.startExcelPriceDown(accountId, inventoryType, processOutside, unprofitableAction != null ? unprofitableAction : "markup", interval);
         return Result.buildSuccess(true);
     }
 
@@ -239,16 +157,6 @@ public class TaskController {
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
-    @PostMapping("stockx/cancelSearchList")
-    public Result<Boolean> cancelSearchList(@RequestBody JSONObject body) {
-        String accountId = body.getString("accountId");
-        if (StrUtil.isBlank(accountId)) {
-            return Result.buildError("accountId不能为空");
-        }
-        taskExecutorManager.cancelSearchList(accountId);
-        return Result.buildSuccess(true);
-    }
-
     // ==================== StockX 货号搜索上架 ====================
 
     @PostMapping("stockx/startModelNoSearchList")
@@ -275,15 +183,6 @@ public class TaskController {
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
-    @GetMapping("stockx/searchListStatus")
-    public Result<JSONObject> getSearchListStatus(@RequestParam("accountId") String accountId) {
-        JSONObject status = new JSONObject();
-        status.put("running", taskExecutorManager.isSearchListRunning(accountId));
-        Long taskId = taskExecutorManager.getSearchListTaskId(accountId);
-        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
-        return Result.buildSuccess(status);
-    }
-
     // ==================== StockX 获取上架商品 ====================
 
     @PostMapping("stockx/startFetchListings")
@@ -300,27 +199,6 @@ public class TaskController {
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
-    @PostMapping("stockx/cancelFetchListings")
-    public Result<Boolean> cancelFetchListings(@RequestBody JSONObject body) {
-        String accountId = body.getString("accountId");
-        String inventoryType = body.getString("inventoryType");
-        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
-            return Result.buildError("accountId和inventoryType不能为空");
-        }
-        taskExecutorManager.cancelFetchListings(accountId, inventoryType);
-        return Result.buildSuccess(true);
-    }
-
-    @GetMapping("stockx/fetchListingsStatus")
-    public Result<JSONObject> getFetchListingsStatus(@RequestParam("accountId") String accountId,
-                                                      @RequestParam("inventoryType") String inventoryType) {
-        JSONObject status = new JSONObject();
-        status.put("running", taskExecutorManager.isFetchListingsRunning(accountId, inventoryType));
-        Long taskId = taskExecutorManager.getFetchListingsTaskId(accountId, inventoryType);
-        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
-        return Result.buildSuccess(status);
-    }
-
     // ==================== StockX Excel下架 ====================
 
     @PostMapping("stockx/uploadDelistExcel")
@@ -332,12 +210,6 @@ public class TaskController {
                 .sheet()
                 .doReadSync();
         ShoesContext.loadDelistExcel(accountId, inventoryType, list);
-        return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
-    }
-
-    @GetMapping("stockx/delistExcelCount")
-    public Result<Integer> getDelistExcelCount(@RequestParam("accountId") String accountId,
-                                                @RequestParam("inventoryType") String inventoryType) {
         return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
     }
 
@@ -370,27 +242,6 @@ public class TaskController {
             return Result.buildError("任务已在运行或账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
-    }
-
-    @PostMapping("stockx/cancelExcelDelist")
-    public Result<Boolean> cancelExcelDelist(@RequestBody JSONObject body) {
-        String accountId = body.getString("accountId");
-        String inventoryType = body.getString("inventoryType");
-        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
-            return Result.buildError("accountId和inventoryType不能为空");
-        }
-        taskExecutorManager.cancelExcelDelist(accountId, inventoryType);
-        return Result.buildSuccess(true);
-    }
-
-    @GetMapping("stockx/excelDelistStatus")
-    public Result<JSONObject> getExcelDelistStatus(@RequestParam("accountId") String accountId,
-                                                    @RequestParam("inventoryType") String inventoryType) {
-        JSONObject status = new JSONObject();
-        status.put("running", taskExecutorManager.isExcelDelistRunning(accountId, inventoryType));
-        Long taskId = taskExecutorManager.getExcelDelistTaskId(accountId, inventoryType);
-        status.put("taskId", taskId != null ? String.valueOf(taskId) : null);
-        return Result.buildSuccess(status);
     }
 
 }
