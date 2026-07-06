@@ -34,6 +34,7 @@ build/
 /ui/src/.umi/
 /src/main/resources/application.yml
 /log/
+/logs/
 /files/
 /file/
 /src/main/resources/config/
