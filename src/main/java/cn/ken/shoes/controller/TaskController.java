@@ -6,6 +6,7 @@ import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.manager.ConfigManager;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
@@ -34,6 +35,9 @@ public class TaskController {
 
     @Resource
     private TaskExecutorManager taskExecutorManager;
+
+    @Resource
+    private ConfigManager configManager;
 
     @GetMapping("page")
     public PageResult<List<TaskDO>> queryTasks(TaskRequest request) {
@@ -88,6 +92,8 @@ public class TaskController {
                 .sheet()
                 .doReadSync();
         ShoesContext.loadPriceDownExcel(accountId, inventoryType, list);
+        // 落盘持久化，供服务重启后恢复压价任务用
+        configManager.savePriceDownExcel(accountId, inventoryType);
         return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
     }
 
@@ -118,14 +124,16 @@ public class TaskController {
         boolean hasExcel = body.getBooleanValue("hasExcel");
         boolean processOutside = body.getBooleanValue("processOutsideExcel");
         String unprofitableAction = body.getString("unprofitableAction");
-        // 逐任务轮询间隔（秒）：缺省/<=0 时后端回退账号配置或默认值
+        // 逐任务轮询间隔（秒）：缺省/<=0 时后端回退默认值
         long interval = body.getLongValue("interval");
         if (!hasExcel) {
             ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
+            // 同步清除持久化文件，避免重启后旧 Excel 数据复活
+            configManager.deletePriceDownExcel(accountId, inventoryType);
         }
         TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, processOutside);
         TaskSwitch.setUnprofitableAction(accountId, inventoryType, unprofitableAction != null ? unprofitableAction : "markup");
-        taskExecutorManager.startExcelPriceDown(accountId, inventoryType, processOutside, unprofitableAction != null ? unprofitableAction : "markup", interval);
+        taskExecutorManager.startExcelPriceDown(accountId, inventoryType, hasExcel, processOutside, unprofitableAction != null ? unprofitableAction : "markup", interval);
         return Result.buildSuccess(true);
     }
 

@@ -2,6 +2,7 @@ package cn.ken.shoes.manager;
 
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.config.StockXConfig;
@@ -136,6 +137,7 @@ public class TaskExecutorManager {
                 case PRICE_DOWN -> startExcelPriceDown(
                         account,
                         params.getString("inventoryType"),
+                        params.getBooleanValue("hasExcel"),
                         params.getBooleanValue("processOutsideExcel"),
                         params.getString("unprofitableAction"),
                         params.getLongValue("interval"));
@@ -194,7 +196,7 @@ public class TaskExecutorManager {
 
     // ==================== StockX Excel 多账号压价 ====================
 
-    public void startExcelPriceDown(String accountId, String inventoryType, boolean processOutsideExcel, String unprofitableAction, long intervalSeconds) {
+    public void startExcelPriceDown(String accountId, String inventoryType, boolean hasExcel, boolean processOutsideExcel, String unprofitableAction, long intervalSeconds) {
         if (TaskSwitch.isExcelRunning(accountId, inventoryType)) {
             log.info("Excel压价任务已在运行: {}:{}", accountId, inventoryType);
             return;
@@ -206,10 +208,18 @@ public class TaskExecutorManager {
         }
         String params = new JSONObject()
                 .fluentPut("inventoryType", inventoryType)
+                .fluentPut("hasExcel", hasExcel)
                 .fluentPut("processOutsideExcel", processOutsideExcel)
                 .fluentPut("unprofitableAction", unprofitableAction)
                 .fluentPut("interval", intervalSeconds)
                 .toJSONString();
+        // 保险：标记含 Excel 但压价数据为空（多见于重启后持久化也丢失）→ 拒绝盲跑，避免击穿最低价贱卖
+        if (hasExcel && ShoesContext.getPriceDownMap(accountId, inventoryType).isEmpty()) {
+            Long failedTaskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
+            taskMapper.updateTaskFailed(failedTaskId, "重启后压价Excel数据丢失，请重新上传Excel并重新启动任务");
+            log.error("[{}]{}压价任务拒绝启动：标记含Excel但压价数据为空", accountId, inventoryType);
+            return;
+        }
         Long taskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
         // 逐任务轮询间隔：>0 时按本次填写的值 seed 运行时缓存（不写账号配置）；<=0 时回退账号配置/默认值
         if (intervalSeconds > 0) {

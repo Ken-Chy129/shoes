@@ -1,10 +1,12 @@
 package cn.ken.shoes.manager;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.*;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.ConfigService;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Component;
@@ -16,6 +18,8 @@ import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Stream;
 
 @Component
 public class ConfigManager {
@@ -150,6 +154,89 @@ public class ConfigManager {
             Files.writeString(path, JSON.toJSONString(StockXConfig.getAccounts()));
         } catch (IOException e) {
             System.err.println("Failed to save stockx accounts: " + e.getMessage());
+        }
+    }
+
+    // ==================== 压价 Excel 数据持久化（重启恢复用） ====================
+    private static final String PRICE_DOWN_DIR = "files/pricedown";
+
+    private static String priceDownFileName(String accountId, String inventoryType) {
+        return accountId + "__" + inventoryType + ".json";
+    }
+
+    /**
+     * 保存某账号+库存类型的压价 Excel 数据到磁盘。上传 Excel 后调用，使数据能在服务重启后恢复。
+     */
+    public void savePriceDownExcel(String accountId, String inventoryType) {
+        Path path = Paths.get(PRICE_DOWN_DIR, priceDownFileName(accountId, inventoryType));
+        try {
+            Files.createDirectories(path.getParent());
+            ConcurrentHashMap<String, ShoesContext.PriceDownConfig> map = ShoesContext.getPriceDownMap(accountId, inventoryType);
+            JSONObject obj = new JSONObject();
+            map.forEach((k, cfg) -> {
+                JSONObject v = new JSONObject();
+                v.put("minPrice", cfg.minPrice());
+                v.put("skip", cfg.skip());
+                obj.put(k, v);
+            });
+            Files.writeString(path, obj.toJSONString());
+        } catch (Exception e) {
+            System.err.println("Failed to save pricedown excel " + accountId + ":" + inventoryType + " - " + e.getMessage());
+        }
+    }
+
+    /**
+     * 删除某账号+库存类型的压价 Excel 持久化文件。无 Excel 启动压价任务时调用，避免旧数据在重启后复活。
+     */
+    public void deletePriceDownExcel(String accountId, String inventoryType) {
+        try {
+            Files.deleteIfExists(Paths.get(PRICE_DOWN_DIR, priceDownFileName(accountId, inventoryType)));
+        } catch (Exception e) {
+            System.err.println("Failed to delete pricedown excel " + accountId + ":" + inventoryType + " - " + e.getMessage());
+        }
+    }
+
+    /**
+     * 启动时把所有已持久化的压价 Excel 数据回填内存。必须在 TaskExecutorManager.resumeRunningTasks() 之前调用。
+     */
+    public void loadAllPriceDownExcel() {
+        Path dir = Paths.get(PRICE_DOWN_DIR);
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> files = Files.list(dir)) {
+            files.filter(p -> p.toString().endsWith(".json")).forEach(this::loadOnePriceDownFile);
+        } catch (Exception e) {
+            System.err.println("Failed to load pricedown excel dir: " + e.getMessage());
+        }
+    }
+
+    private void loadOnePriceDownFile(Path path) {
+        String base = path.getFileName().toString();
+        base = base.substring(0, base.length() - ".json".length());
+        String inventoryType;
+        String accountId;
+        // 按已知的库存类型后缀切分，兼容账号名本身含下划线
+        if (base.endsWith("__CUSTODIAL")) {
+            inventoryType = "CUSTODIAL";
+            accountId = base.substring(0, base.length() - "__CUSTODIAL".length());
+        } else if (base.endsWith("__STANDARD")) {
+            inventoryType = "STANDARD";
+            accountId = base.substring(0, base.length() - "__STANDARD".length());
+        } else {
+            return;
+        }
+        try {
+            JSONObject obj = JSON.parseObject(Files.readString(path));
+            ConcurrentHashMap<String, ShoesContext.PriceDownConfig> map = ShoesContext.getPriceDownMap(accountId, inventoryType);
+            map.clear();
+            for (String key : obj.keySet()) {
+                JSONObject v = obj.getJSONObject(key);
+                map.put(key, new ShoesContext.PriceDownConfig(v.getIntValue("minPrice"), v.getBooleanValue("skip")));
+            }
+            System.out.println("恢复压价Excel数据: " + accountId + ":" + inventoryType + " 共" + map.size() + "条");
+        } catch (Exception e) {
+            System.err.println("Failed to load pricedown excel file " + path + " - " + e.getMessage());
         }
     }
 }
