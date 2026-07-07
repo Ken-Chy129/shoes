@@ -106,6 +106,18 @@ public class StockXService {
         taskItemMapper.updateById(updateItem);
     }
 
+    /** 解析压价目标价(listingToTaskInfo 的 value)，解析失败返回 null */
+    private static Integer parseTarget(Pair<Long, String> info) {
+        if (info == null) {
+            return null;
+        }
+        try {
+            return Integer.valueOf(info.getValue());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
     /** 压价校验轮询：最多查 5 次，每次间隔 2 秒，等待 StockX 异步同步完成 */
     private static final int PRICE_DOWN_VERIFY_MAX_ATTEMPTS = 5;
     private static final long PRICE_DOWN_VERIFY_DELAY_MS = 2000;
@@ -165,9 +177,25 @@ public class StockXService {
             }
             if (current != null) {
                 states.putAll(current);
+                // 只把"已落定"的移出待确认队列：真报错(errorCode) 或 价已到位(amount==target)。
+                // 不能只看 synced——在售挂单提交更新后仍是 synced(同步在旧价)，新价传播要时间，
+                // 过早按 synced 收尾会读到旧价、误判"价格未生效"。未落定的留在队列，用后续轮次等价真到位。
                 pending.removeIf(id -> {
                     JSONObject node = current.get(id);
-                    return node != null && Boolean.TRUE.equals(node.getBoolean("synced"));
+                    if (node == null) {
+                        return false;
+                    }
+                    JSONObject lastOp = node.getJSONObject("lastOperation");
+                    if (lastOp != null && lastOp.getString("errorCode") != null) {
+                        return true; // 真失败，终态
+                    }
+                    Integer tgt = parseTarget(listingToTaskInfo.get(id));
+                    if (tgt == null) {
+                        // 目标价解析不了：退回按 synced 判定，避免死等
+                        return Boolean.TRUE.equals(node.getBoolean("synced"));
+                    }
+                    Integer amount = node.getInteger("amount");
+                    return amount != null && amount.equals(tgt);
                 });
             }
             if (pending.isEmpty() || attempt == PRICE_DOWN_VERIFY_MAX_ATTEMPTS) {
@@ -196,12 +224,7 @@ public class StockXService {
             if (info == null) {
                 continue;
             }
-            Integer target = null;
-            try {
-                target = Integer.valueOf(info.getValue());
-            } catch (NumberFormatException ignore) {
-                // 目标价解析失败(理论上不会)：跳过 amount 比对，退回按 synced 判定
-            }
+            Integer target = parseTarget(info); // 解析失败(理论上不会)返回 null：跳过 amount 比对
             JSONObject node = states.get(listingId);
             String resultText;
             if (node == null) {
@@ -220,17 +243,19 @@ public class StockXService {
                     resultText = "压价未同步";
                     unsynced++;
                 } else if (target != null && amount != null && !amount.equals(target)) {
-                    // 已 synced 但生效价 != 目标价：被 StockX 下限钳制/未按预期生效，不能算成功
-                    resultText = "压价失败:价格未生效(实际$" + amount + ")";
+                    // synced=true 但生效价≠目标价：多是新价还没传播(内联窗口太短)，也可能真被钳制/丢弃。
+                    // 不在此武断判失败，转中间态交对账；超时(30min)仍不到位再判"超时未生效"。
+                    resultText = "压价价格未生效";
                     clampFail++;
                 } else {
-                    resultText = "压价成功";
+                    // 写上最终生效价(此时 amount==target)，方便直接看压到了多少
+                    resultText = "压价成功($" + amount + ")";
                     success++;
                 }
             }
             updateTaskItemResult(info.getKey(), resultText, target);
         }
-        log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 用了{}/{}轮(查询失败{}次), 成功:{}, 未同步:{}, 未确认:{}, 价格未生效:{}, 报错失败:{}",
+        log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 用了{}/{}轮(查询失败{}次), 成功:{}, 未同步(转对账):{}, 未确认(转对账):{}, 价没到位(转对账):{}, 报错失败:{}",
                 account.getName(), batchId, subBatch.size(), attemptsUsed, PRICE_DOWN_VERIFY_MAX_ATTEMPTS, queryFails,
                 success, unsynced, unconfirmed, clampFail, opFail);
         return success;
@@ -1056,7 +1081,7 @@ public class StockXService {
     }
 
     /** 压价对账：需要重查的中间态(内联校验10s窗口没确认到的) */
-    private static final List<String> PRICE_DOWN_PENDING_RESULTS = List.of("压价未确认", "压价未同步", "压价已提交");
+    private static final List<String> PRICE_DOWN_PENDING_RESULTS = List.of("压价未确认", "压价未同步", "压价已提交", "压价价格未生效");
 
     /**
      * 对账"压价未确认/未同步/已提交"：内联校验只轮询约10s，StockX 的 batchId 视图异步落地慢且会衰减，
@@ -1108,12 +1133,20 @@ public class StockXService {
                 for (TaskItemDO it : chunk) {
                     total++;
                     JSONObject node = states.get(it.getListingId());
-                    String r = resolvePriceDownResult(node);
+                    Integer tgt = it.getTargetPrice() != null ? it.getTargetPrice().intValue() : null;
+                    String r = resolvePriceDownResult(node, tgt);
                     if (r != null) {
                         updateTaskItemResult(it.getId(), r);
-                        if ("压价成功".equals(r)) done++; else failed++;
+                        if (r.startsWith("压价成功")) done++; else failed++;
                     } else if (it.getOperateTime() != null && it.getOperateTime().getTime() < now - RECONCILE_TIMEOUT_MS) {
-                        updateTaskItemResult(it.getId(), "压价失败:超时未确认同步");
+                        // 超时仍未落定：区分"从没 synced"和"synced 但价没到位"，便于事后排因
+                        String reason;
+                        if (node != null && Boolean.TRUE.equals(node.getBoolean("synced"))) {
+                            reason = "压价失败:超时未生效(实际$" + node.getInteger("amount") + ")";
+                        } else {
+                            reason = "压价失败:超时未确认同步";
+                        }
+                        updateTaskItemResult(it.getId(), reason);
                         timeout++;
                     }
                     // 否则保持中间态(不改 operate_time，保留 age 计时)，下轮再查
@@ -1127,10 +1160,14 @@ public class StockXService {
 
     /**
      * 压价终态判定：压价成功 / 压价失败:原因 / null(未落定，调用方保持中间态或按超时处理)。
-     * 与上架一致——只认 status==ACTIVE，不用 synced 判活(死挂单 synced 也是 true)；
-     * 但价格是否落定需额外要求 synced==true(无挂起的更新操作)。
+     * 与上架一致——只认 status==ACTIVE，不用 synced 判活(死挂单 synced 也是 true)。
+     * <b>成功必须 amount==target</b>：synced 只代表挂单与市场同步，不代表我们的新报价已应用
+     * (在售挂单更新后仍是 synced 但停在旧价)，若只按 synced 判成功，真没生效的会被误判成功。
+     * synced 但价没到位时返回 null(继续 pending)，由调用方的超时分支兜底判失败。
+     *
+     * @param target 本条压价的目标价(来自 TaskItemDO.targetPrice)；为 null 时无从比对，退回按 synced 判成功
      */
-    private String resolvePriceDownResult(JSONObject node) {
+    private String resolvePriceDownResult(JSONObject node, Integer target) {
         if (node == null) {
             return null;
         }
@@ -1140,10 +1177,16 @@ public class StockXService {
             String msg = lastOp.getString("displayMessage");
             return "压价失败:" + (StrUtil.isNotBlank(msg) ? msg : errCode);
         }
-        if ("ACTIVE".equalsIgnoreCase(node.getString("status")) && Boolean.TRUE.equals(node.getBoolean("synced"))) {
-            return "压价成功";
+        if (!"ACTIVE".equalsIgnoreCase(node.getString("status")) || !Boolean.TRUE.equals(node.getBoolean("synced"))) {
+            return null; // 仍在同步/未落定
         }
-        return null; // 仍在同步/未落定
+        Integer amount = node.getInteger("amount");
+        if (target == null) {
+            // 无目标价可比(如进程重启丢失的"已提交")：退回按 synced 判成功
+            return amount != null ? "压价成功($" + amount + ")" : "压价成功";
+        }
+        // 价已到位判成功并带上最终价；价没到位返回 null 继续 pending，交超时兜底
+        return amount != null && amount.equals(target) ? "压价成功($" + amount + ")" : null;
     }
 
     /** 下架对账：需要重查的中间态 */

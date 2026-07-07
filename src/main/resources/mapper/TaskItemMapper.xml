@@ -42,7 +42,8 @@
                 AND round = #{round}
             </if>
             <if test="operateResult != null and operateResult != ''">
-                AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
+                <!-- 按类别(第一个 '(' 之前)相等匹配，与 selectDistinctOperateResults 的收敛口径一致 -->
+                AND SUBSTRING_INDEX(operate_result, '(', 1) = #{operateResult}
             </if>
             <if test="styleId != null and styleId != ''">
                 AND style_id LIKE CONCAT('%', #{styleId}, '%')
@@ -63,7 +64,8 @@
                 AND round = #{round}
             </if>
             <if test="operateResult != null and operateResult != ''">
-                AND operate_result LIKE CONCAT('%', #{operateResult}, '%')
+                <!-- 按类别(第一个 '(' 之前)相等匹配，与 selectDistinctOperateResults 的收敛口径一致 -->
+                AND SUBSTRING_INDEX(operate_result, '(', 1) = #{operateResult}
             </if>
             <if test="styleId != null and styleId != ''">
                 AND style_id LIKE CONCAT('%', #{styleId}, '%')
@@ -93,10 +95,15 @@
         DELETE FROM task_item WHERE task_id = #{taskId}
     </delete>
 
+    <!--
+      过滤下拉项按"类别"收敛：类别 = operate_result 中第一个 '(' 之前的部分，
+      剥掉 "($734)"/"(实际$X)" 等带具体价格/原因的可变尾巴，避免下拉项爆成几千条。
+      无括号的结果(如 跳过-XX/保持-XX)原样作为一个类别。
+    -->
     <select id="selectDistinctOperateResults" resultType="java.lang.String">
-        SELECT DISTINCT operate_result FROM task_item
-        WHERE task_id = #{taskId}
-        ORDER BY operate_result
+        SELECT DISTINCT SUBSTRING_INDEX(operate_result, '(', 1) FROM task_item
+        WHERE task_id = #{taskId} AND operate_result IS NOT NULL
+        ORDER BY 1
     </select>
 
 
