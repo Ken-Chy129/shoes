@@ -203,7 +203,6 @@ const TaskPage = () => {
                 doPostRequest(TASK_API.START_FETCH_ORDERS, {
                     accountId: values.accountId,
                     orderTypes: values.orderTypes || [],
-                    fetchPayout: values.fetchPayout || false,
                 }, {
                     onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
@@ -482,14 +481,10 @@ const TaskPage = () => {
 
         if (createPlatform === 'stockx' && createTaskType === 'fetch_orders') {
             return <>
-                <Form.Item name="orderTypes" label="订单类型" initialValue={['completed']}
+                <Form.Item name="orderTypes" label="订单类型" initialValue={['pending']}
                            rules={[{required: true, message: '请至少选择一种订单类型'}]}
                            extra="可同时获取多种类型，结果会合并到同一个任务明细中">
                     <Select mode="multiple" options={STOCKX_ORDER_TYPE_OPTIONS} placeholder="选择订单类型"/>
-                </Form.Item>
-                <Form.Item name="fetchPayout" label="货款总额" valuePropName="checked" initialValue={false}
-                           extra="逐条请求订单详情，数据量大时会明显增加任务耗时">
-                    <Switch checkedChildren="获取" unCheckedChildren="不获取"/>
                 </Form.Item>
             </>;
         }
@@ -505,7 +500,7 @@ const TaskPage = () => {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
-        orderTypes: '订单类型', fetchPayout: '获取货款总额',
+        orderTypes: '订单类型',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
 
@@ -514,11 +509,10 @@ const TaskPage = () => {
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
-        if (k === 'fetchPayout') return v ? '是' : '否';
         if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
         if (k === 'intervalHours') return `${v}小时`;
         if (k === 'orderTypes') {
-            const labels: Record<string, string> = {completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
+            const labels: Record<string, string> = {pending: '待处理', completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
             const values = Array.isArray(v) ? v : String(v).split(',');
             return values.map((value: string) => labels[value] || value).join(', ');
         }
@@ -603,7 +597,7 @@ const TaskPage = () => {
             {paramsModalData && (
                 <table style={{width: '100%', borderCollapse: 'collapse'}}>
                     <tbody>
-                    {Object.entries(paramsModalData).map(([key, value]) => (
+                    {Object.entries(paramsModalData).filter(([key]) => key !== 'fetchPayout').map(([key, value]) => (
                         <tr key={key} style={{borderBottom: '1px solid #f0f0f0'}}>
                             <td style={{padding: '10px 12px', color: '#666', width: 140, fontWeight: 500}}>
                                 {PARAM_LABELS[key] || key}

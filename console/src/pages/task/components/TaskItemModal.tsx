@@ -27,7 +27,6 @@ interface TaskItemRecord {
     orderStatus: string;
     currencyCode: string;
     salePrice: number;
-    payoutAmount: number;
     soldOn: string;
 }
 
@@ -143,10 +142,10 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         window.open(`${TASK_API.TASK_ITEM_EXPORT}?${params.toString()}`, '_blank');
     }
 
-    const formatOrderMoney = (value: number, currencyCode: string, fixed = false) => {
+    const formatOrderMoney = (value: number, currencyCode: string) => {
         if (value === null || value === undefined) return '-';
         const prefix = currencyCode === 'USD' ? '$' : (currencyCode ? `${currencyCode} ` : '');
-        return `${prefix}${fixed ? Number(value).toFixed(2) : value}`;
+        return `${prefix}${value}`;
     };
 
     const productColumns = [
@@ -254,6 +253,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     ];
 
     const orderColumns = [
+        {title: '商品id', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
         {title: 'id', dataIndex: 'listingId', key: 'listingId', width: 170, ellipsis: true},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 220, ellipsis: true},
         {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
@@ -264,11 +264,19 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             title: 'StockX出售价格', dataIndex: 'salePrice', key: 'salePrice', width: 120,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
-        {title: '出售日期', dataIndex: 'soldOn', key: 'soldOn', width: 160},
-        {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
         {
-            title: '货款', dataIndex: 'payoutAmount', key: 'payoutAmount', width: 110,
-            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode, true),
+            title: '得物价格', dataIndex: 'poisonPrice', key: 'poisonPrice', width: 100,
+            render: (value: number) => value === null || value === undefined ? '-' : `¥${value}`,
+        },
+        {title: '出售日期', dataIndex: 'soldOn', key: 'soldOn', width: 160},
+        {
+            title: '截止日期', dataIndex: 'operateTime', key: 'shipByDate', width: 160,
+            render: (value: string, record: TaskItemRecord) => record.orderStatus === '待处理' ? value : '-',
+        },
+        {title: '订单状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
+        {
+            title: '延期状态', dataIndex: 'operateResult', key: 'extensionStatus', width: 100,
+            render: (value: string, record: TaskItemRecord) => record.orderStatus === '待处理' ? value : '-',
         },
     ];
 
@@ -305,7 +313,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             open={visible}
             onCancel={handleClose}
             footer={null}
-            width={1200}
+            width={taskType === 'fetch_orders' ? 1400 : 1200}
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
@@ -370,7 +378,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: 1130}}
+                scroll={{x: taskType === 'fetch_orders' ? 1700 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,

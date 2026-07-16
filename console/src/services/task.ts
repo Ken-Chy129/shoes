@@ -33,7 +33,7 @@ enum TASK_API {
     UPLOAD_DELIST_EXCEL = '/api/task/stockx/uploadDelistExcel',
     DELIST_EXCEL_DATA = '/api/task/stockx/delistExcelData',
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
-    // StockX 获取订单（已完成/已取消/待付款）
+    // StockX 获取订单（待处理/已完成/已取消/待付款）
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',

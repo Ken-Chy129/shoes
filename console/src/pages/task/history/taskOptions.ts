@@ -19,6 +19,7 @@ export const STOCKX_TASK_OPTIONS = [
 ];
 
 export const STOCKX_ORDER_TYPE_OPTIONS = [
+  {label: '待处理', value: 'pending'},
   {label: '已完成', value: 'completed'},
   {label: '已取消', value: 'cancelled'},
   {label: '待付款', value: 'pending_payout'},
