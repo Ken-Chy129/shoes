@@ -339,6 +339,7 @@ public class TaskExecutorManager {
                 .toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.FETCH_ORDERS.getCode(), account.getName(), params);
         TaskSwitch.resetFetchOrdersCancel(accountId);
+        TaskSwitch.setFetchOrdersRunning(accountId, true);
 
         StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
                 account, taskId, categories, fetchPayout, stockXClient, taskMapper, taskItemMapper);

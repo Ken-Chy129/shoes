@@ -9,6 +9,7 @@ import {TASK_API, TASK_TYPE} from "@/services/task";
 import {SETTING_API} from "@/services/shoes";
 import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
+import {STOCKX_ORDER_TYPE_OPTIONS, STOCKX_TASK_OPTIONS, TASK_TYPE_LABELS} from "./taskOptions";
 
 interface TaskRecord {
     id: string;
@@ -36,9 +37,6 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
-const TYPE_LABELS: Record<string, string> = { listing: '搜索上架', model_search: '货号搜索上架', price_down: '压价', fetch_listings: '获取上架商品', excel_delist: 'Excel下架' };
-
-
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
@@ -62,7 +60,7 @@ const TaskPage = () => {
     const [createModalVisible, setCreateModalVisible] = useState(false);
     const [createForm] = Form.useForm();
     const [createPlatform, setCreatePlatform] = useState<string>('stockx');
-    const [createTaskType, setCreateTaskType] = useState<string>('listing');
+    const [createTaskType, setCreateTaskType] = useState<string>('price_down');
     const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
     const [creating, setCreating] = useState(false);
 
@@ -120,7 +118,7 @@ const TaskPage = () => {
     const openCreateModal = () => {
         createForm.resetFields();
         setCreatePlatform('stockx');
-        setCreateTaskType('listing');
+        setCreateTaskType('price_down');
         setCreateModalVisible(true);
         if (stockxAccounts.length === 0) {
             doGetRequest(SETTING_API.STOCKX_ACCOUNTS, {}, {
@@ -201,6 +199,15 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('Excel上传失败'); setCreating(false); },
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'fetch_orders') {
+                doPostRequest(TASK_API.START_FETCH_ORDERS, {
+                    accountId: values.accountId,
+                    orderTypes: values.orderTypes || [],
+                    fetchPayout: values.fetchPayout || false,
+                }, {
+                    onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else {
                 // KC
                 doPostRequest(`${TASK_API.START}?taskType=${createTaskType}`, {}, {
@@ -220,7 +227,7 @@ const TaskPage = () => {
         },
         {
             title: '任务类型', dataIndex: 'taskType', key: 'type', width: 120,
-            render: (taskType: string) => TYPE_LABELS[taskType] || taskType,
+            render: (taskType: string) => TASK_TYPE_LABELS[taskType] || taskType,
         },
         {
             title: '账号', dataIndex: 'accountName', key: 'accountName', width: 90,
@@ -274,6 +281,7 @@ const TaskPage = () => {
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
                     excel_delist: '批',
+                    fetch_orders: '页',
                 };
                 const unit = unitMap[record.taskType] || '轮';
                 return `第${record.round}${unit}`;
@@ -452,6 +460,20 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'fetch_orders') {
+            return <>
+                <Form.Item name="orderTypes" label="订单类型" initialValue={['completed']}
+                           rules={[{required: true, message: '请至少选择一种订单类型'}]}
+                           extra="可同时获取多种类型，结果会合并到同一个任务明细中">
+                    <Select mode="multiple" options={STOCKX_ORDER_TYPE_OPTIONS} placeholder="选择订单类型"/>
+                </Form.Item>
+                <Form.Item name="fetchPayout" label="货款总额" valuePropName="checked" initialValue={false}
+                           extra="逐条请求订单详情，数据量大时会明显增加任务耗时">
+                    <Switch checkedChildren="获取" unCheckedChildren="不获取"/>
+                </Form.Item>
+            </>;
+        }
+
         return <div style={{color: '#999', padding: '8px 0', textAlign: 'center'}}>
             该任务类型无需额外配置，直接点击创建即可
         </div>;
@@ -463,6 +485,7 @@ const TaskPage = () => {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        orderTypes: '订单类型', fetchPayout: '获取货款总额',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -470,6 +493,12 @@ const TaskPage = () => {
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
+        if (k === 'fetchPayout') return v ? '是' : '否';
+        if (k === 'orderTypes') {
+            const labels: Record<string, string> = {completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
+            const values = Array.isArray(v) ? v : String(v).split(',');
+            return values.map((value: string) => labels[value] || value).join(', ');
+        }
         if (k === 'maxListCount') return v && v > 0 ? `${v}条` : '不限';
         if (k === 'interval') return `${v}秒`;
         if (k === 'sorts') return String(v).split(',').join(', ');
@@ -488,10 +517,7 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item name="taskType" label="类型">
                     <Select style={{width: 130}} placeholder="全部" allowClear
-                        options={[
-                            {label: '搜索上架', value: 'listing'}, {label: '压价', value: 'price_down'},
-                            {label: '获取上架商品', value: 'fetch_listings'}, {label: 'Excel下架', value: 'excel_delist'},
-                        ]}/>
+                        options={STOCKX_TASK_OPTIONS}/>
                 </Form.Item>
                 <Form.Item name="status" label="状态">
                     <Select style={{width: 110}} placeholder="全部" allowClear
@@ -541,13 +567,8 @@ const TaskPage = () => {
                     </Form.Item>
                 )}
                 <Form.Item label="任务类型">
-                    <Select value={createTaskType} onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}>
-                        <Select.Option value="listing">搜索上架</Select.Option>
-                        <Select.Option value="model_search">货号搜索上架</Select.Option>
-                        <Select.Option value="price_down">压价</Select.Option>
-                        <Select.Option value="fetch_listings">获取上架商品</Select.Option>
-                        <Select.Option value="excel_delist">Excel下架</Select.Option>
-                    </Select>
+                    <Select value={createTaskType} options={STOCKX_TASK_OPTIONS}
+                            onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}/>
                 </Form.Item>
                 <Divider style={{margin: '8px 0 20px'}}/>
                 {renderCreateForm()}

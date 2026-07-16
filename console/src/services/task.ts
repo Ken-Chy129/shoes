@@ -32,6 +32,8 @@ enum TASK_API {
     UPLOAD_DELIST_EXCEL = '/api/task/stockx/uploadDelistExcel',
     DELIST_EXCEL_DATA = '/api/task/stockx/delistExcelData',
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
+    // StockX 获取订单（已完成/已取消/待付款）
+    START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
 }
 
 export {TASK_API, TASK_TYPE}

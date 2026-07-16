@@ -8,6 +8,7 @@ import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
+import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
@@ -65,6 +66,36 @@ public class TaskItemController {
         // 查询所有符合条件的数据（不分页）
         List<TaskItemDO> items = taskItemMapper.selectByCondition(taskId, round, operateResult, styleId, euSize, 0, Integer.MAX_VALUE);
 
+        TaskDO task = taskMapper.selectById(taskId);
+        String fileName = buildExportFileName(taskId);
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding("utf-8");
+        String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
+
+        if (task != null && TaskTypeEnum.FETCH_ORDERS.getCode().equals(task.getTaskType())) {
+            List<StockXOrderTaskExcel> orderExcelList = new ArrayList<>();
+            SimpleDateFormat orderDateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            for (TaskItemDO item : items) {
+                StockXOrderTaskExcel excel = new StockXOrderTaskExcel();
+                excel.setId(item.getListingId());
+                excel.setTitle(item.getTitle());
+                excel.setStyleId(item.getStyleId());
+                excel.setSize(item.getSize());
+                excel.setEuSize(item.getEuSize());
+                excel.setOrderNumber(item.getOrderNumber());
+                excel.setSoldOn(item.getSoldOn() != null ? orderDateFormat.format(item.getSoldOn()) : "-");
+                excel.setSalePrice(formatMoney(item.getSalePrice(), item.getCurrencyCode()));
+                excel.setStatus(item.getOrderStatus());
+                excel.setPayoutAmount(formatMoney(item.getPayoutAmount(), item.getCurrencyCode()));
+                orderExcelList.add(excel);
+            }
+            EasyExcel.write(response.getOutputStream(), StockXOrderTaskExcel.class)
+                    .sheet("订单明细")
+                    .doWrite(orderExcelList);
+            return;
+        }
+
         // 转换为 Excel 模型
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         List<TaskItemExcel> excelList = new ArrayList<>();
@@ -89,17 +120,18 @@ public class TaskItemController {
             excelList.add(excel);
         }
 
-        // 构建文件名：平台_任务类型_账号_时间
-        String fileName = buildExportFileName(taskId);
-        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-        response.setCharacterEncoding("utf-8");
-        String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
-        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
-
         // 写入 Excel
         EasyExcel.write(response.getOutputStream(), TaskItemExcel.class)
                 .sheet("任务明细")
                 .doWrite(excelList);
+    }
+
+    private String formatMoney(java.math.BigDecimal amount, String currencyCode) {
+        if (amount == null) {
+            return "-";
+        }
+        String prefix = "USD".equals(currencyCode) ? "$" : (StrUtil.isNotBlank(currencyCode) ? currencyCode + " " : "");
+        return prefix + amount.setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 
     private String buildExportFileName(Long taskId) {

@@ -23,6 +23,12 @@ interface TaskItemRecord {
     profitRate35: number;
     operateResult: string;
     operateTime: string;
+    orderNumber: string;
+    orderStatus: string;
+    currencyCode: string;
+    salePrice: number;
+    payoutAmount: number;
+    soldOn: string;
 }
 
 interface TaskItemModalProps {
@@ -137,7 +143,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         window.open(`${TASK_API.TASK_ITEM_EXPORT}?${params.toString()}`, '_blank');
     }
 
-    const columns = [
+    const formatOrderMoney = (value: number, currencyCode: string, fixed = false) => {
+        if (value === null || value === undefined) return '-';
+        const prefix = currencyCode === 'USD' ? '$' : (currencyCode ? `${currencyCode} ` : '');
+        return `${prefix}${fixed ? Number(value).toFixed(2) : value}`;
+    };
+
+    const productColumns = [
         {
             title: '轮次',
             dataIndex: 'round',
@@ -241,6 +253,27 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         },
     ];
 
+    const orderColumns = [
+        {title: 'id', dataIndex: 'listingId', key: 'listingId', width: 170, ellipsis: true},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 220, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: '尺码', dataIndex: 'size', key: 'size', width: 70},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 70},
+        {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150},
+        {
+            title: 'StockX出售价格', dataIndex: 'salePrice', key: 'salePrice', width: 120,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {title: '出售日期', dataIndex: 'soldOn', key: 'soldOn', width: 160},
+        {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
+        {
+            title: '货款', dataIndex: 'payoutAmount', key: 'payoutAmount', width: 110,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode, true),
+        },
+    ];
+
+    const columns = taskType === 'fetch_orders' ? orderColumns : productColumns;
+
     const handleClose = () => {
         setPageIndex(1);
         setTaskItems([]);
@@ -263,13 +296,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
-                    <Input
+                    {taskType !== 'fetch_orders' && <Input
                         placeholder="轮次"
                         value={filterRound}
                         onChange={e => { setFilterRound(e.target.value); setPageIndex(1); }}
                         style={{width: 80}}
                         type="number"
-                    />
+                    />}
                     <Select
                         placeholder="操作结果"
                         value={filterOperateResult}
