@@ -40,6 +40,9 @@ public class StockXService {
     private StockXClient stockXClient;
 
     @Resource
+    private StockXShippingExtensionService shippingExtensionService;
+
+    @Resource
     private PriceManager priceManager;
 
     @Resource
@@ -58,20 +61,7 @@ public class StockXService {
     private TaskMapper taskMapper;
 
     public void extendAllItems() {
-        boolean hasMore;
-        String afterName = null;
-        do {
-            JSONObject jsonObject = stockXClient.queryToDeal(afterName);
-            if (jsonObject == null) {
-                throw new RuntimeException("发生异常");
-            }
-            List<JSONObject> nodes = jsonObject.getJSONArray("nodes").toJavaList(JSONObject.class);
-            for (JSONObject node : nodes) {
-                stockXClient.extendItem(node.getString("id"), node.getString("orderNumber"));
-            }
-            hasMore = jsonObject.getBooleanValue("hasMore");
-            afterName = jsonObject.getString("endCursor");
-        } while (hasMore);
+        shippingExtensionService.extendAllEnabledAccounts();
     }
 
     public void refreshBrand() {
