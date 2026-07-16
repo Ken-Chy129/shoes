@@ -272,7 +272,20 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         },
     ];
 
-    const columns = taskType === 'fetch_orders' ? orderColumns : productColumns;
+    const shippingExtensionColumns = [
+        {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 160},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: '尺码', dataIndex: 'size', key: 'size', width: 80},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 80},
+        {title: 'Ask ID', dataIndex: 'listingId', key: 'listingId', width: 170, ellipsis: true},
+        {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 190, ellipsis: true},
+        {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 170},
+    ];
+
+    const columns = taskType === 'fetch_orders'
+        ? orderColumns
+        : taskType === 'extend_shipping' ? shippingExtensionColumns : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -288,7 +301,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
 
     return (
         <Modal
-            title="任务明细"
+            title={taskType === 'extend_shipping' ? '订单延期明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
             footer={null}
@@ -296,7 +309,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
-                    {taskType !== 'fetch_orders' && <Input
+                    {taskType !== 'fetch_orders' && taskType !== 'extend_shipping' && <Input
                         placeholder="轮次"
                         value={filterRound}
                         onChange={e => { setFilterRound(e.target.value); setPageIndex(1); }}
@@ -320,9 +333,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     <Button icon={<ReloadOutlined/>} onClick={handleReset}>
                         重置
                     </Button>
-                    <Button icon={<DownloadOutlined/>} onClick={handleExport}>
+                    {taskType !== 'extend_shipping' && <Button icon={<DownloadOutlined/>} onClick={handleExport}>
                         导出
-                    </Button>
+                    </Button>}
                 </Space>
                 <Space>
                     {taskType === 'listing' && attributes && (() => {
@@ -341,6 +354,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     {taskType === 'price_down' && round != null && (
                         <span style={{color: '#1677ff', fontWeight: 500}}>第{round}轮</span>
                     )}
+                    {taskType === 'extend_shipping' && attributes && (() => {
+                        try {
+                            const attrs = JSON.parse(attributes);
+                            return <span style={{color: '#1677ff', fontWeight: 500}}>
+                                扫描 {attrs.scanned ?? 0} | 成功 {attrs.extended ?? 0} | 失败 {attrs.failed ?? 0}
+                            </span>;
+                        } catch { return null; }
+                    })()}
                     <span>自动刷新</span>
                     <Switch checked={autoRefresh} onChange={setAutoRefresh}/>
                 </Space>

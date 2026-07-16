@@ -5,6 +5,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   excel_delist: 'Excel下架',
   fetch_listings: '获取上架商品',
   fetch_orders: '获取订单',
+  extend_shipping: '订单延期',
 };
 
 export const STOCKX_TASK_OPTIONS = [
@@ -14,6 +15,7 @@ export const STOCKX_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.excel_delist, value: 'excel_delist'},
   {label: TASK_TYPE_LABELS.fetch_listings, value: 'fetch_listings'},
   {label: TASK_TYPE_LABELS.fetch_orders, value: 'fetch_orders'},
+  {label: TASK_TYPE_LABELS.extend_shipping, value: 'extend_shipping'},
 ];
 
 export const STOCKX_ORDER_TYPE_OPTIONS = [

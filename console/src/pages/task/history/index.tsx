@@ -208,6 +208,13 @@ const TaskPage = () => {
                     onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'extend_shipping') {
+                doPostRequest(TASK_API.START_SHIPPING_EXTENSION, {
+                    accountId: values.accountId,
+                }, {
+                    onSuccess: () => { message.success('订单延期任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else {
                 // KC
                 doPostRequest(`${TASK_API.START}?taskType=${createTaskType}`, {}, {
@@ -277,6 +284,17 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'extend_shipping' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        const tip = `扫描 ${attrs.scanned ?? 0} | 已延期 ${attrs.alreadyExtended ?? 0} | 跳过 ${attrs.skipped ?? 0}`;
+                        return <Tooltip title={tip}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                成功 {attrs.extended ?? 0}<br/>失败 {attrs.failed ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.round == null) return '-';
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
@@ -338,14 +356,16 @@ const TaskPage = () => {
                             } catch {}
                         }}>Excel</Button>
                     )}
-                    {(record.status === 'running' || record.status === '运行中') && (
+                    {(record.status === 'running' || record.status === '运行中') && record.taskType !== 'extend_shipping' && (
                         <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>
                     )}
-                    <Popconfirm title="确认删除" description="将删除任务及所有明细数据" onConfirm={() => handleDeleteTask(record)} okText="确定" cancelText="取消">
-                        <Button type="link" size="small" danger>删除</Button>
-                    </Popconfirm>
+                    {!(record.taskType === 'extend_shipping' && (record.status === 'running' || record.status === '运行中')) && (
+                        <Popconfirm title="确认删除" description="将删除任务及所有明细数据" onConfirm={() => handleDeleteTask(record)} okText="确定" cancelText="取消">
+                            <Button type="link" size="small" danger>删除</Button>
+                        </Popconfirm>
+                    )}
                 </Space>
             ),
         }
@@ -486,6 +506,7 @@ const TaskPage = () => {
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
         orderTypes: '订单类型', fetchPayout: '获取货款总额',
+        trigger: '触发方式', intervalHours: '自动间隔',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -494,6 +515,8 @@ const TaskPage = () => {
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
         if (k === 'fetchPayout') return v ? '是' : '否';
+        if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
+        if (k === 'intervalHours') return `${v}小时`;
         if (k === 'orderTypes') {
             const labels: Record<string, string> = {completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
             const values = Array.isArray(v) ? v : String(v).split(',');
@@ -608,6 +631,7 @@ const TaskPage = () => {
             taskType={selectedTaskRecord?.taskType}
             attributes={selectedTaskRecord?.attributes}
             round={selectedTaskRecord?.round}
+            defaultAutoRefresh={selectedTaskRecord?.status === 'running' || selectedTaskRecord?.status === '运行中'}
         />
     </>
 }
