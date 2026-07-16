@@ -14,6 +14,47 @@ import static org.assertj.core.api.Assertions.assertThat;
 class StockXOrderItemConverterTest {
 
     @Test
+    void convertsPendingAskIntoOrderFieldsAndShippingDeadline() {
+        JSONObject ask = JSON.parseObject("""
+                {
+                  "id": "14958362-pending-ask",
+                  "amount": 648,
+                  "currentCurrency": "USD",
+                  "soldOn": "2026-07-16T03:04:05.000Z",
+                  "dateToShipBy": "2026-07-20T23:59:59.000Z",
+                  "orderNumber": "04-HBCPTBGQJ6",
+                  "shippingExtensionRequested": false,
+                  "productVariant": {
+                    "id": "variant-pending",
+                    "traits": {"size": "3.5"},
+                    "sizeChart": {"displayOptions": [{"size": "US M 3.5"}, {"size": "EU 35.5"}]},
+                    "product": {
+                      "title": "Nike Kobe 6 Protro",
+                      "styleId": "FV4921-600"
+                    }
+                  }
+                }
+                """);
+
+        TaskItemDO item = StockXOrderItemConverter.convertPending(90L, ask);
+
+        assertThat(item.getTaskId()).isEqualTo(90L);
+        assertThat(item.getListingId()).isEqualTo("14958362-pending-ask");
+        assertThat(item.getProductId()).isEqualTo("variant-pending");
+        assertThat(item.getTitle()).isEqualTo("Nike Kobe 6 Protro");
+        assertThat(item.getStyleId()).isEqualTo("FV4921-600");
+        assertThat(item.getSize()).isEqualTo("3.5");
+        assertThat(item.getEuSize()).isEqualTo("35.5");
+        assertThat(item.getOrderNumber()).isEqualTo("04-HBCPTBGQJ6");
+        assertThat(item.getSalePrice()).isEqualByComparingTo(new BigDecimal("648"));
+        assertThat(item.getCurrencyCode()).isEqualTo("USD");
+        assertThat(item.getSoldOn()).isNotNull();
+        assertThat(item.getOperateTime()).isAfter(item.getSoldOn());
+        assertThat(item.getOrderStatus()).isEqualTo("待处理");
+        assertThat(item.getOperateResult()).isEqualTo("未延期");
+    }
+
+    @Test
     void convertsStockXOrderFieldsIntoTaskItemData() {
         JSONObject order = JSON.parseObject("""
                 {

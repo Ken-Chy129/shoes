@@ -27,5 +27,11 @@ class StockXOrderCategoryTest {
                     assertThat(category.getOrderStatuses()).isEqualTo(List.of(
                             "PAYOUTPENDING", "PAYOUTCOMPLETED", "PAYOUTFAILED"));
                 });
+        assertThat(StockXOrderCategory.fromCode("pending"))
+                .hasValueSatisfying(category -> {
+                    assertThat(category.getLabel()).isEqualTo("待处理");
+                    assertThat(category.getListingStatuses()).isEmpty();
+                    assertThat(category.getOrderStatuses()).isEmpty();
+                });
     }
 }

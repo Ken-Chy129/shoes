@@ -58,6 +58,15 @@ public final class StockXOrderItemConverter {
         return item;
     }
 
+    public static TaskItemDO convertPending(Long taskId, JSONObject ask) {
+        TaskItemDO item = convert(taskId, ask, StockXOrderCategory.PENDING, null);
+        item.setOrderNumber(ask.getString("orderNumber"));
+        item.setCurrencyCode(ask.getString("currentCurrency"));
+        item.setOperateTime(parseDate(ask.getString("dateToShipBy")));
+        item.setOperateResult(ask.getBooleanValue("shippingExtensionRequested") ? "已延期" : "未延期");
+        return item;
+    }
+
     private static String extractEuSize(JSONObject sizeChart) {
         if (sizeChart == null) {
             return null;

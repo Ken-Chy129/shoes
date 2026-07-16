@@ -20,6 +20,7 @@ public enum StockXOrderCategory {
                     "BUYER_PROMISE_RETURN_COMPLETED"),
             List.of()),
     CANCELLED("cancelled", "已取消", "已取消", List.of("CANCELED"), List.of()),
+    PENDING("pending", "待处理", "待处理", List.of(), List.of()),
     PENDING_PAYOUT(
             "pending_payout",
             "待付款",
