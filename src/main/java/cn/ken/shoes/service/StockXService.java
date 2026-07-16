@@ -61,7 +61,7 @@ public class StockXService {
     private TaskMapper taskMapper;
 
     public void extendAllItems() {
-        shippingExtensionService.extendAllEnabledAccounts();
+        shippingExtensionService.extendAllEnabledAccounts("manual");
     }
 
     public void refreshBrand() {

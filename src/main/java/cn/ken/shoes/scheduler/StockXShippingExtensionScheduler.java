@@ -20,7 +20,7 @@ public class StockXShippingExtensionScheduler {
             fixedDelayString = "${stockx.shipping-extension.interval-ms:43200000}")
     public void autoExtendPendingOrders() {
         try {
-            shippingExtensionService.extendAllEnabledAccounts();
+            shippingExtensionService.extendAllEnabledAccounts("scheduled");
         } catch (Exception e) {
             log.error("StockX自动延期定时任务异常", e);
         }

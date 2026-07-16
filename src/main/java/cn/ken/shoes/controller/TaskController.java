@@ -15,6 +15,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
+import cn.ken.shoes.service.StockXShippingExtensionService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -40,6 +41,9 @@ public class TaskController {
 
     @Resource
     private ConfigManager configManager;
+
+    @Resource
+    private StockXShippingExtensionService shippingExtensionService;
 
     @GetMapping("page")
     public PageResult<List<TaskDO>> queryTasks(TaskRequest request) {
@@ -205,6 +209,21 @@ public class TaskController {
         Long taskId = taskExecutorManager.startFetchListings(accountId, inventoryType);
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    // ==================== StockX 订单延期 ====================
+
+    @PostMapping("stockx/startShippingExtension")
+    public Result<String> startShippingExtension(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        Long taskId = shippingExtensionService.startManualAccount(accountId);
+        if (taskId == null) {
+            return Result.buildError("任务正在运行、账号不存在或账号未启用");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }
