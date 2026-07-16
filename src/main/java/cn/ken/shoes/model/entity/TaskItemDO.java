@@ -67,6 +67,43 @@ public class TaskItemDO {
     private String euSize;
 
     /**
+     * StockX订单号
+     */
+    @TableField("order_number")
+    private String orderNumber;
+
+    /**
+     * StockX订单状态（中文展示值）
+     */
+    @TableField("order_status")
+    private String orderStatus;
+
+    /**
+     * 订单币种
+     */
+    @TableField("currency_code")
+    private String currencyCode;
+
+    /**
+     * 出售价格
+     */
+    @TableField("sale_price")
+    private BigDecimal salePrice;
+
+    /**
+     * 预计/实际货款
+     */
+    @TableField("payout_amount")
+    private BigDecimal payoutAmount;
+
+    /**
+     * 出售日期
+     */
+    @TableField("sold_on")
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss", timezone = "GMT+8")
+    private Date soldOn;
+
+    /**
      * 当前售价
      */
     private BigDecimal currentPrice;

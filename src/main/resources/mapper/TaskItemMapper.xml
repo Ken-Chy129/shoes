@@ -12,6 +12,12 @@
         <result property="styleId" column="style_id"/>
         <result property="size" column="size"/>
         <result property="euSize" column="eu_size"/>
+        <result property="orderNumber" column="order_number"/>
+        <result property="orderStatus" column="order_status"/>
+        <result property="currencyCode" column="currency_code"/>
+        <result property="salePrice" column="sale_price"/>
+        <result property="payoutAmount" column="payout_amount"/>
+        <result property="soldOn" column="sold_on"/>
         <result property="currentPrice" column="current_price"/>
         <result property="lowestPrice" column="lowest_price"/>
         <result property="poisonPrice" column="poison_price"/>
