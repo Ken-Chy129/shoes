@@ -15,9 +15,7 @@ public enum TaskTypeEnum {
     FETCH_LISTINGS("fetch_listings", "获取上架商品", false),
     EXCEL_DELIST("excel_delist", "Excel下架", false),
     MODEL_SEARCH("model_search", "货号搜索上架", true),
-    FETCH_COMPLETED_ORDERS("fetch_completed_orders", "获取已完成", false),
-    FETCH_CANCELLED_ORDERS("fetch_cancelled_orders", "获取已取消", false),
-    FETCH_PENDING_PAYOUT_ORDERS("fetch_pending_payout_orders", "获取待付款", false),
+    FETCH_ORDERS("fetch_orders", "获取订单", false),
     ;
 
     private final String code;

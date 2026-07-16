@@ -1,29 +1,31 @@
 package cn.ken.shoes.order;
 
 import cn.ken.shoes.common.StockXOrderCategory;
-import cn.ken.shoes.common.TaskTypeEnum;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StockXOrderCategoryTest {
 
     @Test
-    void mapsTaskTypesToTheCorrectStockXOrderEndpointsAndStatuses() {
-        assertThat(StockXOrderCategory.fromTaskType(TaskTypeEnum.FETCH_COMPLETED_ORDERS))
+    void exposesTheCapturedGraphqlFiltersForEachSelectableOrderType() {
+        assertThat(StockXOrderCategory.fromCode("completed"))
                 .hasValueSatisfying(category -> {
-                    assertThat(category.isHistorical()).isTrue();
-                    assertThat(category.getOrderStatus()).isEqualTo("COMPLETED");
+                    assertThat(category.getListingStatuses()).contains("COMPLETED", "RETURN_COMPLETED");
+                    assertThat(category.getOrderStatuses()).isEmpty();
                 });
-        assertThat(StockXOrderCategory.fromTaskType(TaskTypeEnum.FETCH_CANCELLED_ORDERS))
+        assertThat(StockXOrderCategory.fromCode("cancelled"))
                 .hasValueSatisfying(category -> {
-                    assertThat(category.isHistorical()).isTrue();
-                    assertThat(category.getOrderStatus()).isEqualTo("CANCELED");
+                    assertThat(category.getListingStatuses()).containsExactly("CANCELED");
+                    assertThat(category.getOrderStatuses()).isEmpty();
                 });
-        assertThat(StockXOrderCategory.fromTaskType(TaskTypeEnum.FETCH_PENDING_PAYOUT_ORDERS))
+        assertThat(StockXOrderCategory.fromCode("pending_payout"))
                 .hasValueSatisfying(category -> {
-                    assertThat(category.isHistorical()).isFalse();
-                    assertThat(category.getOrderStatus()).isEqualTo("PAYOUTPENDING");
+                    assertThat(category.getListingStatuses()).containsExactly("MATCHED");
+                    assertThat(category.getOrderStatuses()).isEqualTo(List.of(
+                            "PAYOUTPENDING", "PAYOUTCOMPLETED", "PAYOUTFAILED"));
                 });
     }
 }

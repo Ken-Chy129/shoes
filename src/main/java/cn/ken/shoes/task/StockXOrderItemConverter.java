@@ -3,7 +3,7 @@ package cn.ken.shoes.task;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.util.BrandUtil;
-import cn.ken.shoes.util.SizeConvertUtil;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 
 import java.math.BigDecimal;
@@ -15,44 +15,64 @@ public final class StockXOrderItemConverter {
     private StockXOrderItemConverter() {
     }
 
-    public static TaskItemDO convert(Long taskId, JSONObject order) {
+    public static TaskItemDO convert(Long taskId, JSONObject order, StockXOrderCategory category,
+                                     BigDecimal payoutAmount) {
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(0);
-        item.setListingId(order.getString("listingId"));
-        item.setOrderNumber(order.getString("orderNumber"));
+        item.setListingId(order.getString("id"));
 
-        JSONObject product = order.getJSONObject("product");
+        JSONObject associatedOrders = order.getJSONObject("associatedOrders");
+        JSONObject standardizedSellOrder = associatedOrders != null
+                ? associatedOrders.getJSONObject("standardizedSellOrder") : null;
+        if (standardizedSellOrder != null) {
+            item.setOrderNumber(standardizedSellOrder.getString("orderNumber"));
+        }
+
+        JSONObject productVariant = order.getJSONObject("productVariant");
+        JSONObject product = productVariant != null ? productVariant.getJSONObject("product") : null;
         if (product != null) {
-            item.setTitle(product.getString("productName"));
+            item.setTitle(product.getString("title"));
             item.setStyleId(product.getString("styleId"));
-            item.setBrand(BrandUtil.extractStockXBrand(product.getString("productName")));
+            item.setBrand(BrandUtil.extractStockXBrand(product.getString("title")));
         }
 
-        JSONObject variant = order.getJSONObject("variant");
-        if (variant != null) {
-            item.setProductId(variant.getString("variantId"));
-            item.setSize(variant.getString("variantValue"));
+        if (productVariant != null) {
+            item.setProductId(productVariant.getString("id"));
+            JSONObject traits = productVariant.getJSONObject("traits");
+            if (traits != null) {
+                item.setSize(traits.getString("size"));
+            }
+            item.setEuSize(extractEuSize(productVariant.getJSONObject("sizeChart")));
         }
-        item.setEuSize(SizeConvertUtil.getStockXEuSize(item.getBrand(), item.getSize()));
 
-        JSONObject payout = order.getJSONObject("payout");
-        item.setSalePrice(parseDecimal(payout != null ? payout.getString("salePrice") : null));
-        if (item.getSalePrice() == null) {
-            item.setSalePrice(parseDecimal(order.getString("amount")));
-        }
-        item.setPayoutAmount(parseDecimal(payout != null ? payout.getString("totalPayout") : null));
-        String currencyCode = payout != null ? payout.getString("currencyCode") : null;
-        item.setCurrencyCode(currencyCode != null ? currencyCode : order.getString("currencyCode"));
+        item.setSalePrice(parseDecimal(order.getString("amount")));
+        item.setPayoutAmount(payoutAmount);
+        item.setCurrencyCode(order.getString("currency"));
+        item.setOrderStatus(category.getDisplayStatus());
+        item.setOperateResult(category.getDisplayStatus());
 
-        String displayStatus = StockXOrderCategory.displayStatus(order.getString("status"));
-        item.setOrderStatus(displayStatus);
-        item.setOperateResult(displayStatus);
-
-        Date soldOn = parseDate(order.getString("createdAt"));
+        Date soldOn = parseDate(order.getString("soldOn"));
         item.setSoldOn(soldOn);
         item.setOperateTime(soldOn);
         return item;
+    }
+
+    private static String extractEuSize(JSONObject sizeChart) {
+        if (sizeChart == null) {
+            return null;
+        }
+        JSONArray displayOptions = sizeChart.getJSONArray("displayOptions");
+        if (displayOptions == null) {
+            return null;
+        }
+        for (JSONObject option : displayOptions.toJavaList(JSONObject.class)) {
+            String size = option.getString("size");
+            if (size != null && size.startsWith("EU ")) {
+                return size.substring(3).trim();
+            }
+        }
+        return null;
     }
 
     private static BigDecimal parseDecimal(String value) {
