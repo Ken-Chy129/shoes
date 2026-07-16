@@ -181,6 +181,98 @@ public class StockXClient {
         return request;
     }
 
+    /** 查询 StockX Pro 待处理订单，返回 viewer.asks 分页对象。 */
+    public JSONObject queryPendingAsks(String after, StockXAccount account) {
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        JSONObject response = queryPro(
+                buildPendingAsksRequest(after, country).toJSONString(),
+                buildViperHeaders(account),
+                account.getName());
+        if (response == null) {
+            return null;
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            return new JSONObject(true).fluentPut("_unauthorized", true);
+        }
+        JSONObject data = response.getJSONObject("data");
+        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+        JSONObject asks = viewer != null ? viewer.getJSONObject("asks") : null;
+        if (asks == null) {
+            log.error("queryPendingAsks[{}] 响应无viewer.asks, reason:{}",
+                    account.getName(), extractGraphqlError(response));
+        }
+        return asks;
+    }
+
+    /** 请求单个订单延期。chainId 必须使用 ViewerAsks.node.id（即 askId）。 */
+    public boolean extendShipDate(String orderId, String askId, StockXAccount account) {
+        LimiterHelper.limitStockxGraphql(account.getName());
+        JSONObject response = queryPro(
+                buildExtendShipDateRequest(orderId, askId).toJSONString(),
+                buildViperHeaders(account),
+                account.getName());
+        if (response == null) {
+            return false;
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("TOKEN_EXPIRED");
+        }
+        JSONObject data = response.getJSONObject("data");
+        JSONObject extension = data != null ? data.getJSONObject("requestSellerShippingExtension") : null;
+        if (extension != null && extension.getBooleanValue("approved")) {
+            return true;
+        }
+        log.warn("extendShipDate[{}] 被拒绝, reason:{}", account.getName(), extractGraphqlError(response));
+        return false;
+    }
+
+    static JSONObject buildPendingAsksRequest(String after, String country) {
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", "ViewerAsks");
+
+        JSONObject variables = new JSONObject(true);
+        variables.put("skipGuidance", true);
+        variables.put("skipFlexEligible", true);
+        variables.put("includeHasAttributedAd", true);
+        variables.put("pageSize", 30);
+        variables.put("sort", "MATCHED_AT");
+        variables.put("order", "DESC");
+        variables.put("country", country);
+        variables.put("market", country);
+        variables.put("state", "PENDING");
+        variables.put("query", "");
+        if (StrUtil.isNotBlank(after)) {
+            variables.put("after", after);
+        }
+
+        JSONObject filters = new JSONObject(true);
+        filters.put("vertical", Map.of("in", List.of()));
+        filters.put("shipmentId", Map.of("in", List.of()));
+        filters.put("lowestAsk", new JSONObject(true));
+        filters.put("expired", new JSONObject(true));
+        filters.put("includeBulkShipmentItems", new JSONObject(true));
+        filters.put("statesList", Map.of("in", List.of(410, 411, 415)));
+        filters.put("productId", Map.of("in", List.of()));
+        filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
+        filters.put("askType", Map.of("in", List.of("STANDARD", "AUCTION")));
+        variables.put("filters", filters);
+
+        request.put("variables", variables);
+        request.put("extensions", persistedQuery("960abd9d0f94d676dc187d3eca887f6de57d182c1fbbed124da1927ad1d3581c"));
+        return request;
+    }
+
+    static JSONObject buildExtendShipDateRequest(String orderId, String askId) {
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", "ExtendShipDate");
+        request.put("variables", new JSONObject(true)
+                .fluentPut("orderId", orderId)
+                .fluentPut("note", "Seller self-serve shipping extension")
+                .fluentPut("chainId", askId));
+        request.put("extensions", persistedQuery("356331b5cf0da7f170d55185e49db5188ba5201cf97645ac3ef3f4de1ccd3149"));
+        return request;
+    }
+
     private static JSONObject persistedQuery(String sha256Hash) {
         JSONObject extension = new JSONObject(true);
         extension.put("persistedQuery", new JSONObject(true)
