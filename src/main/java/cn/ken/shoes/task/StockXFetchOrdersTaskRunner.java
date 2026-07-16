@@ -1,11 +1,14 @@
 package cn.ken.shoes.task;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONArray;
@@ -13,9 +16,12 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 public class StockXFetchOrdersTaskRunner implements Runnable {
@@ -23,20 +29,20 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     private final StockXAccount account;
     private final Long taskId;
     private final List<StockXOrderCategory> categories;
-    private final boolean fetchPayout;
     private final StockXClient stockXClient;
+    private final PriceManager priceManager;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
 
     public StockXFetchOrdersTaskRunner(StockXAccount account, Long taskId,
-                                       List<StockXOrderCategory> categories, boolean fetchPayout,
-                                       StockXClient stockXClient, TaskMapper taskMapper,
-                                       TaskItemMapper taskItemMapper) {
+                                       List<StockXOrderCategory> categories,
+                                       StockXClient stockXClient, PriceManager priceManager,
+                                       TaskMapper taskMapper, TaskItemMapper taskItemMapper) {
         this.account = account;
         this.taskId = taskId;
         this.categories = categories;
-        this.fetchPayout = fetchPayout;
         this.stockXClient = stockXClient;
+        this.priceManager = priceManager;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
     }
@@ -50,55 +56,15 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         Map<String, Integer> counts = new LinkedHashMap<>();
         try {
             for (StockXOrderCategory category : categories) {
-                int categoryCount = 0;
-                int pageNumber = 1;
-                boolean hasNextPage;
-                do {
-                    if (cancelled()) {
-                        cancelTask(startTime);
-                        return;
-                    }
-                    JSONObject result = stockXClient.queryOrderListings(category, pageNumber, account);
-                    if (result == null) {
-                        taskMapper.updateTaskFailed(taskId, category.getLabel() + "第" + pageNumber + "页查询失败");
-                        return;
-                    }
-                    if (result.getBooleanValue("_unauthorized")) {
-                        taskMapper.updateTaskFailed(taskId, "Token已过期，请更新Token");
-                        return;
-                    }
-                    JSONArray edges = result.getJSONArray("edges");
-                    if (edges == null) {
-                        taskMapper.updateTaskFailed(taskId, category.getLabel() + "响应缺少edges字段");
-                        return;
-                    }
-                    for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
-                        if (cancelled()) {
-                            cancelTask(startTime);
-                            return;
-                        }
-                        JSONObject node = edge.getJSONObject("node");
-                        if (node == null) {
-                            continue;
-                        }
-                        BigDecimal payout = fetchPayout
-                                ? stockXClient.queryOrderPayout(node.getString("id"), account)
-                                : null;
-                        taskItemMapper.insert(StockXOrderItemConverter.convert(taskId, node, category, payout));
-                        categoryCount++;
-                    }
-                    JSONObject pageInfo = result.getJSONObject("pageInfo");
-                    hasNextPage = pageInfo != null && pageInfo.getBooleanValue("hasNextPage");
-                    pageNumber++;
-                    totalPages++;
-                    taskMapper.updateTaskRound(taskId, totalPages);
-                } while (hasNextPage);
-                counts.put(category.getCode(), categoryCount);
-                totalOrders += categoryCount;
+                CategoryResult result = category == StockXOrderCategory.PENDING
+                        ? fetchPendingOrders(totalPages)
+                        : fetchHistoricalOrders(category, totalPages);
+                totalPages += result.pages();
+                totalOrders += result.count();
+                counts.put(category.getCode(), result.count());
                 taskMapper.updateTaskAttributes(taskId, new JSONObject()
                         .fluentPut("counts", counts)
                         .fluentPut("total", totalOrders)
-                        .fluentPut("fetchPayout", fetchPayout)
                         .toJSONString());
             }
 
@@ -106,8 +72,10 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
             taskMapper.updateTaskCost(taskId, cost);
             taskMapper.updateTaskFailReason(taskId, "共获取" + totalOrders + "条订单");
-            log.info("[{}] 获取订单任务完成, categories:{}, total:{}, fetchPayout:{}, 耗时:{}",
-                    account.getName(), categories, totalOrders, fetchPayout, cost);
+            log.info("[{}] 获取订单任务完成, categories:{}, total:{}, 耗时:{}",
+                    account.getName(), categories, totalOrders, cost);
+        } catch (TaskCancelledException ignored) {
+            cancelTask(startTime);
         } catch (Exception e) {
             log.error("[{}] 获取订单任务异常: {}", account.getName(), e.getMessage(), e);
             String reason = e.getMessage();
@@ -120,13 +88,113 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         }
     }
 
-    private boolean cancelled() {
-        return TaskSwitch.isFetchOrdersCancelled(account.getName());
+    private CategoryResult fetchHistoricalOrders(StockXOrderCategory category, int completedPages) {
+        int count = 0;
+        int pages = 0;
+        int pageNumber = 1;
+        boolean hasNextPage;
+        do {
+            ensureNotCancelled();
+            JSONObject result = stockXClient.queryOrderListings(category, pageNumber, account);
+            JSONArray edges = requireEdges(result, category.getLabel(), pageNumber);
+            List<TaskItemDO> items = new ArrayList<>();
+            for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
+                JSONObject node = edge.getJSONObject("node");
+                if (node != null) {
+                    items.add(StockXOrderItemConverter.convert(taskId, node, category));
+                }
+            }
+            storeWithPoisonPrices(items);
+            count += items.size();
+            pages++;
+            taskMapper.updateTaskRound(taskId, completedPages + pages);
+            JSONObject pageInfo = result.getJSONObject("pageInfo");
+            hasNextPage = pageInfo != null && pageInfo.getBooleanValue("hasNextPage");
+            pageNumber++;
+        } while (hasNextPage);
+        return new CategoryResult(count, pages);
+    }
+
+    private CategoryResult fetchPendingOrders(int completedPages) {
+        int count = 0;
+        int pages = 0;
+        String after = null;
+        while (true) {
+            ensureNotCancelled();
+            JSONObject result = stockXClient.queryPendingAsks(after, account);
+            JSONArray edges = requireEdges(result, StockXOrderCategory.PENDING.getLabel(), pages + 1);
+            List<TaskItemDO> items = new ArrayList<>();
+            for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
+                JSONObject node = edge.getJSONObject("node");
+                if (node != null) {
+                    items.add(StockXOrderItemConverter.convertPending(taskId, node));
+                }
+            }
+            storeWithPoisonPrices(items);
+            count += items.size();
+            pages++;
+            taskMapper.updateTaskRound(taskId, completedPages + pages);
+
+            JSONObject pageInfo = result.getJSONObject("pageInfo");
+            boolean hasNextPage = pageInfo != null && pageInfo.getBooleanValue("hasNextPage");
+            if (!hasNextPage) {
+                return new CategoryResult(count, pages);
+            }
+            String nextCursor = pageInfo.getString("endCursor");
+            if (StrUtil.isBlank(nextCursor) || nextCursor.equals(after)) {
+                throw new IllegalStateException("待处理订单分页游标无效");
+            }
+            after = nextCursor;
+        }
+    }
+
+    private JSONArray requireEdges(JSONObject result, String label, int pageNumber) {
+        if (result == null) {
+            throw new IllegalStateException(label + "第" + pageNumber + "页查询失败");
+        }
+        if (result.getBooleanValue("_unauthorized")) {
+            throw new IllegalStateException("Token已过期，请更新Token");
+        }
+        JSONArray edges = result.getJSONArray("edges");
+        if (edges == null) {
+            throw new IllegalStateException(label + "响应缺少edges字段");
+        }
+        return edges;
+    }
+
+    private void storeWithPoisonPrices(List<TaskItemDO> items) {
+        Set<String> styleIds = new HashSet<>();
+        for (TaskItemDO item : items) {
+            if (StrUtil.isNotBlank(item.getStyleId())) {
+                styleIds.add(item.getStyleId());
+            }
+        }
+        priceManager.batchLoadPrices(styleIds);
+        for (TaskItemDO item : items) {
+            ensureNotCancelled();
+            Integer poisonPrice = priceManager.getPoisonPrice(item.getStyleId(), item.getEuSize());
+            if (poisonPrice != null) {
+                item.setPoisonPrice(BigDecimal.valueOf(poisonPrice));
+            }
+            taskItemMapper.insert(item);
+        }
+    }
+
+    private void ensureNotCancelled() {
+        if (TaskSwitch.isFetchOrdersCancelled(account.getName())) {
+            throw new TaskCancelledException();
+        }
     }
 
     private void cancelTask(long startTime) {
         taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
         taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
         log.info("[{}] 获取订单任务已取消", account.getName());
+    }
+
+    private record CategoryResult(int count, int pages) {
+    }
+
+    private static class TaskCancelledException extends RuntimeException {
     }
 }

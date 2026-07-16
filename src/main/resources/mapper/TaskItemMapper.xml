@@ -16,7 +16,6 @@
         <result property="orderStatus" column="order_status"/>
         <result property="currencyCode" column="currency_code"/>
         <result property="salePrice" column="sale_price"/>
-        <result property="payoutAmount" column="payout_amount"/>
         <result property="soldOn" column="sold_on"/>
         <result property="currentPrice" column="current_price"/>
         <result property="lowestPrice" column="lowest_price"/>

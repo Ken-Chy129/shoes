@@ -9,6 +9,9 @@ public class StockXOrderTaskExcel {
     @ExcelProperty("id")
     private String id;
 
+    @ExcelProperty("商品id")
+    private String productId;
+
     @ExcelProperty("产品名称")
     private String title;
 
@@ -27,12 +30,18 @@ public class StockXOrderTaskExcel {
     @ExcelProperty("出售日期")
     private String soldOn;
 
+    @ExcelProperty("截止日期")
+    private String shipByDate;
+
     @ExcelProperty("StockX出售价格")
     private String salePrice;
 
-    @ExcelProperty("状态")
+    @ExcelProperty("得物价格")
+    private String poisonPrice;
+
+    @ExcelProperty("订单状态")
     private String status;
 
-    @ExcelProperty("货款")
-    private String payoutAmount;
+    @ExcelProperty("延期状态")
+    private String extensionStatus;
 }

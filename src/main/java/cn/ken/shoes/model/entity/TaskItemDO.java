@@ -91,12 +91,6 @@ public class TaskItemDO {
     private BigDecimal salePrice;
 
     /**
-     * 预计/实际货款
-     */
-    @TableField("payout_amount")
-    private BigDecimal payoutAmount;
-
-    /**
      * 出售日期
      */
     @TableField("sold_on")

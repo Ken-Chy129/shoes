@@ -79,15 +79,20 @@ public class TaskItemController {
             for (TaskItemDO item : items) {
                 StockXOrderTaskExcel excel = new StockXOrderTaskExcel();
                 excel.setId(item.getListingId());
+                excel.setProductId(item.getProductId());
                 excel.setTitle(item.getTitle());
                 excel.setStyleId(item.getStyleId());
                 excel.setSize(item.getSize());
                 excel.setEuSize(item.getEuSize());
                 excel.setOrderNumber(item.getOrderNumber());
                 excel.setSoldOn(item.getSoldOn() != null ? orderDateFormat.format(item.getSoldOn()) : "-");
+                boolean pending = "待处理".equals(item.getOrderStatus());
+                excel.setShipByDate(pending && item.getOperateTime() != null
+                        ? orderDateFormat.format(item.getOperateTime()) : "-");
                 excel.setSalePrice(formatMoney(item.getSalePrice(), item.getCurrencyCode()));
+                excel.setPoisonPrice(item.getPoisonPrice() != null ? "¥" + item.getPoisonPrice() : "-");
                 excel.setStatus(item.getOrderStatus());
-                excel.setPayoutAmount(formatMoney(item.getPayoutAmount(), item.getCurrencyCode()));
+                excel.setExtensionStatus(pending ? item.getOperateResult() : "-");
                 orderExcelList.add(excel);
             }
             EasyExcel.write(response.getOutputStream(), StockXOrderTaskExcel.class)

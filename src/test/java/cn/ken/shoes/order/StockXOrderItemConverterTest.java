@@ -81,7 +81,7 @@ class StockXOrderItemConverterTest {
                 """);
 
         TaskItemDO item = StockXOrderItemConverter.convert(
-                88L, order, StockXOrderCategory.COMPLETED, new BigDecimal("173.42"));
+                88L, order, StockXOrderCategory.COMPLETED);
 
         assertThat(item.getTaskId()).isEqualTo(88L);
         assertThat(item.getListingId()).isEqualTo("0e01e186-aaaa-bbbb-cccc-1234567890ab");
@@ -93,13 +93,12 @@ class StockXOrderItemConverterTest {
         assertThat(item.getOrderStatus()).isEqualTo("销售完成");
         assertThat(item.getCurrencyCode()).isEqualTo("USD");
         assertThat(item.getSalePrice()).isEqualByComparingTo(new BigDecimal("198"));
-        assertThat(item.getPayoutAmount()).isEqualByComparingTo(new BigDecimal("173.42"));
         assertThat(item.getSoldOn()).isNotNull();
         assertThat(item.getOperateResult()).isEqualTo("销售完成");
     }
 
     @Test
-    void fallsBackToOrderAmountWhenPayoutDetailsAreMissing() {
+    void convertsPendingPayoutWithoutRequestingOrderDetails() {
         JSONObject order = JSON.parseObject("""
                 {
                   "id": "listing-pending",
@@ -118,10 +117,9 @@ class StockXOrderItemConverterTest {
                 """);
 
         TaskItemDO item = StockXOrderItemConverter.convert(
-                89L, order, StockXOrderCategory.PENDING_PAYOUT, null);
+                89L, order, StockXOrderCategory.PENDING_PAYOUT);
 
         assertThat(item.getSalePrice()).isEqualByComparingTo(new BigDecimal("222"));
-        assertThat(item.getPayoutAmount()).isNull();
         assertThat(item.getOrderStatus()).isEqualTo("待付款");
         assertThat(item.getEuSize()).isEqualTo("42");
     }

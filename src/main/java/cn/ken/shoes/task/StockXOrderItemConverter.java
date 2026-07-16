@@ -15,8 +15,7 @@ public final class StockXOrderItemConverter {
     private StockXOrderItemConverter() {
     }
 
-    public static TaskItemDO convert(Long taskId, JSONObject order, StockXOrderCategory category,
-                                     BigDecimal payoutAmount) {
+    public static TaskItemDO convert(Long taskId, JSONObject order, StockXOrderCategory category) {
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(0);
@@ -47,7 +46,6 @@ public final class StockXOrderItemConverter {
         }
 
         item.setSalePrice(parseDecimal(order.getString("amount")));
-        item.setPayoutAmount(payoutAmount);
         item.setCurrencyCode(order.getString("currency"));
         item.setOrderStatus(category.getDisplayStatus());
         item.setOperateResult(category.getDisplayStatus());
@@ -59,7 +57,7 @@ public final class StockXOrderItemConverter {
     }
 
     public static TaskItemDO convertPending(Long taskId, JSONObject ask) {
-        TaskItemDO item = convert(taskId, ask, StockXOrderCategory.PENDING, null);
+        TaskItemDO item = convert(taskId, ask, StockXOrderCategory.PENDING);
         item.setOrderNumber(ask.getString("orderNumber"));
         item.setCurrencyCode(ask.getString("currentCurrency"));
         item.setOperateTime(parseDate(ask.getString("dateToShipBy")));

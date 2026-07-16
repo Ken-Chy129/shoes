@@ -126,26 +126,6 @@ public class StockXClient {
         return sellerListings;
     }
 
-    /**
-     * 逐单查询货款。该接口每条订单单独调用，因此只在用户显式勾选“获取货款总额”时使用。
-     */
-    public BigDecimal queryOrderPayout(String listingId, StockXAccount account) {
-        JSONObject response = queryPro(
-                buildOrderPayoutRequest(listingId).toJSONString(),
-                buildViperHeaders(account),
-                account.getName());
-        if (response == null || "Unauthorized".equals(response.getString("message"))) {
-            return null;
-        }
-        JSONObject data = response.getJSONObject("data");
-        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
-        JSONObject sellerListing = viewer != null ? viewer.getJSONObject("sellerListing") : null;
-        JSONObject associatedOrders = sellerListing != null ? sellerListing.getJSONObject("associatedOrders") : null;
-        JSONObject order = associatedOrders != null ? associatedOrders.getJSONObject("standardizedSellOrder") : null;
-        JSONObject payoutPricing = order != null ? order.getJSONObject("payoutPricing") : null;
-        return payoutPricing != null ? payoutPricing.getBigDecimal("total") : null;
-    }
-
     static JSONObject buildOrderListingsRequest(StockXOrderCategory category, int pageNumber, String country) {
         JSONObject request = new JSONObject(true);
         request.put("operationName", "SellerListings");
@@ -170,14 +150,6 @@ public class StockXClient {
         variables.put("filters", filters);
         request.put("variables", variables);
         request.put("extensions", persistedQuery("0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733"));
-        return request;
-    }
-
-    static JSONObject buildOrderPayoutRequest(String listingId) {
-        JSONObject request = new JSONObject(true);
-        request.put("operationName", "SellerListingStandardizedSellOrder");
-        request.put("variables", new JSONObject().fluentPut("id", listingId));
-        request.put("extensions", persistedQuery("f94ee23520a6ce8aa553f97ec790d67a81b6f0ab652a6dd20178ca21c3f4695e"));
         return request;
     }
 

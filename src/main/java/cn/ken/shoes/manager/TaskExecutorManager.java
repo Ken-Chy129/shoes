@@ -47,6 +47,9 @@ public class TaskExecutorManager {
     @Resource
     private TaskItemMapper taskItemMapper;
 
+    @Resource
+    private PriceManager priceManager;
+
     /**
      * 启动任务（KC平台）
      */
@@ -323,7 +326,7 @@ public class TaskExecutorManager {
 
     // ==================== StockX 获取订单 ====================
 
-    public Long startFetchOrders(String accountId, List<StockXOrderCategory> categories, boolean fetchPayout) {
+    public Long startFetchOrders(String accountId, List<StockXOrderCategory> categories) {
         if (TaskSwitch.isFetchOrdersRunning(accountId)) {
             log.info("获取订单任务已在运行: {}", accountId);
             return null;
@@ -335,16 +338,15 @@ public class TaskExecutorManager {
         }
         String params = new JSONObject()
                 .fluentPut("orderTypes", categories.stream().map(StockXOrderCategory::getCode).toList())
-                .fluentPut("fetchPayout", fetchPayout)
                 .toJSONString();
         Long taskId = createTask("stockx", TaskTypeEnum.FETCH_ORDERS.getCode(), account.getName(), params);
         TaskSwitch.resetFetchOrdersCancel(accountId);
         TaskSwitch.setFetchOrdersRunning(accountId, true);
 
         StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
-                account, taskId, categories, fetchPayout, stockXClient, taskMapper, taskItemMapper);
+                account, taskId, categories, stockXClient, priceManager, taskMapper, taskItemMapper);
         new Thread(runner, "StockX-FetchOrders-" + account.getName()).start();
-        log.info("获取订单任务已启动: [{}], categories:{}, fetchPayout:{}", account.getName(), categories, fetchPayout);
+        log.info("获取订单任务已启动: [{}], categories:{}", account.getName(), categories);
         return taskId;
     }
 

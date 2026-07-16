@@ -290,8 +290,7 @@ public class TaskController {
             }
             categories.add(category);
         }
-        Long taskId = taskExecutorManager.startFetchOrders(
-                accountId, new ArrayList<>(categories), body.getBooleanValue("fetchPayout"));
+        Long taskId = taskExecutorManager.startFetchOrders(accountId, new ArrayList<>(categories));
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }
