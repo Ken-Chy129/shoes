@@ -6,6 +6,7 @@ import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.manager.ConfigManager;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -25,6 +26,7 @@ import java.util.stream.Collectors;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
 
 @RestController
 @RequestMapping("task")
@@ -246,6 +248,31 @@ public class TaskController {
             return Result.buildError("请先上传下架Excel");
         }
         Long taskId = taskExecutorManager.startExcelDelist(accountId, inventoryType);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    // ==================== StockX 获取订单 ====================
+
+    @PostMapping("stockx/startFetchOrders")
+    public Result<String> startFetchOrders(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        var orderTypes = body.getJSONArray("orderTypes");
+        if (StrUtil.isBlank(accountId) || orderTypes == null || orderTypes.isEmpty()) {
+            return Result.buildError("accountId和orderTypes不能为空");
+        }
+        LinkedHashSet<StockXOrderCategory> categories = new LinkedHashSet<>();
+        for (String code : orderTypes.toJavaList(String.class)) {
+            StockXOrderCategory category = StockXOrderCategory.fromCode(code).orElse(null);
+            if (category == null) {
+                return Result.buildError("无效的订单类型: " + code);
+            }
+            categories.add(category);
+        }
+        Long taskId = taskExecutorManager.startFetchOrders(
+                accountId, new ArrayList<>(categories), body.getBooleanValue("fetchPayout"));
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }

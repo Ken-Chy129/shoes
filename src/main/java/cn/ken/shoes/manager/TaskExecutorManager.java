@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -317,6 +318,32 @@ public class TaskExecutorManager {
                 account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper);
         new Thread(runner, "StockX-ExcelDelist-" + account.getName() + "-" + inventoryType).start();
         log.info("Excel下架任务已启动: [{}] {}", account.getName(), inventoryType);
+        return taskId;
+    }
+
+    // ==================== StockX 获取订单 ====================
+
+    public Long startFetchOrders(String accountId, List<StockXOrderCategory> categories, boolean fetchPayout) {
+        if (TaskSwitch.isFetchOrdersRunning(accountId)) {
+            log.info("获取订单任务已在运行: {}", accountId);
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        String params = new JSONObject()
+                .fluentPut("orderTypes", categories.stream().map(StockXOrderCategory::getCode).toList())
+                .fluentPut("fetchPayout", fetchPayout)
+                .toJSONString();
+        Long taskId = createTask("stockx", TaskTypeEnum.FETCH_ORDERS.getCode(), account.getName(), params);
+        TaskSwitch.resetFetchOrdersCancel(accountId);
+
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account, taskId, categories, fetchPayout, stockXClient, taskMapper, taskItemMapper);
+        new Thread(runner, "StockX-FetchOrders-" + account.getName()).start();
+        log.info("获取订单任务已启动: [{}], categories:{}, fetchPayout:{}", account.getName(), categories, fetchPayout);
         return taskId;
     }
 

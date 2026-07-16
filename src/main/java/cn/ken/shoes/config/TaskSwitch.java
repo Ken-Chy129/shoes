@@ -247,4 +247,33 @@ public class TaskSwitch {
         EXCEL_DELIST_CANCELLED_MAP.remove(key);
         EXCEL_DELIST_RUNNING_MAP.remove(key);
     }
+
+    // ==================== StockX 获取订单任务 ====================
+    private static final ConcurrentHashMap<String, Boolean> FETCH_ORDERS_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> FETCH_ORDERS_RUNNING_MAP = new ConcurrentHashMap<>();
+
+    public static boolean isFetchOrdersCancelled(String accountId) {
+        return Boolean.TRUE.equals(FETCH_ORDERS_CANCELLED_MAP.get(accountId));
+    }
+
+    public static void cancelFetchOrders(String accountId) {
+        FETCH_ORDERS_CANCELLED_MAP.put(accountId, true);
+    }
+
+    public static void resetFetchOrdersCancel(String accountId) {
+        FETCH_ORDERS_CANCELLED_MAP.remove(accountId);
+    }
+
+    public static boolean isFetchOrdersRunning(String accountId) {
+        return Boolean.TRUE.equals(FETCH_ORDERS_RUNNING_MAP.get(accountId));
+    }
+
+    public static void setFetchOrdersRunning(String accountId, boolean running) {
+        FETCH_ORDERS_RUNNING_MAP.put(accountId, running);
+    }
+
+    public static void clearFetchOrdersState(String accountId) {
+        FETCH_ORDERS_CANCELLED_MAP.remove(accountId);
+        FETCH_ORDERS_RUNNING_MAP.remove(accountId);
+    }
 }

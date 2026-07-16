@@ -81,6 +81,7 @@ public class TaskService {
             case "listing" -> { if (clearState) TaskSwitch.clearSearchListRunState(accountName); else TaskSwitch.cancelSearchList(accountName); }
             case "fetch_listings" -> { if (clearState) TaskSwitch.clearFetchListingsState(key); else TaskSwitch.cancelFetchListings(key); }
             case "excel_delist" -> { if (clearState) TaskSwitch.clearExcelDelistState(key); else TaskSwitch.cancelExcelDelist(key); }
+            case "fetch_orders" -> { if (clearState) TaskSwitch.clearFetchOrdersState(accountName); else TaskSwitch.cancelFetchOrders(accountName); }
             default -> log.info("任务类型无需处理TaskSwitch: taskType={}", taskType);
         }
     }
