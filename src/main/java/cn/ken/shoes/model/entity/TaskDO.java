@@ -1,6 +1,7 @@
 package cn.ken.shoes.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
@@ -46,6 +47,24 @@ public class TaskDO {
 
     private String attributes;
 
+    /** 由任务明细实时聚合，不是 task 表字段。 */
+    @TableField(exist = false)
+    private Long priceDownCount = 0L;
+
+    @TableField(exist = false)
+    private Long listingCount = 0L;
+
+    @TableField(exist = false)
+    private Long delistCount = 0L;
+
+    /** 仍在异步确认最终结果的任务明细数。 */
+    @TableField(exist = false)
+    private Long pendingOperationCount = 0L;
+
+    /** 当前版本是否支持按保存的参数创建一个新任务。 */
+    @TableField(exist = false)
+    private boolean rerunnable;
+
     @Getter
     public enum TaskTypeEnum {
         REFRESH_ALL_ITEMS("全量刷新商品", "refreshAllItems"),
@@ -82,6 +101,7 @@ public class TaskDO {
         RUNNING("运行中", "running"),
         SUCCESS("执行成功", "success"),
         FAILED("执行失败", "failed"),
+        PAUSED("已暂停", "paused"),
         CANCEL("已取消", "cancel"),
         SHELVED("已搁置", "shelved"),
         ;

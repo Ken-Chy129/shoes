@@ -55,6 +55,16 @@
         where id = #{id}
     </update>
 
+    <update id="updateTaskPaused">
+        update task set status = 'paused', fail_reason = #{failReason}, end_time = CONVERT_TZ(NOW(), 'SYSTEM', '+08:00')
+        where id = #{id} and status = 'running'
+    </update>
+
+    <update id="resumeTask">
+        update task set status = 'running', fail_reason = null, end_time = null
+        where id = #{id} and status = 'paused'
+    </update>
+
     <update id="updateTaskRound">
         update task set round = #{round}
         where id = #{id}

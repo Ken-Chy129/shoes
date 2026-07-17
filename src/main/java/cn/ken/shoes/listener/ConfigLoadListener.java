@@ -45,8 +45,9 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
         // 回填压价 Excel 数据到内存（必须在 resumeRunningTasks 之前，否则恢复的压价任务会因数据为空而空跑或击穿最低价）
         try {
             configManager.loadAllPriceDownExcel();
+            configManager.loadAllDelistExcel();
         } catch (Exception e) {
-            log.error("重启恢复压价Excel数据失败", e);
+            log.error("重启恢复StockX任务Excel数据失败", e);
         }
         // 账号配置加载完成后，自动恢复重启前运行中的任务（依赖 StockXConfig.getAccount，必须在 loadStockXConfig 之后）
         try {

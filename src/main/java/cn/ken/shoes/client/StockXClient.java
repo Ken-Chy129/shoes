@@ -6,6 +6,7 @@ import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.exception.StockXNoResponseException;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
@@ -60,6 +61,8 @@ public class StockXClient {
     private String authorization;
 
     private final String expireTime = "2027-01-06T23:22:45+0800";
+
+    private static final String UPDATE_SELLER_CLIENT_VERSION = "2026.07.16.00";
 
     public JSONObject queryOrders(String after) {
         JSONObject jsonObject = queryPro(buildOrder(after));
@@ -178,7 +181,6 @@ public class StockXClient {
 
     /** 请求单个订单延期。chainId 必须使用 ViewerAsks.node.id（即 askId）。 */
     public boolean extendShipDate(String orderId, String askId, StockXAccount account) {
-        LimiterHelper.limitStockxGraphql(account.getName());
         JSONObject response = queryPro(
                 buildExtendShipDateRequest(orderId, askId).toJSONString(),
                 buildViperHeaders(account),
@@ -308,7 +310,6 @@ public class StockXClient {
             return null;
         }
         String accName = account != null ? account.getName() : null;
-        LimiterHelper.limitStockxBatch(accName, idList.size());
         JSONObject body = new JSONObject(true);
         body.put("operationName", "BulkDeleteSellerListings");
         JSONObject variables = new JSONObject(true);
@@ -477,6 +478,7 @@ public class StockXClient {
     }
 
     public boolean queryListing(String batchId) {
+        LimiterHelper.limitStockxApi(null);
         String rawResult = HttpUtil.doGet(StockXConfig.GET_LISTING_STATUS.replace("{batchId}", batchId), buildHeaders());
         if (rawResult == null) {
             return false;
@@ -502,6 +504,7 @@ public class StockXClient {
     }
 
     public String createListing(List<Pair<String, Integer>> items) {
+        LimiterHelper.limitStockxApi(null);
         List<Map<String, Object>> toCreate = new ArrayList<>();
         for (Pair<String, Integer> item : items) {
             String variantId = item.getKey();
@@ -1093,7 +1096,6 @@ public class StockXClient {
      * V2 API 批量更新 listing 价格
      */
     public String batchUpdateListings(List<Map<String, String>> items) {
-        LimiterHelper.limitStockxBatch(null, items.size());
         LimiterHelper.limitStockxApi(null);
         JSONObject body = new JSONObject(true);
         body.put("items", items);
@@ -1122,6 +1124,7 @@ public class StockXClient {
      * V2 API 查询批量更新状态
      */
     public JSONObject queryBatchUpdateStatus(String batchId) {
+        LimiterHelper.limitStockxApi(null);
         String url = StockXConfig.BATCH_UPDATE_LISTING_STATUS.replace("{batchId}", batchId);
         String rawResult = HttpUtil.doGet(url, buildHeaders());
         if (rawResult == null) {
@@ -1141,8 +1144,8 @@ public class StockXClient {
     }
 
     /**
-     * @param rateLimited true 仅用于批量写操作(deleteItems 下架 / batchUpdateListingsGraphql 压价 / createListingV2 上架)：
-     *                    经 {@link StockXRateLimitGuard} 做 429 退避+冷却。读操作传 false，直接发请求，不受写配额冷却影响。
+     * @param rateLimited true 表示写操作需经 {@link StockXRateLimitGuard} 处理真实429。
+     *                    无论读写，所有账号请求都共享官方1 request/s令牌。
      */
     private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited) {
         return queryPro(body, headers, accountName, rateLimited, null);
@@ -1150,11 +1153,8 @@ public class StockXClient {
 
     private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited, Runnable onFirstRateLimit) {
         String rawResult;
+        LimiterHelper.limitStockxGraphql(accountName);
         if (rateLimited) {
-            // 只有批量写(压价/上架/下架)才占用 GraphQL 令牌并走 429 冷却 Guard。
-            // 读(校验/对账/搜索)不占令牌：已实测 StockX 不对读计 Batch 配额、也不 429 读，
-            // 让读与写抢同一令牌桶只会互相拖慢(校验读被写饿死 → 大量"未确认")。
-            LimiterHelper.limitStockxGraphql(accountName);
             String label = null;
             try {
                 label = JSON.parseObject(body).getString("operationName");
@@ -1255,7 +1255,6 @@ public class StockXClient {
     }
 
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
-        LimiterHelper.limitStockxBatch(account.getName(), items.size());
         LimiterHelper.limitStockxApi(account.getName());
         JSONObject body = new JSONObject(true);
         body.put("items", items);
@@ -1285,8 +1284,6 @@ public class StockXClient {
      * 注意：返回非null只代表"已受理"，是否真正同步需用 {@link #verifyListingsByListingIds} 按 listingId 回查。
      */
     public String batchUpdateListingsGraphql(List<Map<String, String>> items, StockXAccount account) {
-        LimiterHelper.limitStockxBatch(account.getName(), items.size());
-        LimiterHelper.limitStockxGraphql(account.getName());
         JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "BulkUpdateListings");
         JSONObject variables = new JSONObject(true);
@@ -1313,7 +1310,7 @@ public class StockXClient {
         JSONObject result = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (result == null) {
             log.error("batchUpdateListingsGraphql[{}] failed, response is null, totalItems:{}", account.getName(), items.size());
-            throw new RuntimeException("提交失败:无响应(网络异常或被拦截)");
+            throw new StockXNoResponseException("提交失败:无响应(网络异常或被拦截)");
         }
         if ("Unauthorized".equals(result.getString("message"))) {
             throw new RuntimeException("TOKEN_EXPIRED");
@@ -1327,9 +1324,70 @@ public class StockXClient {
             return batchId;
         }
         String reason = extractGraphqlError(result);
-        log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, reason:{}, response:{}", account.getName(), items.size(),
-                reason, result.toJSONString().substring(0, Math.min(300, result.toJSONString().length())));
+        log.error("batchUpdateListingsGraphql[{}] failed, totalItems:{}, signal:{}, reason:{}, response:{}",
+                account.getName(), items.size(), StockXRateLimitGuard.matchedSignal(result.toJSONString()), reason,
+                StockXRateLimitGuard.sanitizeForLog(result.toJSONString(), 800));
         throw new RuntimeException("提交失败:" + reason);
+    }
+
+    /**
+     * 单条更新卖家挂单价格。用于 BulkUpdateListings 无响应时的降级提交。
+     */
+    public void updateSellerListingGraphql(Map<String, String> item, StockXAccount account) {
+        JSONObject request = buildUpdateSellerListingRequest(item, expireTime, UUID.randomUUID().toString());
+        Headers headers = buildViperHeaders(account).newBuilder()
+                .set("apollographql-client-version", UPDATE_SELLER_CLIENT_VERSION)
+                .build();
+        JSONObject result = queryPro(request.toJSONString(), headers, account.getName(), true);
+        if (result == null) {
+            throw new StockXNoResponseException("单条压价提交失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(result.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
+        }
+        if (isUpdateSellerListingAccepted(result)) {
+            log.info("updateSellerListingGraphql[{}] accepted, listingId:{}",
+                    account.getName(), item.get("listingId"));
+            return;
+        }
+        String reason = extractGraphqlError(result);
+        log.error("updateSellerListingGraphql[{}] rejected, listingId:{}, signal:{}, reason:{}, response:{}",
+                account.getName(), item.get("listingId"), StockXRateLimitGuard.matchedSignal(result.toJSONString()),
+                reason, StockXRateLimitGuard.sanitizeForLog(result.toJSONString(), 800));
+        throw new RuntimeException("单条压价提交失败:" + reason);
+    }
+
+    static JSONObject buildUpdateSellerListingRequest(Map<String, String> item, String expiresAt,
+                                                       String checkoutTraceId) {
+        String listingId = item.get("listingId");
+        String amount = item.get("amount");
+        if (StrUtil.isBlank(listingId) || StrUtil.isBlank(amount)) {
+            throw new IllegalArgumentException("listingId和amount不能为空");
+        }
+        String currency = StrUtil.isNotBlank(item.get("currencyCode")) ? item.get("currencyCode") : "USD";
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", "UpdateSellerListing");
+        request.put("variables", new JSONObject(true)
+                .fluentPut("id", listingId)
+                .fluentPut("currency", currency)
+                .fluentPut("amount", amount)
+                .fluentPut("expiresAt", expiresAt)
+                .fluentPut("checkoutTraceId", checkoutTraceId));
+        request.put("extensions", persistedQuery(
+                "fc0d0641bb5b1735c3a81893037b657411b45b9be395cf01b93e4c0c00db8ac6"));
+        return request;
+    }
+
+    static boolean isUpdateSellerListingAccepted(JSONObject result) {
+        if (result == null) {
+            return false;
+        }
+        JSONArray errors = result.getJSONArray("errors");
+        if (errors != null && !errors.isEmpty()) {
+            return false;
+        }
+        JSONObject data = result.getJSONObject("data");
+        return data != null && data.values().stream().anyMatch(Objects::nonNull);
     }
 
     /** 从 GraphQL 响应中提取简要错误信息(优先 errors[0].message)，用于写入明细 */
@@ -1523,10 +1581,6 @@ public class StockXClient {
         if (CollectionUtils.isEmpty(itemList)) {
             return null;
         }
-        // 上架与压价共用 StockX 账号的 "Batch usage limit"，必须同样计入 5 分钟批量写窗口，
-        // 否则上架会绕过共享配额、悄悄吃光额度，导致压价被 429 挤到冷却失败。
-        LimiterHelper.limitStockxBatch(account.getName(), itemList.size());
-        LimiterHelper.limitStockxApi(account.getName());
         JSONObject body = new JSONObject();
         body.put("operationName", "CreateBatchListings");
         JSONObject variables = new JSONObject();

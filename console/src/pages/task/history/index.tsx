@@ -1,8 +1,8 @@
 import {
-    Button, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
+    Alert, Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
     Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider,
 } from "antd";
-import {PlusOutlined, UploadOutlined} from "@ant-design/icons";
+import {PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
@@ -10,6 +10,7 @@ import {SETTING_API} from "@/services/shoes";
 import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 import {STOCKX_ORDER_TYPE_OPTIONS, STOCKX_TASK_OPTIONS, TASK_TYPE_LABELS} from "./taskOptions";
+import TaskOperationCounts from "./TaskOperationCounts";
 
 interface TaskRecord {
     id: string;
@@ -24,6 +25,31 @@ interface TaskRecord {
     failReason: string;
     round: number;
     attributes: string;
+    priceDownCount: number;
+    listingCount: number;
+    delistCount: number;
+    pendingOperationCount: number;
+    rerunnable: boolean;
+}
+
+interface StockXRateStatus {
+    accountName: string;
+    mode: 'BULK_ACTIVE' | 'SINGLE_FALLBACK' | 'BULK_RECOVERING' | 'GLOBAL_COOLDOWN';
+    nextBatchProbeAt: number;
+    nextGlobalProbeAt: number;
+    currentBulkBatchSize: number;
+    bulkRequestCount: number;
+    bulkItemCount: number;
+    singleRequestCount: number;
+    singleItemCount: number;
+    batchRateLimitCount: number;
+    generalRateLimitCount: number;
+    noResponseCount: number;
+    probeAttemptCount: number;
+    probeSuccessCount: number;
+    confirmedPriceUpdateCount: number;
+    lastSignal?: string;
+    lastRateLimitAt: number;
 }
 
 const SORT_OPTIONS = [
@@ -43,6 +69,7 @@ const TaskPage = () => {
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(10);
     const [total, setTotal] = useState(0);
+    const [stockxRateStatus, setStockxRateStatus] = useState<StockXRateStatus[]>([]);
 
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -67,18 +94,13 @@ const TaskPage = () => {
     useEffect(() => { queryTaskList(); }, [pageIndex, pageSize]);
 
     useEffect(() => {
-        const hasRunning = taskList.some(t => t.status === 'running' || t.status === '运行中');
-        if (!hasRunning) return;
-        const timer = setInterval(queryTaskList, 30000);
-        return () => clearInterval(timer);
-    }, [taskList]);
-
-    useEffect(() => {
-        const hasRunning = taskList.some(t => t.status === 'running' || t.status === '运行中');
-        if (!hasRunning) return;
+        const shouldPoll = taskList.some(t =>
+            t.status === 'running' || t.status === '运行中' || (t.pendingOperationCount || 0) > 0
+        ) || stockxRateStatus.some(s => s.mode !== 'BULK_ACTIVE');
+        if (!shouldPoll) return;
         const timer = setInterval(queryTaskList, 5000);
         return () => clearInterval(timer);
-    }, [taskList]);
+    }, [taskList, stockxRateStatus]);
 
     const queryTaskList = () => {
         let startTime = conditionForm.getFieldValue("startTime");
@@ -99,7 +121,42 @@ const TaskPage = () => {
                 }
             }
         });
+        doGetRequest(TASK_API.STOCKX_RATE_STATUS, {}, {
+            onSuccess: res => setStockxRateStatus(res.data || []),
+        });
     }
+
+    const rateMode = (mode: StockXRateStatus['mode']) => {
+        const values = {
+            BULK_ACTIVE: {label: 'Bulk正常', color: 'green'},
+            SINGLE_FALLBACK: {label: 'Single降级', color: 'orange'},
+            BULK_RECOVERING: {label: 'Bulk恢复中', color: 'blue'},
+            GLOBAL_COOLDOWN: {label: '双通道冷却', color: 'red'},
+        } as const;
+        return values[mode] || {label: mode, color: 'default'};
+    };
+
+    const nextProbeText = (record: StockXRateStatus) => {
+        const timestamp = record.mode === 'GLOBAL_COOLDOWN'
+            ? record.nextGlobalProbeAt : record.nextBatchProbeAt;
+        return timestamp > 0 ? moment(timestamp).format('MM-DD HH:mm:ss') : '-';
+    };
+
+    const rateColumns = [
+        {title: '账号', dataIndex: 'accountName', width: 130},
+        {title: '通道', dataIndex: 'mode', width: 120, render: (mode: StockXRateStatus['mode']) => {
+            const value = rateMode(mode);
+            return <Tag color={value.color}>{value.label}</Tag>;
+        }},
+        {title: '下次真实探测', width: 145, render: (_: any, record: StockXRateStatus) => nextProbeText(record)},
+        {title: 'Bulk请求 / 商品', width: 135, render: (_: any, r: StockXRateStatus) => `${r.bulkRequestCount} / ${r.bulkItemCount}`},
+        {title: 'Single请求 / 商品', width: 140, render: (_: any, r: StockXRateStatus) => `${r.singleRequestCount} / ${r.singleItemCount}`},
+        {title: '批量429 / 通用429', width: 140, render: (_: any, r: StockXRateStatus) => `${r.batchRateLimitCount} / ${r.generalRateLimitCount}`},
+        {title: '无响应', dataIndex: 'noResponseCount', width: 80},
+        {title: '探测成功 / 次数', width: 125, render: (_: any, r: StockXRateStatus) => `${r.probeSuccessCount} / ${r.probeAttemptCount}`},
+        {title: '已确认压价', dataIndex: 'confirmedPriceUpdateCount', width: 100},
+        {title: '最近信号', dataIndex: 'lastSignal', width: 125, render: (v: string) => v || '-'},
+    ];
 
     const handleCancelTask = (record: TaskRecord) => {
         doPostRequest(`${TASK_API.CANCEL_BY_ID}?taskId=${record.id}`, {}, {
@@ -110,6 +167,26 @@ const TaskPage = () => {
     const handleDeleteTask = (record: TaskRecord) => {
         doDeleteRequest(TASK_API.DELETE, {taskId: record.id}, {
             onSuccess: () => { message.success("删除成功"); queryTaskList(); }
+        });
+    }
+
+    const handleResumeTask = (record: TaskRecord) => {
+        doPostRequest(`${TASK_API.LIFECYCLE}/${record.id}/resume`, {}, {
+            onSuccess: () => {
+                message.success('任务已继续执行');
+                queryTaskList();
+            },
+            onError: res => message.error(res.errorMsg || '任务继续执行失败'),
+        });
+    }
+
+    const handleRerunTask = (record: TaskRecord) => {
+        doPostRequest(`${TASK_API.LIFECYCLE}/${record.id}/rerun`, {}, {
+            onSuccess: res => {
+                message.success(`已创建重跑任务${res.data ? ` #${res.data}` : ''}`);
+                queryTaskList();
+            },
+            onError: res => message.error(res.errorMsg || '任务重跑失败'),
         });
     }
 
@@ -258,6 +335,8 @@ const TaskPage = () => {
                     '执行成功': {text: '成功', color: 'green'},
                     'failed': {text: '失败', color: 'red'},
                     '执行失败': {text: '失败', color: 'red'},
+                    'paused': {text: '已暂停', color: 'orange'},
+                    '已暂停': {text: '已暂停', color: 'orange'},
                     'cancel': {text: '已取消', color: 'gray'},
                     '已取消': {text: '已取消', color: 'gray'},
                     '已搁置': {text: '已搁置', color: 'orange'},
@@ -268,6 +347,17 @@ const TaskPage = () => {
             }
         },
         {
+            title: '成功数量', key: 'operationCounts', width: 190,
+            render: (_: any, record: TaskRecord) => (
+                <TaskOperationCounts
+                    priceDownCount={record.priceDownCount}
+                    listingCount={record.listingCount}
+                    delistCount={record.delistCount}
+                    pendingOperationCount={record.pendingOperationCount}
+                />
+            ),
+        },
+        {
             title: '进度', key: 'progress', width: 100,
             render: (_: any, record: TaskRecord) => {
                 if (record.taskType === 'listing' && record.attributes) {
@@ -276,7 +366,7 @@ const TaskPage = () => {
                         const tip = `${attrs.detail || ''} | 搜索进度 ${attrs.progress ?? 0}%`;
                         return <Tooltip title={tip}>
                             <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
-                                已上架 {attrs.listed ?? 0}
+                                已提交上架 {attrs.listed ?? 0}
                                 {attrs.processed != null && <><br/>已处理 {attrs.processed}</>}
                                 {attrs.keywordTotal != null && <><br/>词 {attrs.keywordIdx ?? 0}/{attrs.keywordTotal}</>}
                             </span>
@@ -305,9 +395,9 @@ const TaskPage = () => {
             },
         },
         {
-            title: '操作', key: 'action', width: 200,
+            title: '操作', key: 'action', width: 310,
             render: (_: any, record: TaskRecord) => (
-                <Space size={0}>
+                <Space size={0} wrap>
                     <Button type="link" size="small" onClick={() => { setSelectedTaskId(record.id); setSelectedTaskRecord(record); setTaskItemModalVisible(true); }}>
                         明细
                     </Button>
@@ -360,7 +450,25 @@ const TaskPage = () => {
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>
                     )}
-                    {!(record.taskType === 'extend_shipping' && (record.status === 'running' || record.status === '运行中')) && (
+                    {(record.status === 'paused' || record.status === '已暂停') && (
+                        <Popconfirm
+                            title="继续执行这个任务？"
+                            description="将复用原任务ID和已完成进度；若仍被StockX限流，任务会再次暂停。"
+                            onConfirm={() => handleResumeTask(record)} okText="继续执行" cancelText="取消"
+                        >
+                            <Button type="link" size="small">继续</Button>
+                        </Popconfirm>
+                    )}
+                    {record.rerunnable && record.status !== 'running' && record.status !== '运行中' && (
+                        <Popconfirm
+                            title="确认重跑此任务？"
+                            description="将复制原平台、账号和任务参数，创建一个新的任务记录。"
+                            onConfirm={() => handleRerunTask(record)} okText="创建并执行" cancelText="取消"
+                        >
+                            <Button type="link" size="small" icon={<RedoOutlined/>}>重跑</Button>
+                        </Popconfirm>
+                    )}
+                    {record.status !== 'running' && record.status !== '运行中' && (
                         <Popconfirm title="确认删除" description="将删除任务及所有明细数据" onConfirm={() => handleDeleteTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" danger>删除</Button>
                         </Popconfirm>
@@ -526,6 +634,12 @@ const TaskPage = () => {
     // ==================== 渲染 ====================
 
     return <>
+        <Card title="StockX 压价通道观测" size="small" style={{marginBottom: 16}}>
+            <Alert type="info" showIcon style={{marginBottom: 12}}
+                   message="以下是本服务实际调用计数与真实429观测，不是StockX官方剩余额度，也不会按计数主动拦截请求。"/>
+            <Table columns={rateColumns} dataSource={stockxRateStatus} rowKey="accountName"
+                   size="small" pagination={false} scroll={{x: 1250}}/>
+        </Card>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
             <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>
                 <Form.Item name="platform" label="平台">
@@ -541,6 +655,7 @@ const TaskPage = () => {
                         options={[
                             {label: '运行中', value: 'running'}, {label: '成功', value: 'success'},
                             {label: '失败', value: 'failed'}, {label: '已取消', value: 'cancel'},
+                            {label: '已暂停', value: 'paused'},
                         ]}/>
                 </Form.Item>
                 <Form.Item>

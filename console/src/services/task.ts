@@ -16,6 +16,7 @@ enum TASK_API {
     STOCKX_PRICE_DOWN_EXCEL_DATA = '/api/task/stockx/priceDownExcelData',
     // StockX Excel 多账号压价
     STOCKX_START_EXCEL_PRICE_DOWN = '/api/task/stockx/startExcelPriceDown',
+    STOCKX_RATE_STATUS = '/api/task/stockx/rateStatus',
     // 任务明细
     TASK_ITEM_PAGE = '/api/taskItem/page',
     TASK_ITEM_EXPORT = '/api/taskItem/export',
@@ -24,6 +25,7 @@ enum TASK_API {
     DELETE = '/api/task/delete',
     // 按taskId取消任务
     CANCEL_BY_ID = '/api/task/cancelById',
+    LIFECYCLE = '/api/task',
     // StockX 搜索上架
     START_MODEL_NO_SEARCH_LIST = '/api/task/stockx/startModelNoSearchList',
     START_SEARCH_LIST = '/api/task/stockx/startSearchList',

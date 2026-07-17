@@ -1,6 +1,7 @@
 package cn.ken.shoes.mapper;
 
 import cn.ken.shoes.model.entity.TaskItemDO;
+import cn.ken.shoes.model.task.TaskOperationCount;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
@@ -49,4 +50,21 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
      * 查询任务的所有操作结果类型
      */
     List<String> selectDistinctOperateResults(@Param("taskId") Long taskId);
+
+    /**
+     * 批量聚合任务真实成功操作数，避免任务列表逐条查询。
+     */
+    List<TaskOperationCount> selectOperationCountsByTaskIds(@Param("taskIds") List<Long> taskIds);
+
+    /**
+     * 已处理完成（或已提交）的商品ID；待上架但尚未成功提交的记录允许暂停后重试。
+     */
+    List<String> selectProcessedProductIdsByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * 统计已经提交上架的商品数，用于暂停恢复后延续 maxListCount 限制。
+     */
+    Long countSubmittedListingsByTaskId(@Param("taskId") Long taskId);
+
+    Long countSuccessfulDelistsByTaskId(@Param("taskId") Long taskId);
 }

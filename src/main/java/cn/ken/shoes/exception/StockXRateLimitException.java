@@ -16,15 +16,24 @@ public class StockXRateLimitException extends RuntimeException {
 
     private final String accountName;
     private final long cooldownMs;
+    private final StockXRateLimitType type;
+    private final String signal;
 
     public StockXRateLimitException(String accountName, long cooldownMs) {
         this(accountName, cooldownMs, "StockX限流(429)，账号[" + accountName + "]请稍后再试");
     }
 
     public StockXRateLimitException(String accountName, long cooldownMs, String message) {
+        this(accountName, cooldownMs, message, StockXRateLimitType.UNKNOWN, "unknown");
+    }
+
+    public StockXRateLimitException(String accountName, long cooldownMs, String message,
+                                    StockXRateLimitType type, String signal) {
         super(message);
         this.accountName = accountName;
         this.cooldownMs = cooldownMs;
+        this.type = type != null ? type : StockXRateLimitType.UNKNOWN;
+        this.signal = signal != null ? signal : "unknown";
     }
 
     public String getAccountName() {
@@ -33,5 +42,13 @@ public class StockXRateLimitException extends RuntimeException {
 
     public long getCooldownMs() {
         return cooldownMs;
+    }
+
+    public StockXRateLimitType getType() {
+        return type;
+    }
+
+    public String getSignal() {
+        return signal;
     }
 }

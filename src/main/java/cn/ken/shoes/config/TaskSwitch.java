@@ -5,6 +5,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author Ken-Chy129
@@ -74,6 +75,10 @@ public class TaskSwitch {
         EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType), 0);
     }
 
+    public static void setExcelRound(String accountId, String inventoryType, int round) {
+        EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType), Math.max(round, 0));
+    }
+
     public static long getExcelInterval(String accountId, String inventoryType) {
         // 逐任务间隔由 setExcelIntervalRuntime 在建任务时 seed；未 seed 时回退默认 30 分钟
         Long cached = EXCEL_INTERVAL_MAP.get(buildExcelKey(accountId, inventoryType));
@@ -90,6 +95,10 @@ public class TaskSwitch {
 
     public static boolean isExcelRunning(String accountId, String inventoryType) {
         return Boolean.TRUE.equals(EXCEL_RUNNING_MAP.get(buildExcelKey(accountId, inventoryType)));
+    }
+
+    public static boolean tryStartExcel(String accountId, String inventoryType) {
+        return tryStart(EXCEL_RUNNING_MAP, buildExcelKey(accountId, inventoryType));
     }
 
     public static void setExcelRunning(String accountId, String inventoryType, boolean running) {
@@ -134,6 +143,7 @@ public class TaskSwitch {
     private static final ConcurrentHashMap<String, Long> SEARCH_LIST_TASK_ID_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_CANCELLED_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_RUNNING_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, Boolean> SEARCH_VERIFICATION_CANCELLED_MAP = new ConcurrentHashMap<>();
 
     public static void setSearchListTaskId(String accountId, Long taskId) {
         SEARCH_LIST_TASK_ID_MAP.put(accountId, taskId);
@@ -163,6 +173,10 @@ public class TaskSwitch {
         return Boolean.TRUE.equals(SEARCH_LIST_RUNNING_MAP.get(accountId));
     }
 
+    public static boolean tryStartSearchList(String accountId) {
+        return tryStart(SEARCH_LIST_RUNNING_MAP, accountId);
+    }
+
     public static void setSearchListRunning(String accountId, boolean running) {
         SEARCH_LIST_RUNNING_MAP.put(accountId, running);
     }
@@ -170,6 +184,22 @@ public class TaskSwitch {
     public static void clearSearchListRunState(String accountId) {
         SEARCH_LIST_CANCELLED_MAP.remove(accountId);
         SEARCH_LIST_RUNNING_MAP.remove(accountId);
+    }
+
+    public static void cancelSearchVerification(Long taskId) {
+        if (taskId != null) {
+            SEARCH_VERIFICATION_CANCELLED_MAP.put(taskId, true);
+        }
+    }
+
+    public static void resetSearchVerification(Long taskId) {
+        if (taskId != null) {
+            SEARCH_VERIFICATION_CANCELLED_MAP.remove(taskId);
+        }
+    }
+
+    public static boolean isSearchVerificationCancelled(Long taskId) {
+        return taskId != null && Boolean.TRUE.equals(SEARCH_VERIFICATION_CANCELLED_MAP.get(taskId));
     }
 
     // ==================== StockX 获取上架商品任务 ====================
@@ -199,6 +229,10 @@ public class TaskSwitch {
 
     public static boolean isFetchListingsRunning(String key) {
         return Boolean.TRUE.equals(FETCH_LISTINGS_RUNNING_MAP.get(key));
+    }
+
+    public static boolean tryStartFetchListings(String key) {
+        return tryStart(FETCH_LISTINGS_RUNNING_MAP, key);
     }
 
     public static void setFetchListingsRunning(String key, boolean running) {
@@ -239,6 +273,10 @@ public class TaskSwitch {
         return Boolean.TRUE.equals(EXCEL_DELIST_RUNNING_MAP.get(key));
     }
 
+    public static boolean tryStartExcelDelist(String key) {
+        return tryStart(EXCEL_DELIST_RUNNING_MAP, key);
+    }
+
     public static void setExcelDelistRunning(String key, boolean running) {
         EXCEL_DELIST_RUNNING_MAP.put(key, running);
     }
@@ -268,6 +306,10 @@ public class TaskSwitch {
         return Boolean.TRUE.equals(FETCH_ORDERS_RUNNING_MAP.get(accountId));
     }
 
+    public static boolean tryStartFetchOrders(String accountId) {
+        return tryStart(FETCH_ORDERS_RUNNING_MAP, accountId);
+    }
+
     public static void setFetchOrdersRunning(String accountId, boolean running) {
         FETCH_ORDERS_RUNNING_MAP.put(accountId, running);
     }
@@ -275,5 +317,17 @@ public class TaskSwitch {
     public static void clearFetchOrdersState(String accountId) {
         FETCH_ORDERS_CANCELLED_MAP.remove(accountId);
         FETCH_ORDERS_RUNNING_MAP.remove(accountId);
+    }
+
+    private static boolean tryStart(ConcurrentHashMap<String, Boolean> runningMap, String key) {
+        AtomicBoolean acquired = new AtomicBoolean(false);
+        runningMap.compute(key, (ignored, running) -> {
+            if (Boolean.TRUE.equals(running)) {
+                return true;
+            }
+            acquired.set(true);
+            return true;
+        });
+        return acquired.get();
     }
 }

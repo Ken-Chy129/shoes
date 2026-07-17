@@ -1,4 +1,4 @@
-import {Badge, Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
+import {Alert, Badge, Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
 import {ClockCircleOutlined, ExclamationCircleOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
@@ -361,7 +361,7 @@ const SettingPage = () => {
                    accountStep === 2 && <Button key="submit" type="primary" onClick={handleAccountSubmit}>提交</Button>,
                ]}>
             <Steps current={accountStep} size="small" style={{marginBottom: 24}}
-                   items={[{title: '基本信息'}, {title: '费率配置'}, {title: '限流配置'}]}/>
+                   items={[{title: '基本信息'}, {title: '费率配置'}, {title: '请求策略'}]}/>
             <Form form={accountForm} layout="vertical">
                 <div style={{display: accountStep === 0 ? 'block' : 'none'}}>
                     <Form.Item name="name" label="账号名" rules={[{required: true}]}
@@ -410,18 +410,9 @@ const SettingPage = () => {
                     </Form.Item>
                 </div>
                 <div style={{display: accountStep === 2 ? 'block' : 'none'}}>
-                    <Form.Item name="graphqlQps" label="GraphQL QPS" initialValue={1}
-                               extra="GraphQL接口每秒请求数（搜索、查在售等）">
-                        <InputNumber min={0.1} max={10} step={0.1} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="apiQps" label="REST API QPS" initialValue={1}
-                               extra="官方REST API每秒请求数（批量压价、查状态等）">
-                        <InputNumber min={0.1} max={10} step={0.1} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="batchItemLimit" label="Batch Items上限 / 5分钟" initialValue={500}
-                               extra="5分钟内批量提交的最大商品条数">
-                        <InputNumber min={10} max={5000} step={10} style={{width: '100%'}}/>
-                    </Form.Item>
+                    <Alert type="info" showIcon
+                           message="StockX请求固定按账号每秒1次"
+                           description="REST与GraphQL共享限速；不再本地主动限制5分钟批量条数，以StockX真实429响应切换Bulk/Single通道。"/>
                 </div>
             </Form>
         </Modal>

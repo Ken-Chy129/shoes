@@ -4,6 +4,7 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.*;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.service.ConfigService;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -159,16 +160,36 @@ public class ConfigManager {
 
     // ==================== 压价 Excel 数据持久化（重启恢复用） ====================
     private static final String PRICE_DOWN_DIR = "files/pricedown";
+    private static final String DELIST_DIR = "files/delist";
 
     private static String priceDownFileName(String accountId, String inventoryType) {
         return accountId + "__" + inventoryType + ".json";
+    }
+
+    static Path resolveAccountInputPath(Path root, String accountId, String inventoryType) {
+        if (accountId == null || accountId.isBlank() || accountId.contains("/") || accountId.contains("\\")) {
+            throw new IllegalArgumentException("非法账号名称");
+        }
+        if (!"STANDARD".equals(inventoryType) && !"CUSTODIAL".equals(inventoryType)) {
+            throw new IllegalArgumentException("非法库存类型");
+        }
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path resolved = normalizedRoot.resolve(priceDownFileName(accountId, inventoryType)).normalize();
+        if (!normalizedRoot.equals(resolved.getParent())) {
+            throw new IllegalArgumentException("非法文件路径");
+        }
+        return resolved;
+    }
+
+    private static Path resolveAccountInputPath(String directory, String accountId, String inventoryType) {
+        return resolveAccountInputPath(Paths.get(directory), accountId, inventoryType);
     }
 
     /**
      * 保存某账号+库存类型的压价 Excel 数据到磁盘。上传 Excel 后调用，使数据能在服务重启后恢复。
      */
     public void savePriceDownExcel(String accountId, String inventoryType) {
-        Path path = Paths.get(PRICE_DOWN_DIR, priceDownFileName(accountId, inventoryType));
+        Path path = resolveAccountInputPath(PRICE_DOWN_DIR, accountId, inventoryType);
         try {
             Files.createDirectories(path.getParent());
             ConcurrentHashMap<String, ShoesContext.PriceDownConfig> map = ShoesContext.getPriceDownMap(accountId, inventoryType);
@@ -190,7 +211,7 @@ public class ConfigManager {
      */
     public void deletePriceDownExcel(String accountId, String inventoryType) {
         try {
-            Files.deleteIfExists(Paths.get(PRICE_DOWN_DIR, priceDownFileName(accountId, inventoryType)));
+            Files.deleteIfExists(resolveAccountInputPath(PRICE_DOWN_DIR, accountId, inventoryType));
         } catch (Exception e) {
             System.err.println("Failed to delete pricedown excel " + accountId + ":" + inventoryType + " - " + e.getMessage());
         }
@@ -237,6 +258,52 @@ public class ConfigManager {
             System.out.println("恢复压价Excel数据: " + accountId + ":" + inventoryType + " 共" + map.size() + "条");
         } catch (Exception e) {
             System.err.println("Failed to load pricedown excel file " + path + " - " + e.getMessage());
+        }
+    }
+
+    // ==================== 下架 Excel 数据持久化（暂停/重启后继续用） ====================
+
+    public void saveDelistExcel(String accountId, String inventoryType) {
+        Path path = resolveAccountInputPath(DELIST_DIR, accountId, inventoryType);
+        try {
+            Files.createDirectories(path.getParent());
+            Files.writeString(path, JSON.toJSONString(ShoesContext.getDelistList(accountId, inventoryType)));
+        } catch (Exception e) {
+            System.err.println("Failed to save delist excel " + accountId + ":" + inventoryType + " - " + e.getMessage());
+        }
+    }
+
+    public void loadAllDelistExcel() {
+        Path dir = Paths.get(DELIST_DIR);
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try (Stream<Path> files = Files.list(dir)) {
+            files.filter(p -> p.toString().endsWith(".json")).forEach(this::loadOneDelistFile);
+        } catch (Exception e) {
+            System.err.println("Failed to load delist excel dir: " + e.getMessage());
+        }
+    }
+
+    private void loadOneDelistFile(Path path) {
+        String base = path.getFileName().toString();
+        base = base.substring(0, base.length() - ".json".length());
+        String inventoryType;
+        String accountId;
+        if (base.endsWith("__CUSTODIAL")) {
+            inventoryType = "CUSTODIAL";
+            accountId = base.substring(0, base.length() - "__CUSTODIAL".length());
+        } else if (base.endsWith("__STANDARD")) {
+            inventoryType = "STANDARD";
+            accountId = base.substring(0, base.length() - "__STANDARD".length());
+        } else {
+            return;
+        }
+        try {
+            List<StockXDelistInputExcel> list = JSON.parseArray(Files.readString(path), StockXDelistInputExcel.class);
+            ShoesContext.loadDelistExcel(accountId, inventoryType, list != null ? list : List.of());
+        } catch (Exception e) {
+            System.err.println("Failed to load delist excel file " + path + " - " + e.getMessage());
         }
     }
 }

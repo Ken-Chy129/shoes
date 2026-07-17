@@ -111,5 +111,47 @@
         ORDER BY 1
     </select>
 
+    <select id="selectOperationCountsByTaskIds" resultType="cn.ken.shoes.model.task.TaskOperationCount">
+        SELECT task_id AS taskId,
+               SUM(CASE WHEN operate_result LIKE '压价成功%' THEN 1 ELSE 0 END) AS priceDownCount,
+               COUNT(DISTINCT CASE WHEN (operate_result LIKE '上架成功%' OR operate_result = '已上架')
+                   THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS listingCount,
+               COUNT(DISTINCT CASE WHEN operate_result LIKE '下架成功%'
+                   THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS delistCount,
+               SUM(CASE WHEN operate_result = '上架处理中' THEN 1 ELSE 0 END) AS pendingOperationCount
+        FROM task_item
+        WHERE task_id IN
+        <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
+            #{taskId}
+        </foreach>
+        GROUP BY task_id
+    </select>
+
+    <select id="selectProcessedProductIdsByTaskId" resultType="java.lang.String">
+        SELECT DISTINCT product_id
+        FROM task_item
+        WHERE task_id = #{taskId}
+          AND product_id IS NOT NULL
+          AND product_id != ''
+          AND (operate_result IS NULL OR operate_result != '待上架')
+    </select>
+
+    <select id="countSubmittedListingsByTaskId" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT product_id)
+        FROM task_item
+        WHERE task_id = #{taskId}
+          AND product_id IS NOT NULL
+          AND (operate_result = '上架处理中'
+               OR operate_result = '已上架'
+               OR operate_result LIKE '上架成功%')
+    </select>
+
+    <select id="countSuccessfulDelistsByTaskId" resultType="java.lang.Long">
+        SELECT COUNT(DISTINCT COALESCE(listing_id, product_id, CAST(id AS CHAR)))
+        FROM task_item
+        WHERE task_id = #{taskId}
+          AND operate_result LIKE '下架成功%'
+    </select>
+
 
 </mapper>

@@ -10,6 +10,8 @@ import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.manager.PriceManager;
+import cn.ken.shoes.manager.StockXPriceRateStateManager;
+import cn.ken.shoes.manager.StockXPriceUpdateCoordinator;
 import cn.ken.shoes.mapper.BrandMapper;
 import cn.ken.shoes.mapper.SearchTaskMapper;
 import cn.ken.shoes.mapper.StockXPriceMapper;
@@ -60,6 +62,12 @@ public class StockXService {
     @Resource
     private TaskMapper taskMapper;
 
+    @Resource
+    private StockXPriceUpdateCoordinator priceUpdateCoordinator;
+
+    @Resource
+    private StockXPriceRateStateManager priceRateStateManager;
+
     public void extendAllItems() {
         shippingExtensionService.extendAllEnabledAccounts("manual");
     }
@@ -105,6 +113,36 @@ public class StockXService {
             return Integer.valueOf(info.getValue());
         } catch (NumberFormatException e) {
             return null;
+        }
+    }
+
+    record PriceDownSubmission(String reference, List<Map<String, String>> submittedItems) {
+    }
+
+    /** 优先Bulk；真实批量限流切Single；两个通道都限流时任务保持运行并进入3小时可取消冷却。 */
+    PriceDownSubmission submitPriceDownBatch(List<Map<String, String>> items,
+                                              StockXAccount account,
+                                              String inventoryType,
+                                              Map<String, Pair<Long, String>> listingToTaskInfo) {
+        StockXPriceUpdateCoordinator.Submission submission = priceUpdateCoordinator.submit(
+                items,
+                account,
+                () -> TaskSwitch.isExcelCancelled(account.getName(), inventoryType),
+                (item, reason) -> {
+                    Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
+                    if (info != null) {
+                        updateTaskItemResult(info.getKey(), reason);
+                    }
+                },
+                reason -> updatePriceTaskFailReason(account.getName(), inventoryType, reason),
+                () -> updatePriceTaskFailReason(account.getName(), inventoryType, null));
+        return new PriceDownSubmission(submission.reference(), submission.submittedItems());
+    }
+
+    private void updatePriceTaskFailReason(String accountName, String inventoryType, String reason) {
+        Long taskId = TaskSwitch.getExcelTaskId(accountName, inventoryType);
+        if (taskId != null && taskMapper != null) {
+            taskMapper.updateTaskFailReason(taskId, reason);
         }
     }
 
@@ -248,6 +286,7 @@ public class StockXService {
         log.info("[{}] 压价批次校验完成, batchId:{}, 提交:{}, 用了{}/{}轮(查询失败{}次), 成功:{}, 未同步(转对账):{}, 未确认(转对账):{}, 价没到位(转对账):{}, 报错失败:{}",
                 account.getName(), batchId, subBatch.size(), attemptsUsed, PRICE_DOWN_VERIFY_MAX_ATTEMPTS, queryFails,
                 success, unsynced, unconfirmed, clampFail, opFail);
+        priceRateStateManager.recordConfirmed(account.getName(), success);
         return success;
     }
 
@@ -545,9 +584,9 @@ public class StockXService {
                 for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
                     if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
                     List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
-                    String batchId;
+                    PriceDownSubmission submission;
                     try {
-                        batchId = stockXClient.batchUpdateListingsGraphql(subBatch, account);
+                        submission = submitPriceDownBatch(subBatch, account, inventoryType, listingToTaskInfo);
                     } catch (StockXRateLimitException | TaskCancelledException e) {
                         throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理，不当作单批失败
                     } catch (RuntimeException e) {
@@ -567,8 +606,12 @@ public class StockXService {
                         }
                         continue;
                     }
-                    // 已受理(QUEUED)，按 batchId 回查校验是否真正同步，得到真实成功/失败
-                    int confirmed = verifyPriceDownBatch(batchId, account, inventoryType, subBatch, listingToTaskInfo);
+                    if (submission.submittedItems().isEmpty()) {
+                        continue;
+                    }
+                    // 已受理后按 listingId 回查实际价格，兼容批量和单条降级两种提交方式
+                    int confirmed = verifyPriceDownBatch(submission.reference(), account, inventoryType,
+                            submission.submittedItems(), listingToTaskInfo);
                     totalPriceDown += confirmed;
                 }
             }
@@ -637,9 +680,22 @@ public class StockXService {
         int totalSteps = (int) (validKeywords * validSorts * pageCount);
         int currentStep = 0;
 
+        List<String> previousProductIds = taskItemMapper.selectProcessedProductIdsByTaskId(taskId);
+        Set<String> processedVariantIds = new HashSet<>(previousProductIds != null ? previousProductIds : List.of());
+        Long previousSubmitted = taskItemMapper.countSubmittedListingsByTaskId(taskId);
+        int totalListed = previousSubmitted != null
+                ? (int) Math.min(previousSubmitted, Integer.MAX_VALUE) : 0;
+        int totalProcessed = processedVariantIds.size();
+        if (maxListCount > 0 && totalListed >= maxListCount) {
+            updateSearchProgress(taskId, 100, totalSteps, totalSteps, totalListed, totalProcessed,
+                    (int) validKeywords, (int) validKeywords, "已达到上架上限(" + maxListCount + "条)");
+            return true;
+        }
+
         // 1. 构建已在售 variantId 集合（去重用）
         Set<String> existingVariantIds = new HashSet<>();
-        updateSearchProgress(taskId, 0, totalSteps, currentStep, 0, 0, 0, (int) validKeywords, "正在收集已在售商品...");
+        updateSearchProgress(taskId, 0, totalSteps, currentStep, totalListed, totalProcessed,
+                0, (int) validKeywords, "正在收集已在售商品...");
         log.info("[{}] 搜索上架：开始收集已在售商品...", accountName);
         int page = 1;
         boolean hasMore = true;
@@ -663,10 +719,7 @@ public class StockXService {
         log.info("[{}] 搜索上架：已在售商品{}条", accountName, existingVariantIds.size());
 
         // 2. 搜索并处理
-        int totalProcessed = 0;
-        int totalListed = 0;
         int keywordIdx = 0;
-        Set<String> processedVariantIds = new HashSet<>();
         List<Pair<String, Integer>> toList = new ArrayList<>();
         Map<String, Long> variantToTaskItemId = new HashMap<>();
         boolean reachedLimit = false;
@@ -708,11 +761,11 @@ public class StockXService {
 
                     for (StockXPriceExcel item : items) {
                         if (TaskSwitch.isSearchListCancelled(accountName)) break;
-                        totalProcessed++;
 
                         String variantId = item.getId();
                         if (variantId == null || processedVariantIds.contains(variantId)) continue;
                         processedVariantIds.add(variantId);
+                        totalProcessed++;
 
                         String modelNo = item.getModelNo();
                         if (modelNoSearch && (modelNo == null || !modelNo.equalsIgnoreCase(keyword))) {
@@ -794,7 +847,7 @@ public class StockXService {
                         totalListed++;
 
                         if (maxListCount > 0 && totalListed >= maxListCount) {
-                            batchCreateListings(toList, variantToTaskItemId, account);
+                            batchCreateListings(taskId, toList, variantToTaskItemId, account);
                             toList.clear();
                             variantToTaskItemId.clear();
                             reachedLimit = true;
@@ -803,7 +856,7 @@ public class StockXService {
                         }
 
                         if (toList.size() >= 50) {
-                            batchCreateListings(toList, variantToTaskItemId, account);
+                            batchCreateListings(taskId, toList, variantToTaskItemId, account);
                             toList.clear();
                             variantToTaskItemId.clear();
                         }
@@ -820,7 +873,7 @@ public class StockXService {
 
         // 3. 处理剩余待上架
         if (!toList.isEmpty()) {
-            batchCreateListings(toList, variantToTaskItemId, account);
+            batchCreateListings(taskId, toList, variantToTaskItemId, account);
         }
 
         if (reachedLimit) {
@@ -850,7 +903,7 @@ public class StockXService {
         taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
     }
 
-    private void batchCreateListings(List<Pair<String, Integer>> items,
+    private void batchCreateListings(Long taskId, List<Pair<String, Integer>> items,
                                      Map<String, Long> variantToTaskItemId,
                                      StockXAccount account) {
         String batchId;
@@ -894,7 +947,7 @@ public class StockXService {
         String finalBatchId = batchId;
         listingVerifyExecutor.submit(() -> {
             try {
-                verifyCreateBatchAsync(finalBatchId, account, variantsSnapshot, idSnapshot);
+                verifyCreateBatchAsync(finalBatchId, taskId, account, variantsSnapshot, idSnapshot);
             } catch (Exception e) {
                 log.error("[{}] 异步上架校验异常, batchId:{}", account.getName(), finalBatchId, e);
             }
@@ -907,11 +960,17 @@ public class StockXService {
      * 误判成失败（曾出现已 ACTIVE 的 listing 被标"上架失败"）；按 variantID 查的是该 variant 的真实挂单。
      * <p>分类：synced/ACTIVE→已上架；node 带 errorCode→上架失败:原因；查询失败或暂未落地→保持"上架处理中"（不误判失败）。
      */
-    private void verifyCreateBatchAsync(String batchId, StockXAccount account,
-                                        List<String> expectVariants, Map<String, Long> variantToTaskItemId) {
+    void verifyCreateBatchAsync(String batchId, Long taskId, StockXAccount account,
+                                List<String> expectVariants, Map<String, Long> variantToTaskItemId) {
+        if (TaskSwitch.isSearchVerificationCancelled(taskId)) {
+            return;
+        }
         Map<String, JSONObject> byVariant = new HashMap<>();
         boolean everRead = false;
         for (int attempt = 1; attempt <= CREATE_VERIFY_MAX_ATTEMPTS; attempt++) {
+            if (TaskSwitch.isSearchVerificationCancelled(taskId)) {
+                return;
+            }
             Map<String, JSONObject> states = stockXClient.verifyListingsByVariantIds(expectVariants, account);
             if (states != null) {
                 everRead = true;
@@ -928,16 +987,31 @@ public class StockXService {
             if (allResolved || attempt == CREATE_VERIFY_MAX_ATTEMPTS) {
                 break;
             }
-            try {
-                Thread.sleep(CREATE_VERIFY_DELAY_MS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+            long waited = 0;
+            while (waited < CREATE_VERIFY_DELAY_MS) {
+                if (TaskSwitch.isSearchVerificationCancelled(taskId)) {
+                    return;
+                }
+                try {
+                    long sleepMs = Math.min(500, CREATE_VERIFY_DELAY_MS - waited);
+                    Thread.sleep(sleepMs);
+                    waited += sleepMs;
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
             }
+        }
+
+        if (TaskSwitch.isSearchVerificationCancelled(taskId)) {
+            return;
         }
 
         int ok = 0, fail = 0, pending = 0;
         for (String variantId : expectVariants) {
+            if (TaskSwitch.isSearchVerificationCancelled(taskId)) {
+                return;
+            }
             Long taskItemId = variantToTaskItemId.get(variantId);
             if (taskItemId == null) {
                 continue;

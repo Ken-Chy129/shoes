@@ -9,9 +9,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 public class StockXConfig {
 
-
-    // ==================== 限流(429)处理全局默认值（无账号的调用兜底） ====================
-
     private static final List<StockXAccount> ACCOUNTS = new CopyOnWriteArrayList<>();
 
     public static List<StockXAccount> getAccounts() {

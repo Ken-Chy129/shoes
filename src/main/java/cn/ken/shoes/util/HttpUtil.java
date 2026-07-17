@@ -2,9 +2,11 @@ package cn.ken.shoes.util;
 
 import cn.ken.shoes.config.ProxyConfig;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONObject;
 import com.google.common.util.concurrent.RateLimiter;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
+import okio.Buffer;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -70,17 +72,26 @@ public class HttpUtil {
                 if (responseBody != null) {
                     String bodyStr = responseBody.string();
                     if (!response.isSuccessful()) {
-                        log.warn("{} 响应异常, url:{}, httpCode:{}, bodyLen:{}, contentType:{}, headers:{}",
-                                method, request.url(), response.code(), bodyStr.length(),
-                                response.header("Content-Type"), response.headers());
-                        if (response.code() == 403 || response.code() == 429) {
-                            if (attempt < MAX_RETRIES) {
-                                log.warn("{} {}被拦截, 第{}次重试", method, response.code(), attempt + 1);
-                                continue;
-                            }
+                        String signal = StockXRateLimitGuard.matchedSignal(response.code(), bodyStr);
+                        boolean rateLimitDiagnostic = response.code() == 429 || response.code() == 403
+                                || !"other".equals(signal);
+                        if (rateLimitDiagnostic) {
+                            log.warn("{} StockX限流/拦截响应, url:{}, operation:{}, httpCode:{}, signal:{}, "
+                                            + "attempt:{}/{}, contentType:{}, rateHeaders:{}, body:{}",
+                                    method, request.url(), extractGraphqlOperation(request), response.code(), signal,
+                                    attempt + 1, MAX_RETRIES + 1, response.header("Content-Type"),
+                                    StockXRateLimitGuard.rateLimitHeaders(response.headers()),
+                                    StockXRateLimitGuard.sanitizeForLog(bodyStr, 800));
+                        } else {
+                            log.warn("{} 响应异常, url:{}, operation:{}, httpCode:{}, bodyLen:{}, contentType:{}",
+                                    method, request.url(), extractGraphqlOperation(request), response.code(),
+                                    bodyStr.length(), response.header("Content-Type"));
+                        }
+                        if (shouldRetryHttpStatus(response.code()) && attempt < MAX_RETRIES) {
+                            continue;
                         }
                     }
-                    return bodyStr;
+                    return attachHttpStatusMarker(bodyStr, response.code());
                 }
             } catch (SocketTimeoutException e) {
                 if (attempt < MAX_RETRIES) {
@@ -94,6 +105,51 @@ public class HttpUtil {
             }
         }
         return null;
+    }
+
+    static boolean shouldRetryHttpStatus(int httpStatus) {
+        // 429/403 必须原样交给上层限流状态机，避免传输层瞬间重复撞限流。
+        return false;
+    }
+
+    /**
+     * OkHttp状态码不会自然出现在响应体里。为429补一个可解析字段，避免未知StockX响应结构被上层漏判。
+     */
+    static String attachHttpStatusMarker(String body, int httpStatus) {
+        if (httpStatus != 429) {
+            return body;
+        }
+        try {
+            JSONObject json = JSON.parseObject(body);
+            if (json != null) {
+                json.putIfAbsent("httpStatusCode", 429);
+                json.put("transportHttpStatus", 429);
+                return json.toJSONString();
+            }
+        } catch (Exception ignored) {
+            // 非JSON也包装成JSON，rawBody后续只用于脱敏诊断。
+        }
+        return new JSONObject(true)
+                .fluentPut("httpStatusCode", 429)
+                .fluentPut("transportHttpStatus", 429)
+                .fluentPut("rawBody", body)
+                .toJSONString();
+    }
+
+    private static String extractGraphqlOperation(Request request) {
+        RequestBody body = request.body();
+        if (body == null) {
+            return "-";
+        }
+        try {
+            Buffer buffer = new Buffer();
+            body.writeTo(buffer);
+            JSONObject json = JSON.parseObject(buffer.readUtf8());
+            String operation = json != null ? json.getString("operationName") : null;
+            return operation != null ? operation : "-";
+        } catch (Exception ignored) {
+            return "-";
+        }
     }
 
     public static String doGet(HttpUrl url) {

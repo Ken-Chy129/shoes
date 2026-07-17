@@ -31,16 +31,35 @@ public class StockXExcelDelistTaskRunner implements Runnable {
     private final StockXClient stockXClient;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final int completedBatchCount;
+    private final List<StockXDelistInputExcel> taskInput;
 
     public StockXExcelDelistTaskRunner(StockXAccount account, Long taskId, String inventoryType,
                                        StockXClient stockXClient, TaskMapper taskMapper,
                                        TaskItemMapper taskItemMapper) {
+        this(account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper, 0,
+                ShoesContext.getDelistList(account.getName(), inventoryType));
+    }
+
+    public StockXExcelDelistTaskRunner(StockXAccount account, Long taskId, String inventoryType,
+                                       StockXClient stockXClient, TaskMapper taskMapper,
+                                       TaskItemMapper taskItemMapper, int completedBatchCount) {
+        this(account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper, completedBatchCount,
+                ShoesContext.getDelistList(account.getName(), inventoryType));
+    }
+
+    public StockXExcelDelistTaskRunner(StockXAccount account, Long taskId, String inventoryType,
+                                       StockXClient stockXClient, TaskMapper taskMapper,
+                                       TaskItemMapper taskItemMapper, int completedBatchCount,
+                                       List<StockXDelistInputExcel> taskInput) {
         this.account = account;
         this.taskId = taskId;
         this.inventoryType = inventoryType;
         this.stockXClient = stockXClient;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.completedBatchCount = Math.max(completedBatchCount, 0);
+        this.taskInput = List.copyOf(taskInput);
     }
 
     @Override
@@ -53,12 +72,13 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                 reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
-            List<StockXDelistInputExcel> delistList = ShoesContext.getDelistList(accountId, inventoryType);
+            List<StockXDelistInputExcel> delistList = taskInput;
             int totalDelist = 0;
             int totalFailed = 0;
-            int batchIndex = 0;
+            int batchIndex = completedBatchCount;
+            int startOffset = Math.min(completedBatchCount * BATCH_SIZE, delistList.size());
 
-            for (int i = 0; i < delistList.size(); i += BATCH_SIZE) {
+            for (int i = startOffset; i < delistList.size(); i += BATCH_SIZE) {
                 if (TaskSwitch.isExcelDelistCancelled(key)) {
                     taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
                     taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
@@ -125,9 +145,13 @@ public class StockXExcelDelistTaskRunner implements Runnable {
             String cost = TimeUtil.getCostMin(startTime);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
             taskMapper.updateTaskCost(taskId, cost);
-            String summary = "共" + delistList.size() + "条, 下架成功" + totalDelist + "条";
-            if (totalFailed > 0) {
-                summary += ", 失败" + totalFailed + "条";
+            Long cumulativeDelistCount = taskItemMapper.countSuccessfulDelistsByTaskId(taskId);
+            int successfulDelist = cumulativeDelistCount != null
+                    ? (int) Math.min(cumulativeDelistCount, Integer.MAX_VALUE) : totalDelist;
+            String summary = "共" + delistList.size() + "条, 累计下架成功" + successfulDelist + "条";
+            int notSuccessful = Math.max(delistList.size() - successfulDelist, 0);
+            if (notSuccessful > 0) {
+                summary += ", 未成功" + notSuccessful + "条";
             }
             taskMapper.updateTaskFailReason(taskId, summary);
             log.info("[{}] Excel下架任务完成, inventoryType:{}, total:{}, delist:{}, failed:{}, 耗时:{}",
@@ -135,6 +159,9 @@ public class StockXExcelDelistTaskRunner implements Runnable {
         } catch (TaskCancelledException ce) {
             log.info("[{}] Excel下架任务在限流冷却中被取消", accountId);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+        } catch (StockXRateLimitException rateLimitException) {
+            log.warn("[{}] Excel下架任务因持续限流暂停: {}", accountId, rateLimitException.getMessage());
+            taskMapper.updateTaskPaused(taskId, rateLimitException.getMessage());
         } catch (Exception e) {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 log.error("[{}] Excel下架任务因Token过期终止，请更新Token后重新启动", accountId);
@@ -149,7 +176,7 @@ public class StockXExcelDelistTaskRunner implements Runnable {
             }
         } finally {
             // 限流/异常中断会留下已insert但未写结果的孤儿明细，统一标记，避免明细出现 null
-            taskItemMapper.markPendingResult(taskId, "中断");
+            taskItemMapper.markPendingResult(taskId, "暂停或中断，等待后续处理");
             StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearExcelDelistState(key);
         }

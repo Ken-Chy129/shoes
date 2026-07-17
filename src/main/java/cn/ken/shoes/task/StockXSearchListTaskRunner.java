@@ -2,6 +2,7 @@ package cn.ken.shoes.task;
 
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -52,6 +53,7 @@ public class StockXSearchListTaskRunner implements Runnable {
             String cost = TimeUtil.getCostMin(startTime);
 
             if (TaskSwitch.isSearchListCancelled(accountName)) {
+                TaskSwitch.cancelSearchVerification(taskId);
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
                 taskMapper.updateTaskCost(taskId, cost);
                 log.info("[{}] 搜索上架任务已取消，耗时:{}", accountName, cost);
@@ -65,9 +67,15 @@ public class StockXSearchListTaskRunner implements Runnable {
             }
         } catch (TaskCancelledException ce) {
             log.info("[{}] 搜索上架任务在限流冷却中被取消", accountName);
+            TaskSwitch.cancelSearchVerification(taskId);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+        } catch (StockXRateLimitException rateLimitException) {
+            log.warn("[{}] 搜索上架任务因持续限流暂停: {}", accountName, rateLimitException.getMessage());
+            TaskSwitch.cancelSearchVerification(taskId);
+            taskMapper.updateTaskPaused(taskId, rateLimitException.getMessage());
         } catch (Exception e) {
             log.error("[{}] 搜索上架任务异常: {}", accountName, e.getMessage(), e);
+            TaskSwitch.cancelSearchVerification(taskId);
             String reason = e.getMessage();
             if (reason != null && reason.length() > 200) {
                 reason = reason.substring(0, 200);

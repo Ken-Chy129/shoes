@@ -2,6 +2,7 @@ package cn.ken.shoes.task;
 
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -70,6 +71,14 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     return;
                 } catch (TaskCancelledException ce) {
                     detectCancel();
+                    return;
+                } catch (StockXRateLimitException rateLimitException) {
+                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    log.warn("[{}]{}压价任务因持续限流暂停: {}", account.getName(), inventoryType,
+                            rateLimitException.getMessage());
+                    if (taskId != null) {
+                        taskMapper.updateTaskPaused(taskId, rateLimitException.getMessage());
+                    }
                     return;
                 } catch (Exception e) {
                     Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);

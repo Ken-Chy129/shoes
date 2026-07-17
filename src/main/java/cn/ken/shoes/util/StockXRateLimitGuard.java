@@ -2,14 +2,19 @@ package cn.ken.shoes.util;
 
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.exception.StockXRateLimitException;
+import cn.ken.shoes.exception.StockXRateLimitType;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import lombok.extern.slf4j.Slf4j;
+import okhttp3.Headers;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.regex.Pattern;
 
 /**
  * StockX 限流（429）统一处理器。
@@ -33,6 +38,11 @@ import java.util.function.Supplier;
  */
 @Slf4j
 public class StockXRateLimitGuard {
+
+    private static final Pattern BEARER_PATTERN = Pattern.compile(
+            "(?i)Bearer\\s+[A-Za-z0-9._~+/=-]+");
+    private static final Pattern TOKEN_FIELD_PATTERN = Pattern.compile(
+            "(?i)(\\\"(?:authorization|access_token|refresh_token|id_token|token)\\\"\\s*:\\s*\\\")[^\\\"]*(\\\")");
 
     private static final String GLOBAL_KEY = "_global";
     /** 冷却/取消等待时的分片粒度，保证取消与关闭能及时响应 */
@@ -140,11 +150,12 @@ public class StockXRateLimitGuard {
 
             // 命中限流
             int consecutive = incrConsecutive(key);
+            String signal = matchedSignal(raw);
             if (!firstHitHandled) {
                 firstHitHandled = true;
                 // 打印原始信号，便于事后定位到底是哪种限流(429节流 / Batch配额 / TooMany)、哪个操作触发
-                log.warn("StockX限流命中[{}] op={} signal={} raw={}", key, label, matchedSignal(raw),
-                        raw.substring(0, Math.min(300, raw.length())));
+                log.warn("StockX限流命中[{}] op={} signal={} body={}", key, label, signal,
+                        sanitizeForLog(raw, 800));
                 if (onFirstRateLimit != null) {
                     try {
                         onFirstRateLimit.run();
@@ -152,6 +163,15 @@ public class StockXRateLimitGuard {
                         log.warn("[{}] onFirstRateLimit 回调异常: {}", key, e.getMessage());
                     }
                 }
+            }
+
+            // 压价写操作由上层状态机决定 Bulk/Single 切换、真实探测和三小时休眠。
+            // Guard 在这里必须保留首次真实响应并立即交还，不能先自行等待15分钟。
+            if (isPriceUpdateOperation(label)) {
+                StockXRateLimitType type = "BatchUsageLimit".equals(signal)
+                        ? StockXRateLimitType.BATCH : StockXRateLimitType.GENERAL;
+                throw new StockXRateLimitException(accountName, 0L,
+                        "StockX压价请求限流(" + signal + ")", type, signal);
             }
 
             long waitMs = RETRY_LADDER_MS[Math.min(hit, RETRY_LADDER_MS.length - 1)];
@@ -164,7 +184,7 @@ public class StockXRateLimitGuard {
             } else if (totalWaitMs + waitMs > MAX_TOTAL_WAIT_MS) {
                 // 任务线程：累计等待超预算仍限流，判定为持续限流(疑似撞当日总配额)，终止本轮
                 throw new StockXRateLimitException(accountName, waitMs,
-                        "StockX持续限流，累计等待超" + (MAX_TOTAL_WAIT_MS / 60000) + "分钟仍失败，任务终止(进度已保留)");
+                        "StockX持续限流，冷却重试后仍失败，任务已暂停(进度已保留，可手动继续)");
             }
 
             if (waitMs >= WINDOW_SCALE_WAIT_MS) {
@@ -196,25 +216,78 @@ public class StockXRateLimitGuard {
             return false;
         }
         return rawBody.contains("\"httpStatusCode\":429")
+                || rawBody.contains("\"transportHttpStatus\":429")
                 || rawBody.contains("Too Many Requests")
                 || rawBody.contains("Batch usage limit exceeded");
     }
 
+    private static boolean isPriceUpdateOperation(String label) {
+        return "BulkUpdateListings".equals(label) || "UpdateSellerListing".equals(label);
+    }
+
     /** 返回命中的限流信号类型，仅用于日志区分 429节流 / Batch配额 / TooMany。 */
     public static String matchedSignal(String rawBody) {
+        return matchedSignal(0, rawBody);
+    }
+
+    /**
+     * 结合 HTTP 状态和响应体进行诊断分类。Batch 文本优先于通用 429，避免同一响应被误归类。
+     */
+    public static String matchedSignal(int httpStatus, String rawBody) {
         if (rawBody == null) {
-            return "none";
-        }
-        if (rawBody.contains("\"httpStatusCode\":429")) {
-            return "429";
-        }
-        if (rawBody.contains("Too Many Requests")) {
-            return "TooManyRequests";
+            rawBody = "";
         }
         if (rawBody.contains("Batch usage limit exceeded")) {
             return "BatchUsageLimit";
         }
+        if (rawBody.contains("Too Many Requests")) {
+            return "TooManyRequests";
+        }
+        if (rawBody.contains("\"transportHttpStatus\":429")) {
+            return "HTTP429";
+        }
+        if (httpStatus == 429) {
+            return "HTTP429";
+        }
+        if (rawBody.contains("\"httpStatusCode\":429")) {
+            return "GraphQL429";
+        }
+        if (httpStatus == 403) {
+            return "HTTP403";
+        }
+        if (rawBody.contains("blockScript")) {
+            return "BlockScript";
+        }
         return "other";
+    }
+
+    /** 只保留限流诊断相关响应头，避免日志带出 Set-Cookie 等敏感信息。 */
+    public static Map<String, String> rateLimitHeaders(Headers headers) {
+        Map<String, String> result = new LinkedHashMap<>();
+        if (headers == null) {
+            return result;
+        }
+        for (String name : headers.names()) {
+            String lower = name.toLowerCase();
+            if ("retry-after".equals(lower) || lower.contains("ratelimit") || lower.contains("rate-limit")) {
+                result.put(name, headers.get(name));
+            }
+        }
+        return result;
+    }
+
+    /** 响应体日志脱敏并限制长度。 */
+    public static String sanitizeForLog(String rawBody, int maxLength) {
+        if (rawBody == null) {
+            return "null";
+        }
+        String sanitized = BEARER_PATTERN.matcher(rawBody).replaceAll("Bearer ***");
+        sanitized = TOKEN_FIELD_PATTERN.matcher(sanitized).replaceAll("$1***$2");
+        int limit = Math.max(maxLength, 0);
+        if (sanitized.length() <= limit) {
+            return sanitized;
+        }
+        return sanitized.substring(0, limit) + "...(truncated,total=" + sanitized.length() + ")";
     }
 
     // ==================== 冷却状态（账号级共享） ====================
