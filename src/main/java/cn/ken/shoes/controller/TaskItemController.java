@@ -90,7 +90,10 @@ public class TaskItemController {
                 excel.setShipByDate(pending && item.getOperateTime() != null
                         ? orderDateFormat.format(item.getOperateTime()) : "-");
                 excel.setSalePrice(formatMoney(item.getSalePrice(), item.getCurrencyCode()));
-                excel.setPoisonPrice(item.getPoisonPrice() != null ? "¥" + item.getPoisonPrice() : "-");
+                excel.setPayoutAmount("销售完成".equals(item.getOrderStatus())
+                        ? formatMoney(item.getPayoutAmount(), item.getCurrencyCode()) : "-");
+                excel.setPoisonPrice(pending && item.getPoisonPrice() != null
+                        ? "¥" + item.getPoisonPrice() : "-");
                 excel.setStatus(item.getOrderStatus());
                 excel.setExtensionStatus(pending ? item.getOperateResult() : "-");
                 orderExcelList.add(excel);

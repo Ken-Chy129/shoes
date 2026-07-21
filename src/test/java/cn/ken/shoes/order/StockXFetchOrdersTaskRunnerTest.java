@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Deque;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -94,6 +95,39 @@ class StockXFetchOrdersTaskRunnerTest {
         runner.run();
 
         assertThat(recordedItems).hasSize(1);
+        assertThat(recordedItems.getFirst().getPoisonPrice()).isNull();
+        assertThat(priceManager.loadedStyles).isEmpty();
+        assertThat(priceManager.priceLookups).isEmpty();
+        assertThat(client.payoutRequests).isEmpty();
+    }
+
+    @Test
+    void completedOrdersFetchFinalPayoutWithoutQueryingPoisonPrices() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.historicalPages.add(page(false, null,
+                historicalOrder("listing-completed", "order-completed", "STYLE-COMPLETED", "43")));
+        client.payouts = Map.of("listing-completed", new BigDecimal("100.68"));
+        FakePriceManager priceManager = new FakePriceManager();
+        List<TaskItemDO> recordedItems = new ArrayList<>();
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if (method.equals("insert")) {
+                recordedItems.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> null);
+
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account(), 90L, List.of(StockXOrderCategory.COMPLETED),
+                client, priceManager, taskMapper, taskItemMapper);
+
+        runner.run();
+
+        assertThat(client.payoutRequests).containsExactly("listing-completed");
+        assertThat(recordedItems).hasSize(1);
+        assertThat(recordedItems.getFirst().getPayoutAmount())
+                .isEqualByComparingTo(new BigDecimal("100.68"));
         assertThat(recordedItems.getFirst().getPoisonPrice()).isNull();
         assertThat(priceManager.loadedStyles).isEmpty();
         assertThat(priceManager.priceLookups).isEmpty();
@@ -183,6 +217,8 @@ class StockXFetchOrdersTaskRunnerTest {
         private final Deque<JSONObject> pendingPages = new ArrayDeque<>();
         private final Deque<JSONObject> historicalPages = new ArrayDeque<>();
         private final List<String> requestedCursors = new ArrayList<>();
+        private final List<String> payoutRequests = new ArrayList<>();
+        private Map<String, BigDecimal> payouts = Map.of();
 
         @Override
         public JSONObject queryPendingAsks(String after, StockXAccount account) {
@@ -196,6 +232,12 @@ class StockXFetchOrdersTaskRunnerTest {
                 throw new AssertionError("待处理订单不应调用SellerListings");
             }
             return historicalPages.removeFirst();
+        }
+
+        @Override
+        public BigDecimal queryOrderPayout(String listingId, StockXAccount account) {
+            payoutRequests.add(listingId);
+            return payouts.get(listingId);
         }
     }
 

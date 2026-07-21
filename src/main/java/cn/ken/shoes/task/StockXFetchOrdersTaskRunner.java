@@ -101,7 +101,12 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
                 if (node != null) {
-                    items.add(StockXOrderItemConverter.convert(taskId, node, category));
+                    TaskItemDO item = StockXOrderItemConverter.convert(taskId, node, category);
+                    if (category == StockXOrderCategory.COMPLETED && StrUtil.isNotBlank(item.getListingId())) {
+                        ensureNotCancelled();
+                        item.setPayoutAmount(stockXClient.queryOrderPayout(item.getListingId(), account));
+                    }
+                    items.add(item);
                 }
             }
             storeWithoutPoisonPrices(items);

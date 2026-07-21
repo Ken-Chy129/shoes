@@ -91,6 +91,12 @@ public class TaskItemDO {
     private BigDecimal salePrice;
 
     /**
+     * 已完成订单扣除各项费用后的最终货款
+     */
+    @TableField("payout_amount")
+    private BigDecimal payoutAmount;
+
+    /**
      * 出售日期
      */
     @TableField("sold_on")

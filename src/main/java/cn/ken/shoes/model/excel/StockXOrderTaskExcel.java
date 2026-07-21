@@ -36,6 +36,9 @@ public class StockXOrderTaskExcel {
     @ExcelProperty("StockX出售价格")
     private String salePrice;
 
+    @ExcelProperty("最终货款")
+    private String payoutAmount;
+
     @ExcelProperty("得物价格")
     private String poisonPrice;
 

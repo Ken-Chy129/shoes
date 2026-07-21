@@ -27,6 +27,7 @@ interface TaskItemRecord {
     orderStatus: string;
     currencyCode: string;
     salePrice: number;
+    payoutAmount: number;
     soldOn: string;
 }
 
@@ -265,8 +266,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
         {
+            title: '最终货款', dataIndex: 'payoutAmount', key: 'payoutAmount', width: 110,
+            render: (value: number, record: TaskItemRecord) => record.orderStatus === '销售完成'
+                ? formatOrderMoney(value, record.currencyCode) : '-',
+        },
+        {
             title: '得物价格', dataIndex: 'poisonPrice', key: 'poisonPrice', width: 100,
-            render: (value: number) => value === null || value === undefined ? '-' : `¥${value}`,
+            render: (value: number, record: TaskItemRecord) => record.orderStatus === '待处理'
+                && value !== null && value !== undefined ? `¥${value}` : '-',
         },
         {title: '出售日期', dataIndex: 'soldOn', key: 'soldOn', width: 160},
         {
