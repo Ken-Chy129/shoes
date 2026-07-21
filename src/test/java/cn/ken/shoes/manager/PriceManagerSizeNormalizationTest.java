@@ -1,6 +1,8 @@
 package cn.ken.shoes.manager;
 
+import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.model.entity.SpecialPriceDO;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -31,6 +33,21 @@ class PriceManagerSizeNormalizationTest {
 
         assertThat(priceManager.getPoisonPrice("STYLE-2", "47⅓")).isEqualTo(2001);
         assertThat(priceManager.getPoisonPrice("STYLE-2", "41⅔")).isEqualTo(2002);
+    }
+
+    @Test
+    void keepsExistingRawFractionSpecialPriceOverridesWorking() {
+        SpecialPriceDO specialPrice = new SpecialPriceDO();
+        specialPrice.setModelNo("STYLE-SPECIAL");
+        specialPrice.setEuSize("45 1/3");
+        specialPrice.setPrice(3001);
+        ShoesContext.addSpecialPrice(specialPrice);
+        try {
+            assertThat(new PriceManager().getPoisonPrice("STYLE-SPECIAL", "45 1/3"))
+                    .isEqualTo(3001);
+        } finally {
+            ShoesContext.clearSpecialPrice();
+        }
     }
 
     private static PoisonPriceDO poisonPrice(String modelNo, String euSize, int price) {
