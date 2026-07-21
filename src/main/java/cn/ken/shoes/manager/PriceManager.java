@@ -129,16 +129,17 @@ public class PriceManager {
 
     private Integer getSinglePoisonPrice(String modelNo, String euSize) {
         try {
-            Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, euSize);
+            String normalizedEuSize = ShoesUtil.normalizeUnicodeFraction(euSize);
+            Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, normalizedEuSize);
             if (specialPrice != null) {
                 return specialPrice;
             }
             Map<String, PoisonPriceDO> sizePriceMap = CACHE.get(modelNo);
-            PoisonPriceDO normalPrice = sizePriceMap.get(euSize);
+            PoisonPriceDO normalPrice = sizePriceMap.get(normalizedEuSize);
             if (normalPrice == null) {
                 return null;
             }
-            if (ShoesUtil.isThreeFiveModel(modelNo, euSize)) {
+            if (ShoesUtil.isThreeFiveModel(modelNo, normalizedEuSize)) {
                 return ShoesUtil.getThreeFivePrice(normalPrice.getPrice());
             } else {
                 return normalPrice.getPrice();

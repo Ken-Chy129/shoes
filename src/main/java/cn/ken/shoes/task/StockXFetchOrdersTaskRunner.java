@@ -104,7 +104,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
                     items.add(StockXOrderItemConverter.convert(taskId, node, category));
                 }
             }
-            storeWithPoisonPrices(items);
+            storeWithoutPoisonPrices(items);
             count += items.size();
             pages++;
             taskMapper.updateTaskRound(taskId, completedPages + pages);
@@ -176,6 +176,13 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             if (poisonPrice != null) {
                 item.setPoisonPrice(BigDecimal.valueOf(poisonPrice));
             }
+            taskItemMapper.insert(item);
+        }
+    }
+
+    private void storeWithoutPoisonPrices(List<TaskItemDO> items) {
+        for (TaskItemDO item : items) {
+            ensureNotCancelled();
             taskItemMapper.insert(item);
         }
     }

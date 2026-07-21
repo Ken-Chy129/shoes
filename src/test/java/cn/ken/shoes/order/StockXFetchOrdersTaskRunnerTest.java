@@ -71,6 +71,34 @@ class StockXFetchOrdersTaskRunnerTest {
         assertThat(attributes.get()).contains("\"pending\":2").doesNotContain("fetchPayout");
     }
 
+    @Test
+    void historicalOrdersDoNotQueryPoisonPrices() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.historicalPages.add(page(false, null,
+                historicalOrder("listing-1", "order-1", "STYLE-HISTORY", "45 1/3")));
+        FakePriceManager priceManager = new FakePriceManager();
+        List<TaskItemDO> recordedItems = new ArrayList<>();
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if (method.equals("insert")) {
+                recordedItems.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> null);
+
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account(), 89L, List.of(StockXOrderCategory.CANCELLED),
+                client, priceManager, taskMapper, taskItemMapper);
+
+        runner.run();
+
+        assertThat(recordedItems).hasSize(1);
+        assertThat(recordedItems.getFirst().getPoisonPrice()).isNull();
+        assertThat(priceManager.loadedStyles).isEmpty();
+        assertThat(priceManager.priceLookups).isEmpty();
+    }
+
     private static StockXAccount account() {
         StockXAccount account = new StockXAccount();
         account.setName("account-a");
@@ -96,6 +124,26 @@ class StockXFetchOrdersTaskRunnerTest {
                                 new JSONObject(true).fluentPut("size", "EU " + euSize))))
                         .fluentPut("product", new JSONObject(true)
                                 .fluentPut("title", "Product " + askId)
+                                .fluentPut("styleId", styleId)));
+    }
+
+    private static JSONObject historicalOrder(String listingId, String orderNumber, String styleId,
+                                              String euSize) {
+        return new JSONObject(true)
+                .fluentPut("id", listingId)
+                .fluentPut("amount", 300)
+                .fluentPut("currency", "USD")
+                .fluentPut("soldOn", "2026-07-16T03:04:05.000Z")
+                .fluentPut("associatedOrders", new JSONObject(true)
+                        .fluentPut("standardizedSellOrder", new JSONObject(true)
+                                .fluentPut("orderNumber", orderNumber)))
+                .fluentPut("productVariant", new JSONObject(true)
+                        .fluentPut("id", "variant-" + listingId)
+                        .fluentPut("traits", new JSONObject(true).fluentPut("size", "11"))
+                        .fluentPut("sizeChart", new JSONObject(true).fluentPut("displayOptions", List.of(
+                                new JSONObject(true).fluentPut("size", "EU " + euSize))))
+                        .fluentPut("product", new JSONObject(true)
+                                .fluentPut("title", "Product " + listingId)
                                 .fluentPut("styleId", styleId)));
     }
 
@@ -133,6 +181,7 @@ class StockXFetchOrdersTaskRunnerTest {
 
     private static class FakeStockXClient extends StockXClient {
         private final Deque<JSONObject> pendingPages = new ArrayDeque<>();
+        private final Deque<JSONObject> historicalPages = new ArrayDeque<>();
         private final List<String> requestedCursors = new ArrayList<>();
 
         @Override
@@ -143,12 +192,16 @@ class StockXFetchOrdersTaskRunnerTest {
 
         @Override
         public JSONObject queryOrderListings(StockXOrderCategory category, int pageNumber, StockXAccount account) {
-            throw new AssertionError("待处理订单不应调用SellerListings");
+            if (historicalPages.isEmpty()) {
+                throw new AssertionError("待处理订单不应调用SellerListings");
+            }
+            return historicalPages.removeFirst();
         }
     }
 
     private static class FakePriceManager extends PriceManager {
         private final Set<String> loadedStyles = new LinkedHashSet<>();
+        private final List<String> priceLookups = new ArrayList<>();
 
         @Override
         public void batchLoadPrices(Set<String> modelNos) {
@@ -157,6 +210,7 @@ class StockXFetchOrdersTaskRunnerTest {
 
         @Override
         public Integer getPoisonPrice(String modelNo, String euSize) {
+            priceLookups.add(modelNo + ":" + euSize);
             return "STYLE-1".equals(modelNo) ? 1001 : 1002;
         }
     }
