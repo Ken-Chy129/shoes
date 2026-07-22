@@ -235,10 +235,14 @@ const TaskPage = () => {
                 const file = values.excelFile?.[0]?.originFileObj;
                 const startPriceDown = () => {
                     const hasExcel = !!file;
+                    const listingFetchMode = hasExcel ? (values.listingFetchMode || 'all') : 'all';
                     doPostRequest(TASK_API.STOCKX_START_EXCEL_PRICE_DOWN, {
                         accountId, inventoryType, hasExcel,
                         interval: values.interval || 1800,
-                        processOutsideExcel: hasExcel ? (values.processOutsideExcel || false) : true,
+                        listingFetchMode,
+                        processOutsideExcel: hasExcel
+                            ? (listingFetchMode === 'all' && (values.processOutsideExcel || false))
+                            : true,
                         unprofitableAction: values.unprofitableAction || 'markup',
                     }, {
                         onSuccess: () => { message.success('压价任务已创建'); setCreateModalVisible(false); queryTaskList(); },
@@ -540,13 +544,27 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item noStyle shouldUpdate={(prev, cur) => prev.excelFile !== cur.excelFile}>
                     {({getFieldValue}) => getFieldValue('excelFile')?.length > 0 && (
-                        <Form.Item name="processOutsideExcel" label="Excel外商品" valuePropName="checked" initialValue={false}>
-                            <Switch checkedChildren="处理" unCheckedChildren="跳过"/>
+                        <Form.Item name="listingFetchMode" label="商品获取方式" initialValue="all"
+                                   extra="按Excel货号搜索会逐个查询Excel中的货号，适合账号在售商品很多、Excel商品较少的场景">
+                            <Radio.Group>
+                                <Radio.Button value="all">全量扫描</Radio.Button>
+                                <Radio.Button value="excel_search">按Excel货号搜索</Radio.Button>
+                            </Radio.Group>
                         </Form.Item>
                     )}
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel || prev.excelFile !== cur.excelFile}>
-                    {({getFieldValue}) => (getFieldValue('processOutsideExcel') || !(getFieldValue('excelFile')?.length > 0)) && (
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.excelFile !== cur.excelFile || prev.listingFetchMode !== cur.listingFetchMode}>
+                    {({getFieldValue}) => getFieldValue('excelFile')?.length > 0 && (
+                        getFieldValue('listingFetchMode') !== 'excel_search' && (
+                            <Form.Item name="processOutsideExcel" label="Excel外商品" valuePropName="checked" initialValue={false}>
+                                <Switch checkedChildren="处理" unCheckedChildren="跳过"/>
+                            </Form.Item>
+                        )
+                    )}
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel || prev.excelFile !== cur.excelFile || prev.listingFetchMode !== cur.listingFetchMode}>
+                    {({getFieldValue}) => ((getFieldValue('processOutsideExcel') && getFieldValue('listingFetchMode') !== 'excel_search')
+                        || !(getFieldValue('excelFile')?.length > 0)) && (
                         <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup">
                             <Radio.Group>
                                 <Radio.Button value="markup">加价$100</Radio.Button>
@@ -607,7 +625,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
         orderTypes: '订单类型',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
@@ -615,6 +633,7 @@ const TaskPage = () => {
     const formatParamValue = (k: string, v: any): string => {
         if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
         if (k === 'processOutsideExcel') return v ? '是' : '否';
+        if (k === 'listingFetchMode') return v === 'excel_search' ? '按Excel货号搜索' : '全量扫描';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
         if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
