@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 class StockXServiceListingFetchModeTest {
 
@@ -64,6 +65,74 @@ class StockXServiceListingFetchModeTest {
         }
     }
 
+    @Test
+    void excelSearchEndsCurrentRoundWithoutThrowingWhenQueryTemporarilyFails() throws Exception {
+        String accountName = "excel-search-query-failure-account";
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setCountry("HK");
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "AAA-001:9", new ShoesContext.PriceDownConfig(100, false));
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "BBB-002:10", new ShoesContext.PriceDownConfig(110, false));
+
+        AtomicInteger searchCalls = new AtomicInteger();
+        StockXClient client = new StockXClient() {
+            @Override
+            public JSONObject querySellingItemsByStyleId(String inventoryType, Integer pageNumber,
+                                                         String styleId, StockXAccount ignored) {
+                searchCalls.incrementAndGet();
+                return null;
+            }
+        };
+        StockXService service = new StockXService();
+        setField(service, "stockXClient", client);
+        TaskSwitch.resetExcelCancel(accountName, "STANDARD");
+
+        try {
+            assertThatCode(() -> service.priceDownWithExcelForAccount(
+                    account, "STANDARD", ListingFetchMode.EXCEL_SEARCH))
+                    .doesNotThrowAnyException();
+
+            assertThat(searchCalls).hasValue(1);
+        } finally {
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+            TaskSwitch.clearExcelState(accountName, "STANDARD");
+        }
+    }
+
+    @Test
+    void excelSearchStopsAtPerStylePageLimitWithoutProcessingMorePages() throws Exception {
+        String accountName = "excel-search-page-limit-account";
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setCountry("HK");
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "AAA-001:9", new ShoesContext.PriceDownConfig(100, false));
+
+        AtomicInteger searchCalls = new AtomicInteger();
+        StockXClient client = new StockXClient() {
+            @Override
+            public JSONObject querySellingItemsByStyleId(String inventoryType, Integer pageNumber,
+                                                         String styleId, StockXAccount ignored) {
+                int currentCall = searchCalls.incrementAndGet();
+                return pageWithHasMore(currentCall <= 20);
+            }
+        };
+        StockXService service = new StockXService();
+        setField(service, "stockXClient", client);
+        TaskSwitch.resetExcelCancel(accountName, "STANDARD");
+
+        try {
+            service.priceDownWithExcelForAccount(account, "STANDARD", ListingFetchMode.EXCEL_SEARCH);
+
+            assertThat(searchCalls).hasValue(20);
+        } finally {
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+            TaskSwitch.clearExcelState(accountName, "STANDARD");
+        }
+    }
+
     private static JSONObject emptyPage() {
         return new JSONObject(true)
                 .fluentPut("hasMore", false)
@@ -74,6 +143,12 @@ class StockXServiceListingFetchModeTest {
         return new JSONObject(true)
                 .fluentPut("hasMore", false)
                 .fluentPut("items", List.of(new JSONObject(true).fluentPut("styleId", styleId)));
+    }
+
+    private static JSONObject pageWithHasMore(boolean hasMore) {
+        return new JSONObject(true)
+                .fluentPut("hasMore", hasMore)
+                .fluentPut("items", List.of());
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {

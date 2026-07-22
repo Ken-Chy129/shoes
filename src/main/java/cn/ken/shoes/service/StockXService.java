@@ -151,6 +151,9 @@ public class StockXService {
     private static final int PRICE_DOWN_VERIFY_MAX_ATTEMPTS = 5;
     private static final long PRICE_DOWN_VERIFY_DELAY_MS = 2000;
 
+    /** 按货号搜索时单个货号最多拉取20页，避免异常分页导致单轮任务无限占用内存和时间 */
+    private static final int SEARCH_MAX_PAGES_PER_STYLE = 20;
+
     /** 上架校验轮询：最多查 18 次、每次间隔 5 秒(约 90s，全部落定即提前结束)，等待 StockX 异步创建 listing 落地 */
     private static final int CREATE_VERIFY_MAX_ATTEMPTS = 18;
     private static final long CREATE_VERIFY_DELAY_MS = 5000;
@@ -338,7 +341,9 @@ public class StockXService {
                     JSONObject jsonObject = stockXClient.querySellingItemsByStyleId(
                             inventoryType, searchPageNumber, searchedStyleId, account);
                     if (jsonObject == null) {
-                        throw new RuntimeException("按货号查询在售商品失败: " + searchedStyleId);
+                        log.error("[{}] priceDownWithExcel 按货号查询失败，结束本轮等待重试, inventoryType:{}, styleId:{}, page:{}",
+                                accountName, inventoryType, searchedStyleId, searchPageNumber);
+                        return;
                     }
                     if (jsonObject.getBooleanValue("_unauthorized")) {
                         log.error("[{}] priceDownWithExcel Token已过期，终止本轮压价", accountName);
@@ -355,6 +360,11 @@ public class StockXService {
                     searchHasMore = jsonObject.getBooleanValue("hasMore");
                     searchPageNumber++;
                     pagesCollected++;
+                    if (searchHasMore && pagesCollected >= SEARCH_MAX_PAGES_PER_STYLE) {
+                        log.error("[{}] priceDownWithExcel 按货号查询超过单货号{}页安全上限，放弃本轮且不处理部分数据, inventoryType:{}, styleId:{}",
+                                accountName, SEARCH_MAX_PAGES_PER_STYLE, inventoryType, searchedStyleId);
+                        return;
+                    }
                 }
             } else {
                 while (pagesCollected < pagesPerBatch && hasMore) {
