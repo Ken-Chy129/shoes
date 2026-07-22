@@ -5,6 +5,7 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.manager.ConfigManager;
@@ -168,11 +169,15 @@ public class TaskController {
         }
         boolean hasExcel = body.getBooleanValue("hasExcel");
         boolean processOutside = body.getBooleanValue("processOutsideExcel");
+        ListingFetchMode fetchMode = ListingFetchMode.fromCode(body.getString("listingFetchMode"));
+        if (fetchMode == ListingFetchMode.EXCEL_SEARCH && !hasExcel) {
+            return Result.buildError("按Excel货号搜索必须上传压价Excel");
+        }
         String unprofitableAction = body.getString("unprofitableAction");
         // 逐任务轮询间隔（秒）：缺省/<=0 时后端回退默认值
         long interval = body.getLongValue("interval");
         Long taskId = taskExecutorManager.startExcelPriceDown(accountId, inventoryType, hasExcel, processOutside,
-                unprofitableAction != null ? unprofitableAction : "markup", interval);
+                unprofitableAction != null ? unprofitableAction : "markup", interval, fetchMode);
         if (taskId == null) {
             return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
         }

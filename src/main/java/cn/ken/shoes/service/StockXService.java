@@ -4,6 +4,7 @@ import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.StockXRateLimitException;
@@ -294,6 +295,10 @@ public class StockXService {
      * 多账号 Excel 压价：对指定账号的在售商品进行压价
      */
     public void priceDownWithExcelForAccount(StockXAccount account, String inventoryType) {
+        priceDownWithExcelForAccount(account, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public void priceDownWithExcelForAccount(StockXAccount account, String inventoryType, ListingFetchMode fetchMode) {
         String accountId = account.getName();
         String accountName = account.getName();
         long taskStartTime = System.currentTimeMillis();
@@ -303,8 +308,18 @@ public class StockXService {
         int pageNumber = 1;
         boolean hasMore = true;
         int pagesPerBatch = 4;
+        List<String> searchStyleIds = fetchMode == ListingFetchMode.EXCEL_SEARCH
+                ? ShoesContext.getPriceDownMap(accountId, inventoryType).entrySet().stream()
+                .filter(entry -> !entry.getValue().skip())
+                .map(entry -> entry.getKey().split(":", 2)[0])
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .sorted()
+                .toList()
+                : List.of();
+        int searchStyleIndex = 0;
 
-        while (hasMore) {
+        while (fetchMode == ListingFetchMode.EXCEL_SEARCH ? searchStyleIndex < searchStyleIds.size() : hasMore) {
             if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
                 log.info("[{}]{}压价任务已取消", accountName, inventoryType);
                 break;
@@ -313,31 +328,70 @@ public class StockXService {
             // ===== 收集本批次（最多4页）的 listing =====
             List<JSONObject> batchItems = new ArrayList<>();
             int pagesCollected = 0;
-            while (pagesCollected < pagesPerBatch && hasMore) {
-                if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
-                JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
-                if (jsonObject == null) {
-                    log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
-                    hasMore = false;
-                    break;
+            String searchedStyleId = null;
+            if (fetchMode == ListingFetchMode.EXCEL_SEARCH) {
+                searchedStyleId = searchStyleIds.get(searchStyleIndex++);
+                int searchPageNumber = 1;
+                boolean searchHasMore = true;
+                while (searchHasMore) {
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    JSONObject jsonObject = stockXClient.querySellingItemsByStyleId(
+                            inventoryType, searchPageNumber, searchedStyleId, account);
+                    if (jsonObject == null) {
+                        throw new RuntimeException("按货号查询在售商品失败: " + searchedStyleId);
+                    }
+                    if (jsonObject.getBooleanValue("_unauthorized")) {
+                        log.error("[{}] priceDownWithExcel Token已过期，终止本轮压价", accountName);
+                        throw new RuntimeException("TOKEN_EXPIRED");
+                    }
+                    List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+                    String expectedStyleId = searchedStyleId;
+                    for (JSONObject item : items) {
+                        if (expectedStyleId.equalsIgnoreCase(item.getString("styleId"))) {
+                            item.put("styleId", expectedStyleId);
+                            batchItems.add(item);
+                        }
+                    }
+                    searchHasMore = jsonObject.getBooleanValue("hasMore");
+                    searchPageNumber++;
+                    pagesCollected++;
                 }
-                if (jsonObject.getBooleanValue("_unauthorized")) {
-                    log.error("[{}] priceDownWithExcel Token已过期，终止本轮压价", accountName);
-                    throw new RuntimeException("TOKEN_EXPIRED");
+            } else {
+                while (pagesCollected < pagesPerBatch && hasMore) {
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
+                    if (jsonObject == null) {
+                        log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
+                        hasMore = false;
+                        break;
+                    }
+                    if (jsonObject.getBooleanValue("_unauthorized")) {
+                        log.error("[{}] priceDownWithExcel Token已过期，终止本轮压价", accountName);
+                        throw new RuntimeException("TOKEN_EXPIRED");
+                    }
+                    List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
+                    if (items.isEmpty()) {
+                        hasMore = false;
+                        break;
+                    }
+                    batchItems.addAll(items);
+                    hasMore = jsonObject.getBooleanValue("hasMore");
+                    pageNumber++;
+                    pagesCollected++;
                 }
-                List<JSONObject> items = jsonObject.getJSONArray("items").toJavaList(JSONObject.class);
-                if (items.isEmpty()) {
-                    hasMore = false;
-                    break;
-                }
-                batchItems.addAll(items);
-                hasMore = jsonObject.getBooleanValue("hasMore");
-                pageNumber++;
-                pagesCollected++;
             }
 
-            if (batchItems.isEmpty()) break;
-            log.info("[{}] priceDownWithExcel[{}] 本批次收集{}页共{}条", accountName, inventoryType, pagesCollected, batchItems.size());
+            if (batchItems.isEmpty()) {
+                if (fetchMode == ListingFetchMode.EXCEL_SEARCH) {
+                    log.info("[{}] priceDownWithExcel[{}] 货号{}未找到在售商品",
+                            accountName, inventoryType, searchedStyleId);
+                    continue;
+                }
+                break;
+            }
+            log.info("[{}] priceDownWithExcel[{}] {}收集{}页共{}条", accountName, inventoryType,
+                    fetchMode == ListingFetchMode.EXCEL_SEARCH ? "货号" + searchedStyleId : "本批次",
+                    pagesCollected, batchItems.size());
 
             // ===== 预加载得物价格（仅当需要处理Excel外商品时） =====
             if (TaskSwitch.isProcessOutsideExcel(accountId, inventoryType)) {

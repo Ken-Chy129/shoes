@@ -4,6 +4,7 @@ import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.StockXConfig;
@@ -175,6 +176,7 @@ public class TaskExecutorManager {
                             params.getBooleanValue("processOutsideExcel"),
                             params.getString("unprofitableAction"),
                             params.getLongValue("interval"),
+                            listingFetchMode(params),
                             input) != null;
                 }
                 case MODEL_SEARCH -> startSearchList(
@@ -273,6 +275,7 @@ public class TaskExecutorManager {
                         params.getBooleanValue("processOutsideExcel"),
                         params.getString("unprofitableAction"),
                         params.getLongValue("interval"),
+                        listingFetchMode(params),
                         input);
             }
             case LISTING, MODEL_SEARCH -> startSearchList(
@@ -300,6 +303,10 @@ public class TaskExecutorManager {
 
     private String inventoryType(JSONObject params) {
         return defaultIfBlank(params.getString("inventoryType"), "STANDARD");
+    }
+
+    private ListingFetchMode listingFetchMode(JSONObject params) {
+        return ListingFetchMode.fromCode(params.getString("listingFetchMode"));
     }
 
     private String defaultIfBlank(String value, String defaultValue) {
@@ -349,23 +356,37 @@ public class TaskExecutorManager {
                                     boolean processOutsideExcel, String unprofitableAction,
                                     long intervalSeconds) {
         return startExcelPriceDown(accountId, inventoryType, hasExcel, processOutsideExcel,
-                unprofitableAction, intervalSeconds, null);
+                unprofitableAction, intervalSeconds, ListingFetchMode.ALL);
+    }
+
+    public Long startExcelPriceDown(String accountId, String inventoryType, boolean hasExcel,
+                                    boolean processOutsideExcel, String unprofitableAction,
+                                    long intervalSeconds, ListingFetchMode fetchMode) {
+        return startExcelPriceDown(accountId, inventoryType, hasExcel, processOutsideExcel,
+                unprofitableAction, intervalSeconds, fetchMode, null);
     }
 
     private Long startExcelPriceDown(String accountId, String inventoryType, boolean hasExcel,
                                      boolean processOutsideExcel, String unprofitableAction,
                                      long intervalSeconds,
+                                     ListingFetchMode fetchMode,
                                      Map<String, ShoesContext.PriceDownConfig> inputOverride) {
         inventoryType = defaultIfBlank(inventoryType, "STANDARD");
+        fetchMode = fetchMode != null ? fetchMode : ListingFetchMode.ALL;
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        if (fetchMode == ListingFetchMode.EXCEL_SEARCH && !hasExcel) {
+            log.error("[{}]{}压价任务拒绝启动：按Excel货号搜索模式未上传Excel", accountId, inventoryType);
             return null;
         }
         String params = new JSONObject()
                 .fluentPut("inventoryType", inventoryType)
                 .fluentPut("hasExcel", hasExcel)
                 .fluentPut("processOutsideExcel", processOutsideExcel)
+                .fluentPut("listingFetchMode", fetchMode.getCode())
                 .fluentPut("unprofitableAction", unprofitableAction)
                 .fluentPut("interval", intervalSeconds)
                 .toJSONString();
@@ -408,7 +429,7 @@ public class TaskExecutorManager {
                     unprofitableAction != null ? unprofitableAction : "markup");
 
             StockXExcelPriceDownTaskRunner runner = new StockXExcelPriceDownTaskRunner(
-                    account, inventoryType, stockXService, taskMapper);
+                    account, inventoryType, fetchMode, stockXService, taskMapper);
             new Thread(runner, "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
             log.info("Excel压价任务已启动: [{}] {}", account.getName(), inventoryType);
             return taskId;
@@ -428,7 +449,11 @@ public class TaskExecutorManager {
         String inventoryType = inventoryType(params);
         StockXAccount account = StockXConfig.getAccount(accountId);
         boolean hasExcel = params.getBooleanValue("hasExcel");
+        ListingFetchMode fetchMode = listingFetchMode(params);
         if (account == null) {
+            return null;
+        }
+        if (fetchMode == ListingFetchMode.EXCEL_SEARCH && !hasExcel) {
             return null;
         }
         if (!TaskSwitch.tryStartExcel(accountId, inventoryType)) {
@@ -465,7 +490,7 @@ public class TaskExecutorManager {
             TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, params.getBooleanValue("processOutsideExcel"));
             TaskSwitch.setUnprofitableAction(accountId, inventoryType,
                     params.getString("unprofitableAction") != null ? params.getString("unprofitableAction") : "markup");
-            new Thread(new StockXExcelPriceDownTaskRunner(account, inventoryType, stockXService, taskMapper),
+            new Thread(new StockXExcelPriceDownTaskRunner(account, inventoryType, fetchMode, stockXService, taskMapper),
                     "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
             started = true;
             return task.getId();

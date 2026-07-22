@@ -1,5 +1,6 @@
 package cn.ken.shoes.task;
 
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.exception.StockXRateLimitException;
@@ -16,13 +17,20 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
 
     private final StockXAccount account;
     private final String inventoryType;
+    private final ListingFetchMode fetchMode;
     private final StockXService stockXService;
     private final TaskMapper taskMapper;
 
     public StockXExcelPriceDownTaskRunner(StockXAccount account, String inventoryType,
                                           StockXService stockXService, TaskMapper taskMapper) {
+        this(account, inventoryType, ListingFetchMode.ALL, stockXService, taskMapper);
+    }
+
+    public StockXExcelPriceDownTaskRunner(StockXAccount account, String inventoryType, ListingFetchMode fetchMode,
+                                          StockXService stockXService, TaskMapper taskMapper) {
         this.account = account;
         this.inventoryType = inventoryType;
+        this.fetchMode = fetchMode;
         this.stockXService = stockXService;
         this.taskMapper = taskMapper;
     }
@@ -57,7 +65,11 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     log.info("[{}]{}压价任务开始执行第{}轮", account.getName(), inventoryType, round);
 
                     long startTime = System.currentTimeMillis();
-                    stockXService.priceDownWithExcelForAccount(account, inventoryType);
+                    if (fetchMode == ListingFetchMode.ALL) {
+                        stockXService.priceDownWithExcelForAccount(account, inventoryType);
+                    } else {
+                        stockXService.priceDownWithExcelForAccount(account, inventoryType, fetchMode);
+                    }
                     String cost = TimeUtil.getCostMin(startTime);
                     log.info("[{}]{}压价任务第{}轮执行完成，耗时:{}", account.getName(), inventoryType, round, cost);
                     if (taskId != null) {

@@ -977,38 +977,14 @@ public class StockXClient {
     }
 
     private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers, String country, String accountName) {
-        JSONObject requestJson = new JSONObject(true);
-        requestJson.put("operationName", "SellerListings");
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, headers, country, accountName, null);
+    }
 
-        JSONObject variables = new JSONObject(true);
-        variables.put("skipGuidance", false);
-        variables.put("skipFlexEligible", true);
-        variables.put("pageSize", 100);
-        variables.put("sort", "CREATED_AT");
-        variables.put("order", "DESC");
-        variables.put("country", country);
-        variables.put("market", country);
-        variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
-        variables.put("currencyCode", "USD");
-
-        JSONObject filters = new JSONObject(true);
-        filters.put("spreadCurrency", "USD");
-        filters.put("inventoryType", Map.of("in", List.of(inventoryType)));
-        if ("CUSTODIAL".equals(inventoryType)) {
-            filters.put("listingStatus", Map.of("in", List.of("ACTIVE", "ON_HOLD")));
-        } else {
-            filters.put("listingStatus", Map.of("in", List.of("ACTIVE")));
-            filters.put("listingType", Map.of("in", List.of("VERIFIED")));
-        }
-        variables.put("filters", filters);
-        requestJson.put("variables", variables);
-
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "ab3842937c803f03d6296570ef963b062e5b01d2e7695ccf3c7aff590a17abef");
-        extensions.put("persistedQuery", persistedQuery);
-        requestJson.put("extensions", extensions);
+    private JSONObject doQuerySellingItemsByInventoryType(String inventoryType, Integer pageNumber, Headers headers,
+                                                          String country, String accountName, String styleId) {
+        JSONObject requestJson = StrUtil.isNotBlank(styleId)
+                ? buildSellingItemsSearchRequest(inventoryType, pageNumber, country, styleId)
+                : buildSellingItemsRequest(inventoryType, pageNumber, country);
 
         int maxRetries = 3;
         JSONObject sellerListings = null;
@@ -1031,11 +1007,13 @@ public class StockXClient {
             }
             boolean hasConnReset = jsonObject.containsKey("errors") && jsonObject.toJSONString().contains("ECONNRESET");
             if (hasConnReset && retry < maxRetries) {
-                log.warn("querySellingItemsByInventoryType ECONNRESET, retry {}/{}, page:{}", retry + 1, maxRetries, pageNumber);
+                log.warn("querySellingItemsByInventoryType ECONNRESET, retry {}/{}, page:{}, styleId:{}",
+                        retry + 1, maxRetries, pageNumber, styleId);
                 try { Thread.sleep(3000L * (retry + 1)); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return null; }
                 continue;
             }
-            log.error("querySellingItemsByInventoryType response invalid, page:{}, response:{}", pageNumber, jsonObject.toJSONString());
+            log.error("querySellingItemsByInventoryType response invalid, page:{}, styleId:{}, response:{}",
+                    pageNumber, styleId, jsonObject.toJSONString());
             return null;
         }
         if (sellerListings == null) {
@@ -1118,6 +1096,53 @@ public class StockXClient {
             items.add(item);
         }
         return result;
+    }
+
+    private static JSONObject buildSellingItemsRequest(String inventoryType, Integer pageNumber, String country) {
+        JSONObject requestJson = new JSONObject(true);
+        requestJson.put("operationName", "SellerListings");
+
+        JSONObject variables = new JSONObject(true);
+        variables.put("skipGuidance", false);
+        variables.put("skipFlexEligible", true);
+        variables.put("pageSize", 100);
+        variables.put("sort", "CREATED_AT");
+        variables.put("order", "DESC");
+        variables.put("country", country);
+        variables.put("market", country);
+        variables.put("pageNumber", pageNumber != null ? pageNumber : 1);
+        variables.put("currencyCode", "USD");
+
+        JSONObject filters = new JSONObject(true);
+        filters.put("spreadCurrency", "USD");
+        filters.put("inventoryType", Map.of("in", List.of(inventoryType)));
+        if ("CUSTODIAL".equals(inventoryType)) {
+            filters.put("listingStatus", Map.of("in", List.of("ACTIVE", "ON_HOLD")));
+        } else {
+            filters.put("listingStatus", Map.of("in", List.of("ACTIVE")));
+            filters.put("listingType", Map.of("in", List.of("VERIFIED")));
+        }
+        variables.put("filters", filters);
+        requestJson.put("variables", variables);
+
+        JSONObject extensions = new JSONObject(true);
+        JSONObject persistedQuery = new JSONObject(true);
+        persistedQuery.put("version", 1);
+        persistedQuery.put("sha256Hash", "ab3842937c803f03d6296570ef963b062e5b01d2e7695ccf3c7aff590a17abef");
+        extensions.put("persistedQuery", persistedQuery);
+        requestJson.put("extensions", extensions);
+        return requestJson;
+    }
+
+    static JSONObject buildSellingItemsSearchRequest(String inventoryType, Integer pageNumber,
+                                                     String country, String styleId) {
+        JSONObject requestJson = buildSellingItemsRequest(inventoryType, pageNumber, country);
+        JSONObject variables = requestJson.getJSONObject("variables");
+        variables.put("pageSize", 50);
+        variables.put("query", styleId);
+        requestJson.put("extensions", persistedQuery(
+                "0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733"));
+        return requestJson;
     }
 
     /**
@@ -1280,6 +1305,13 @@ public class StockXClient {
     public JSONObject querySellingItemsByInventoryType(String inventoryType, Integer pageNumber, StockXAccount account) {
         String country = account.getCountry() != null ? account.getCountry() : "US";
         return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account), country, account.getName());
+    }
+
+    public JSONObject querySellingItemsByStyleId(String inventoryType, Integer pageNumber,
+                                                 String styleId, StockXAccount account) {
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        return doQuerySellingItemsByInventoryType(inventoryType, pageNumber, buildViperHeaders(account),
+                country, account.getName(), styleId);
     }
 
     public String batchUpdateListings(List<Map<String, String>> items, StockXAccount account) {
