@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { openContext } = require('./src/browser');
 const { isLoggedIn, mintFreshToken, LISTINGS_URL } = require('./src/mint');
+const { openPageWithRetry } = require('./src/navigation');
 const { pushTokenToBackend } = require('./src/backend');
 const { exitCodeForRefresh, runWithRetry } = require('./src/run-policy');
 
@@ -43,13 +44,20 @@ async function refreshOne(account, cfg) {
       throw new Error(`未登录或登录态已失效，请先执行: node login.js "${account.name}"`);
     }
 
+    const attempts = account.refreshAttempts || cfg.refreshAttempts || 3;
+    const retryDelayMs = account.refreshRetryDelayMs || cfg.refreshRetryDelayMs || 30000;
     const page = context.pages()[0] || (await context.newPage());
-    await page.goto(LISTINGS_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await openPageWithRetry(page, LISTINGS_URL, {
+      attempts,
+      delayMs: retryDelayMs,
+      sleep: (delayMs) => page.waitForTimeout(delayMs),
+      onRetry: (error, attempt, totalAttempts) => {
+        log(`[${account.name}] 第 ${attempt}/${totalAttempts} 次页面加载失败(${error.message.split('\n')[0]})，${Math.round(retryDelayMs / 1000)}s 后重试`);
+      },
+    });
     // 等 Cloudflare 放行 cookie(__cf_bm 等)就绪，否则静默授权偶发 403
     await page.waitForTimeout(3000);
 
-    const attempts = account.refreshAttempts || cfg.refreshAttempts || 3;
-    const retryDelayMs = account.refreshRetryDelayMs || cfg.refreshRetryDelayMs || 30000;
     const token = await runWithRetry(() => mintFreshToken(page), {
       attempts,
       delayMs: retryDelayMs,
