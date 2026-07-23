@@ -2,6 +2,7 @@
 
 const path = require('path');
 const { chromium } = require('playwright');
+const { normalizeProxy } = require('./proxy-config');
 
 // 与解 cookie 时一致的 UA，降低 Cloudflare/PerimeterX 指纹突变风险
 const USER_AGENT =
@@ -29,7 +30,8 @@ async function openContext({ profileDir, headless, useRealChrome, proxy }) {
     ],
   };
   if (useRealChrome) opts.channel = 'chrome';
-  if (proxy) opts.proxy = { server: proxy };
+  const proxyOptions = normalizeProxy(proxy);
+  if (proxyOptions) opts.proxy = proxyOptions;
   return await chromium.launchPersistentContext(path.resolve(profileDir), opts);
 }
 

@@ -4,7 +4,11 @@
   "refreshIntervalMs": 39600000,
   "headless": true,
   "useRealChrome": true,
-  "browserProxy": "",
+  "browserProxy": {
+    "server": "http://proxy.example.com:8080",
+    "username": "",
+    "password": ""
+  },
   "refreshAttempts": 3,
   "refreshRetryDelayMs": 30000,
   "accounts": [

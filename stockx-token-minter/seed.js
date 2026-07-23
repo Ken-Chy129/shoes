@@ -43,6 +43,7 @@ function loadConfig() {
     profileDir: account.profileDir,
     headless: cfg.headless,
     useRealChrome: cfg.useRealChrome,
+    proxy: account.browserProxy || cfg.browserProxy,
   });
   try {
     await context.addCookies(cookies);

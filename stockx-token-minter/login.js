@@ -27,6 +27,7 @@ async function loginOne(account, cfg) {
     profileDir: account.profileDir,
     headless: false, // 登录必须有头
     useRealChrome: cfg.useRealChrome,
+    proxy: account.browserProxy || cfg.browserProxy,
   });
   const page = context.pages()[0] || (await context.newPage());
   await page.goto(LISTINGS_URL, { waitUntil: 'domcontentloaded' });
