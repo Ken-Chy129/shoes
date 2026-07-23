@@ -14,6 +14,7 @@ const path = require('path');
 const { openContext } = require('./src/browser');
 const { isLoggedIn, mintFreshToken, LISTINGS_URL } = require('./src/mint');
 const { pushTokenToBackend } = require('./src/backend');
+const { exitCodeForRefresh, runWithRetry } = require('./src/run-policy');
 
 function loadConfig() {
   const p = path.resolve(__dirname, 'config.json');
@@ -35,6 +36,7 @@ async function refreshOne(account, cfg) {
       profileDir: account.profileDir,
       headless: cfg.headless,
       useRealChrome: cfg.useRealChrome,
+      proxy: account.browserProxy || cfg.browserProxy,
     });
 
     if (!(await isLoggedIn(context))) {
@@ -46,14 +48,16 @@ async function refreshOne(account, cfg) {
     // 等 Cloudflare 放行 cookie(__cf_bm 等)就绪，否则静默授权偶发 403
     await page.waitForTimeout(3000);
 
-    let token;
-    try {
-      token = await mintFreshToken(page);
-    } catch (e) {
-      log(`[${account.name}] 首次签发失败(${e.message.split('\n')[0]})，5s 后重试`);
-      await page.waitForTimeout(5000);
-      token = await mintFreshToken(page);
-    }
+    const attempts = account.refreshAttempts || cfg.refreshAttempts || 3;
+    const retryDelayMs = account.refreshRetryDelayMs || cfg.refreshRetryDelayMs || 30000;
+    const token = await runWithRetry(() => mintFreshToken(page), {
+      attempts,
+      delayMs: retryDelayMs,
+      sleep: (delayMs) => page.waitForTimeout(delayMs),
+      onRetry: (error, attempt, totalAttempts) => {
+        log(`[${account.name}] 第 ${attempt}/${totalAttempts} 次签发失败(${error.message.split('\n')[0]})，${Math.round(retryDelayMs / 1000)}s 后重试`);
+      },
+    });
     log(`[${account.name}] 签发成功 azp=${token.azp.slice(0, 8)}… 到期=${token.expiresAt} scope=${token.scope}`);
 
     await pushTokenToBackend({
@@ -80,19 +84,30 @@ async function refreshAll(cfg) {
     if (await refreshOne(a, cfg)) ok++;
   }
   log(`本轮完成: ${ok}/${accounts.length} 成功`);
+  return { succeeded: ok, total: accounts.length, failed: accounts.length - ok };
 }
 
-(async () => {
+async function main() {
   const cfg = loadConfig();
   const once = process.argv.includes('--once');
 
-  await refreshAll(cfg);
+  const summary = await refreshAll(cfg);
 
   if (once) {
-    process.exit(0);
+    process.exitCode = exitCodeForRefresh(summary);
+    return;
   }
 
   const interval = cfg.refreshIntervalMs || 39600000; // 默认 11h
   log(`守护进程已启动，每 ${Math.round(interval / 3600000)}h 刷新一次。`);
   setInterval(() => refreshAll(cfg).catch((e) => log('刷新轮异常:', e.message)), interval);
-})();
+}
+
+if (require.main === module) {
+  main().catch((error) => {
+    log('刷新进程异常:', error.message);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = { loadConfig, refreshOne, refreshAll, main };

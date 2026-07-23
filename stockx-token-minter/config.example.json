@@ -4,6 +4,9 @@
   "refreshIntervalMs": 39600000,
   "headless": true,
   "useRealChrome": true,
+  "browserProxy": "",
+  "refreshAttempts": 3,
+  "refreshRetryDelayMs": 30000,
   "accounts": [
     {
       "name": "<后端账号名，需与后端完全一致>",

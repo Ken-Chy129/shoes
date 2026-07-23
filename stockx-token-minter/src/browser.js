@@ -12,7 +12,7 @@ const USER_AGENT =
  * headless：日常发 token 用 true；首次登录用 false（headful）。
  * useRealChrome：用本机真实 Chrome（channel:'chrome'），比自带 Chromium 更不易被 Cloudflare 判定为机器人。
  */
-async function openContext({ profileDir, headless, useRealChrome }) {
+async function openContext({ profileDir, headless, useRealChrome, proxy }) {
   const opts = {
     headless: !!headless,
     userAgent: USER_AGENT,
@@ -29,6 +29,7 @@ async function openContext({ profileDir, headless, useRealChrome }) {
     ],
   };
   if (useRealChrome) opts.channel = 'chrome';
+  if (proxy) opts.proxy = { server: proxy };
   return await chromium.launchPersistentContext(path.resolve(profileDir), opts);
 }
 

@@ -7,7 +7,8 @@
   "scripts": {
     "login": "node login.js",
     "mint-once": "node index.js --once",
-    "start": "node index.js"
+    "start": "node index.js",
+    "test": "node --test"
   },
   "engines": {
     "node": ">=18"
