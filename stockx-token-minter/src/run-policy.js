@@ -13,7 +13,9 @@ async function runWithRetry(operation, options = {}) {
     try {
       return await operation(attempt);
     } catch (error) {
-      if (attempt === attempts) throw error;
+      if (attempt === attempts || (options.shouldRetry && !options.shouldRetry(error))) {
+        throw error;
+      }
       if (options.onRetry) options.onRetry(error, attempt, attempts);
       await sleep(delayMs);
     }

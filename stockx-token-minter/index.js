@@ -30,7 +30,7 @@ function log(...a) {
   console.log(`[${new Date().toISOString()}]`, ...a);
 }
 
-async function refreshOne(account, cfg) {
+async function refreshOneAttempt(account, cfg) {
   let context;
   try {
     context = await openContext({
@@ -76,11 +76,26 @@ async function refreshOne(account, cfg) {
     });
     log(`[${account.name}] ✅ 已写回后端`);
     return true;
-  } catch (e) {
-    log(`[${account.name}] ❌ 失败: ${e.message}`);
-    return false;
   } finally {
     if (context) await context.close().catch(() => {});
+  }
+}
+
+async function refreshOne(account, cfg) {
+  const sessionAttempts = account.browserSessionAttempts || cfg.browserSessionAttempts || 2;
+  const sessionRetryDelayMs = account.browserSessionRetryDelayMs || cfg.browserSessionRetryDelayMs || 5000;
+  try {
+    return await runWithRetry(() => refreshOneAttempt(account, cfg), {
+      attempts: sessionAttempts,
+      delayMs: sessionRetryDelayMs,
+      shouldRetry: (error) => !error.message.includes('未登录或登录态已失效'),
+      onRetry: (error, attempt, totalAttempts) => {
+        log(`[${account.name}] 第 ${attempt}/${totalAttempts} 个浏览器会话失败(${error.message.split('\n')[0]})，${Math.round(sessionRetryDelayMs / 1000)}s 后更换代理出口重试`);
+      },
+    });
+  } catch (error) {
+    log(`[${account.name}] ❌ 失败: ${error.message}`);
+    return false;
   }
 }
 
@@ -118,4 +133,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { loadConfig, refreshOne, refreshAll, main };
+module.exports = { loadConfig, refreshOneAttempt, refreshOne, refreshAll, main };

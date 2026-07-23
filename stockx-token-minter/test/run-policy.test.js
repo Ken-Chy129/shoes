@@ -50,3 +50,24 @@ test('throws the last error after exhausting retries', async () => {
 
   assert.equal(attempts, 2);
 });
+
+test('can fail fast for a non-retryable error', async () => {
+  let attempts = 0;
+  let retries = 0;
+
+  await assert.rejects(
+    runWithRetry(async () => {
+      attempts++;
+      throw new Error('login session expired');
+    }, {
+      attempts: 3,
+      shouldRetry: () => false,
+      onRetry: () => retries++,
+      sleep: async () => {},
+    }),
+    /login session expired/,
+  );
+
+  assert.equal(attempts, 1);
+  assert.equal(retries, 0);
+});

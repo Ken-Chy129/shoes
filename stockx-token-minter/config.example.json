@@ -11,6 +11,8 @@
   },
   "refreshAttempts": 3,
   "refreshRetryDelayMs": 30000,
+  "browserSessionAttempts": 2,
+  "browserSessionRetryDelayMs": 5000,
   "accounts": [
     {
       "name": "<后端账号名，需与后端完全一致>",
