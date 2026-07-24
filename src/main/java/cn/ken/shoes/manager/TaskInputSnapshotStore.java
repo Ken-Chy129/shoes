@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -35,7 +36,8 @@ public class TaskInputSnapshotStore {
         JSONObject data = new JSONObject(true);
         input.forEach((key, config) -> data.put(key, new JSONObject()
                 .fluentPut("minPrice", config.minPrice())
-                .fluentPut("skip", config.skip())));
+                .fluentPut("skip", config.skip())
+                .fluentPut("priceDownType", config.type().getCode())));
         write(taskPath(taskId, PRICE_DOWN_FILE), data.toJSONString());
     }
 
@@ -50,7 +52,8 @@ public class TaskInputSnapshotStore {
             data.forEach((key, value) -> {
                 JSONObject config = (JSONObject) value;
                 result.put(key, new ShoesContext.PriceDownConfig(
-                        config.getIntValue("minPrice"), config.getBooleanValue("skip")));
+                        config.getIntValue("minPrice"), config.getBooleanValue("skip"),
+                        PriceDownType.fromCode(config.getString("priceDownType"))));
             });
             return Optional.of(result);
         } catch (Exception e) {

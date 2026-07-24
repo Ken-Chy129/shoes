@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.PoisonPriceMode;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,19 @@ class PriceManagerSizeNormalizationTest {
         } finally {
             ShoesContext.clearSpecialPrice();
         }
+    }
+
+    @Test
+    void supportsExplicitNormalAndThreeFivePriceModes() {
+        PriceManager priceManager = new PriceManager();
+        priceManager.putModelNoPrice("STYLE-MODE", List.of(
+                poisonPrice("STYLE-MODE", "42", 1000)
+        ));
+
+        assertThat(priceManager.getPoisonPrice("STYLE-MODE", "42", PoisonPriceMode.NORMAL))
+                .isEqualTo(1000);
+        assertThat(priceManager.getPoisonPrice("STYLE-MODE", "42", PoisonPriceMode.THREE_FIVE))
+                .isEqualTo(902);
     }
 
     private static PoisonPriceDO poisonPrice(String modelNo, String euSize, int price) {

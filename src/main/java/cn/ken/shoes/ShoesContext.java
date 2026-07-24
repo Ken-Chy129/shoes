@@ -2,6 +2,7 @@ package cn.ken.shoes;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.config.PoisonSwitch;
+import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.model.entity.CustomModelDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 
@@ -23,7 +24,14 @@ public class ShoesContext {
 
     private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
 
-    public record PriceDownConfig(int minPrice, boolean skip) {
+    public record PriceDownConfig(int minPrice, boolean skip, PriceDownType type) {
+        public PriceDownConfig(int minPrice, boolean skip) {
+            this(minPrice, skip, PriceDownType.DEFAULT);
+        }
+
+        public PriceDownConfig {
+            type = type != null ? type : PriceDownType.DEFAULT;
+        }
     }
 
     private final static ConcurrentHashMap<String, ConcurrentHashMap<String, PriceDownConfig>> STANDARD_PRICE_DOWN_MAP = new ConcurrentHashMap<>();
@@ -159,15 +167,18 @@ public class ShoesContext {
     // Excel 压价数据（按账号隔离）
     public static void loadPriceDownExcel(String accountId, String inventoryType, List<StockXPriceDownInputExcel> list) {
         ConcurrentHashMap<String, PriceDownConfig> map = getPriceDownMap(accountId, inventoryType);
-        map.clear();
+        Map<String, PriceDownConfig> parsed = new LinkedHashMap<>();
         for (StockXPriceDownInputExcel item : list) {
             if (StrUtil.isNotBlank(item.getStyleId()) && StrUtil.isNotBlank(item.getSize())) {
                 String key = STR."\{item.getStyleId()}:\{item.getSize()}";
                 boolean skip = item.getMinPrice() != null && item.getMinPrice() == -1;
                 int minPrice = item.getMinPrice() != null ? item.getMinPrice() : 0;
-                map.put(key, new PriceDownConfig(minPrice, skip));
+                PriceDownType type = PriceDownType.fromExcelValue(item.getPriceDownType());
+                parsed.put(key, new PriceDownConfig(minPrice, skip, type));
             }
         }
+        map.clear();
+        map.putAll(parsed);
     }
 
     public static PriceDownConfig getPriceDownConfig(String accountId, String inventoryType, String styleId, String size) {

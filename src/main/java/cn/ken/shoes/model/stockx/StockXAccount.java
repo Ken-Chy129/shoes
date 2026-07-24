@@ -1,5 +1,6 @@
 package cn.ken.shoes.model.stockx;
 
+import cn.ken.shoes.common.PriceDownType;
 import lombok.Data;
 
 @Data
@@ -29,6 +30,27 @@ public class StockXAccount {
     private int freight = 25;
 
     private int minProfit = -30;
+
+    private StockXFeeConfig specialStyleFeeConfig;
+
+    private StockXFeeConfig specialStyle35FeeConfig;
+
+    public StockXFeeConfig resolveFeeConfig(PriceDownType priceDownType) {
+        StockXFeeConfig defaults = new StockXFeeConfig();
+        defaults.setTransferFeeRate(transferFeeRate);
+        defaults.setMerchantFeeRate(merchantFeeRate);
+        defaults.setMinMerchantFee(minMerchantFee);
+        defaults.setPlatformShippingFee(platformShippingFee);
+        defaults.setFreight(freight);
+        defaults.setMinProfit(minProfit);
+
+        StockXFeeConfig selected = switch (priceDownType != null ? priceDownType : PriceDownType.DEFAULT) {
+            case DEFAULT -> null;
+            case POISON -> specialStyleFeeConfig;
+            case POISON_35 -> specialStyle35FeeConfig;
+        };
+        return selected != null ? selected.resolveWith(defaults) : defaults;
+    }
 
     /** @deprecated 仅兼容旧账号JSON；运行时固定账号级1 request/s。 */
     @Deprecated

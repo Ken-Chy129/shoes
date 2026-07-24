@@ -14,4 +14,7 @@ public class StockXPriceDownInputExcel {
 
     @ExcelProperty("最低价($)")
     private Integer minPrice;
+
+    @ExcelProperty("压价类型")
+    private String priceDownType;
 }

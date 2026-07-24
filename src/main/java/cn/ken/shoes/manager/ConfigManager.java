@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.config.*;
 import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -198,6 +199,7 @@ public class ConfigManager {
                 JSONObject v = new JSONObject();
                 v.put("minPrice", cfg.minPrice());
                 v.put("skip", cfg.skip());
+                v.put("priceDownType", cfg.type().getCode());
                 obj.put(k, v);
             });
             Files.writeString(path, obj.toJSONString());
@@ -253,7 +255,9 @@ public class ConfigManager {
             map.clear();
             for (String key : obj.keySet()) {
                 JSONObject v = obj.getJSONObject(key);
-                map.put(key, new ShoesContext.PriceDownConfig(v.getIntValue("minPrice"), v.getBooleanValue("skip")));
+                map.put(key, new ShoesContext.PriceDownConfig(
+                        v.getIntValue("minPrice"), v.getBooleanValue("skip"),
+                        PriceDownType.fromCode(v.getString("priceDownType"))));
             }
             System.out.println("恢复压价Excel数据: " + accountId + ":" + inventoryType + " 共" + map.size() + "条");
         } catch (Exception e) {

@@ -134,7 +134,11 @@ public class TaskController {
                 .head(StockXPriceDownInputExcel.class)
                 .sheet()
                 .doReadSync();
-        ShoesContext.loadPriceDownExcel(accountId, inventoryType, list);
+        try {
+            ShoesContext.loadPriceDownExcel(accountId, inventoryType, list);
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
         // 落盘持久化，供服务重启后恢复压价任务用
         configManager.savePriceDownExcel(accountId, inventoryType);
         return Result.buildSuccess(ShoesContext.getPriceDownMap(accountId, inventoryType).size());
@@ -149,7 +153,8 @@ public class TaskController {
             result.add(Map.of(
                     "styleId", parts[0],
                     "size", parts.length > 1 ? parts[1] : "",
-                    "minPrice", config.minPrice()
+                    "minPrice", config.minPrice(),
+                    "priceDownType", config.type().getCode()
             ));
         });
         return Result.buildSuccess(result);

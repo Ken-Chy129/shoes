@@ -423,6 +423,7 @@ const TaskPage = () => {
                                             {title: '货号', dataIndex: 'styleId', key: 'styleId'},
                                             {title: '尺码', dataIndex: 'size', key: 'size'},
                                             {title: '最低价($)', dataIndex: 'minPrice', key: 'minPrice', render: (v: number) => v === -1 ? '跳过' : `$${v}`},
+                                            {title: '压价类型', dataIndex: 'priceDownType', key: 'priceDownType', render: (v: string) => ({default: '默认', poison: '得物', poison_35: '得物3.5'}[v] || v)},
                                         ]);
                                         setPreviewVisible(true);
                                     }
@@ -534,10 +535,16 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item name="excelFile" label="压价Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList}
-                           extra="不上传则对所有在售商品按得物比价压价">
+                           extra="列：货号、尺码、最低价($)、压价类型；压价类型留空即“默认”，还可填“得物”或“得物3.5”">
                     <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.excelFile !== cur.excelFile}>
+                    {({getFieldValue}) => getFieldValue('excelFile')?.length > 0 && (
+                        <Alert type="info" showIcon style={{marginBottom: 16}}
+                               message="默认：保持现有最低价逻辑；得物：按特殊货号费率；得物3.5：按3.5价格和对应费率。得物无价会下架。"/>
+                    )}
                 </Form.Item>
                 <Form.Item name="interval" label="轮询间隔" initialValue={1800}>
                     <InputNumber min={10} style={{width: 120}} addonAfter="秒"/>
@@ -562,16 +569,12 @@ const TaskPage = () => {
                         )
                     )}
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.processOutsideExcel !== cur.processOutsideExcel || prev.excelFile !== cur.excelFile || prev.listingFetchMode !== cur.listingFetchMode}>
-                    {({getFieldValue}) => ((getFieldValue('processOutsideExcel') && getFieldValue('listingFetchMode') !== 'excel_search')
-                        || !(getFieldValue('excelFile')?.length > 0)) && (
-                        <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup">
-                            <Radio.Group>
-                                <Radio.Button value="markup">加价$100</Radio.Button>
-                                <Radio.Button value="delist">下架</Radio.Button>
-                            </Radio.Group>
-                        </Form.Item>
-                    )}
+                <Form.Item name="unprofitableAction" label="不盈利操作" initialValue="markup"
+                           extra="作用于未上传Excel、Excel外商品，以及Excel中的“得物/得物3.5”类型">
+                    <Radio.Group>
+                        <Radio.Button value="markup">加价$100</Radio.Button>
+                        <Radio.Button value="delist">下架</Radio.Button>
+                    </Radio.Group>
                 </Form.Item>
             </>;
         }

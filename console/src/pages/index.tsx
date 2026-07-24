@@ -1,4 +1,4 @@
-import {Alert, Badge, Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tag, Tooltip} from "antd";
+import {Alert, Badge, Button, Card, Form, Input, InputNumber, message, Modal, Radio, Row, Select, Steps, Switch, Table, Tabs, Tag, Tooltip} from "antd";
 import {ClockCircleOutlined, ExclamationCircleOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doGetRequest, doPostRequest, doDeleteRequest, doPutRequest} from "@/util/http";
@@ -37,6 +37,44 @@ const relTime = (sec: number) => {
     return `${Math.floor(diff / 86400)} 天前`;
 };
 
+const FEE_FIELD_NAMES = [
+    'transferFeeRate', 'merchantFeeRate', 'minMerchantFee',
+    'platformShippingFee', 'freight', 'minProfit',
+];
+
+const FeeProfileFields = ({prefix}: {prefix?: string}) => {
+    const name = (field: string) => prefix ? [prefix, field] : field;
+    const initialValue = (value: number) => prefix ? undefined : value;
+    return <>
+        <Form.Item name={name('transferFeeRate')} label="转账手续费比例" initialValue={initialValue(0.03)}
+                   rules={[{required: true, message: '请输入转账手续费比例'}]} extra="设为0表示免手续费">
+            <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+        </Form.Item>
+        <Form.Item name={name('merchantFeeRate')} label="商家手续费比例" initialValue={initialValue(0.07)}
+                   rules={[{required: true, message: '请输入商家手续费比例'}]} extra="设为0表示免手续费">
+            <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
+        </Form.Item>
+        <Form.Item name={name('minMerchantFee')} label="最低商家手续费($)" initialValue={initialValue(5.79)}
+                   rules={[{required: true, message: '请输入最低商家手续费'}]}
+                   extra="商家手续费不低于此值；设为0表示免商家手续费">
+            <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+        </Form.Item>
+        <Form.Item name={name('platformShippingFee')} label="平台运费($)" initialValue={initialValue(0)}
+                   rules={[{required: true, message: '请输入平台运费'}]} extra="StockX平台收取的运费(USD)">
+            <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
+        </Form.Item>
+        <Form.Item name={name('freight')} label="人民币运费(¥)" initialValue={initialValue(25)}
+                   rules={[{required: true, message: '请输入人民币运费'}]}>
+            <InputNumber min={0} step={1} style={{width: '100%'}}/>
+        </Form.Item>
+        <Form.Item name={name('minProfit')} label="最小利润(¥)" initialValue={initialValue(-30)}
+                   rules={[{required: true, message: '请输入最小利润'}]}
+                   extra="低于此利润的商品按任务设置加价或下架">
+            <InputNumber step={1} style={{width: '100%'}}/>
+        </Form.Item>
+    </>;
+};
+
 const SettingPage = () => {
     const [poisonForm] = Form.useForm();
     const [kcForm] = Form.useForm();
@@ -47,6 +85,8 @@ const SettingPage = () => {
     const [editingAccount, setEditingAccount] = useState<any>(null);
     const [accountForm] = Form.useForm();
     const [accountStep, setAccountStep] = useState(0);
+    const inheritSpecialStyleFee = Form.useWatch('inheritSpecialStyleFee', accountForm) ?? true;
+    const inheritSpecialStyle35Fee = Form.useWatch('inheritSpecialStyle35Fee', accountForm) ?? true;
 
     useEffect(() => {
         doGetRequest(SETTING_API.POISON, {}, {
@@ -120,13 +160,22 @@ const SettingPage = () => {
     const handleAddAccount = () => {
         setEditingAccount(null);
         accountForm.resetFields();
+        accountForm.setFieldsValue({
+            inheritSpecialStyleFee: true,
+            inheritSpecialStyle35Fee: true,
+        });
         setAccountStep(0);
         setAccountModalVisible(true);
     }
 
     const handleEditAccount = (record: any) => {
         setEditingAccount(record);
-        accountForm.setFieldsValue(record);
+        accountForm.resetFields();
+        accountForm.setFieldsValue({
+            ...record,
+            inheritSpecialStyleFee: !record.specialStyleFeeConfig,
+            inheritSpecialStyle35Fee: !record.specialStyle35FeeConfig,
+        });
         setAccountStep(0);
         setAccountModalVisible(true);
     }
@@ -142,10 +191,15 @@ const SettingPage = () => {
 
     const handleAccountSubmit = () => {
         accountForm.validateFields().then(values => {
+            const accountValues = {...values};
+            delete accountValues.inheritSpecialStyleFee;
+            delete accountValues.inheritSpecialStyle35Fee;
+            if (values.inheritSpecialStyleFee) accountValues.specialStyleFeeConfig = null;
+            if (values.inheritSpecialStyle35Fee) accountValues.specialStyle35FeeConfig = null;
             if (editingAccount) {
                 // 合并原账号字段：autoRefresh 等无对应 Form.Item 的字段不在 values 里，
                 // 直接 PUT values 会把它们丢成默认值(如自动刷新被清成"手动")，故先展开原对象再覆盖。
-                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.name}`, {...editingAccount, ...values}, {
+                doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${editingAccount.name}`, {...editingAccount, ...accountValues}, {
                     onSuccess: () => {
                         message.success('已更新');
                         setAccountModalVisible(false);
@@ -153,7 +207,7 @@ const SettingPage = () => {
                     }
                 });
             } else {
-                doPostRequest(SETTING_API.STOCKX_ACCOUNTS, values, {
+                doPostRequest(SETTING_API.STOCKX_ACCOUNTS, accountValues, {
                     onSuccess: () => {
                         message.success('已添加');
                         setAccountModalVisible(false);
@@ -170,6 +224,12 @@ const SettingPage = () => {
         });
     }
 
+    const enableSpecialFeeProfile = (prefix: string) => {
+        if (accountForm.getFieldValue(prefix)) return;
+        const defaults = accountForm.getFieldsValue(FEE_FIELD_NAMES);
+        accountForm.setFieldValue(prefix, defaults);
+    };
+
     const accountColumns = [
         {title: '账号名', dataIndex: 'name', key: 'name', width: 100},
         {title: '区域', dataIndex: 'country', key: 'country', width: 60},
@@ -179,6 +239,10 @@ const SettingPage = () => {
         {title: '平台运费', dataIndex: 'platformShippingFee', key: 'platformShippingFee', width: 80, render: (v: number) => `$${v}`},
         {title: '运费(¥)', dataIndex: 'freight', key: 'freight', width: 70, render: (v: number) => `¥${v}`},
         {title: '最小利润', dataIndex: 'minProfit', key: 'minProfit', width: 80, render: (v: number) => `¥${v}`},
+        {title: '特殊费率', key: 'specialFees', width: 130, render: (_: any, record: any) => <>
+            <Tag color={record.specialStyleFeeConfig ? 'blue' : 'default'}>得物</Tag>
+            <Tag color={record.specialStyle35FeeConfig ? 'purple' : 'default'}>得物3.5</Tag>
+        </>},
         {title: '上次刷新', dataIndex: 'authorization', key: 'tokenIat', width: 110,
             render: (auth: string) => {
                 const {iat} = decodeJwtTimes(auth);
@@ -349,13 +413,19 @@ const SettingPage = () => {
         </Card>
 
         <Modal title={editingAccount ? '编辑账号' : '添加账号'} open={accountModalVisible}
-               onCancel={() => setAccountModalVisible(false)} width={560}
+               onCancel={() => setAccountModalVisible(false)} width={680}
                footer={[
                    accountStep > 0 && <Button key="prev" onClick={() => setAccountStep(s => s - 1)}>上一步</Button>,
                    accountStep < 2 && <Button key="next" type="primary" onClick={() => {
-                       const fields = accountStep === 0
+                       const fields: any[] = accountStep === 0
                            ? ['name', 'country', 'apiKey', 'authorization', 'enabled']
-                           : ['transferFeeRate', 'merchantFeeRate', 'minMerchantFee', 'platformShippingFee', 'freight', 'minProfit'];
+                           : [...FEE_FIELD_NAMES];
+                       if (accountStep === 1 && !inheritSpecialStyleFee) {
+                           fields.push(...FEE_FIELD_NAMES.map(field => ['specialStyleFeeConfig', field]));
+                       }
+                       if (accountStep === 1 && !inheritSpecialStyle35Fee) {
+                           fields.push(...FEE_FIELD_NAMES.map(field => ['specialStyle35FeeConfig', field]));
+                       }
                        accountForm.validateFields(fields).then(() => setAccountStep(s => s + 1));
                    }}>下一步</Button>,
                    accountStep === 2 && <Button key="submit" type="primary" onClick={handleAccountSubmit}>提交</Button>,
@@ -385,29 +455,42 @@ const SettingPage = () => {
                     </Form.Item>
                 </div>
                 <div style={{display: accountStep === 1 ? 'block' : 'none'}}>
-                    <Form.Item name="transferFeeRate" label="转账手续费比例" initialValue={0.03}
-                               extra="设为0表示免手续费">
-                        <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="merchantFeeRate" label="商家手续费比例" initialValue={0.07}
-                               extra="设为0表示免手续费">
-                        <InputNumber min={0} max={1} step={0.01} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="minMerchantFee" label="最低商家手续费($)" initialValue={5.79}
-                               extra="商家手续费不低于此值；设为0表示免商家手续费">
-                        <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="platformShippingFee" label="平台运费($)" rules={[{required: true}]}
-                               extra="StockX平台收取的运费(USD)">
-                        <InputNumber min={0} step={0.01} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="freight" label="人民币运费(¥)" initialValue={25}>
-                        <InputNumber min={0} step={1} style={{width: '100%'}}/>
-                    </Form.Item>
-                    <Form.Item name="minProfit" label="最小利润(¥)" initialValue={-30}
-                               extra="低于此利润的商品会被加价$100">
-                        <InputNumber step={1} style={{width: '100%'}}/>
-                    </Form.Item>
+                    <Tabs items={[
+                        {
+                            key: 'default', label: '默认费率',
+                            children: <>
+                                <Alert type="info" showIcon style={{marginBottom: 16}}
+                                       message="默认任务及Excel中“默认”类型使用这套配置"/>
+                                <FeeProfileFields/>
+                            </>,
+                        },
+                        {
+                            key: 'poison', label: '特殊货号',
+                            children: <>
+                                <Form.Item name="inheritSpecialStyleFee" label="费率来源" valuePropName="checked">
+                                    <Switch checkedChildren="跟随默认" unCheckedChildren="独立配置"
+                                            onChange={checked => { if (!checked) enableSpecialFeeProfile('specialStyleFeeConfig'); }}/>
+                                </Form.Item>
+                                {inheritSpecialStyleFee
+                                    ? <Alert type="info" showIcon message="当前跟随默认费率配置"/>
+                                    : <FeeProfileFields prefix="specialStyleFeeConfig"/>}
+                            </>,
+                        },
+                        {
+                            key: 'poison35', label: '特殊货号3.5',
+                            children: <>
+                                <Alert type="info" showIcon style={{marginBottom: 16}}
+                                       message="得物3.5价格 = 得物价格 × 0.95 - 48（取整）"/>
+                                <Form.Item name="inheritSpecialStyle35Fee" label="费率来源" valuePropName="checked">
+                                    <Switch checkedChildren="跟随默认" unCheckedChildren="独立配置"
+                                            onChange={checked => { if (!checked) enableSpecialFeeProfile('specialStyle35FeeConfig'); }}/>
+                                </Form.Item>
+                                {inheritSpecialStyle35Fee
+                                    ? <Alert type="info" showIcon message="当前跟随默认费率配置"/>
+                                    : <FeeProfileFields prefix="specialStyle35FeeConfig"/>}
+                            </>,
+                        },
+                    ]}/>
                 </div>
                 <div style={{display: accountStep === 2 ? 'block' : 'none'}}>
                     <Alert type="info" showIcon

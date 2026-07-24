@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.PoisonPriceMode;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.mapper.PoisonPriceMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
@@ -110,6 +111,10 @@ public class PriceManager {
     }
 
     public Integer getPoisonPrice(String modelNo, String euSize) {
+        return getPoisonPrice(modelNo, euSize, PoisonPriceMode.AUTO);
+    }
+
+    public Integer getPoisonPrice(String modelNo, String euSize, PoisonPriceMode mode) {
         if (modelNo == null || euSize == null) {
             return null;
         }
@@ -117,17 +122,17 @@ public class PriceManager {
             String[] parts = modelNo.split("\\s*/\\s*");
             Integer bestPrice = null;
             for (String part : parts) {
-                Integer price = getSinglePoisonPrice(part, euSize);
+                Integer price = getSinglePoisonPrice(part, euSize, mode);
                 if (price != null && (bestPrice == null || price < bestPrice)) {
                     bestPrice = price;
                 }
             }
             return bestPrice;
         }
-        return getSinglePoisonPrice(modelNo, euSize);
+        return getSinglePoisonPrice(modelNo, euSize, mode);
     }
 
-    private Integer getSinglePoisonPrice(String modelNo, String euSize) {
+    private Integer getSinglePoisonPrice(String modelNo, String euSize, PoisonPriceMode mode) {
         try {
             String normalizedEuSize = ShoesUtil.normalizeUnicodeFraction(euSize);
             Integer specialPrice = ShoesContext.getSpecialPrice(modelNo, euSize);
@@ -145,8 +150,11 @@ public class PriceManager {
             if (normalPrice == null) {
                 return null;
             }
-            if (ShoesUtil.isThreeFiveModel(modelNo, euSize)
-                    || ShoesUtil.isThreeFiveModel(modelNo, normalizedEuSize)) {
+            boolean useThreeFive = mode == PoisonPriceMode.THREE_FIVE
+                    || (mode == PoisonPriceMode.AUTO
+                    && (ShoesUtil.isThreeFiveModel(modelNo, euSize)
+                    || ShoesUtil.isThreeFiveModel(modelNo, normalizedEuSize)));
+            if (useThreeFive) {
                 return ShoesUtil.getThreeFivePrice(normalPrice.getPrice());
             } else {
                 return normalPrice.getPrice();

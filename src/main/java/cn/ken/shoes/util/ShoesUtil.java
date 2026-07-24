@@ -4,6 +4,8 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.PoisonSwitch;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.model.stockx.StockXFeeConfig;
+import cn.ken.shoes.common.PriceDownType;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -111,15 +113,26 @@ public class ShoesUtil {
     }
 
     public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit, StockXAccount account) {
-        double earn = getStockxEarn(poisonPrice, stockXPrice, account);
+        return canStockxEarn(poisonPrice, stockXPrice, minExpectProfit,
+                account.resolveFeeConfig(PriceDownType.DEFAULT));
+    }
+
+    public static boolean canStockxEarn(Integer poisonPrice, Integer stockXPrice, Integer minExpectProfit, StockXFeeConfig fees) {
+        double earn = getStockxEarn(poisonPrice, stockXPrice, fees);
         return earn >= minExpectProfit;
     }
 
     public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice, StockXAccount account) {
-        double transferFee = account.getTransferFeeRate() == 0 ? 0 : stockXPrice * account.getTransferFeeRate();
-        double merchantFee = (account.getMerchantFeeRate() == 0 || account.getMinMerchantFee() == 0) ? 0 : Math.max(stockXPrice * account.getMerchantFeeRate(), account.getMinMerchantFee());
-        double getFromPlatform = (stockXPrice - transferFee - merchantFee - account.getPlatformShippingFee()) * PriceSwitch.EXCHANGE_RATE;
-        return getFromPlatform - account.getFreight() - poisonPrice;
+        return getStockxEarn(poisonPrice, stockXPrice, account.resolveFeeConfig(PriceDownType.DEFAULT));
+    }
+
+    public static double getStockxEarn(Integer poisonPrice, Integer stockXPrice, StockXFeeConfig fees) {
+        double transferFee = fees.getTransferFeeRate() == 0 ? 0 : stockXPrice * fees.getTransferFeeRate();
+        double merchantFee = (fees.getMerchantFeeRate() == 0 || fees.getMinMerchantFee() == 0)
+                ? 0 : Math.max(stockXPrice * fees.getMerchantFeeRate(), fees.getMinMerchantFee());
+        double getFromPlatform = (stockXPrice - transferFee - merchantFee - fees.getPlatformShippingFee())
+                * PriceSwitch.EXCHANGE_RATE;
+        return getFromPlatform - fees.getFreight() - poisonPrice;
     }
 
     /**
@@ -139,7 +152,7 @@ public class ShoesUtil {
     }
 
     public static Integer getThreeFivePrice(Integer normalPrice) {
-        return (int) (normalPrice * 0.955 - 38 - 8.9);
+        return (int) (normalPrice * 0.95 - 48);
     }
 
     public static boolean isThreeFiveModel(String model, String euSize) {

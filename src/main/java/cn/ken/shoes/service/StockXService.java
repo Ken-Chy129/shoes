@@ -5,11 +5,14 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.PoisonPriceMode;
+import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.model.stockx.StockXFeeConfig;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.manager.StockXPriceRateStateManager;
 import cn.ken.shoes.manager.StockXPriceUpdateCoordinator;
@@ -118,6 +121,69 @@ public class StockXService {
     }
 
     record PriceDownSubmission(String reference, List<Map<String, String>> submittedItems) {
+    }
+
+    enum ProfitDrivenAction {
+        KEEP,
+        SKIP,
+        PRICE_DOWN,
+        MARK_UP,
+        DELETE
+    }
+
+    record ProfitDrivenDecision(ProfitDrivenAction action, Integer targetPrice, String result) {
+    }
+
+    static ProfitDrivenDecision decideProfitDrivenListing(int currentPrice,
+                                                           boolean bestListing,
+                                                           boolean anyIsLowest,
+                                                           Integer lowestPrice,
+                                                           int excelMinPrice,
+                                                           boolean currentProfitable,
+                                                           boolean newPriceProfitable,
+                                                           String unprofitableAction) {
+        if (lowestPrice == null || lowestPrice <= 1) {
+            return new ProfitDrivenDecision(ProfitDrivenAction.MARK_UP, currentPrice + 100,
+                    "待加价$100-无最低价");
+        }
+        if (currentPrice < excelMinPrice) {
+            return new ProfitDrivenDecision(ProfitDrivenAction.MARK_UP, currentPrice + 100,
+                    "待加价$100-低于Excel最低价");
+        }
+        if (anyIsLowest) {
+            if (currentPrice <= lowestPrice) {
+                return currentProfitable
+                        ? new ProfitDrivenDecision(ProfitDrivenAction.KEEP, null, "保持-已是最低价且盈利")
+                        : unprofitableDecision(currentPrice, unprofitableAction);
+            }
+            return currentProfitable
+                    ? new ProfitDrivenDecision(ProfitDrivenAction.SKIP, null, "跳过-相同货号尺码已有最低价")
+                    : unprofitableDecision(currentPrice, unprofitableAction);
+        }
+        if (bestListing) {
+            int newPrice = lowestPrice - 1;
+            if (newPrice >= excelMinPrice && newPriceProfitable) {
+                return new ProfitDrivenDecision(ProfitDrivenAction.PRICE_DOWN, newPrice, "待压价");
+            }
+            if (currentProfitable) {
+                String reason = newPrice < excelMinPrice
+                        ? "保持-压价后低于Excel最低价"
+                        : "保持-压价后不盈利但当前价盈利";
+                return new ProfitDrivenDecision(ProfitDrivenAction.KEEP, null, reason);
+            }
+            return unprofitableDecision(currentPrice, unprofitableAction);
+        }
+        return currentProfitable
+                ? new ProfitDrivenDecision(ProfitDrivenAction.SKIP, null, "跳过-相同货号尺码")
+                : unprofitableDecision(currentPrice, unprofitableAction);
+    }
+
+    private static ProfitDrivenDecision unprofitableDecision(int currentPrice, String unprofitableAction) {
+        if ("delist".equals(unprofitableAction)) {
+            return new ProfitDrivenDecision(ProfitDrivenAction.DELETE, null, "待下架-不盈利");
+        }
+        return new ProfitDrivenDecision(ProfitDrivenAction.MARK_UP, currentPrice + 100,
+                "待加价$100-不盈利");
     }
 
     /** 优先Bulk；真实批量限流切Single；两个通道都限流时任务保持运行并进入3小时可取消冷却。 */
@@ -403,8 +469,15 @@ public class StockXService {
                     fetchMode == ListingFetchMode.EXCEL_SEARCH ? "货号" + searchedStyleId : "本批次",
                     pagesCollected, batchItems.size());
 
-            // ===== 预加载得物价格（仅当需要处理Excel外商品时） =====
-            if (TaskSwitch.isProcessOutsideExcel(accountId, inventoryType)) {
+            // ===== 预加载得物价格（Excel外商品及得物类型均需要） =====
+            boolean needsPoisonPrice = TaskSwitch.isProcessOutsideExcel(accountId, inventoryType)
+                    || batchItems.stream().anyMatch(item -> {
+                ShoesContext.PriceDownConfig itemConfig = ShoesContext.getPriceDownConfig(
+                        accountId, inventoryType, item.getString("styleId"), item.getString("size"));
+                return itemConfig != null && !itemConfig.skip()
+                        && itemConfig.type() != PriceDownType.DEFAULT;
+            });
+            if (needsPoisonPrice) {
                 Set<String> allModelNos = batchItems.stream()
                         .map(item -> item.getString("styleId"))
                         .filter(StrUtil::isNotBlank)
@@ -454,121 +527,9 @@ public class StockXService {
                         }
                         continue;
                     }
-                    // Excel 外：按得物比价处理
-                    String unprofitableAction = TaskSwitch.getUnprofitableAction(accountId, inventoryType);
-                    String euSize = listings.get(0).getString("euSize");
-                    if (StrUtil.isBlank(euSize)) {
-                        totalSkip += listings.size();
-                        for (JSONObject listing : listings) {
-                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
-                            updateTaskItemResult(taskItemId, "跳过-无法获取EU码");
-                        }
-                        continue;
-                    }
-                    if (ShoesContext.isFlawsModel(styleId, euSize)) {
-                        totalSkip += listings.size();
-                        for (JSONObject listing : listings) {
-                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
-                            updateTaskItemResult(taskItemId, "跳过-禁爬货号");
-                        }
-                        continue;
-                    }
-                    if (ShoesContext.isNotCompareModel(styleId, euSize)) {
-                        totalSkip += listings.size();
-                        for (JSONObject listing : listings) {
-                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
-                            updateTaskItemResult(taskItemId, "跳过-不比价货号");
-                        }
-                        continue;
-                    }
-                    Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
-                    if (poisonPrice == null) {
-                        for (JSONObject listing : listings) {
-                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
-                            String lid = listing.getString("id");
-                            toDelete.add(lid);
-                            deleteToTaskInfo.put(lid, taskItemId);
-                            updateTaskItemResult(taskItemId, "待下架-得物无价");
-                        }
-                        continue;
-                    }
-                    // 有得物价，按利润判断
-                    Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
-                            listings.get(0).getInteger("standardLowest"),
-                            listings.get(0).getInteger("expressStandardLowest"));
-
-                    listings.sort(Comparator.comparingInt(a -> a.getIntValue("amount")));
-                    int minExpectProfit = account.getMinProfit();
-                    boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
-                            && listings.stream().anyMatch(l -> l.getIntValue("amount") <= lowestPrice);
-
-                    for (JSONObject listing : listings) {
-                        String lid = listing.getString("id");
-                        int amt = listing.getIntValue("amount");
-                        Long itemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
-                        updateTaskItemProfit(itemId, poisonPrice, amt, account);
-
-                        if (lowestPrice == null || lowestPrice <= 1) {
-                            // 无最低价信息，加价$100
-                            int markUpPrice = amt + 100;
-                            toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(markUpPrice), "currencyCode", "USD"));
-                            listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(markUpPrice)));
-                            updateTaskItemResult(itemId, "待加价$100-无最低价");
-                            continue;
-                        }
-
-                        boolean profitable = ShoesUtil.canStockxEarn(poisonPrice, amt, minExpectProfit, account);
-                        int markUpPrice = amt + 100;
-                        String markUpAmount = String.valueOf(markUpPrice);
-
-                        if (anyIsLowest && amt <= lowestPrice) {
-                            // 已是最低价
-                            if (profitable) {
-                                updateTaskItemResult(itemId, "保持-已是最低价且盈利");
-                            } else if ("delist".equals(unprofitableAction)) {
-                                toDelete.add(lid);
-                                deleteToTaskInfo.put(lid, itemId);
-                                updateTaskItemResult(itemId, "待下架-不盈利");
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
-                                updateTaskItemResult(itemId, "待加价$100-不盈利");
-                            }
-                        } else if (!anyIsLowest && listing == listings.get(0)) {
-                            // 不是最低价，尝试压价
-                            int newPrice = lowestPrice - 1;
-                            boolean newProfitable = ShoesUtil.canStockxEarn(poisonPrice, newPrice, minExpectProfit, account);
-                            if (newProfitable) {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", String.valueOf(newPrice), "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, String.valueOf(newPrice)));
-                                updateTaskItemResult(itemId, "待压价");
-                                updateTaskItemProfit(itemId, poisonPrice, newPrice, account);
-                            } else if (profitable) {
-                                updateTaskItemResult(itemId, "保持-压价后不盈利但当前价盈利");
-                            } else if ("delist".equals(unprofitableAction)) {
-                                toDelete.add(lid);
-                                deleteToTaskInfo.put(lid, itemId);
-                                updateTaskItemResult(itemId, "待下架-不盈利");
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
-                                updateTaskItemResult(itemId, "待加价$100-不盈利");
-                            }
-                        } else {
-                            // 相同货号尺码，非最优listing
-                            if (profitable) {
-                                updateTaskItemResult(itemId, "跳过-相同货号尺码");
-                            } else if ("delist".equals(unprofitableAction)) {
-                                toDelete.add(lid);
-                                deleteToTaskInfo.put(lid, itemId);
-                                updateTaskItemResult(itemId, "待下架-不盈利");
-                            } else {
-                                toPriceDown.add(Map.of("listingId", lid, "amount", markUpAmount, "currencyCode", "USD"));
-                                listingToTaskInfo.put(lid, Pair.of(itemId, markUpAmount));
-                                updateTaskItemResult(itemId, "待加价$100-不盈利");
-                            }
-                        }
-                    }
+                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType,
+                            styleId, listings, account, PriceDownType.DEFAULT, 0,
+                            toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
 
@@ -579,6 +540,13 @@ public class StockXService {
                         Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
                         updateTaskItemResult(taskItemId, "跳过-Excel设为跳过");
                     }
+                    continue;
+                }
+
+                if (config.type() != PriceDownType.DEFAULT) {
+                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType,
+                            styleId, listings, account, config.type(), config.minPrice(),
+                            toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
 
@@ -1450,8 +1418,13 @@ public class StockXService {
     }
 
     private void updateTaskItemProfit(Long taskItemId, int poisonPrice, int sellPrice, StockXAccount account) {
+        updateTaskItemProfit(taskItemId, poisonPrice, sellPrice,
+                account.resolveFeeConfig(PriceDownType.DEFAULT));
+    }
+
+    private void updateTaskItemProfit(Long taskItemId, int poisonPrice, int sellPrice, StockXFeeConfig fees) {
         if (taskItemId == null) return;
-        double profit = ShoesUtil.getStockxEarn(poisonPrice, sellPrice, account);
+        double profit = ShoesUtil.getStockxEarn(poisonPrice, sellPrice, fees);
         double profitRate = profit / poisonPrice;
         TaskItemDO update = new TaskItemDO();
         update.setId(taskItemId);
@@ -1460,6 +1433,111 @@ public class StockXService {
         update.setProfit35(BigDecimal.valueOf(profit).setScale(2, RoundingMode.HALF_UP));
         update.setProfitRate35(BigDecimal.valueOf(profitRate).setScale(4, RoundingMode.HALF_UP));
         taskItemMapper.updateById(update);
+    }
+
+    private int processProfitDrivenPriceDownGroup(Long taskId,
+                                                  String accountId,
+                                                  String inventoryType,
+                                                  String styleId,
+                                                  List<JSONObject> listings,
+                                                  StockXAccount account,
+                                                  PriceDownType priceDownType,
+                                                  int excelMinPrice,
+                                                  List<Map<String, String>> toPriceDown,
+                                                  Map<String, Pair<Long, String>> listingToTaskInfo,
+                                                  List<String> toDelete,
+                                                  Map<String, Long> deleteToTaskInfo) {
+        String euSize = listings.get(0).getString("euSize");
+        if (StrUtil.isBlank(euSize)) {
+            for (JSONObject listing : listings) {
+                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                updateTaskItemResult(taskItemId, "跳过-无法获取EU码");
+            }
+            return listings.size();
+        }
+        if (ShoesContext.isFlawsModel(styleId, euSize)) {
+            for (JSONObject listing : listings) {
+                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                updateTaskItemResult(taskItemId, "跳过-禁爬货号");
+            }
+            return listings.size();
+        }
+        if (ShoesContext.isNotCompareModel(styleId, euSize)) {
+            for (JSONObject listing : listings) {
+                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                updateTaskItemResult(taskItemId, "跳过-不比价货号");
+            }
+            return listings.size();
+        }
+
+        PoisonPriceMode priceMode = switch (priceDownType) {
+            case DEFAULT -> PoisonPriceMode.AUTO;
+            case POISON -> PoisonPriceMode.NORMAL;
+            case POISON_35 -> PoisonPriceMode.THREE_FIVE;
+        };
+        Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize, priceMode);
+        if (poisonPrice == null) {
+            for (JSONObject listing : listings) {
+                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                String listingId = listing.getString("id");
+                toDelete.add(listingId);
+                deleteToTaskInfo.put(listingId, taskItemId);
+                updateTaskItemResult(taskItemId, "待下架-得物无价");
+            }
+            return 0;
+        }
+
+        StockXFeeConfig fees = account.resolveFeeConfig(priceDownType);
+        int minExpectProfit = fees.getMinProfit();
+        int floorPrice = Math.max(excelMinPrice, 0);
+        listings.sort(Comparator.comparingInt(item -> item.getIntValue("amount")));
+        Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
+                listings.get(0).getInteger("standardLowest"),
+                listings.get(0).getInteger("expressStandardLowest"));
+        boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
+                && listings.stream().anyMatch(item -> item.getIntValue("amount") <= lowestPrice);
+        String unprofitableAction = TaskSwitch.getUnprofitableAction(accountId, inventoryType);
+
+        for (JSONObject listing : listings) {
+            String listingId = listing.getString("id");
+            int currentPrice = listing.getIntValue("amount");
+            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+            updateTaskItemProfit(taskItemId, poisonPrice, currentPrice, fees);
+
+            boolean currentProfitable = ShoesUtil.canStockxEarn(
+                    poisonPrice, currentPrice, minExpectProfit, fees);
+            int candidatePrice = lowestPrice != null ? lowestPrice - 1 : 0;
+            boolean candidateProfitable = lowestPrice != null && lowestPrice > 1
+                    && ShoesUtil.canStockxEarn(poisonPrice, candidatePrice, minExpectProfit, fees);
+            ProfitDrivenDecision decision = decideProfitDrivenListing(
+                    currentPrice,
+                    listing == listings.get(0),
+                    anyIsLowest,
+                    lowestPrice,
+                    floorPrice,
+                    currentProfitable,
+                    candidateProfitable,
+                    unprofitableAction);
+
+            switch (decision.action()) {
+                case PRICE_DOWN, MARK_UP -> {
+                    String targetPrice = String.valueOf(decision.targetPrice());
+                    toPriceDown.add(Map.of("listingId", listingId, "amount", targetPrice, "currencyCode", "USD"));
+                    listingToTaskInfo.put(listingId, Pair.of(taskItemId, targetPrice));
+                    updateTaskItemResult(taskItemId, decision.result());
+                    if (decision.action() == ProfitDrivenAction.PRICE_DOWN) {
+                        updateTaskItemProfit(taskItemId, poisonPrice, decision.targetPrice(), fees);
+                    }
+                }
+                case DELETE -> {
+                    toDelete.add(listingId);
+                    deleteToTaskInfo.put(listingId, taskItemId);
+                    updateTaskItemResult(taskItemId, decision.result());
+                }
+                case KEEP, SKIP -> updateTaskItemResult(taskItemId, decision.result());
+            }
+        }
+        return 0;
     }
 
 }
