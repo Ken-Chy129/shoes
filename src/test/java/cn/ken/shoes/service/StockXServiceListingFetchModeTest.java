@@ -3,6 +3,7 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import com.alibaba.fastjson.JSONObject;
@@ -17,6 +18,33 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
 class StockXServiceListingFetchModeTest {
+
+    @Test
+    void preloadsOnlyStylesThatActuallyNeedPoisonPrices() {
+        String accountName = "poison-preload-account";
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "DEFAULT-SKU:9", new ShoesContext.PriceDownConfig(100, false, PriceDownType.DEFAULT));
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "POISON-SKU:10", new ShoesContext.PriceDownConfig(100, false, PriceDownType.POISON));
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
+                "SKIP-SKU:11", new ShoesContext.PriceDownConfig(-1, true, PriceDownType.POISON_35));
+        List<JSONObject> items = List.of(
+                listing("DEFAULT-SKU", "9"),
+                listing("POISON-SKU", "10"),
+                listing("SKIP-SKU", "11"),
+                listing("OUTSIDE-SKU", "12"));
+
+        try {
+            assertThat(StockXService.collectPoisonPricePreloadStyles(
+                    items, accountName, "STANDARD", false))
+                    .containsExactly("POISON-SKU");
+            assertThat(StockXService.collectPoisonPricePreloadStyles(
+                    items, accountName, "STANDARD", true))
+                    .containsExactlyInAnyOrder("POISON-SKU", "OUTSIDE-SKU");
+        } finally {
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+        }
+    }
 
     @Test
     void excelSearchQueriesEachDistinctStyleIdWithoutScanningAllListings() throws Exception {
@@ -149,6 +177,12 @@ class StockXServiceListingFetchModeTest {
         return new JSONObject(true)
                 .fluentPut("hasMore", hasMore)
                 .fluentPut("items", List.of());
+    }
+
+    private static JSONObject listing(String styleId, String size) {
+        return new JSONObject(true)
+                .fluentPut("styleId", styleId)
+                .fluentPut("size", size);
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {

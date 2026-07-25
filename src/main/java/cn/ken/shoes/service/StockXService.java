@@ -469,22 +469,12 @@ public class StockXService {
                     fetchMode == ListingFetchMode.EXCEL_SEARCH ? "货号" + searchedStyleId : "本批次",
                     pagesCollected, batchItems.size());
 
-            // ===== 预加载得物价格（Excel外商品及得物类型均需要） =====
-            boolean needsPoisonPrice = TaskSwitch.isProcessOutsideExcel(accountId, inventoryType)
-                    || batchItems.stream().anyMatch(item -> {
-                ShoesContext.PriceDownConfig itemConfig = ShoesContext.getPriceDownConfig(
-                        accountId, inventoryType, item.getString("styleId"), item.getString("size"));
-                return itemConfig != null && !itemConfig.skip()
-                        && itemConfig.type() != PriceDownType.DEFAULT;
-            });
-            if (needsPoisonPrice) {
-                Set<String> allModelNos = batchItems.stream()
-                        .map(item -> item.getString("styleId"))
-                        .filter(StrUtil::isNotBlank)
-                        .collect(Collectors.toSet());
-                if (!allModelNos.isEmpty()) {
-                    priceManager.batchLoadPrices(allModelNos);
-                }
+            // ===== 仅预加载实际会进行得物比价的货号 =====
+            Set<String> poisonPreloadStyles = collectPoisonPricePreloadStyles(
+                    batchItems, accountId, inventoryType,
+                    TaskSwitch.isProcessOutsideExcel(accountId, inventoryType));
+            if (!poisonPreloadStyles.isEmpty()) {
+                priceManager.batchLoadPrices(poisonPreloadStyles);
             }
 
             // ===== 按 styleId:size 分组（跨页合并） =====
@@ -1538,6 +1528,29 @@ public class StockXService {
             }
         }
         return 0;
+    }
+
+    static Set<String> collectPoisonPricePreloadStyles(List<JSONObject> batchItems,
+                                                       String accountId,
+                                                       String inventoryType,
+                                                       boolean processOutsideExcel) {
+        Set<String> styleIds = new LinkedHashSet<>();
+        for (JSONObject item : batchItems) {
+            String styleId = item.getString("styleId");
+            String size = item.getString("size");
+            if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
+                continue;
+            }
+            ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(
+                    accountId, inventoryType, styleId, size);
+            boolean needsPoisonPrice = config == null
+                    ? processOutsideExcel
+                    : !config.skip() && config.type() != PriceDownType.DEFAULT;
+            if (needsPoisonPrice) {
+                styleIds.add(styleId);
+            }
+        }
+        return styleIds;
     }
 
 }

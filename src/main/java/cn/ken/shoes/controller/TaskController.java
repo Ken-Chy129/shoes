@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.ListingFetchMode;
@@ -129,6 +130,9 @@ public class TaskController {
         }
         if (StockXConfig.getAccount(accountId) == null) {
             return Result.buildError("账号不存在: " + accountId);
+        }
+        if (TaskSwitch.isExcelRunning(accountId, inventoryType)) {
+            return Result.buildError("该账号的压价任务正在运行，请先终止任务再上传Excel");
         }
         List<StockXPriceDownInputExcel> list = EasyExcel.read(file.getInputStream())
                 .head(StockXPriceDownInputExcel.class)
