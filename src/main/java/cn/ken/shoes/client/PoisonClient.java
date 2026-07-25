@@ -60,6 +60,12 @@ public class PoisonClient {
     @Value("${poison.distToken:}")
     private String distToken;
 
+    @Value("${poison.partnerBatchPriceUrl:}")
+    private String partnerBatchPriceUrl;
+
+    @Value("${poison.partnerBatchPriceToken:}")
+    private String partnerBatchPriceToken;
+
     @Value("${poison.popUrl:https://open.poizon.com/dop/api/v1/pop/api/v1/market/channel}")
     private String popUrl;
 
@@ -105,6 +111,10 @@ public class PoisonClient {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
         }
+        Optional<List<PoisonPriceDO>> partnerPrices = batchQueryPriceByPartnerApi(modelNos);
+        if (partnerPrices.isPresent()) {
+            return partnerPrices.get();
+        }
         return batchQueryPriceByDistApi(modelNos);
     }
 
@@ -112,7 +122,96 @@ public class PoisonClient {
         if (modelNo == null) {
             return Collections.emptyList();
         }
-        return queryPriceByDistApi(modelNo);
+        if (ShoesContext.isNoPrice(modelNo)) {
+            return Collections.emptyList();
+        }
+        List<PoisonPriceDO> result = batchQueryPrice(List.of(modelNo));
+        if (result.isEmpty()) {
+            ShoesContext.addNoPrice(modelNo);
+        }
+        return result;
+    }
+
+    private Optional<List<PoisonPriceDO>> batchQueryPriceByPartnerApi(List<String> modelNos) {
+        if (partnerBatchPriceUrl == null || partnerBatchPriceUrl.isBlank()
+                || partnerBatchPriceToken == null || partnerBatchPriceToken.isBlank()) {
+            return Optional.empty();
+        }
+        List<PoisonPriceDO> allPrices = new ArrayList<>();
+        for (List<String> batch : com.google.common.collect.Lists.partition(modelNos, 200)) {
+            LimiterHelper.limitPoisonPrice();
+            JSONObject params = new JSONObject();
+            params.put("artno_list", batch);
+            Headers headers = Headers.of(
+                    "Authorization", "Bearer " + partnerBatchPriceToken,
+                    "Content-Type", "application/json"
+            );
+            try {
+                String response = HttpUtil.doPost(partnerBatchPriceUrl, params.toJSONString(), headers, false);
+                Optional<List<PoisonPriceDO>> parsed = parsePartnerBatchPriceResponse(response);
+                if (parsed.isEmpty()) {
+                    log.warn("partner batch price unavailable, falling back, modelNos:{}", batch);
+                    return Optional.empty();
+                }
+                allPrices.addAll(parsed.get());
+            } catch (RuntimeException e) {
+                log.warn("partner batch price request failed, falling back, modelNos:{}, error:{}",
+                        batch, e.getMessage());
+                return Optional.empty();
+            }
+        }
+        return Optional.of(allPrices);
+    }
+
+    static Optional<List<PoisonPriceDO>> parsePartnerBatchPriceResponse(String response) {
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JSONObject root = JSON.parseObject(response);
+            if (!Objects.equals(root.getInteger("code"), 200)) {
+                return Optional.empty();
+            }
+            JSONArray skuList = root.getJSONArray("sku_list");
+            if (skuList == null || skuList.isEmpty()) {
+                return Optional.of(Collections.emptyList());
+            }
+            LocalDate oldestAcceptedDate = LocalDate.now().minusDays(3);
+            List<PoisonPriceDO> prices = new ArrayList<>();
+            for (int i = 0; i < skuList.size(); i++) {
+                JSONObject item = skuList.getJSONObject(i);
+                Date updateTime = item.getDate("update_time");
+                if (updateTime == null || LocalDate.ofInstant(updateTime.toInstant(), ZoneId.systemDefault())
+                        .isBefore(oldestAcceptedDate)) {
+                    continue;
+                }
+                String modelNo = item.getString("article_number");
+                JSONArray sizePrices = item.getJSONArray("data");
+                if (modelNo == null || sizePrices == null) {
+                    continue;
+                }
+                Set<String> seenSizes = new HashSet<>();
+                for (int j = 0; j < sizePrices.size(); j++) {
+                    JSONObject sizePrice = sizePrices.getJSONObject(j);
+                    Long priceInCents = sizePrice.getLong("minprice");
+                    String euSize = ShoesUtil.getShoesSizeFrom(sizePrice.getString("size"));
+                    if (priceInCents == null || priceInCents <= 0
+                            || priceInCents > PoisonSwitch.MAX_PRICE * 100L
+                            || euSize == null || !seenSizes.add(euSize)) {
+                        continue;
+                    }
+                    PoisonPriceDO price = new PoisonPriceDO();
+                    price.setModelNo(modelNo);
+                    price.setEuSize(euSize);
+                    price.setPrice((int) (priceInCents / 100));
+                    price.setUpdateTime(updateTime);
+                    prices.add(price);
+                }
+            }
+            return Optional.of(prices);
+        } catch (Exception e) {
+            return Optional.empty();
+        }
     }
 
     public List<PoisonPriceDO> queryPriceByModelNoV2(String modelNo) {

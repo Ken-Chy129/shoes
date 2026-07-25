@@ -216,6 +216,10 @@ public class HttpUtil {
     }
 
     public static String doPost(String url, String json, Headers headers) {
+        return doPost(url, json, headers, true);
+    }
+
+    public static String doPost(String url, String json, Headers headers, boolean useProxy) {
         PROXY_LIMITER.acquire();
         RequestBody body = RequestBody.create(MediaType.get("application/json"), json);
         Request request = new Request.Builder()
@@ -223,7 +227,7 @@ public class HttpUtil {
                 .headers(headers)
                 .post(body)
                 .build();
-        return executeWithRetry(request, true, "doPost");
+        return executeWithRetry(request, useProxy, "doPost");
     }
 
     public static String doPut(String url, String json, Headers headers) {

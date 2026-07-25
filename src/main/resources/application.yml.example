@@ -31,6 +31,9 @@ poison:
   tokenV3: your_token_v3
   v4Code: your_v4_code
   distToken: your_dist_token
+  # 第三方批量查价服务；未配置或请求失败时自动回退官方分销接口
+  partnerBatchPriceUrl: https://your-price-service.example/api/dewu/batchprice
+  partnerBatchPriceToken: your_partner_batch_price_token
 
 kc:
   apiKey: your_api_key
