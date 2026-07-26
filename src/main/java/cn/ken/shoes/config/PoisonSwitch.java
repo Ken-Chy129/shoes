@@ -46,7 +46,11 @@ public class PoisonSwitch {
     public static Boolean OPEN_ALL_THREE_FIVE = false;
 
     /**
-     * 查价走新版 POP 分销接口(需 B2B 权限包)；false 则走旧 distopen 接口(临时回退用)
+     * 得物主查价是否切换到官方 POP B2B 接口。
+     *
+     * <p>默认必须保持 false：当前生产继续使用 partner batchprice。后续确认 POP 价格口径后，
+     * 将 files/config/poison-config.properties 中 use.pop.api 改为 true 并重启，即可优先启用
+     * querySpuList -> querySpuBidPrice 两段式链路。POP 异常时仍会自动回退现有接口。</p>
      */
     public static Boolean USE_POP_API = false;
 

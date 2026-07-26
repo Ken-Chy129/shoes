@@ -89,6 +89,8 @@ public class PoisonClient {
     private static final String POP_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/token";
     private static final String POP_REFRESH_TOKEN_URL = "https://open.poizon.com/api/v1/h5/passport/v1/oauth2/refresh_token";
     private static final long TOKEN_REFRESH_BUFFER_MS = 10 * 60 * 1000L;
+    private static final int POP_ARTICLE_BATCH_SIZE = 200;
+    private static final int POP_BID_SPU_BATCH_SIZE = 50;
 
     private String popRefreshToken;
     private long popAccessTokenExpiresAt;
@@ -111,11 +113,33 @@ public class PoisonClient {
         if (CollectionUtils.isEmpty(modelNos)) {
             return Collections.emptyList();
         }
+
+        /*
+         * POP 是已验证可用、但尚未正式切换价格口径的备用实现，因此必须显式打开开关才会执行。
+         * 开关关闭时不会发起任何 POP 请求，当前 partner batchprice 的生产行为保持不变。
+         *
+         * 切换顺序：
+         * 1. use.pop.api=true：优先 POP；POP 技术失败时继续执行下面的现有链路。
+         * 2. partner batchprice：当前生产主链路。
+         * 3. legacy distopen：partner 请求失败时的最后回退。
+         *
+         * POP 返回 code=200 但没有价格属于“确认无价”，会直接返回空集合；只有请求失败、
+         * 鉴权/签名失败或响应结构不合法才返回 Optional.empty() 并触发回退。
+         */
+        if (Boolean.TRUE.equals(PoisonSwitch.USE_POP_API)) {
+            Optional<List<PoisonPriceDO>> popPrices = batchQueryPriceByPopApi(modelNos);
+            if (popPrices.isPresent()) {
+                return popPrices.get();
+            }
+            log.warn("POP batch price unavailable, falling back to current price source, modelCount:{}",
+                    modelNos.size());
+        }
+
         Optional<List<PoisonPriceDO>> partnerPrices = batchQueryPriceByPartnerApi(modelNos);
         if (partnerPrices.isPresent()) {
             return partnerPrices.get();
         }
-        return batchQueryPriceByDistApi(modelNos);
+        return batchQueryPriceByLegacyDistApi(modelNos);
     }
 
     public List<PoisonPriceDO> queryPriceByModelNo(String modelNo) {
@@ -212,6 +236,231 @@ public class PoisonClient {
         } catch (Exception e) {
             return Optional.empty();
         }
+    }
+
+    // ========== Official POP B2B price API (implemented, disabled by default) ==========
+
+    /**
+     * 官方 POP 查价必须分成两步，不能继续从 querySpuList.skuList 读取 minBidPrice：
+     *
+     * <ol>
+     *   <li>querySpuList：按货号获取 dwSpuId，以及 dwSkuId -> 货号/尺码的映射。</li>
+     *   <li>querySpuBidPrice：按 dwSpuId 获取每个 dwSkuId 对应的 minBidPrice。</li>
+     *   <li>按 dwSkuId 合并两次响应，将分转换为人民币元。</li>
+     * </ol>
+     *
+     * <p>官方同时提供 querySkuBidPrice，但实测它与 querySpuBidPrice 返回完全一致；按 SPU
+     * 请求只需传少量 dwSpuId，因此这里优先使用 querySpuBidPrice。该方法仅在
+     * {@link PoisonSwitch#USE_POP_API} 为 true 时由主链路调用。</p>
+     *
+     * @return 有值表示 POP 给出了可信结果（包括确认无价的空集合）；empty 表示技术失败，应回退
+     */
+    private Optional<List<PoisonPriceDO>> batchQueryPriceByPopApi(List<String> modelNos) {
+        /*
+         * 同一个标准尺码可能由多个原始尺码表示（例如 36⅔ 与 36.5），也可能因为货号重复、
+         * 分页边界等原因跨批次出现。这里在整个请求维度统一去重，保留较低价格，避免未来
+         * 打开开关后给压价任务返回相互冲突的同货号同尺码记录。
+         */
+        Map<String, PoisonPriceDO> lowestPriceByModelAndSize = new LinkedHashMap<>();
+        for (List<String> articleBatch : com.google.common.collect.Lists.partition(
+                modelNos, POP_ARTICLE_BATCH_SIZE)) {
+            Optional<PopSpuLookup> lookupResult = queryPopSpuLookup(articleBatch);
+            if (lookupResult.isEmpty()) {
+                return Optional.empty();
+            }
+            PopSpuLookup lookup = lookupResult.get();
+            if (lookup.spuIds().isEmpty()) {
+                // code=200 且没有匹配 SPU，是业务上的真实无商品/无价，不应误走旧接口。
+                continue;
+            }
+
+            /*
+             * 文档没有给 querySpuBidPrice 标注大小上限。为避免一次请求的 SKU 返回量过大，
+             * 这里保守地每 50 个 SPU 一批；任意一批技术失败时放弃整次 POP 结果并回退，
+             * 避免把部分价格误当成其余货号无价。
+             */
+            for (List<Long> spuIdBatch : com.google.common.collect.Lists.partition(
+                    lookup.spuIds(), POP_BID_SPU_BATCH_SIZE)) {
+                Optional<List<PoisonPriceDO>> batchPrices = queryPopBidPrices(spuIdBatch, lookup);
+                if (batchPrices.isEmpty()) {
+                    return Optional.empty();
+                }
+                for (PoisonPriceDO price : batchPrices.get()) {
+                    String key = price.getModelNo() + ":" + price.getEuSize();
+                    lowestPriceByModelAndSize.merge(key, price,
+                            (existing, replacement) -> replacement.getPrice() < existing.getPrice()
+                                    ? replacement : existing);
+                }
+            }
+        }
+        return Optional.of(new ArrayList<>(lowestPriceByModelAndSize.values()));
+    }
+
+    private Optional<PopSpuLookup> queryPopSpuLookup(List<String> modelNos) {
+        JSONObject params = new JSONObject();
+        params.put("dwDesignerId", modelNos);
+        params.put("pageSize", POP_ARTICLE_BATCH_SIZE);
+        params.put("querySku", true);
+
+        try {
+            // enhancePopParams 可能触发 OAuth token 刷新，也必须纳入技术失败回退范围。
+            enhancePopParams(params);
+            LimiterHelper.limitPoisonPrice();
+            // POP 为 HTTPS 官方接口，直连可避免把 OAuth token 交给 StockX 专用代理链路。
+            String response = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_LIST,
+                    params.toJSONString(), buildHeaders(), false);
+            Optional<PopSpuLookup> parsed = parsePopSpuLookup(response);
+            if (parsed.isEmpty()) {
+                log.warn("POP querySpuList response invalid, modelNos:{}", modelNos);
+            }
+            return parsed;
+        } catch (RuntimeException e) {
+            log.warn("POP querySpuList request failed, modelNos:{}, error:{}", modelNos, e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    private Optional<List<PoisonPriceDO>> queryPopBidPrices(List<Long> spuIds, PopSpuLookup lookup) {
+        JSONObject params = new JSONObject();
+        params.put("dwSpuIds", spuIds);
+
+        try {
+            // token 失效、刷新失败或签名异常均视为 POP 不可用，由调用方回退现有价格源。
+            enhancePopParams(params);
+            LimiterHelper.limitPoisonPrice();
+            String response = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_BID_PRICE,
+                    params.toJSONString(), buildHeaders(), false);
+            Optional<List<PoisonPriceDO>> parsed = parsePopBidPrices(response, lookup);
+            if (parsed.isEmpty()) {
+                log.warn("POP querySpuBidPrice response invalid, spuCount:{}", spuIds.size());
+            }
+            return parsed;
+        } catch (RuntimeException e) {
+            log.warn("POP querySpuBidPrice request failed, spuCount:{}, error:{}",
+                    spuIds.size(), e.getMessage());
+            return Optional.empty();
+        }
+    }
+
+    static Optional<PopSpuLookup> parsePopSpuLookup(String response) {
+        if (response == null || response.isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JSONObject root = JSON.parseObject(response);
+            if (!Objects.equals(root.getInteger("code"), 200)) {
+                return Optional.empty();
+            }
+            JSONObject data = root.getJSONObject("data");
+            if (data == null) {
+                return Optional.empty();
+            }
+            JSONArray spuList = data.getJSONArray("spuList");
+            if (spuList == null) {
+                // 成功码但缺少约定字段属于响应结构异常，不能误判为无价并触发下架。
+                return Optional.empty();
+            }
+            if (spuList.isEmpty()) {
+                return Optional.of(new PopSpuLookup(List.of(), Map.of()));
+            }
+            Long total = data.getLong("total");
+            if (total != null && total > spuList.size()) {
+                /*
+                 * querySpuList 是分页接口。当前按货号批量查询通常一货号对应一个 SPU；如果
+                 * total 明确大于本页数量，说明结果被截断。此时宁可回退，也不能把未返回的
+                 * SPU 误判为无价。后续若实际遇到该场景，可在这里按 startId 补分页循环。
+                 */
+                return Optional.empty();
+            }
+
+            List<Long> spuIds = new ArrayList<>();
+            Map<Long, PopSkuMetadata> skuMetadataById = new LinkedHashMap<>();
+            for (int i = 0; i < spuList.size(); i++) {
+                JSONObject spu = spuList.getJSONObject(i);
+                Long spuId = spu.getLong("dwSpuId");
+                String modelNo = spu.getString("dwDesignerId");
+                JSONArray skuList = spu.getJSONArray("skuList");
+                if (spuId == null || modelNo == null || modelNo.isBlank() || skuList == null) {
+                    // querySku=true 时这些都是后续关联价格必需字段，缺失则整批回退。
+                    return Optional.empty();
+                }
+                spuIds.add(spuId);
+                for (int j = 0; j < skuList.size(); j++) {
+                    JSONObject sku = skuList.getJSONObject(j);
+                    Long skuId = sku.getLong("dwSkuId");
+                    String euSize = ShoesUtil.getShoesSizeFrom(extractDistApiSize(sku));
+                    if (skuId != null && euSize != null) {
+                        skuMetadataById.putIfAbsent(skuId, new PopSkuMetadata(modelNo, euSize));
+                    }
+                }
+            }
+            return Optional.of(new PopSpuLookup(
+                    List.copyOf(new LinkedHashSet<>(spuIds)), Map.copyOf(skuMetadataById)));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    static Optional<List<PoisonPriceDO>> parsePopBidPrices(String response, PopSpuLookup lookup) {
+        if (response == null || response.isBlank() || lookup == null) {
+            return Optional.empty();
+        }
+        try {
+            JSONObject root = JSON.parseObject(response);
+            if (!Objects.equals(root.getInteger("code"), 200)) {
+                return Optional.empty();
+            }
+            JSONObject data = root.getJSONObject("data");
+            if (data == null) {
+                return Optional.empty();
+            }
+            JSONArray items = data.getJSONArray("items");
+            if (items == null) {
+                // 与空数组区分：字段缺失更可能是接口变更或异常响应，应回退现有价格源。
+                return Optional.empty();
+            }
+            if (items.isEmpty()) {
+                return Optional.of(Collections.emptyList());
+            }
+
+            Date queryTime = new Date();
+            Map<String, PoisonPriceDO> lowestPriceByModelAndSize = new LinkedHashMap<>();
+            for (int i = 0; i < items.size(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                Long skuId = item.getLong("dwSkuId");
+                Long minBidPrice = item.getLong("minBidPrice");
+                PopSkuMetadata metadata = lookup.skuMetadataById().get(skuId);
+                if (metadata == null || minBidPrice == null || minBidPrice <= 0
+                        || minBidPrice > PoisonSwitch.MAX_PRICE * 100L) {
+                    continue;
+                }
+
+                /*
+                 * 价格口径暂定使用官方文档定义的 minBidPrice。响应中的 supplementPrice(HK)
+                 * 是区域补充价格，当前 partner batchprice 的实测口径更接近 minBidPrice，
+                 * 因此在正式确认业务含义前不混用该字段。
+                 */
+                PoisonPriceDO price = new PoisonPriceDO();
+                price.setModelNo(metadata.modelNo());
+                price.setEuSize(metadata.euSize());
+                price.setPrice((int) (minBidPrice / 100));
+                price.setUpdateTime(queryTime);
+
+                String key = metadata.modelNo() + ":" + metadata.euSize();
+                lowestPriceByModelAndSize.merge(key, price,
+                        (existing, replacement) -> replacement.getPrice() < existing.getPrice()
+                                ? replacement : existing);
+            }
+            return Optional.of(new ArrayList<>(lowestPriceByModelAndSize.values()));
+        } catch (Exception e) {
+            return Optional.empty();
+        }
+    }
+
+    record PopSkuMetadata(String modelNo, String euSize) {
+    }
+
+    record PopSpuLookup(List<Long> spuIds, Map<Long, PopSkuMetadata> skuMetadataById) {
     }
 
     public List<PoisonPriceDO> queryPriceByModelNoV2(String modelNo) {
@@ -380,6 +629,23 @@ public class PoisonClient {
     }
 
     public List<PoisonPriceDO> batchQueryPriceByDistApi(List<String> modelNos) {
+        if (CollectionUtils.isEmpty(modelNos)) {
+            return Collections.emptyList();
+        }
+        if (Boolean.TRUE.equals(PoisonSwitch.USE_POP_API)) {
+            Optional<List<PoisonPriceDO>> popPrices = batchQueryPriceByPopApi(modelNos);
+            if (popPrices.isPresent()) {
+                return popPrices.get();
+            }
+        }
+        return batchQueryPriceByLegacyDistApi(modelNos);
+    }
+
+    /**
+     * 旧 distopen 接口仅作为最后回退保留。不要在这里重新判断 USE_POP_API，避免 POP 失败后
+     * 被重复调用；主链路和 public 兼容方法会在进入本方法前完成一次 POP 尝试。
+     */
+    private List<PoisonPriceDO> batchQueryPriceByLegacyDistApi(List<String> modelNos) {
         List<PoisonPriceDO> allPrices = new ArrayList<>();
         List<List<String>> batches = com.google.common.collect.Lists.partition(modelNos, 200);
         for (List<String> batch : batches) {
@@ -388,15 +654,8 @@ public class PoisonClient {
             params.put("dwDesignerId", batch);
             params.put("pageSize", 200);
             params.put("querySku", true);
-            String result;
-            if (PoisonSwitch.USE_POP_API) {
-                enhancePopParams(params);
-                result = HttpUtil.doPost(popUrl + PoisonApiConstant.POP_QUERY_SPU_LIST,
-                        params.toJSONString(), buildHeaders());
-            } else {
-                result = HttpUtil.doPost(DIST_API_URL, params.toJSONString(),
-                        Headers.of("access-token", distToken, "Content-Type", "application/json"));
-            }
+            String result = HttpUtil.doPost(DIST_API_URL, params.toJSONString(),
+                    Headers.of("access-token", distToken, "Content-Type", "application/json"));
             if (result == null) {
                 log.error("batchQueryPriceByDistApi error, no result, modelNos:{}", batch);
                 continue;
@@ -448,7 +707,7 @@ public class PoisonClient {
         return allPrices;
     }
 
-    private String extractDistApiSize(JSONObject sku) {
+    private static String extractDistApiSize(JSONObject sku) {
         JSONArray saleAttr = sku.getJSONArray("saleAttr");
         if (saleAttr != null) {
             for (int i = 0; i < saleAttr.size(); i++) {
@@ -705,7 +964,8 @@ public class PoisonClient {
         params.put("client_id", appKey);
         params.put("client_secret", appSecret);
         params.put("authorization_code", authorizationCode);
-        String result = HttpUtil.doPost(POP_TOKEN_URL, params.toJSONString(), buildHeaders());
+        // OAuth 请求包含 client_secret/authorization_code，只允许直连得物官方 HTTPS 接口。
+        String result = HttpUtil.doPost(POP_TOKEN_URL, params.toJSONString(), buildHeaders(), false);
         JSONObject json = parsePopTokenResponse(result, "exchangePopAuthorizationCode");
         persistPopOAuthToken(json.getJSONObject("data"));
         return getPopOAuthStatus();
@@ -728,7 +988,8 @@ public class PoisonClient {
         params.put("client_id", appKey);
         params.put("client_secret", appSecret);
         params.put("refresh_token", popRefreshToken);
-        String result = HttpUtil.doPost(POP_REFRESH_TOKEN_URL, params.toJSONString(), buildHeaders());
+        // refresh_token 与 client_secret 不经过 StockX 代理，避免第三方代理接触得物凭证。
+        String result = HttpUtil.doPost(POP_REFRESH_TOKEN_URL, params.toJSONString(), buildHeaders(), false);
         try {
             JSONObject json = parsePopTokenResponse(result, "refreshPopAccessToken");
             persistPopOAuthToken(json.getJSONObject("data"));

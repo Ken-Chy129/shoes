@@ -66,4 +66,10 @@ public class PoisonApiConstant {
      * POP 新版分销 API - 查询 SPU 列表
      */
     public static final String POP_QUERY_SPU_LIST = "/product/querySpuList";
+
+    /**
+     * POP 新版分销 API - 按 SPU 查询所有 SKU 的实时出价。
+     * querySpuList 当前只负责返回商品、尺码和 dwSkuId，实际价格需要从本接口获取。
+     */
+    public static final String POP_QUERY_SPU_BID_PRICE = "/product/querySpuBidPrice";
 }
