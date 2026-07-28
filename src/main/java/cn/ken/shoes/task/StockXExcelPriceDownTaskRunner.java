@@ -38,18 +38,18 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
     @Override
     public void run() {
         String accountId = account.getName();
-        TaskSwitch.setExcelRunning(accountId, inventoryType, true);
+        TaskSwitch.setExcelRunning(accountId, inventoryType, fetchMode, true);
         StockXRateLimitGuard.beginTaskContext(account,
-                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType),
+                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType, fetchMode),
                 reason -> {
-                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
                     if (tid != null) {
                         taskMapper.updateTaskFailReason(tid, reason);
                     }
                 },
                 () -> {
                     // 从限流冷却恢复：清除"冷却中"提示
-                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    Long tid = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
                     if (tid != null) {
                         taskMapper.updateTaskFailReason(tid, null);
                     }
@@ -57,8 +57,8 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
         try {
             while (true) {
                 try {
-                    int round = TaskSwitch.incrementExcelRound(accountId, inventoryType);
-                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    int round = TaskSwitch.incrementExcelRound(accountId, inventoryType, fetchMode);
+                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
                     if (taskId != null) {
                         taskMapper.updateTaskRound(taskId, round);
                     }
@@ -85,7 +85,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     detectCancel();
                     return;
                 } catch (StockXRateLimitException rateLimitException) {
-                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
                     log.warn("[{}]{}压价任务因持续限流暂停: {}", account.getName(), inventoryType,
                             rateLimitException.getMessage());
                     if (taskId != null) {
@@ -93,7 +93,7 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
                     }
                     return;
                 } catch (Exception e) {
-                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+                    Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
                     if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                         log.error("[{}]{}压价任务因Token过期终止，请更新Token后重新启动", account.getName(), inventoryType);
                         if (taskId != null) {
@@ -114,12 +114,12 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
             }
         } finally {
             StockXRateLimitGuard.endTaskContext();
-            TaskSwitch.setExcelRunning(accountId, inventoryType, false);
+            TaskSwitch.setExcelRunning(accountId, inventoryType, fetchMode, false);
         }
     }
 
     private boolean sleepWithCancelCheck() throws InterruptedException {
-        long remaining = TaskSwitch.getExcelInterval(account.getName(), inventoryType);
+        long remaining = TaskSwitch.getExcelInterval(account.getName(), inventoryType, fetchMode);
         while (remaining > 0) {
             if (detectCancel()) return true;
             Thread.sleep(Math.min(5000, remaining));
@@ -130,13 +130,13 @@ public class StockXExcelPriceDownTaskRunner implements Runnable {
 
     private boolean detectCancel() {
         String accountId = account.getName();
-        if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+        if (TaskSwitch.isExcelCancelled(accountId, inventoryType, fetchMode)) {
             log.info("[{}]{}压价任务已取消，终止执行", account.getName(), inventoryType);
-            Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+            Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType, fetchMode);
             if (taskId != null) {
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             }
-            TaskSwitch.clearExcelState(accountId, inventoryType);
+            TaskSwitch.clearExcelState(accountId, inventoryType, fetchMode);
             return true;
         }
         return false;

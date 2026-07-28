@@ -27,11 +27,14 @@ class StockXExcelPriceDownTaskRunnerTest {
             public void priceDownWithExcelForAccount(StockXAccount ignored, String inventoryType,
                                                      ListingFetchMode fetchMode) {
                 receivedSearchMode.set(fetchMode == ListingFetchMode.EXCEL_SEARCH);
-                TaskSwitch.cancelExcel("search-mode-account", "STANDARD");
+                TaskSwitch.cancelExcel(
+                        "search-mode-account", "STANDARD", ListingFetchMode.EXCEL_SEARCH);
             }
         };
-        TaskSwitch.setExcelTaskId("search-mode-account", "STANDARD", 89L);
-        TaskSwitch.resetExcelCancel("search-mode-account", "STANDARD");
+        TaskSwitch.setExcelTaskId(
+                "search-mode-account", "STANDARD", ListingFetchMode.EXCEL_SEARCH, 89L);
+        TaskSwitch.resetExcelCancel(
+                "search-mode-account", "STANDARD", ListingFetchMode.EXCEL_SEARCH);
 
         try {
             new StockXExcelPriceDownTaskRunner(account, "STANDARD", ListingFetchMode.EXCEL_SEARCH,

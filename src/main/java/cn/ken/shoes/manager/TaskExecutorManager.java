@@ -59,9 +59,6 @@ public class TaskExecutorManager {
     private StockXShippingExtensionService shippingExtensionService;
 
     @Resource
-    private ConfigManager configManager;
-
-    @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
 
     /**
@@ -400,46 +397,37 @@ public class TaskExecutorManager {
             log.error("[{}]{}压价任务拒绝启动：标记含Excel但压价数据为空", accountId, inventoryType);
             return null;
         }
-        if (!TaskSwitch.tryStartExcel(accountId, inventoryType)) {
-            log.info("Excel压价任务已在运行: {}:{}", accountId, inventoryType);
+        if (!TaskSwitch.tryStartExcel(accountId, inventoryType, fetchMode)) {
+            log.info("压价任务通道已在运行: {}:{}:{}", accountId, inventoryType, fetchMode.getCode());
             return null;
         }
         Long taskId = null;
-        Map<String, ShoesContext.PriceDownConfig> previousInput =
-                new LinkedHashMap<>(ShoesContext.getPriceDownMap(accountId, inventoryType));
         try {
-            ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
-            if (hasExcel) {
-                ShoesContext.getPriceDownMap(accountId, inventoryType).putAll(effectiveInput);
-            } else {
-                configManager.deletePriceDownExcel(accountId, inventoryType);
-            }
             taskId = createTask("stockx", TaskTypeEnum.PRICE_DOWN.getCode(), account.getName(), params);
-            taskInputSnapshotStore.savePriceDown(taskId,
-                    new LinkedHashMap<>(ShoesContext.getPriceDownMap(accountId, inventoryType)));
+            taskInputSnapshotStore.savePriceDown(taskId, effectiveInput);
             // 逐任务轮询间隔：>0 时按本次填写的值 seed 运行时缓存（不写账号配置）；<=0 时回退账号配置/默认值
             if (intervalSeconds > 0) {
-                TaskSwitch.setExcelIntervalRuntime(accountId, inventoryType, intervalSeconds * 1000);
+                TaskSwitch.setExcelIntervalRuntime(accountId, inventoryType, fetchMode, intervalSeconds * 1000);
             }
-            TaskSwitch.setExcelTaskId(accountId, inventoryType, taskId);
-            TaskSwitch.resetExcelCancel(accountId, inventoryType);
-            TaskSwitch.resetExcelRound(accountId, inventoryType);
-            TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, processOutsideExcel);
-            TaskSwitch.setUnprofitableAction(accountId, inventoryType,
+            TaskSwitch.setExcelTaskId(accountId, inventoryType, fetchMode, taskId);
+            TaskSwitch.resetExcelCancel(accountId, inventoryType, fetchMode);
+            TaskSwitch.resetExcelRound(accountId, inventoryType, fetchMode);
+            TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, fetchMode, processOutsideExcel);
+            TaskSwitch.setUnprofitableAction(accountId, inventoryType, fetchMode,
                     unprofitableAction != null ? unprofitableAction : "markup");
+            TaskSwitch.setPriceDownInput(accountId, inventoryType, fetchMode, effectiveInput);
 
             StockXExcelPriceDownTaskRunner runner = new StockXExcelPriceDownTaskRunner(
                     account, inventoryType, fetchMode, stockXService, taskMapper);
-            new Thread(runner, "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
+            new Thread(runner, "StockX-PriceDown-" + account.getName() + "-" + inventoryType
+                    + "-" + fetchMode.getCode()).start();
             log.info("Excel压价任务已启动: [{}] {}", account.getName(), inventoryType);
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
-            ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
-            ShoesContext.getPriceDownMap(accountId, inventoryType).putAll(previousInput);
-            TaskSwitch.clearExcelState(accountId, inventoryType);
+            TaskSwitch.clearExcelState(accountId, inventoryType, fetchMode);
             throw e;
         }
     }
@@ -456,42 +444,40 @@ public class TaskExecutorManager {
         if (fetchMode == ListingFetchMode.EXCEL_SEARCH && !hasExcel) {
             return null;
         }
-        if (!TaskSwitch.tryStartExcel(accountId, inventoryType)) {
+        if (!TaskSwitch.tryStartExcel(accountId, inventoryType, fetchMode)) {
             return null;
         }
-        Map<String, ShoesContext.PriceDownConfig> previousInput =
-                new LinkedHashMap<>(ShoesContext.getPriceDownMap(accountId, inventoryType));
         boolean resumed = false;
         boolean started = false;
         try {
+            Map<String, ShoesContext.PriceDownConfig> input = Map.of();
             if (hasExcel) {
                 var snapshot = taskInputSnapshotStore.loadPriceDown(task.getId());
                 if (snapshot.isEmpty() || snapshot.get().isEmpty()) {
                     return null;
                 }
-                Map<String, ShoesContext.PriceDownConfig> input = snapshot.get();
-                ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
-                ShoesContext.getPriceDownMap(accountId, inventoryType).putAll(input);
-            } else {
-                ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
-                configManager.deletePriceDownExcel(accountId, inventoryType);
+                input = snapshot.get();
             }
             long intervalSeconds = params.getLongValue("interval");
             if (intervalSeconds > 0) {
-                TaskSwitch.setExcelIntervalRuntime(accountId, inventoryType, intervalSeconds * 1000);
+                TaskSwitch.setExcelIntervalRuntime(accountId, inventoryType, fetchMode, intervalSeconds * 1000);
             }
             if (taskMapper.resumeTask(task.getId()) == 0) {
                 return null;
             }
             resumed = true;
-            TaskSwitch.setExcelTaskId(accountId, inventoryType, task.getId());
-            TaskSwitch.setExcelRound(accountId, inventoryType, task.getRound() != null ? task.getRound() : 0);
-            TaskSwitch.resetExcelCancel(accountId, inventoryType);
-            TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, params.getBooleanValue("processOutsideExcel"));
-            TaskSwitch.setUnprofitableAction(accountId, inventoryType,
+            TaskSwitch.setExcelTaskId(accountId, inventoryType, fetchMode, task.getId());
+            TaskSwitch.setExcelRound(accountId, inventoryType, fetchMode,
+                    task.getRound() != null ? task.getRound() : 0);
+            TaskSwitch.resetExcelCancel(accountId, inventoryType, fetchMode);
+            TaskSwitch.setProcessOutsideExcel(accountId, inventoryType, fetchMode,
+                    params.getBooleanValue("processOutsideExcel"));
+            TaskSwitch.setUnprofitableAction(accountId, inventoryType, fetchMode,
                     params.getString("unprofitableAction") != null ? params.getString("unprofitableAction") : "markup");
+            TaskSwitch.setPriceDownInput(accountId, inventoryType, fetchMode, input);
             new Thread(new StockXExcelPriceDownTaskRunner(account, inventoryType, fetchMode, stockXService, taskMapper),
-                    "StockX-Excel-" + account.getName() + "-" + inventoryType).start();
+                    "StockX-PriceDown-" + account.getName() + "-" + inventoryType
+                            + "-" + fetchMode.getCode()).start();
             started = true;
             return task.getId();
         } catch (RuntimeException e) {
@@ -501,9 +487,7 @@ public class TaskExecutorManager {
             throw e;
         } finally {
             if (!started) {
-                ShoesContext.getPriceDownMap(accountId, inventoryType).clear();
-                ShoesContext.getPriceDownMap(accountId, inventoryType).putAll(previousInput);
-                TaskSwitch.setExcelRunning(accountId, inventoryType, false);
+                TaskSwitch.clearExcelState(accountId, inventoryType, fetchMode);
             }
         }
     }

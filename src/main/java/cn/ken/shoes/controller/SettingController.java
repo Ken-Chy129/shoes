@@ -236,7 +236,8 @@ public class SettingController {
         if (StockXConfig.getAccount(name) == null) {
             return Result.buildError("账号不存在: " + name);
         }
-        if (TaskSwitch.isExcelRunning(name, "STANDARD") || TaskSwitch.isExcelRunning(name, "CUSTODIAL")) {
+        if (TaskSwitch.isAnyExcelRunning(name, "STANDARD")
+                || TaskSwitch.isAnyExcelRunning(name, "CUSTODIAL")) {
             return Result.buildError("该账号有正在运行的压价任务，请先终止");
         }
         StockXConfig.removeAccount(name);

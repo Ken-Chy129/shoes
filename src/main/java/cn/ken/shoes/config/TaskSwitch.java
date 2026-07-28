@@ -1,7 +1,12 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.ListingFetchMode;
+
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -33,55 +38,106 @@ public class TaskSwitch {
     private static final ConcurrentHashMap<String, Boolean> EXCEL_RUNNING_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> EXCEL_PROCESS_OUTSIDE_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, String> EXCEL_UNPROFITABLE_ACTION_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Map<String, ShoesContext.PriceDownConfig>> EXCEL_INPUT_MAP =
+            new ConcurrentHashMap<>();
 
     public static String buildExcelKey(String accountId, String inventoryType) {
-        return accountId + ":" + inventoryType;
+        return buildExcelKey(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static String buildExcelKey(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        ListingFetchMode effectiveMode = fetchMode != null ? fetchMode : ListingFetchMode.ALL;
+        return accountId + ":" + inventoryType + ":" + effectiveMode.getCode();
     }
 
     public static boolean isExcelCancelled(String accountId, String inventoryType) {
-        return Boolean.TRUE.equals(EXCEL_CANCEL_MAP.get(buildExcelKey(accountId, inventoryType)));
+        return isExcelCancelled(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static boolean isExcelCancelled(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return Boolean.TRUE.equals(EXCEL_CANCEL_MAP.get(buildExcelKey(accountId, inventoryType, fetchMode)));
     }
 
     public static void cancelExcel(String accountId, String inventoryType) {
-        EXCEL_CANCEL_MAP.put(buildExcelKey(accountId, inventoryType), true);
+        cancelExcel(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static void cancelExcel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        EXCEL_CANCEL_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), true);
     }
 
     public static void resetExcelCancel(String accountId, String inventoryType) {
-        EXCEL_CANCEL_MAP.put(buildExcelKey(accountId, inventoryType), false);
+        resetExcelCancel(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static void resetExcelCancel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        EXCEL_CANCEL_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), false);
     }
 
     public static Long getExcelTaskId(String accountId, String inventoryType) {
-        return EXCEL_TASK_ID_MAP.get(buildExcelKey(accountId, inventoryType));
+        return getExcelTaskId(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static Long getExcelTaskId(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return EXCEL_TASK_ID_MAP.get(buildExcelKey(accountId, inventoryType, fetchMode));
     }
 
     public static void setExcelTaskId(String accountId, String inventoryType, Long taskId) {
-        EXCEL_TASK_ID_MAP.put(buildExcelKey(accountId, inventoryType), taskId);
+        setExcelTaskId(accountId, inventoryType, ListingFetchMode.ALL, taskId);
+    }
+
+    public static void setExcelTaskId(String accountId, String inventoryType, ListingFetchMode fetchMode, Long taskId) {
+        EXCEL_TASK_ID_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), taskId);
     }
 
     public static void removeExcelTaskId(String accountId, String inventoryType) {
-        EXCEL_TASK_ID_MAP.remove(buildExcelKey(accountId, inventoryType));
+        removeExcelTaskId(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static void removeExcelTaskId(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        EXCEL_TASK_ID_MAP.remove(buildExcelKey(accountId, inventoryType, fetchMode));
     }
 
     public static int getExcelRound(String accountId, String inventoryType) {
-        return EXCEL_ROUND_MAP.getOrDefault(buildExcelKey(accountId, inventoryType), 0);
+        return getExcelRound(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static int getExcelRound(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return EXCEL_ROUND_MAP.getOrDefault(buildExcelKey(accountId, inventoryType, fetchMode), 0);
     }
 
     public static int incrementExcelRound(String accountId, String inventoryType) {
-        String key = buildExcelKey(accountId, inventoryType);
+        return incrementExcelRound(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static int incrementExcelRound(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        String key = buildExcelKey(accountId, inventoryType, fetchMode);
         return EXCEL_ROUND_MAP.merge(key, 1, Integer::sum);
     }
 
     public static void resetExcelRound(String accountId, String inventoryType) {
-        EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType), 0);
+        resetExcelRound(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static void resetExcelRound(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), 0);
     }
 
     public static void setExcelRound(String accountId, String inventoryType, int round) {
-        EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType), Math.max(round, 0));
+        setExcelRound(accountId, inventoryType, ListingFetchMode.ALL, round);
+    }
+
+    public static void setExcelRound(String accountId, String inventoryType, ListingFetchMode fetchMode, int round) {
+        EXCEL_ROUND_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), Math.max(round, 0));
     }
 
     public static long getExcelInterval(String accountId, String inventoryType) {
+        return getExcelInterval(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static long getExcelInterval(String accountId, String inventoryType, ListingFetchMode fetchMode) {
         // 逐任务间隔由 setExcelIntervalRuntime 在建任务时 seed；未 seed 时回退默认 30 分钟
-        Long cached = EXCEL_INTERVAL_MAP.get(buildExcelKey(accountId, inventoryType));
+        Long cached = EXCEL_INTERVAL_MAP.get(buildExcelKey(accountId, inventoryType, fetchMode));
         return cached != null ? cached : 30 * 60 * 1000L;
     }
 
@@ -90,19 +146,46 @@ public class TaskSwitch {
      * 建任务时按本次填写的间隔 seed，任务结束由 clearExcelState 清除，不污染账号默认值。
      */
     public static void setExcelIntervalRuntime(String accountId, String inventoryType, long interval) {
-        EXCEL_INTERVAL_MAP.put(buildExcelKey(accountId, inventoryType), interval);
+        setExcelIntervalRuntime(accountId, inventoryType, ListingFetchMode.ALL, interval);
+    }
+
+    public static void setExcelIntervalRuntime(String accountId, String inventoryType,
+                                               ListingFetchMode fetchMode, long interval) {
+        EXCEL_INTERVAL_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), interval);
     }
 
     public static boolean isExcelRunning(String accountId, String inventoryType) {
-        return Boolean.TRUE.equals(EXCEL_RUNNING_MAP.get(buildExcelKey(accountId, inventoryType)));
+        return isExcelRunning(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static boolean isExcelRunning(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return Boolean.TRUE.equals(EXCEL_RUNNING_MAP.get(buildExcelKey(accountId, inventoryType, fetchMode)));
+    }
+
+    public static boolean isAnyExcelRunning(String accountId, String inventoryType) {
+        for (ListingFetchMode fetchMode : ListingFetchMode.values()) {
+            if (isExcelRunning(accountId, inventoryType, fetchMode)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static boolean tryStartExcel(String accountId, String inventoryType) {
-        return tryStart(EXCEL_RUNNING_MAP, buildExcelKey(accountId, inventoryType));
+        return tryStartExcel(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static boolean tryStartExcel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return tryStart(EXCEL_RUNNING_MAP, buildExcelKey(accountId, inventoryType, fetchMode));
     }
 
     public static void setExcelRunning(String accountId, String inventoryType, boolean running) {
-        EXCEL_RUNNING_MAP.put(buildExcelKey(accountId, inventoryType), running);
+        setExcelRunning(accountId, inventoryType, ListingFetchMode.ALL, running);
+    }
+
+    public static void setExcelRunning(String accountId, String inventoryType,
+                                       ListingFetchMode fetchMode, boolean running) {
+        EXCEL_RUNNING_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), running);
     }
 
     public static Map<String, Boolean> getAllExcelRunningStatus() {
@@ -114,29 +197,69 @@ public class TaskSwitch {
     }
 
     public static void clearExcelState(String accountId, String inventoryType) {
-        String key = buildExcelKey(accountId, inventoryType);
+        for (ListingFetchMode fetchMode : ListingFetchMode.values()) {
+            clearExcelState(accountId, inventoryType, fetchMode);
+        }
+    }
+
+    public static void clearExcelState(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        String key = buildExcelKey(accountId, inventoryType, fetchMode);
         EXCEL_CANCEL_MAP.remove(key);
         EXCEL_ROUND_MAP.remove(key);
         EXCEL_RUNNING_MAP.remove(key);
         EXCEL_PROCESS_OUTSIDE_MAP.remove(key);
         EXCEL_UNPROFITABLE_ACTION_MAP.remove(key);
         EXCEL_INTERVAL_MAP.remove(key);
+        EXCEL_INPUT_MAP.remove(key);
     }
 
     public static boolean isProcessOutsideExcel(String accountId, String inventoryType) {
-        return Boolean.TRUE.equals(EXCEL_PROCESS_OUTSIDE_MAP.get(buildExcelKey(accountId, inventoryType)));
+        return isProcessOutsideExcel(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static boolean isProcessOutsideExcel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return Boolean.TRUE.equals(EXCEL_PROCESS_OUTSIDE_MAP.get(buildExcelKey(accountId, inventoryType, fetchMode)));
     }
 
     public static void setProcessOutsideExcel(String accountId, String inventoryType, boolean value) {
-        EXCEL_PROCESS_OUTSIDE_MAP.put(buildExcelKey(accountId, inventoryType), value);
+        setProcessOutsideExcel(accountId, inventoryType, ListingFetchMode.ALL, value);
+    }
+
+    public static void setProcessOutsideExcel(String accountId, String inventoryType,
+                                              ListingFetchMode fetchMode, boolean value) {
+        EXCEL_PROCESS_OUTSIDE_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), value);
     }
 
     public static String getUnprofitableAction(String accountId, String inventoryType) {
-        return EXCEL_UNPROFITABLE_ACTION_MAP.getOrDefault(buildExcelKey(accountId, inventoryType), "markup");
+        return getUnprofitableAction(accountId, inventoryType, ListingFetchMode.ALL);
+    }
+
+    public static String getUnprofitableAction(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return EXCEL_UNPROFITABLE_ACTION_MAP.getOrDefault(
+                buildExcelKey(accountId, inventoryType, fetchMode), "markup");
     }
 
     public static void setUnprofitableAction(String accountId, String inventoryType, String action) {
-        EXCEL_UNPROFITABLE_ACTION_MAP.put(buildExcelKey(accountId, inventoryType), action);
+        setUnprofitableAction(accountId, inventoryType, ListingFetchMode.ALL, action);
+    }
+
+    public static void setUnprofitableAction(String accountId, String inventoryType,
+                                             ListingFetchMode fetchMode, String action) {
+        EXCEL_UNPROFITABLE_ACTION_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), action);
+    }
+
+    public static void setPriceDownInput(String accountId, String inventoryType,
+                                         ListingFetchMode fetchMode,
+                                         Map<String, ShoesContext.PriceDownConfig> input) {
+        Map<String, ShoesContext.PriceDownConfig> snapshot = input == null
+                ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(input));
+        EXCEL_INPUT_MAP.put(buildExcelKey(accountId, inventoryType, fetchMode), snapshot);
+    }
+
+    public static Map<String, ShoesContext.PriceDownConfig> getPriceDownInput(
+            String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        return EXCEL_INPUT_MAP.getOrDefault(buildExcelKey(accountId, inventoryType, fetchMode), Map.of());
     }
 
     // ==================== StockX 搜索上架任务 ====================

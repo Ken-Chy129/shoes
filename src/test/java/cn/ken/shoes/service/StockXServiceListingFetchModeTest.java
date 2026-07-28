@@ -53,13 +53,12 @@ class StockXServiceListingFetchModeTest {
         account.setName(accountName);
         account.setCountry("HK");
         ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
-                "IF4396-104:9", new ShoesContext.PriceDownConfig(100, false));
-        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
-                "IF4396-104:10", new ShoesContext.PriceDownConfig(110, false));
-        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
-                "HF1234-001:8", new ShoesContext.PriceDownConfig(120, false));
-        ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
-                "SKIP-ONLY:7", new ShoesContext.PriceDownConfig(-1, true));
+                "NEXT-UPLOAD:11", new ShoesContext.PriceDownConfig(999, false));
+        TaskSwitch.setPriceDownInput(accountName, "STANDARD", ListingFetchMode.EXCEL_SEARCH, java.util.Map.of(
+                "IF4396-104:9", new ShoesContext.PriceDownConfig(100, false),
+                "IF4396-104:10", new ShoesContext.PriceDownConfig(110, false),
+                "HF1234-001:8", new ShoesContext.PriceDownConfig(120, false),
+                "SKIP-ONLY:7", new ShoesContext.PriceDownConfig(-1, true)));
 
         AtomicInteger fullScanCalls = new AtomicInteger();
         List<String> searchedStyleIds = new ArrayList<>();
@@ -80,7 +79,7 @@ class StockXServiceListingFetchModeTest {
         };
         StockXService service = new StockXService();
         setField(service, "stockXClient", client);
-        TaskSwitch.resetExcelCancel(accountName, "STANDARD");
+        TaskSwitch.resetExcelCancel(accountName, "STANDARD", ListingFetchMode.EXCEL_SEARCH);
 
         try {
             service.priceDownWithExcelForAccount(account, "STANDARD", ListingFetchMode.EXCEL_SEARCH);
@@ -103,6 +102,8 @@ class StockXServiceListingFetchModeTest {
                 "AAA-001:9", new ShoesContext.PriceDownConfig(100, false));
         ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
                 "BBB-002:10", new ShoesContext.PriceDownConfig(110, false));
+        TaskSwitch.setPriceDownInput(accountName, "STANDARD", ListingFetchMode.EXCEL_SEARCH,
+                ShoesContext.getPriceDownMap(accountName, "STANDARD"));
 
         AtomicInteger searchCalls = new AtomicInteger();
         StockXClient client = new StockXClient() {
@@ -137,6 +138,8 @@ class StockXServiceListingFetchModeTest {
         account.setCountry("HK");
         ShoesContext.getPriceDownMap(accountName, "STANDARD").put(
                 "AAA-001:9", new ShoesContext.PriceDownConfig(100, false));
+        TaskSwitch.setPriceDownInput(accountName, "STANDARD", ListingFetchMode.EXCEL_SEARCH,
+                ShoesContext.getPriceDownMap(accountName, "STANDARD"));
 
         AtomicInteger searchCalls = new AtomicInteger();
         StockXClient client = new StockXClient() {

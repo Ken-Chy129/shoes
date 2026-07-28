@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.hutool.json.JSONUtil;
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -135,15 +136,24 @@ public class TaskService {
             return;
         }
         String inventoryType = "STANDARD";
+        ListingFetchMode fetchMode = ListingFetchMode.ALL;
         try {
             if (task.getParams() != null) {
-                inventoryType = JSONUtil.parseObj(task.getParams()).getStr("inventoryType", "STANDARD");
+                var params = JSONUtil.parseObj(task.getParams());
+                inventoryType = params.getStr("inventoryType", "STANDARD");
+                fetchMode = ListingFetchMode.fromCode(params.getStr("listingFetchMode"));
             }
         } catch (Exception ignored) {}
 
         String key = accountName + ":" + inventoryType;
         switch (taskType) {
-            case "price_down" -> { if (clearState) TaskSwitch.clearExcelState(accountName, inventoryType); else TaskSwitch.cancelExcel(accountName, inventoryType); }
+            case "price_down" -> {
+                if (clearState) {
+                    TaskSwitch.clearExcelState(accountName, inventoryType, fetchMode);
+                } else {
+                    TaskSwitch.cancelExcel(accountName, inventoryType, fetchMode);
+                }
+            }
             case "listing", "model_search" -> {
                 if (clearState) {
                     TaskSwitch.clearSearchListRunState(accountName);

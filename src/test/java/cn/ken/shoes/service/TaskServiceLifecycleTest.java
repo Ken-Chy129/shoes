@@ -1,6 +1,8 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.common.PageResult;
+import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -117,6 +119,27 @@ class TaskServiceLifecycleTest {
                 .hasMessage("运行中的任务不能删除，请先终止任务");
         assertThat(deletedTaskItems).hasValue(0);
         assertThat(deletedTasks).hasValue(0);
+    }
+
+    @Test
+    void cancellingExcelSearchDoesNotCancelTheParallelFullScan() {
+        TaskDO running = task(17L, "running");
+        running.setParams("{\"inventoryType\":\"STANDARD\",\"listingFetchMode\":\"excel_search\"}");
+        TaskService taskService = new TaskService(
+                mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
+        TaskSwitch.resetExcelCancel("account-a", "STANDARD", ListingFetchMode.ALL);
+        TaskSwitch.resetExcelCancel("account-a", "STANDARD", ListingFetchMode.EXCEL_SEARCH);
+
+        try {
+            taskService.cancelTaskById(17L);
+
+            assertThat(TaskSwitch.isExcelCancelled(
+                    "account-a", "STANDARD", ListingFetchMode.EXCEL_SEARCH)).isTrue();
+            assertThat(TaskSwitch.isExcelCancelled(
+                    "account-a", "STANDARD", ListingFetchMode.ALL)).isFalse();
+        } finally {
+            TaskSwitch.clearExcelState("account-a", "STANDARD");
+        }
     }
 
     private static TaskMapper mapperReturning(TaskDO task) {

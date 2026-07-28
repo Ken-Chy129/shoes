@@ -1,6 +1,7 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -18,6 +19,8 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -27,7 +30,81 @@ class TaskExecutorManagerSafetyTest {
     Path tempDir;
 
     @Test
-    void rerunningANonExcelPriceTaskClearsStaleAccountExcelRules() throws Exception {
+    void excelSearchAndFullScanCanRunTogetherWithoutSharingExcelInput() throws Exception {
+        String accountName = "parallel-price-account";
+        List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setEnabled(true);
+        StockXConfig.setAccounts(List.of(account));
+        ShoesContext.PriceDownConfig uploadedRule = new ShoesContext.PriceDownConfig(321, false);
+        ShoesContext.getPriceDownMap(accountName, "STANDARD").put("EXCEL:42", uploadedRule);
+
+        TaskExecutorManager manager = new TaskExecutorManager();
+        AtomicLong ids = new AtomicLong(200);
+        TaskMapper taskMapper = (TaskMapper) Proxy.newProxyInstance(
+                TaskMapper.class.getClassLoader(), new Class<?>[]{TaskMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        ((TaskDO) args[0]).setId(ids.incrementAndGet());
+                        return 1;
+                    }
+                    if (method.getReturnType() == int.class) return 1;
+                    if (method.getReturnType() == long.class) return 0L;
+                    if (method.getReturnType() == boolean.class) return false;
+                    return null;
+                });
+        CountDownLatch release = new CountDownLatch(1);
+        StockXService service = new StockXService() {
+            @Override
+            public void priceDownWithExcelForAccount(StockXAccount ignored, String inventoryType) {
+                awaitRelease(release);
+                throw new IllegalStateException("stop-full-scan");
+            }
+
+            @Override
+            public void priceDownWithExcelForAccount(StockXAccount ignored, String inventoryType,
+                                                     ListingFetchMode fetchMode) {
+                awaitRelease(release);
+                throw new IllegalStateException("stop-excel-search");
+            }
+        };
+        setField(manager, "taskMapper", taskMapper);
+        setField(manager, "stockXService", service);
+        setField(manager, "taskInputSnapshotStore", new TaskInputSnapshotStore(tempDir));
+
+        try {
+            Long excelTaskId = manager.startExcelPriceDown(
+                    accountName, "STANDARD", true, false, "markup", 1800,
+                    ListingFetchMode.EXCEL_SEARCH);
+            ShoesContext.PriceDownConfig fullScanRule = new ShoesContext.PriceDownConfig(654, false);
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").put("FULL:43", fullScanRule);
+            Long fullScanTaskId = manager.startExcelPriceDown(
+                    accountName, "STANDARD", true, true, "markup", 1800,
+                    ListingFetchMode.ALL);
+
+            assertThat(excelTaskId).isNotNull();
+            assertThat(fullScanTaskId).isNotNull().isNotEqualTo(excelTaskId);
+            assertThat(ShoesContext.getPriceDownMap(accountName, "STANDARD"))
+                    .containsOnlyKeys("FULL:43")
+                    .containsEntry("FULL:43", fullScanRule);
+            assertThat(TaskSwitch.getPriceDownInput(
+                    accountName, "STANDARD", ListingFetchMode.EXCEL_SEARCH))
+                    .containsOnlyKeys("EXCEL:42");
+            assertThat(TaskSwitch.getPriceDownInput(
+                    accountName, "STANDARD", ListingFetchMode.ALL))
+                    .containsOnlyKeys("FULL:43");
+        } finally {
+            release.countDown();
+            TaskSwitch.clearExcelState(accountName, "STANDARD");
+            ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+            StockXConfig.setAccounts(originalAccounts);
+        }
+    }
+
+    @Test
+    void rerunningANonExcelPriceTaskUsesAnEmptyRuntimeInputWithoutDeletingSavedRules() throws Exception {
         String accountName = "no-excel-rerun-account";
         List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
         StockXAccount account = new StockXAccount();
@@ -59,7 +136,6 @@ class TaskExecutorManagerSafetyTest {
         };
         setField(manager, "taskMapper", taskMapper);
         setField(manager, "stockXService", service);
-        setField(manager, "configManager", new ConfigManager());
         setField(manager, "taskInputSnapshotStore", new TaskInputSnapshotStore(tempDir));
 
         TaskDO source = new TaskDO();
@@ -70,7 +146,10 @@ class TaskExecutorManagerSafetyTest {
 
         try {
             assertThat(manager.rerunTask(source)).isNotNull();
-            assertThat(ShoesContext.getPriceDownMap(accountName, "STANDARD")).isEmpty();
+            assertThat(TaskSwitch.getPriceDownInput(
+                    accountName, "STANDARD", ListingFetchMode.ALL)).isEmpty();
+            assertThat(ShoesContext.getPriceDownMap(accountName, "STANDARD"))
+                    .containsOnlyKeys("STALE:42");
         } finally {
             TaskSwitch.clearExcelState(accountName, "STANDARD");
             ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
@@ -97,7 +176,6 @@ class TaskExecutorManagerSafetyTest {
 
         TaskExecutorManager manager = new TaskExecutorManager();
         setField(manager, "taskInputSnapshotStore", snapshots);
-        setField(manager, "configManager", new ConfigManager());
 
         TaskDO source = new TaskDO();
         source.setId(7L);
@@ -131,7 +209,6 @@ class TaskExecutorManagerSafetyTest {
 
         TaskExecutorManager manager = new TaskExecutorManager();
         setField(manager, "taskInputSnapshotStore", new TaskInputSnapshotStore(tempDir));
-        setField(manager, "configManager", new ConfigManager());
 
         TaskDO source = new TaskDO();
         source.setId(77L);
@@ -182,7 +259,6 @@ class TaskExecutorManagerSafetyTest {
 
         TaskExecutorManager manager = new TaskExecutorManager();
         setField(manager, "taskInputSnapshotStore", new TaskInputSnapshotStore(tempDir));
-        setField(manager, "configManager", new ConfigManager());
 
         TaskDO paused = new TaskDO();
         paused.setId(99L);
@@ -206,5 +282,13 @@ class TaskExecutorManagerSafetyTest {
         Field field = TaskExecutorManager.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    private static void awaitRelease(CountDownLatch release) {
+        try {
+            release.await(5, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

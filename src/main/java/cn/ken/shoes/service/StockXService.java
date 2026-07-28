@@ -191,23 +191,32 @@ public class StockXService {
                                               StockXAccount account,
                                               String inventoryType,
                                               Map<String, Pair<Long, String>> listingToTaskInfo) {
+        return submitPriceDownBatch(items, account, inventoryType, ListingFetchMode.ALL, listingToTaskInfo);
+    }
+
+    private PriceDownSubmission submitPriceDownBatch(List<Map<String, String>> items,
+                                                     StockXAccount account,
+                                                     String inventoryType,
+                                                     ListingFetchMode fetchMode,
+                                                     Map<String, Pair<Long, String>> listingToTaskInfo) {
         StockXPriceUpdateCoordinator.Submission submission = priceUpdateCoordinator.submit(
                 items,
                 account,
-                () -> TaskSwitch.isExcelCancelled(account.getName(), inventoryType),
+                () -> TaskSwitch.isExcelCancelled(account.getName(), inventoryType, fetchMode),
                 (item, reason) -> {
                     Pair<Long, String> info = listingToTaskInfo.get(item.get("listingId"));
                     if (info != null) {
                         updateTaskItemResult(info.getKey(), reason);
                     }
                 },
-                reason -> updatePriceTaskFailReason(account.getName(), inventoryType, reason),
-                () -> updatePriceTaskFailReason(account.getName(), inventoryType, null));
+                reason -> updatePriceTaskFailReason(account.getName(), inventoryType, fetchMode, reason),
+                () -> updatePriceTaskFailReason(account.getName(), inventoryType, fetchMode, null));
         return new PriceDownSubmission(submission.reference(), submission.submittedItems());
     }
 
-    private void updatePriceTaskFailReason(String accountName, String inventoryType, String reason) {
-        Long taskId = TaskSwitch.getExcelTaskId(accountName, inventoryType);
+    private void updatePriceTaskFailReason(String accountName, String inventoryType,
+                                           ListingFetchMode fetchMode, String reason) {
+        Long taskId = TaskSwitch.getExcelTaskId(accountName, inventoryType, fetchMode);
         if (taskId != null && taskMapper != null) {
             taskMapper.updateTaskFailReason(taskId, reason);
         }
@@ -245,6 +254,7 @@ public class StockXService {
      * @return 本批真实压价成功(已同步)的条数
      */
     private int verifyPriceDownBatch(String batchId, StockXAccount account, String inventoryType,
+                                     ListingFetchMode fetchMode,
                                      List<Map<String, String>> subBatch,
                                      Map<String, Pair<Long, String>> listingToTaskInfo) {
         // 先标记"压价已提交"作为中间态（校验若中途异常，至少不会是 null）
@@ -263,7 +273,7 @@ public class StockXService {
         int attemptsUsed = 0;
         int queryFails = 0;
         for (int attempt = 1; attempt <= PRICE_DOWN_VERIFY_MAX_ATTEMPTS && !pending.isEmpty(); attempt++) {
-            if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType)) {
+            if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType, fetchMode)) {
                 break;
             }
             attemptsUsed = attempt;
@@ -302,7 +312,7 @@ public class StockXService {
             // 分片等待，期间响应取消
             long waited = 0;
             while (waited < PRICE_DOWN_VERIFY_DELAY_MS) {
-                if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType)) {
+                if (TaskSwitch.isExcelCancelled(account.getName(), inventoryType, fetchMode)) {
                     break;
                 }
                 try {
@@ -370,15 +380,22 @@ public class StockXService {
     public void priceDownWithExcelForAccount(StockXAccount account, String inventoryType, ListingFetchMode fetchMode) {
         String accountId = account.getName();
         String accountName = account.getName();
+        ListingFetchMode effectiveFetchMode = fetchMode != null ? fetchMode : ListingFetchMode.ALL;
+        Map<String, ShoesContext.PriceDownConfig> priceDownInput =
+                TaskSwitch.getPriceDownInput(accountId, inventoryType, effectiveFetchMode);
+        boolean processOutsideExcel = TaskSwitch.isProcessOutsideExcel(
+                accountId, inventoryType, effectiveFetchMode);
+        String unprofitableAction = TaskSwitch.getUnprofitableAction(
+                accountId, inventoryType, effectiveFetchMode);
         long taskStartTime = System.currentTimeMillis();
         int totalPriceDown = 0, totalSkip = 0;
 
-        Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType);
+        Long taskId = TaskSwitch.getExcelTaskId(accountId, inventoryType, effectiveFetchMode);
         int pageNumber = 1;
         boolean hasMore = true;
         int pagesPerBatch = 4;
-        List<String> searchStyleIds = fetchMode == ListingFetchMode.EXCEL_SEARCH
-                ? ShoesContext.getPriceDownMap(accountId, inventoryType).entrySet().stream()
+        List<String> searchStyleIds = effectiveFetchMode == ListingFetchMode.EXCEL_SEARCH
+                ? priceDownInput.entrySet().stream()
                 .filter(entry -> !entry.getValue().skip())
                 .map(entry -> entry.getKey().split(":", 2)[0])
                 .filter(StrUtil::isNotBlank)
@@ -388,8 +405,8 @@ public class StockXService {
                 : List.of();
         int searchStyleIndex = 0;
 
-        while (fetchMode == ListingFetchMode.EXCEL_SEARCH ? searchStyleIndex < searchStyleIds.size() : hasMore) {
-            if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+        while (effectiveFetchMode == ListingFetchMode.EXCEL_SEARCH ? searchStyleIndex < searchStyleIds.size() : hasMore) {
+            if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) {
                 log.info("[{}]{}压价任务已取消", accountName, inventoryType);
                 break;
             }
@@ -398,12 +415,12 @@ public class StockXService {
             List<JSONObject> batchItems = new ArrayList<>();
             int pagesCollected = 0;
             String searchedStyleId = null;
-            if (fetchMode == ListingFetchMode.EXCEL_SEARCH) {
+            if (effectiveFetchMode == ListingFetchMode.EXCEL_SEARCH) {
                 searchedStyleId = searchStyleIds.get(searchStyleIndex++);
                 int searchPageNumber = 1;
                 boolean searchHasMore = true;
                 while (searchHasMore) {
-                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) break;
                     JSONObject jsonObject = stockXClient.querySellingItemsByStyleId(
                             inventoryType, searchPageNumber, searchedStyleId, account);
                     if (jsonObject == null) {
@@ -434,7 +451,7 @@ public class StockXService {
                 }
             } else {
                 while (pagesCollected < pagesPerBatch && hasMore) {
-                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) break;
                     JSONObject jsonObject = stockXClient.querySellingItemsByInventoryType(inventoryType, pageNumber, account);
                     if (jsonObject == null) {
                         log.error("[{}] priceDownWithExcel querySellingItems failed, inventoryType:{}, page:{}", accountName, inventoryType, pageNumber);
@@ -458,7 +475,7 @@ public class StockXService {
             }
 
             if (batchItems.isEmpty()) {
-                if (fetchMode == ListingFetchMode.EXCEL_SEARCH) {
+                if (effectiveFetchMode == ListingFetchMode.EXCEL_SEARCH) {
                     log.info("[{}] priceDownWithExcel[{}] 货号{}未找到在售商品",
                             accountName, inventoryType, searchedStyleId);
                     continue;
@@ -466,13 +483,12 @@ public class StockXService {
                 break;
             }
             log.info("[{}] priceDownWithExcel[{}] {}收集{}页共{}条", accountName, inventoryType,
-                    fetchMode == ListingFetchMode.EXCEL_SEARCH ? "货号" + searchedStyleId : "本批次",
+                    effectiveFetchMode == ListingFetchMode.EXCEL_SEARCH ? "货号" + searchedStyleId : "本批次",
                     pagesCollected, batchItems.size());
 
             // ===== 仅预加载实际会进行得物比价的货号 =====
             Set<String> poisonPreloadStyles = collectPoisonPricePreloadStyles(
-                    batchItems, accountId, inventoryType,
-                    TaskSwitch.isProcessOutsideExcel(accountId, inventoryType));
+                    batchItems, priceDownInput, processOutsideExcel);
             if (!poisonPreloadStyles.isEmpty()) {
                 priceManager.batchLoadPrices(poisonPreloadStyles);
             }
@@ -496,7 +512,7 @@ public class StockXService {
             Map<String, Long> deleteToTaskInfo = new HashMap<>();
 
             for (Map.Entry<String, List<JSONObject>> entry : grouped.entrySet()) {
-                if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) break;
 
                 String key = entry.getKey();
                 List<JSONObject> listings = entry.getValue();
@@ -504,22 +520,22 @@ public class StockXService {
                 String styleId = parts[0];
                 String size = parts[1];
 
-                ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(accountId, inventoryType, styleId, size);
+                ShoesContext.PriceDownConfig config = priceDownInput.get(STR."\{styleId}:\{size}");
 
                 // ===== Excel 外商品处理 =====
                 if (config == null) {
-                    boolean processOutside = TaskSwitch.isProcessOutsideExcel(accountId, inventoryType);
-                    if (!processOutside) {
+                    if (!processOutsideExcel) {
                         totalSkip += listings.size();
                         for (JSONObject listing : listings) {
-                            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                            Long taskItemId = insertTaskItemForAccount(
+                                    taskId, accountId, inventoryType, effectiveFetchMode, listing);
                             updateTaskItemResult(taskItemId, "跳过-不在Excel中");
                         }
                         continue;
                     }
-                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType,
+                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType, effectiveFetchMode,
                             styleId, listings, account, PriceDownType.DEFAULT, 0,
-                            toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
+                            unprofitableAction, toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
 
@@ -527,16 +543,17 @@ public class StockXService {
                 if (config.skip()) {
                     totalSkip += listings.size();
                     for (JSONObject listing : listings) {
-                        Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                        Long taskItemId = insertTaskItemForAccount(
+                                taskId, accountId, inventoryType, effectiveFetchMode, listing);
                         updateTaskItemResult(taskItemId, "跳过-Excel设为跳过");
                     }
                     continue;
                 }
 
                 if (config.type() != PriceDownType.DEFAULT) {
-                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType,
+                    totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType, effectiveFetchMode,
                             styleId, listings, account, config.type(), config.minPrice(),
-                            toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
+                            unprofitableAction, toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
 
@@ -554,7 +571,8 @@ public class StockXService {
                 for (JSONObject listing : listings) {
                     String lid = listing.getString("id");
                     int amt = listing.getIntValue("amount");
-                    Long itemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                    Long itemId = insertTaskItemForAccount(
+                            taskId, accountId, inventoryType, effectiveFetchMode, listing);
 
                     if (lowestPrice == null || lowestPrice <= 1) {
                         updateTaskItemResult(itemId, "跳过-无最低价");
@@ -601,14 +619,16 @@ public class StockXService {
             }
 
             // ===== 批量提交本批次压价（StockX限制每批最多100条） =====
-            if (!toPriceDown.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+            if (!toPriceDown.isEmpty()
+                    && !TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) {
                 int batchLimit = 100;
                 for (int i = 0; i < toPriceDown.size(); i += batchLimit) {
-                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) break;
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) break;
                     List<Map<String, String>> subBatch = toPriceDown.subList(i, Math.min(i + batchLimit, toPriceDown.size()));
                     PriceDownSubmission submission;
                     try {
-                        submission = submitPriceDownBatch(subBatch, account, inventoryType, listingToTaskInfo);
+                        submission = submitPriceDownBatch(
+                                subBatch, account, inventoryType, effectiveFetchMode, listingToTaskInfo);
                     } catch (StockXRateLimitException | TaskCancelledException e) {
                         throw e; // 限流冷却耗尽 / 取消：交给本轮与 runner 处理，不当作单批失败
                     } catch (RuntimeException e) {
@@ -633,18 +653,20 @@ public class StockXService {
                     }
                     // 已受理后按 listingId 回查实际价格，兼容批量和单条降级两种提交方式
                     int confirmed = verifyPriceDownBatch(submission.reference(), account, inventoryType,
+                            effectiveFetchMode,
                             submission.submittedItems(), listingToTaskInfo);
                     totalPriceDown += confirmed;
                 }
             }
 
             // ===== 批量下架 =====
-            if (!toDelete.isEmpty() && !TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+            if (!toDelete.isEmpty()
+                    && !TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) {
                 // StockX 每批上限 100，此处按 50/批分批下架；每批各自回查校验，结果汇总
                 int delBatchLimit = 50;
                 Map<String, String> delResult = new HashMap<>();
                 for (int i = 0; i < toDelete.size(); i += delBatchLimit) {
-                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType)) {
+                    if (TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)) {
                         break;
                     }
                     List<String> delChunk = toDelete.subList(i, Math.min(i + delBatchLimit, toDelete.size()));
@@ -670,7 +692,7 @@ public class StockXService {
                     } else {
                         // 已受理(QUEUED)，按 batchId 回查校验是否真正下架
                         delResult.putAll(stockXClient.verifyDeleteBatch(delBatchId, delChunk, account,
-                                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType)));
+                                () -> TaskSwitch.isExcelCancelled(accountId, inventoryType, effectiveFetchMode)));
                     }
                 }
                 for (String lid : toDelete) {
@@ -1358,9 +1380,10 @@ public class StockXService {
         return null; // 仍在处理，下轮再查
     }
 
-    private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType, JSONObject item) {
+    private Long insertTaskItemForAccount(Long taskId, String accountId, String inventoryType,
+                                          ListingFetchMode fetchMode, JSONObject item) {
         if (taskId == null) return null;
-        int round = TaskSwitch.getExcelRound(accountId, inventoryType);
+        int round = TaskSwitch.getExcelRound(accountId, inventoryType, fetchMode);
 
         TaskItemDO taskItemDO = new TaskItemDO();
         taskItemDO.setTaskId(taskId);
@@ -1428,11 +1451,13 @@ public class StockXService {
     private int processProfitDrivenPriceDownGroup(Long taskId,
                                                   String accountId,
                                                   String inventoryType,
+                                                  ListingFetchMode fetchMode,
                                                   String styleId,
                                                   List<JSONObject> listings,
                                                   StockXAccount account,
                                                   PriceDownType priceDownType,
                                                   int excelMinPrice,
+                                                  String unprofitableAction,
                                                   List<Map<String, String>> toPriceDown,
                                                   Map<String, Pair<Long, String>> listingToTaskInfo,
                                                   List<String> toDelete,
@@ -1440,21 +1465,24 @@ public class StockXService {
         String euSize = listings.get(0).getString("euSize");
         if (StrUtil.isBlank(euSize)) {
             for (JSONObject listing : listings) {
-                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                Long taskItemId = insertTaskItemForAccount(
+                        taskId, accountId, inventoryType, fetchMode, listing);
                 updateTaskItemResult(taskItemId, "跳过-无法获取EU码");
             }
             return listings.size();
         }
         if (ShoesContext.isFlawsModel(styleId, euSize)) {
             for (JSONObject listing : listings) {
-                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                Long taskItemId = insertTaskItemForAccount(
+                        taskId, accountId, inventoryType, fetchMode, listing);
                 updateTaskItemResult(taskItemId, "跳过-禁爬货号");
             }
             return listings.size();
         }
         if (ShoesContext.isNotCompareModel(styleId, euSize)) {
             for (JSONObject listing : listings) {
-                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                Long taskItemId = insertTaskItemForAccount(
+                        taskId, accountId, inventoryType, fetchMode, listing);
                 updateTaskItemResult(taskItemId, "跳过-不比价货号");
             }
             return listings.size();
@@ -1468,7 +1496,8 @@ public class StockXService {
         Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize, priceMode);
         if (poisonPrice == null) {
             for (JSONObject listing : listings) {
-                Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+                Long taskItemId = insertTaskItemForAccount(
+                        taskId, accountId, inventoryType, fetchMode, listing);
                 String listingId = listing.getString("id");
                 toDelete.add(listingId);
                 deleteToTaskInfo.put(listingId, taskItemId);
@@ -1486,12 +1515,11 @@ public class StockXService {
                 listings.get(0).getInteger("expressStandardLowest"));
         boolean anyIsLowest = lowestPrice != null && lowestPrice > 0
                 && listings.stream().anyMatch(item -> item.getIntValue("amount") <= lowestPrice);
-        String unprofitableAction = TaskSwitch.getUnprofitableAction(accountId, inventoryType);
-
         for (JSONObject listing : listings) {
             String listingId = listing.getString("id");
             int currentPrice = listing.getIntValue("amount");
-            Long taskItemId = insertTaskItemForAccount(taskId, accountId, inventoryType, listing);
+            Long taskItemId = insertTaskItemForAccount(
+                    taskId, accountId, inventoryType, fetchMode, listing);
             updateTaskItemProfit(taskItemId, poisonPrice, currentPrice, fees);
 
             boolean currentProfitable = ShoesUtil.canStockxEarn(
@@ -1534,6 +1562,14 @@ public class StockXService {
                                                        String accountId,
                                                        String inventoryType,
                                                        boolean processOutsideExcel) {
+        return collectPoisonPricePreloadStyles(
+                batchItems, ShoesContext.getPriceDownMap(accountId, inventoryType), processOutsideExcel);
+    }
+
+    private static Set<String> collectPoisonPricePreloadStyles(
+            List<JSONObject> batchItems,
+            Map<String, ShoesContext.PriceDownConfig> priceDownInput,
+            boolean processOutsideExcel) {
         Set<String> styleIds = new LinkedHashSet<>();
         for (JSONObject item : batchItems) {
             String styleId = item.getString("styleId");
@@ -1541,8 +1577,7 @@ public class StockXService {
             if (StrUtil.isBlank(styleId) || StrUtil.isBlank(size)) {
                 continue;
             }
-            ShoesContext.PriceDownConfig config = ShoesContext.getPriceDownConfig(
-                    accountId, inventoryType, styleId, size);
+            ShoesContext.PriceDownConfig config = priceDownInput.get(STR."\{styleId}:\{size}");
             boolean needsPoisonPrice = config == null
                     ? processOutsideExcel
                     : !config.skip() && config.type() != PriceDownType.DEFAULT;
