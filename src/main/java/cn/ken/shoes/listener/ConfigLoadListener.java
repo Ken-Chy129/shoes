@@ -2,17 +2,12 @@ package cn.ken.shoes.listener;
 
 import cn.ken.shoes.manager.ConfigManager;
 import cn.ken.shoes.manager.TaskExecutorManager;
-import cn.ken.shoes.mapper.TaskItemMapper;
-import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.service.TaskCleanupService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.stereotype.Component;
-
-import java.util.Calendar;
-import java.util.Date;
-import java.util.List;
 
 @Slf4j
 @Component
@@ -22,10 +17,7 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
     private ConfigManager configManager;
 
     @Resource
-    private TaskMapper taskMapper;
-
-    @Resource
-    private TaskItemMapper taskItemMapper;
+    private TaskCleanupService taskCleanupService;
 
     @Resource
     private TaskExecutorManager taskExecutorManager;
@@ -41,7 +33,11 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
         } catch (Exception e) {
             System.err.println("Failed to load configurations: " + e.getMessage());
         }
-        cleanExpiredTaskData();
+        try {
+            taskCleanupService.cleanupExpiredTasks();
+        } catch (Exception e) {
+            log.error("清理历史任务数据失败", e);
+        }
         // 回填压价 Excel 数据到内存（必须在 resumeRunningTasks 之前，否则恢复的压价任务会因数据为空而空跑或击穿最低价）
         try {
             configManager.loadAllPriceDownExcel();
@@ -57,22 +53,4 @@ public class ConfigLoadListener implements ApplicationListener<ApplicationReadyE
         }
     }
 
-    private void cleanExpiredTaskData() {
-        try {
-            Calendar cal = Calendar.getInstance();
-            cal.add(Calendar.DAY_OF_MONTH, -7);
-            Date oneWeekAgo = cal.getTime();
-            List<Long> expiredTaskIds = taskMapper.selectIdsBeforeDate(oneWeekAgo);
-            if (expiredTaskIds == null || expiredTaskIds.isEmpty()) {
-                return;
-            }
-            for (Long taskId : expiredTaskIds) {
-                taskItemMapper.deleteByTaskId(taskId);
-                taskMapper.deleteById(taskId);
-            }
-            log.info("已清理一周前的历史任务数据，共{}条", expiredTaskIds.size());
-        } catch (Exception e) {
-            log.error("清理历史任务数据失败", e);
-        }
-    }
 }

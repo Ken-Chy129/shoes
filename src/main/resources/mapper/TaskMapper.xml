@@ -117,8 +117,23 @@
         </if>
     </update>
 
-    <select id="selectIdsBeforeDate" resultType="java.lang.Long">
-        SELECT id FROM task WHERE start_time &lt; #{beforeDate} AND status != 'running'
+    <select id="selectExpiredTaskIds" resultType="java.lang.Long">
+        SELECT id
+        FROM task
+        WHERE start_time &lt; #{beforeDate}
+          AND status != 'running'
+          AND id &gt; #{afterId}
+        ORDER BY id
+        LIMIT #{limit}
     </select>
+
+    <delete id="deleteExpiredTaskWithItems">
+        DELETE t, ti
+        FROM task t
+        LEFT JOIN task_item ti FORCE INDEX (idx_task_id) ON ti.task_id = t.id
+        WHERE t.id = #{taskId}
+          AND t.start_time &lt; #{beforeDate}
+          AND t.status != 'running'
+    </delete>
 
 </mapper>

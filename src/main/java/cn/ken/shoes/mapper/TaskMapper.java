@@ -38,6 +38,11 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
      */
     void shelveHistoryTasks(List<Long> validTaskIds);
 
-    List<Long> selectIdsBeforeDate(@Param("beforeDate") java.util.Date beforeDate);
+    List<Long> selectExpiredTaskIds(@Param("beforeDate") java.util.Date beforeDate,
+                                    @Param("afterId") Long afterId,
+                                    @Param("limit") Integer limit);
+
+    int deleteExpiredTaskWithItems(@Param("taskId") Long taskId,
+                                   @Param("beforeDate") java.util.Date beforeDate);
 
 }
