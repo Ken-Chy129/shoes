@@ -7,6 +7,8 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app
+ENV SPRING_DATASOURCE_HIKARI_MAXIMUM_POOL_SIZE=20 \
+    SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT=5000
 COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "--enable-preview", "-jar", "app.jar"]
