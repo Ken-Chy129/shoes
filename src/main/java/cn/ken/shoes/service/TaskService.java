@@ -10,6 +10,8 @@ import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.task.TaskOperationCount;
 import cn.ken.shoes.model.task.TaskRequest;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +19,8 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -24,11 +28,18 @@ import java.util.stream.Collectors;
 @Service
 public class TaskService {
 
+    private static final long OPERATION_COUNT_CACHE_SECONDS = 15;
+
     private final TaskMapper taskMapper;
 
     private final TaskItemMapper taskItemMapper;
 
     private final TaskExecutorManager taskExecutorManager;
+
+    private final Cache<List<Long>, List<TaskOperationCount>> operationCountCache = CacheBuilder.newBuilder()
+            .maximumSize(200)
+            .expireAfterWrite(OPERATION_COUNT_CACHE_SECONDS, TimeUnit.SECONDS)
+            .build();
 
     public TaskService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                        TaskExecutorManager taskExecutorManager) {
@@ -49,8 +60,8 @@ public class TaskService {
             return emptyResult;
         }
         List<Long> taskIds = taskDOS.stream().map(TaskDO::getId).toList();
-        List<TaskOperationCount> operationCounts = taskItemMapper.selectOperationCountsByTaskIds(taskIds);
-        Map<Long, TaskOperationCount> countMap = (operationCounts != null ? operationCounts : List.<TaskOperationCount>of()).stream()
+        List<TaskOperationCount> operationCounts = queryOperationCounts(taskIds);
+        Map<Long, TaskOperationCount> countMap = operationCounts.stream()
                 .collect(Collectors.toMap(TaskOperationCount::getTaskId, Function.identity()));
         for (TaskDO taskDO : taskDOS) {
             TaskOperationCount operationCount = countMap.get(taskDO.getId());
@@ -67,6 +78,22 @@ public class TaskService {
         PageResult<List<TaskDO>> result = PageResult.buildSuccess(taskDOS);
         result.setTotal(count);
         return result;
+    }
+
+    private List<TaskOperationCount> queryOperationCounts(List<Long> taskIds) {
+        List<Long> cacheKey = taskIds.stream().sorted().toList();
+        try {
+            return operationCountCache.get(cacheKey, () -> {
+                List<TaskOperationCount> counts = taskItemMapper.selectOperationCountsByTaskIds(cacheKey);
+                return counts == null ? List.of() : List.copyOf(counts);
+            });
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw new IllegalStateException("查询任务操作统计失败", cause);
+        }
     }
 
     @Transactional(rollbackFor = Exception.class)

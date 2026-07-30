@@ -13,6 +13,9 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -45,6 +48,50 @@ class TaskServiceLifecycleTest {
             assertThat(item.getPendingOperationCount()).isEqualTo(2L);
             assertThat(item.isRerunnable()).isTrue();
         });
+    }
+
+    @Test
+    void coalescesConcurrentOperationCountQueriesForTheSameTaskPage() throws Exception {
+        AtomicInteger operationCountQueries = new AtomicInteger();
+        CountDownLatch queryStarted = new CountDownLatch(1);
+        CountDownLatch releaseQuery = new CountDownLatch(1);
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> switch (method) {
+            case "count" -> 1L;
+            case "selectByCondition" -> List.of(task(7L, "running"));
+            default -> null;
+        });
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if (!"selectOperationCountsByTaskIds".equals(method)) {
+                return null;
+            }
+            operationCountQueries.incrementAndGet();
+            queryStarted.countDown();
+            try {
+                if (!releaseQuery.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException("timed out waiting to release aggregate query");
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+            return List.of(new TaskOperationCount(7L, 12L, 8L, 3L, 2L));
+        });
+        TaskService taskService = new TaskService(taskMapper, taskItemMapper, new FakeTaskExecutorManager());
+
+        CompletableFuture<PageResult<List<TaskDO>>> first = CompletableFuture.supplyAsync(
+                () -> taskService.queryTasksByCondition(new TaskRequest()));
+        assertThat(queryStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        CompletableFuture<PageResult<List<TaskDO>>> second = CompletableFuture.supplyAsync(
+                () -> taskService.queryTasksByCondition(new TaskRequest()));
+
+        Thread.sleep(100);
+        assertThat(operationCountQueries).hasValue(1);
+        releaseQuery.countDown();
+        CompletableFuture.allOf(first, second).get(2, TimeUnit.SECONDS);
+        assertThat(first.join().getData()).singleElement()
+                .extracting(TaskDO::getPriceDownCount).isEqualTo(12L);
+        assertThat(second.join().getData()).singleElement()
+                .extracting(TaskDO::getPriceDownCount).isEqualTo(12L);
     }
 
     @Test

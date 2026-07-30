@@ -3,7 +3,7 @@ import {
     Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider,
 } from "antd";
 import {PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
-import React, {useEffect, useState} from "react";
+import React, {useEffect, useRef, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
 import {SETTING_API} from "@/services/shoes";
@@ -70,6 +70,7 @@ const TaskPage = () => {
     const [pageSize, setPageSize] = useState(10);
     const [total, setTotal] = useState(0);
     const [stockxRateStatus, setStockxRateStatus] = useState<StockXRateStatus[]>([]);
+    const taskListRequestingRef = useRef(false);
 
     const [taskItemModalVisible, setTaskItemModalVisible] = useState(false);
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -103,6 +104,8 @@ const TaskPage = () => {
     }, [taskList, stockxRateStatus]);
 
     const queryTaskList = () => {
+        if (taskListRequestingRef.current) return;
+        taskListRequestingRef.current = true;
         let startTime = conditionForm.getFieldValue("startTime");
         if (startTime) startTime = moment(startTime).format('YYYY-MM-DD HH:mm:ss');
         let endTime = conditionForm.getFieldValue("endTime");
@@ -119,7 +122,8 @@ const TaskPage = () => {
                     const updated = data.find((t: TaskRecord) => t.id === selectedTaskId);
                     if (updated) setSelectedTaskRecord(updated);
                 }
-            }
+            },
+            onFinally: () => { taskListRequestingRef.current = false; },
         });
         doGetRequest(TASK_API.STOCKX_RATE_STATUS, {}, {
             onSuccess: res => setStockxRateStatus(res.data || []),

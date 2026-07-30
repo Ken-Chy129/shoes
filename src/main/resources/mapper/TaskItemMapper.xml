@@ -120,7 +120,7 @@
                COUNT(DISTINCT CASE WHEN operate_result LIKE '下架成功%'
                    THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS delistCount,
                SUM(CASE WHEN operate_result = '上架处理中' THEN 1 ELSE 0 END) AS pendingOperationCount
-        FROM task_item
+        FROM task_item FORCE INDEX (idx_task_id)
         WHERE task_id IN
         <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
             #{taskId}
