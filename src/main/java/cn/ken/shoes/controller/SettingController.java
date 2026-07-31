@@ -335,7 +335,7 @@ public class SettingController {
                 if (parts.length >= 2 && !parts[1].trim().isEmpty()) {
                     customModelDO.setEuSize(parts[1].trim());
                 }
-                customModelMapper.insertIgnore(customModelDO);
+                insertCustomModel(customModelDO);
                 count++;
             }
         } else {
@@ -353,6 +353,11 @@ public class SettingController {
         } else if (CATEGORY_TYPE_MAP.containsKey(category)) {
             int type = CATEGORY_TYPE_MAP.get(category);
             customModelMapper.deleteByTypeAndModelNo(type, modelNo, euSize);
+            CustomModelDO customModelDO = new CustomModelDO();
+            customModelDO.setType(type);
+            customModelDO.setModelNo(modelNo);
+            customModelDO.setEuSize(euSize);
+            CustomPriceTypeEnum.from(type).getCacheRemoveConsumer().accept(customModelDO);
         } else {
             return Result.buildError("无效的category: " + category);
         }
@@ -384,11 +389,19 @@ public class SettingController {
                 if (StrUtil.isNotBlank(row.getEuSize())) {
                     customModelDO.setEuSize(row.getEuSize().trim());
                 }
-                customModelMapper.insertIgnore(customModelDO);
+                insertCustomModel(customModelDO);
                 count++;
             }
         }
         return Result.buildSuccess(count);
+    }
+
+    private void insertCustomModel(CustomModelDO customModelDO) {
+        customModelMapper.insertIgnore(customModelDO);
+        CustomPriceTypeEnum type = CustomPriceTypeEnum.from(customModelDO.getType());
+        if (type != null) {
+            type.getCachePutConsumer().accept(customModelDO);
+        }
     }
 
     @GetMapping("specialModelTemplate")

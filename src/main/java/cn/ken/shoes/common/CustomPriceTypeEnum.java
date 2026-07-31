@@ -9,10 +9,10 @@ import java.util.function.Consumer;
 @Getter
 public enum CustomPriceTypeEnum {
 
-    THREE_FIVE(1, "得物3.5", ShoesContext::addThreeFiveModel, ShoesContext::clearThreeFiveModelSet),
-    NOT_COMPARE(2, "不比价", ShoesContext::addNotCompareModel, ShoesContext::clearNotCompareModelSet),
-    NO_PRICE(3, "无价", ShoesContext::addNoPrice, ShoesContext::clearNoPriceModelSet),
-    FLAWS(4, "瑕疵", ShoesContext::addFlawsModel, ShoesContext::clearFlawsModelSet),
+    THREE_FIVE(1, "得物3.5", ShoesContext::addThreeFiveModel, ShoesContext::removeThreeFiveModel, ShoesContext::clearThreeFiveModelSet),
+    NOT_COMPARE(2, "不比价", ShoesContext::addNotCompareModel, ShoesContext::removeNotCompareModel, ShoesContext::clearNotCompareModelSet),
+    NO_PRICE(3, "无价", ShoesContext::addNoPrice, ShoesContext::removeNoPrice, ShoesContext::clearNoPriceModelSet),
+    FLAWS(4, "瑕疵", ShoesContext::addFlawsModel, ShoesContext::removeFlawsModel, ShoesContext::clearFlawsModelSet),
     ;
 
     private final int code;
@@ -21,12 +21,16 @@ public enum CustomPriceTypeEnum {
 
     private final Consumer<CustomModelDO> cachePutConsumer;
 
+    private final Consumer<CustomModelDO> cacheRemoveConsumer;
+
     private final Runnable clearRunnable;
 
-    CustomPriceTypeEnum(int code, String desc, Consumer<CustomModelDO> cachePutConsumer, Runnable clearRunnable) {
+    CustomPriceTypeEnum(int code, String desc, Consumer<CustomModelDO> cachePutConsumer,
+                        Consumer<CustomModelDO> cacheRemoveConsumer, Runnable clearRunnable) {
         this.code = code;
         this.desc = desc;
         this.cachePutConsumer = cachePutConsumer;
+        this.cacheRemoveConsumer = cacheRemoveConsumer;
         this.clearRunnable = clearRunnable;
     }
 

@@ -14,13 +14,13 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class ShoesContext {
 
-    private final static Set<String> THREE_FIVE_MODEL_SET = new HashSet<>();
+    private final static Set<String> THREE_FIVE_MODEL_SET = ConcurrentHashMap.newKeySet();
 
-    private final static Set<String> NOT_COMPARE_MODEL_SET = new HashSet<>();
+    private final static Set<String> NOT_COMPARE_MODEL_SET = ConcurrentHashMap.newKeySet();
 
-    private final static Set<String> NO_PRICE_MODEL_SET = new HashSet<>();
+    private final static Set<String> NO_PRICE_MODEL_SET = ConcurrentHashMap.newKeySet();
 
-    private final static Set<String> FLAWS_MODEL_SET = new HashSet<>();
+    private final static Set<String> FLAWS_MODEL_SET = ConcurrentHashMap.newKeySet();
 
     private final static Map<String, Integer> SPECIAL_PRICE_MAP = new HashMap<>();
 
@@ -47,11 +47,11 @@ public class ShoesContext {
     }
 
     public static void addThreeFiveModel(CustomModelDO customModelDO) {
-        String key = customModelDO.getModelNo();
-        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
-            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
-        }
-        THREE_FIVE_MODEL_SET.add(key);
+        THREE_FIVE_MODEL_SET.add(customModelKey(customModelDO));
+    }
+
+    public static void removeThreeFiveModel(CustomModelDO customModelDO) {
+        THREE_FIVE_MODEL_SET.remove(customModelKey(customModelDO));
     }
 
     public static boolean isThreeFiveModel(String modelNo, String euSize) {
@@ -68,11 +68,11 @@ public class ShoesContext {
     }
 
     public static void addNotCompareModel(CustomModelDO customModelDO) {
-        String key = customModelDO.getModelNo();
-        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
-            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
-        }
-        NOT_COMPARE_MODEL_SET.add(key);
+        NOT_COMPARE_MODEL_SET.add(customModelKey(customModelDO));
+    }
+
+    public static void removeNotCompareModel(CustomModelDO customModelDO) {
+        NOT_COMPARE_MODEL_SET.remove(customModelKey(customModelDO));
     }
 
     public static boolean isNotCompareModel(String modelNo, String euSize) {
@@ -91,6 +91,10 @@ public class ShoesContext {
     public static void addNoPrice(CustomModelDO customModelDO) {
         String modelNo = customModelDO.getModelNo();
         NO_PRICE_MODEL_SET.add(modelNo);
+    }
+
+    public static void removeNoPrice(CustomModelDO customModelDO) {
+        NO_PRICE_MODEL_SET.remove(customModelDO.getModelNo());
     }
 
     public static void addNoPrice(String modelNo) {
@@ -115,11 +119,11 @@ public class ShoesContext {
     }
 
     public static void addFlawsModel(CustomModelDO customModelDO) {
-        String key = customModelDO.getModelNo();
-        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
-            key = STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
-        }
-        FLAWS_MODEL_SET.add(key);
+        FLAWS_MODEL_SET.add(customModelKey(customModelDO));
+    }
+
+    public static void removeFlawsModel(CustomModelDO customModelDO) {
+        FLAWS_MODEL_SET.remove(customModelKey(customModelDO));
     }
 
     public static boolean isFlawsModel(String modelNo) {
@@ -128,6 +132,13 @@ public class ShoesContext {
 
     public static boolean isFlawsModel(String modelNo, String euSize) {
         return FLAWS_MODEL_SET.contains(modelNo) || FLAWS_MODEL_SET.contains(STR."\{modelNo}:\{euSize}");
+    }
+
+    private static String customModelKey(CustomModelDO customModelDO) {
+        if (StrUtil.isNotBlank(customModelDO.getEuSize())) {
+            return STR."\{customModelDO.getModelNo()}:\{customModelDO.getEuSize()}";
+        }
+        return customModelDO.getModelNo();
     }
 
     // 指定特殊价格
