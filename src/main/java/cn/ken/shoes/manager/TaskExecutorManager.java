@@ -1,5 +1,6 @@
 package cn.ken.shoes.manager;
 
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.ShoesContext;
@@ -24,8 +25,10 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 任务执行管理器
@@ -183,7 +186,8 @@ public class TaskExecutorManager {
                         params.getIntValue("pageCount"),
                         params.getString("searchType"),
                         params.getIntValue("maxListCount"),
-                        true) != null;
+                        true,
+                        readModelNoSizeFilters(params)) != null;
                 case LISTING -> startSearchList(
                         account,
                         params.getString("keywords"),
@@ -282,7 +286,8 @@ public class TaskExecutorManager {
                     params.getIntValue("pageCount"),
                     params.getString("searchType"),
                     params.getIntValue("maxListCount"),
-                    taskType == TaskTypeEnum.MODEL_SEARCH);
+                    taskType == TaskTypeEnum.MODEL_SEARCH,
+                    readModelNoSizeFilters(params));
             case FETCH_LISTINGS -> startFetchListings(account, inventoryType(params));
             case EXCEL_DELIST -> {
                 String inventoryType = inventoryType(params);
@@ -497,10 +502,18 @@ public class TaskExecutorManager {
     public Long startSearchList(String accountId, String keywords, String sorts,
                                 int pageCount, String searchType, int maxListCount,
                                 boolean modelNoSearch) {
+        return startSearchList(accountId, keywords, sorts, pageCount, searchType,
+                maxListCount, modelNoSearch, Map.of());
+    }
+
+    public Long startSearchList(String accountId, String keywords, String sorts,
+                                int pageCount, String searchType, int maxListCount,
+                                boolean modelNoSearch, Map<String, Set<String>> modelNoSizeFilters) {
         sorts = defaultIfBlank(sorts, "featured");
         pageCount = pageCount > 0 ? pageCount : 3;
         searchType = defaultIfBlank(searchType, "shoes");
         maxListCount = Math.max(maxListCount, 0);
+        modelNoSizeFilters = modelNoSizeFilters != null ? modelNoSizeFilters : Map.of();
         if (keywords == null || keywords.isBlank()) {
             return null;
         }
@@ -514,14 +527,17 @@ public class TaskExecutorManager {
             return null;
         }
         String taskTypeCode = modelNoSearch ? TaskTypeEnum.MODEL_SEARCH.getCode() : TaskTypeEnum.LISTING.getCode();
-        String params = new com.alibaba.fastjson.JSONObject()
+        JSONObject paramsJson = new JSONObject()
                 .fluentPut("keywords", keywords)
                 .fluentPut("sorts", sorts)
                 .fluentPut("pageCount", pageCount)
                 .fluentPut("searchType", searchType)
                 .fluentPut("maxListCount", maxListCount)
-                .fluentPut("modelNoSearch", modelNoSearch)
-                .toJSONString();
+                .fluentPut("modelNoSearch", modelNoSearch);
+        if (modelNoSearch && !modelNoSizeFilters.isEmpty()) {
+            paramsJson.put("modelNoSizeFilters", modelNoSizeFilters);
+        }
+        String params = paramsJson.toJSONString();
         Long taskId = null;
         try {
             taskId = createTask("stockx", taskTypeCode, account.getName(), params);
@@ -531,6 +547,7 @@ public class TaskExecutorManager {
 
             StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
                     account, taskId, keywords, sorts, pageCount, searchType, maxListCount, modelNoSearch,
+                    modelNoSizeFilters,
                     stockXService, taskMapper);
             new Thread(runner, "StockX-SearchList-" + account.getName()).start();
             log.info("搜索上架任务已启动: [{}]", account.getName());
@@ -566,7 +583,8 @@ public class TaskExecutorManager {
                     defaultIfBlank(params.getString("sorts"), "featured"),
                     params.getIntValue("pageCount") > 0 ? params.getIntValue("pageCount") : 3,
                     defaultIfBlank(params.getString("searchType"), "shoes"),
-                    Math.max(params.getIntValue("maxListCount"), 0), modelNoSearch, stockXService, taskMapper);
+                    Math.max(params.getIntValue("maxListCount"), 0), modelNoSearch,
+                    readModelNoSizeFilters(params), stockXService, taskMapper);
             new Thread(runner, "StockX-SearchList-" + account.getName()).start();
             return task.getId();
         } catch (RuntimeException e) {
@@ -574,6 +592,22 @@ public class TaskExecutorManager {
             TaskSwitch.clearSearchListRunState(accountId);
             throw e;
         }
+    }
+
+    private Map<String, Set<String>> readModelNoSizeFilters(JSONObject params) {
+        JSONObject filtersJson = params.getJSONObject("modelNoSizeFilters");
+        if (filtersJson == null || filtersJson.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Set<String>> filters = new LinkedHashMap<>();
+        for (String modelNo : filtersJson.keySet()) {
+            JSONArray sizesJson = filtersJson.getJSONArray(modelNo);
+            if (sizesJson == null || sizesJson.isEmpty()) {
+                continue;
+            }
+            filters.put(modelNo, new LinkedHashSet<>(sizesJson.toJavaList(String.class)));
+        }
+        return filters;
     }
 
     // ==================== StockX 获取上架商品 ====================

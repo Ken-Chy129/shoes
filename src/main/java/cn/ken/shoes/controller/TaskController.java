@@ -15,6 +15,7 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
+import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
@@ -25,11 +26,12 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.stream.Collectors;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("task")
@@ -230,13 +232,15 @@ public class TaskController {
         String keywords = list.stream()
                 .map(ModelNoSearchExcel::getModelNo)
                 .filter(m -> m != null && !m.trim().isEmpty())
+                .map(String::trim)
                 .distinct()
                 .collect(Collectors.joining("\n"));
         if (keywords.isEmpty()) {
             return Result.buildError("Excel中未找到有效货号");
         }
+        Map<String, Set<String>> sizeFilters = ModelNoSearchSizeFilter.build(list);
         Long taskId = taskExecutorManager.startSearchList(
-                accountId, keywords, "featured", 1, "shoes", maxListCount, true);
+                accountId, keywords, "featured", 1, "shoes", maxListCount, true, sizeFilters);
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }

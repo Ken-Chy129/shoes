@@ -11,6 +11,9 @@ import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 
+import java.util.Map;
+import java.util.Set;
+
 @Slf4j
 public class StockXSearchListTaskRunner implements Runnable {
 
@@ -22,12 +25,14 @@ public class StockXSearchListTaskRunner implements Runnable {
     private final String searchType;
     private final int maxListCount;
     private final boolean modelNoSearch;
+    private final Map<String, Set<String>> modelNoSizeFilters;
     private final StockXService stockXService;
     private final TaskMapper taskMapper;
 
     public StockXSearchListTaskRunner(StockXAccount account, Long taskId,
                                       String keywords, String sorts, int pageCount,
                                       String searchType, int maxListCount, boolean modelNoSearch,
+                                      Map<String, Set<String>> modelNoSizeFilters,
                                       StockXService stockXService, TaskMapper taskMapper) {
         this.account = account;
         this.taskId = taskId;
@@ -37,6 +42,7 @@ public class StockXSearchListTaskRunner implements Runnable {
         this.searchType = searchType;
         this.maxListCount = maxListCount;
         this.modelNoSearch = modelNoSearch;
+        this.modelNoSizeFilters = modelNoSizeFilters != null ? modelNoSizeFilters : Map.of();
         this.stockXService = stockXService;
         this.taskMapper = taskMapper;
     }
@@ -49,7 +55,8 @@ public class StockXSearchListTaskRunner implements Runnable {
                 reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
-            boolean reachedLimit = stockXService.searchAndList(account, taskId, keywords, sorts, pageCount, searchType, maxListCount, modelNoSearch);
+            boolean reachedLimit = stockXService.searchAndList(account, taskId, keywords, sorts, pageCount,
+                    searchType, maxListCount, modelNoSearch, modelNoSizeFilters);
             String cost = TimeUtil.getCostMin(startTime);
 
             if (TaskSwitch.isSearchListCancelled(accountName)) {

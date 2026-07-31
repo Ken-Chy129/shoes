@@ -518,7 +518,7 @@ const TaskPage = () => {
             return <>
                 <Form.Item name="modelNoExcel" label="货号Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传货号Excel'}]}
-                           extra="Excel需包含「货号」列">
+                           extra="Excel需包含「货号」列，可选「尺码」列（支持 US 或 EU）；尺码为空时不限制">
                     <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
@@ -632,7 +632,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
         orderTypes: '订单类型',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
@@ -654,6 +654,11 @@ const TaskPage = () => {
         if (k === 'interval') return `${v}秒`;
         if (k === 'sorts') return String(v).split(',').join(', ');
         if (k === 'keywords') return String(v).split('\n').join(', ');
+        if (k === 'modelNoSizeFilters' && v && typeof v === 'object') {
+            return Object.entries(v)
+                .map(([modelNo, sizes]) => `${modelNo}: ${(sizes as string[]).join(', ')}`)
+                .join('; ');
+        }
         return String(v);
     };
 

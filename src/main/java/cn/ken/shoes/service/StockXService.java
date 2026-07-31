@@ -23,6 +23,7 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
@@ -712,6 +713,13 @@ public class StockXService {
 
     public boolean searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
                                  int pageCount, String searchType, int maxListCount, boolean modelNoSearch) {
+        return searchAndList(account, taskId, keywords, sorts, pageCount, searchType,
+                maxListCount, modelNoSearch, Map.of());
+    }
+
+    public boolean searchAndList(StockXAccount account, Long taskId, String keywords, String sorts,
+                                 int pageCount, String searchType, int maxListCount, boolean modelNoSearch,
+                                 Map<String, Set<String>> modelNoSizeFilters) {
         String accountName = account.getName();
         String country = account.getCountry() != null ? account.getCountry() : "US";
         int minExpectProfit = account.getMinProfit();
@@ -816,6 +824,10 @@ public class StockXService {
                             continue;
                         }
                         String euSize = item.getEuSize();
+                        if (modelNoSearch && !ModelNoSearchSizeFilter.matches(
+                                modelNoSizeFilters, modelNo, item.getUsmSize(), euSize)) {
+                            continue;
+                        }
                         Integer lowestAsk = item.getPrice();
 
                         // 插入 TaskItemDO

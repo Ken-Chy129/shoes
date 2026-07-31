@@ -8,4 +8,7 @@ public class ModelNoSearchExcel {
 
     @ExcelProperty("货号")
     private String modelNo;
+
+    @ExcelProperty("尺码")
+    private String size;
 }
