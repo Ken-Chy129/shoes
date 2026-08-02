@@ -217,6 +217,8 @@ CREATE TABLE task_item
     current_price  DECIMAL(10,2) NULL    COMMENT '当前售价',
     target_price   DECIMAL(10,2) NULL    COMMENT '压价目标价(本轮提交的新报价，用于校验/对账比对amount)',
     lowest_price   DECIMAL(10,2) NULL    COMMENT '最低价',
+    flex_lowest_price DECIMAL(10,2) NULL COMMENT 'Flex/寄存市场最低价',
+    listing_quantity INT NULL COMMENT '本次请求的上架数量',
     poison_price   DECIMAL(10,2) NULL    COMMENT '毒价格',
     poison_35_price DECIMAL(10,2) NULL   COMMENT '毒3.5价格',
     profit_35      DECIMAL(10,2) NULL    COMMENT '3.5利润',

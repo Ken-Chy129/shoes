@@ -16,7 +16,10 @@ interface TaskItemRecord {
     size: string;
     euSize: string;
     currentPrice: number;
+    targetPrice: number;
     lowestPrice: number;
+    flexLowestPrice: number;
+    listingQuantity: number;
     poisonPrice: number;
     poison35Price: number;
     profit35: number;
@@ -287,6 +290,30 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         },
     ];
 
+    const modelSearchColumns = [
+        {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 190, ellipsis: true},
+        {title: '品牌', dataIndex: 'brand', key: 'brand', width: 90, ellipsis: true},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 220, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: 'US码', dataIndex: 'size', key: 'size', width: 75},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 75},
+        {
+            title: '现货最低价', dataIndex: 'lowestPrice', key: 'lowestPrice', width: 105,
+            render: (price: number) => price ? `$${price}` : '-',
+        },
+        {
+            title: 'Flex最低价', dataIndex: 'flexLowestPrice', key: 'flexLowestPrice', width: 105,
+            render: (price: number) => price ? `$${price}` : '-',
+        },
+        {
+            title: '目标上架价', dataIndex: 'targetPrice', key: 'targetPrice', width: 105,
+            render: (price: number) => price ? `$${price}` : '-',
+        },
+        {title: '上架数量', dataIndex: 'listingQuantity', key: 'listingQuantity', width: 90, render: (v: number) => v || '-'},
+        {title: '操作结果', dataIndex: 'operateResult', key: 'operateResult', width: 180, ellipsis: true},
+        {title: '操作时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+    ];
+
     const shippingExtensionColumns = [
         {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 160},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
@@ -300,7 +327,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
 
     const columns = taskType === 'fetch_orders'
         ? orderColumns
-        : taskType === 'extend_shipping' ? shippingExtensionColumns : productColumns;
+        : taskType === 'extend_shipping'
+            ? shippingExtensionColumns
+            : taskType === 'model_search' ? modelSearchColumns : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -353,14 +382,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     </Button>}
                 </Space>
                 <Space>
-                    {taskType === 'listing' && attributes && (() => {
+                    {(taskType === 'listing' || taskType === 'model_search') && attributes && (() => {
                         try {
                             const attrs = JSON.parse(attributes);
                             const tip = `${attrs.detail || ''} | 搜索进度 ${attrs.progress ?? 0}%`;
                             return <Tooltip title={tip}>
                                 <span style={{cursor: 'pointer', color: '#1677ff', fontWeight: 500}}>
-                                    已上架 {attrs.listed ?? 0}
-                                    {attrs.processed != null ? ` | 已处理 ${attrs.processed}` : ''}
+                                    {taskType === 'listing' ? `已上架 ${attrs.listed ?? 0}` : `已处理 ${attrs.processed ?? attrs.current ?? 0}/${attrs.total ?? 0}`}
+                                    {taskType === 'listing' && attrs.processed != null ? ` | 已处理 ${attrs.processed}` : ''}
                                     {attrs.keywordTotal != null ? ` | 词 ${attrs.keywordIdx ?? 0}/${attrs.keywordTotal}` : ''}
                                 </span>
                             </Tooltip>;
@@ -385,7 +414,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: taskType === 'fetch_orders' ? 1700 : 1130}}
+                scroll={{x: taskType === 'fetch_orders' ? 1700 : taskType === 'model_search' ? 1450 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,

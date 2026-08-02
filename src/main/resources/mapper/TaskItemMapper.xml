@@ -19,7 +19,10 @@
         <result property="payoutAmount" column="payout_amount"/>
         <result property="soldOn" column="sold_on"/>
         <result property="currentPrice" column="current_price"/>
+        <result property="targetPrice" column="target_price"/>
         <result property="lowestPrice" column="lowest_price"/>
+        <result property="flexLowestPrice" column="flex_lowest_price"/>
+        <result property="listingQuantity" column="listing_quantity"/>
         <result property="poisonPrice" column="poison_price"/>
         <result property="poison35Price" column="poison_35_price"/>
         <result property="profit35" column="profit_35"/>
@@ -115,8 +118,8 @@
     <select id="selectOperationCountsByTaskIds" resultType="cn.ken.shoes.model.task.TaskOperationCount">
         SELECT task_id AS taskId,
                SUM(CASE WHEN operate_result LIKE '压价成功%' THEN 1 ELSE 0 END) AS priceDownCount,
-               COUNT(DISTINCT CASE WHEN (operate_result LIKE '上架成功%' OR operate_result = '已上架')
-                   THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS listingCount,
+               SUM(CASE WHEN (operate_result LIKE '上架成功%' OR operate_result = '已上架')
+                   THEN COALESCE(listing_quantity, 1) ELSE 0 END) AS listingCount,
                COUNT(DISTINCT CASE WHEN operate_result LIKE '下架成功%'
                    THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS delistCount,
                SUM(CASE WHEN operate_result = '上架处理中' THEN 1 ELSE 0 END) AS pendingOperationCount

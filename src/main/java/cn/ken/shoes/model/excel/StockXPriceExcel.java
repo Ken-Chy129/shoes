@@ -34,6 +34,10 @@ public class StockXPriceExcel {
     @ExcelProperty("绿叉价格")
     private Integer price;
 
+    private Integer standardPrice;
+
+    private Integer flexPrice;
+
     @ExcelProperty("绿叉求购价")
     private Integer purchasePrice;
 

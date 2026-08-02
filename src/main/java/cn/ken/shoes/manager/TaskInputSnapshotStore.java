@@ -3,6 +3,8 @@ package cn.ken.shoes.manager;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
+import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
@@ -21,6 +23,8 @@ public class TaskInputSnapshotStore {
 
     private static final String PRICE_DOWN_FILE = "price-down.json";
     private static final String DELIST_FILE = "delist.json";
+    private static final String MODEL_SEARCH_PRICE_FILE = "model-search-price.json";
+    private static final String MODEL_SEARCH_LISTING_FILE = "model-search-listing.json";
 
     private final Path root;
 
@@ -75,6 +79,35 @@ public class TaskInputSnapshotStore {
             return Optional.of(input != null ? List.copyOf(input) : List.of());
         } catch (Exception e) {
             throw new IllegalStateException("读取下架任务输入快照失败: " + taskId, e);
+        }
+    }
+
+    public void saveModelSearchPriceInput(Long taskId, List<ModelNoSearchExcel> input) {
+        write(taskPath(taskId, MODEL_SEARCH_PRICE_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<ModelNoSearchExcel>> loadModelSearchPriceInput(Long taskId) {
+        return loadList(taskId, MODEL_SEARCH_PRICE_FILE, ModelNoSearchExcel.class, "获取最低价");
+    }
+
+    public void saveModelSearchListingInput(Long taskId, List<ModelSearchListingExcel> input) {
+        write(taskPath(taskId, MODEL_SEARCH_LISTING_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<ModelSearchListingExcel>> loadModelSearchListingInput(Long taskId) {
+        return loadList(taskId, MODEL_SEARCH_LISTING_FILE, ModelSearchListingExcel.class, "指定价格上架");
+    }
+
+    private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {
+        Path path = taskPath(taskId, fileName);
+        if (!Files.exists(path)) {
+            return Optional.empty();
+        }
+        try {
+            List<T> input = JSON.parseArray(Files.readString(path), type);
+            return Optional.of(input != null ? List.copyOf(input) : List.of());
+        } catch (Exception e) {
+            throw new IllegalStateException("读取" + label + "任务输入快照失败: " + taskId, e);
         }
     }
 

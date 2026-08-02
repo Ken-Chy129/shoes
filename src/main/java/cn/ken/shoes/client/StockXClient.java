@@ -13,6 +13,7 @@ import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.stockx.StockXListingCreateItem;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
@@ -695,6 +696,20 @@ public class StockXClient {
                 JSONObject state = mvMarket.getJSONObject("state");
                 excel.setPrice(Optional.ofNullable(state.getJSONObject("lowestAsk")).map(a -> a.getInteger("amount")).orElse(0));
                 excel.setPurchasePrice(Optional.ofNullable(state.getJSONObject("highestBid")).map(b -> b.getInteger("amount")).orElse(0));
+                JSONObject askLevels = state.getJSONObject("askServiceLevels");
+                if (askLevels != null) {
+                    excel.setStandardPrice(Optional.ofNullable(askLevels.getJSONObject("standard"))
+                            .map(level -> level.getJSONObject("lowest"))
+                            .map(lowest -> lowest.getInteger("amount"))
+                            .orElse(null));
+                    excel.setFlexPrice(Optional.ofNullable(askLevels.getJSONObject("expressStandard"))
+                            .map(level -> level.getJSONObject("lowest"))
+                            .map(lowest -> lowest.getInteger("amount"))
+                            .orElse(null));
+                }
+                if (excel.getStandardPrice() == null) {
+                    excel.setStandardPrice(excel.getPrice());
+                }
             }
             if (mvMarket != null && mvMarket.getJSONObject("salesInformation") != null) {
                 excel.setLast72HoursSales(Optional.ofNullable(mvMarket.getJSONObject("salesInformation").getInteger("salesLast72Hours")).orElse(0));
@@ -1641,32 +1656,11 @@ public class StockXClient {
         if (CollectionUtils.isEmpty(itemList)) {
             return null;
         }
-        JSONObject body = new JSONObject();
-        body.put("operationName", "CreateBatchListings");
-        JSONObject variables = new JSONObject();
-        body.put("variables", variables);
-        List<Map<String, Object>> data = new ArrayList<>();
-        variables.put("items", data);
-        for (Pair<String, Integer> item : itemList) {
-            String variantId = item.getKey();
-            String amount = String.valueOf(item.getValue());
-            data.add(Map.of(
-                    "active", true,
-                    "amount", amount,
-                    "currency", "USD",
-                    "expiresAt", expireTime,
-                    "quantity", 1,
-                    "variantID", variantId,
-                    "inventoryType", "STANDARD",
-                    "actionContext", "ASK"
-            ));
-        }
-        JSONObject extensions = new JSONObject();
-        JSONObject persistedQuery = new JSONObject();
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23");
-        extensions.put("persistedQuery", persistedQuery);
-        body.put("extensions", extensions);
+        List<StockXListingCreateItem> createItems = itemList.stream()
+                .map(item -> new StockXListingCreateItem(
+                        item.getKey(), BigDecimal.valueOf(item.getValue()), 1))
+                .toList();
+        JSONObject body = buildCreateBatchListingsRequest(createItems, expireTime);
         // 上架(批量创建listing)同样是 asks 批量写，受 "Batch usage limit" 429 约束 → 走限流 Guard
         JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName(), true);
         if (jsonObject == null) {
@@ -1688,6 +1682,59 @@ public class StockXClient {
         log.error("[{}] createListingV2 failed, reason:{}, response:{}", account.getName(), reason,
                 jsonObject.toJSONString().substring(0, Math.min(200, jsonObject.toJSONString().length())));
         throw new RuntimeException("上架失败:" + reason);
+    }
+
+    public String createListingsWithQuantity(List<StockXListingCreateItem> itemList, StockXAccount account) {
+        if (CollectionUtils.isEmpty(itemList)) {
+            return null;
+        }
+        JSONObject body = buildCreateBatchListingsRequest(itemList, expireTime);
+        JSONObject jsonObject = queryPro(body.toJSONString(), buildViperHeaders(account), account.getName(), true);
+        if (jsonObject == null) {
+            throw new RuntimeException("上架失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(jsonObject.getString("message"))) {
+            throw new RuntimeException("TOKEN_EXPIRED");
+        }
+        JSONObject respData = jsonObject.getJSONObject("data");
+        if (respData != null) {
+            JSONObject batch = respData.getJSONObject("createBatchListings");
+            if (batch != null && batch.getString("id") != null) {
+                String batchId = batch.getString("id");
+                log.info("[{}] createListingsWithQuantity success, batchId:{}, response:{}",
+                        account.getName(), batchId, jsonObject.toJSONString());
+                return batchId;
+            }
+        }
+        String reason = extractGraphqlError(jsonObject);
+        throw new RuntimeException("上架失败:" + reason);
+    }
+
+    static JSONObject buildCreateBatchListingsRequest(List<StockXListingCreateItem> itemList, String expiresAt) {
+        JSONObject body = new JSONObject(true);
+        body.put("operationName", "CreateBatchListings");
+        JSONObject variables = new JSONObject(true);
+        List<Map<String, Object>> data = new ArrayList<>();
+        for (StockXListingCreateItem item : itemList) {
+            data.add(Map.of(
+                    "active", true,
+                    "amount", item.amount().stripTrailingZeros().toPlainString(),
+                    "currency", "USD",
+                    "expiresAt", expiresAt,
+                    "quantity", item.quantity(),
+                    "variantID", item.variantId(),
+                    "inventoryType", "STANDARD",
+                    "actionContext", "ASK"
+            ));
+        }
+        variables.put("items", data);
+        body.put("variables", variables);
+        JSONObject extensions = new JSONObject(true);
+        extensions.put("persistedQuery", new JSONObject(true)
+                .fluentPut("version", 1)
+                .fluentPut("sha256Hash", "6cffac72ff965d13c139e02f75a23484e9dd06676b9b8d3ace038d43f3ddfa23"));
+        body.put("extensions", extensions);
+        return body;
     }
 
     @Data

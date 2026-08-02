@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.StockXConfig;
@@ -14,6 +15,8 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
+import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
@@ -179,15 +182,21 @@ public class TaskExecutorManager {
                             listingFetchMode(params),
                             input) != null;
                 }
-                case MODEL_SEARCH -> startSearchList(
-                        account,
-                        params.getString("keywords"),
-                        params.getString("sorts"),
-                        params.getIntValue("pageCount"),
-                        params.getString("searchType"),
-                        params.getIntValue("maxListCount"),
-                        true,
-                        readModelNoSizeFilters(params)) != null;
+                case MODEL_SEARCH -> {
+                    ModelSearchOperation operation = ModelSearchOperation.fromCode(params.getString("operation"));
+                    if (operation == null) {
+                        yield startSearchList(
+                                account,
+                                params.getString("keywords"),
+                                params.getString("sorts"),
+                                params.getIntValue("pageCount"),
+                                params.getString("searchType"),
+                                params.getIntValue("maxListCount"),
+                                true,
+                                readModelNoSizeFilters(params)) != null;
+                    }
+                    yield startModelSearchFromSnapshot(account, operation, task.getId()) != null;
+                }
                 case LISTING -> startSearchList(
                         account,
                         params.getString("keywords"),
@@ -217,7 +226,10 @@ public class TaskExecutorManager {
         JSONObject params = task.getParams() == null ? new JSONObject() : JSONObject.parseObject(task.getParams());
         return switch (taskType) {
             case PRICE_DOWN -> resumeExcelPriceDown(task, params);
-            case LISTING, MODEL_SEARCH -> resumeSearchList(task, params, taskType == TaskTypeEnum.MODEL_SEARCH);
+            case LISTING -> resumeSearchList(task, params, false);
+            case MODEL_SEARCH -> ModelSearchOperation.fromCode(params.getString("operation")) != null
+                    ? resumeModelSearch(task, params)
+                    : resumeSearchList(task, params, true);
             case EXCEL_DELIST -> resumeExcelDelist(task, params);
             default -> null;
         };
@@ -279,15 +291,28 @@ public class TaskExecutorManager {
                         listingFetchMode(params),
                         input);
             }
-            case LISTING, MODEL_SEARCH -> startSearchList(
+            case LISTING -> startSearchList(
                     account,
                     params.getString("keywords"),
                     params.getString("sorts"),
                     params.getIntValue("pageCount"),
                     params.getString("searchType"),
                     params.getIntValue("maxListCount"),
-                    taskType == TaskTypeEnum.MODEL_SEARCH,
-                    readModelNoSizeFilters(params));
+                    false);
+            case MODEL_SEARCH -> {
+                ModelSearchOperation operation = ModelSearchOperation.fromCode(params.getString("operation"));
+                yield operation != null
+                        ? startModelSearchFromSnapshot(account, operation, source.getId())
+                        : startSearchList(
+                                account,
+                                params.getString("keywords"),
+                                params.getString("sorts"),
+                                params.getIntValue("pageCount"),
+                                params.getString("searchType"),
+                                params.getIntValue("maxListCount"),
+                                true,
+                                readModelNoSizeFilters(params));
+            }
             case FETCH_LISTINGS -> startFetchListings(account, inventoryType(params));
             case EXCEL_DELIST -> {
                 String inventoryType = inventoryType(params);
@@ -498,6 +523,108 @@ public class TaskExecutorManager {
     }
 
     // ==================== StockX 搜索上架 ====================
+
+    public Long startModelSearchPriceFetch(String accountId, List<ModelNoSearchExcel> rows) {
+        return startModelSearch(accountId, ModelSearchOperation.FETCH_PRICE, rows, List.of());
+    }
+
+    public Long startModelSearchListing(String accountId, List<ModelSearchListingExcel> rows) {
+        return startModelSearch(accountId, ModelSearchOperation.CREATE_LISTING, List.of(), rows);
+    }
+
+    private Long startModelSearch(String accountId, ModelSearchOperation operation,
+                                  List<ModelNoSearchExcel> priceRows,
+                                  List<ModelSearchListingExcel> listingRows) {
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        if (!TaskSwitch.tryStartSearchList(accountId)) {
+            log.info("货号搜索任务已在运行: {}", accountId);
+            return null;
+        }
+        JSONObject params = new JSONObject(true)
+                .fluentPut("operation", operation.getCode())
+                .fluentPut("inputCount", operation == ModelSearchOperation.FETCH_PRICE
+                        ? priceRows.size() : listingRows.size());
+        Long taskId = null;
+        try {
+            taskId = createTask("stockx", TaskTypeEnum.MODEL_SEARCH.getCode(), account.getName(), params.toJSONString());
+            if (operation == ModelSearchOperation.FETCH_PRICE) {
+                taskInputSnapshotStore.saveModelSearchPriceInput(taskId, priceRows);
+            } else {
+                taskInputSnapshotStore.saveModelSearchListingInput(taskId, listingRows);
+            }
+            startModelSearchRunner(account, taskId, operation, priceRows, listingRows);
+            return taskId;
+        } catch (RuntimeException e) {
+            if (taskId != null) {
+                taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+            }
+            TaskSwitch.clearSearchListRunState(accountId);
+            throw e;
+        }
+    }
+
+    private void startModelSearchRunner(StockXAccount account, Long taskId, ModelSearchOperation operation,
+                                        List<ModelNoSearchExcel> priceRows,
+                                        List<ModelSearchListingExcel> listingRows) {
+        TaskSwitch.setSearchListTaskId(account.getName(), taskId);
+        TaskSwitch.resetSearchListCancel(account.getName());
+        TaskSwitch.resetSearchVerification(taskId);
+        StockXModelSearchTaskRunner runner = new StockXModelSearchTaskRunner(
+                account, taskId, operation, priceRows, listingRows, stockXService, taskMapper);
+        new Thread(runner, "StockX-ModelSearch-" + operation.getCode() + "-" + account.getName()).start();
+    }
+
+    private Long startModelSearchFromSnapshot(String accountId, ModelSearchOperation operation, Long sourceTaskId) {
+        if (operation == ModelSearchOperation.FETCH_PRICE) {
+            var input = taskInputSnapshotStore.loadModelSearchPriceInput(sourceTaskId);
+            return input.isPresent() && !input.get().isEmpty()
+                    ? startModelSearchPriceFetch(accountId, input.get()) : null;
+        }
+        var input = taskInputSnapshotStore.loadModelSearchListingInput(sourceTaskId);
+        return input.isPresent() && !input.get().isEmpty()
+                ? startModelSearchListing(accountId, input.get()) : null;
+    }
+
+    private Long resumeModelSearch(TaskDO task, JSONObject params) {
+        ModelSearchOperation operation = ModelSearchOperation.fromCode(params.getString("operation"));
+        StockXAccount account = StockXConfig.getAccount(task.getAccountName());
+        if (operation == null || account == null || !TaskSwitch.tryStartSearchList(task.getAccountName())) {
+            return null;
+        }
+        List<ModelNoSearchExcel> priceRows = List.of();
+        List<ModelSearchListingExcel> listingRows = List.of();
+        if (operation == ModelSearchOperation.FETCH_PRICE) {
+            var input = taskInputSnapshotStore.loadModelSearchPriceInput(task.getId());
+            if (input.isEmpty() || input.get().isEmpty()) {
+                TaskSwitch.clearSearchListRunState(task.getAccountName());
+                return null;
+            }
+            priceRows = input.get();
+        } else {
+            var input = taskInputSnapshotStore.loadModelSearchListingInput(task.getId());
+            if (input.isEmpty() || input.get().isEmpty()) {
+                TaskSwitch.clearSearchListRunState(task.getAccountName());
+                return null;
+            }
+            listingRows = input.get();
+        }
+        if (taskMapper.resumeTask(task.getId()) == 0) {
+            TaskSwitch.clearSearchListRunState(task.getAccountName());
+            return null;
+        }
+        try {
+            startModelSearchRunner(account, task.getId(), operation, priceRows, listingRows);
+            return task.getId();
+        } catch (RuntimeException e) {
+            taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());
+            TaskSwitch.clearSearchListRunState(task.getAccountName());
+            throw e;
+        }
+    }
 
     public Long startSearchList(String accountId, String keywords, String sorts,
                                 int pageCount, String searchType, int maxListCount,

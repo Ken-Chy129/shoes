@@ -3,13 +3,16 @@ package cn.ken.shoes.controller;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
 import com.alibaba.excel.EasyExcel;
+import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.bind.annotation.*;
@@ -104,6 +107,32 @@ public class TaskItemController {
             return;
         }
 
+        if (task != null && TaskTypeEnum.MODEL_SEARCH.getCode().equals(task.getTaskType())) {
+            JSONObject params = task.getParams() != null ? JSONObject.parseObject(task.getParams()) : new JSONObject();
+            if (ModelSearchOperation.fromCode(params.getString("operation")) != null) {
+                List<ModelSearchListingExcel> modelSearchRows = new ArrayList<>();
+                for (TaskItemDO item : items) {
+                    ModelSearchListingExcel excel = new ModelSearchListingExcel();
+                    excel.setVariantId(item.getProductId());
+                    excel.setBrand(item.getBrand());
+                    excel.setTitle(item.getTitle());
+                    excel.setModelNo(item.getStyleId());
+                    excel.setUsSize(item.getSize());
+                    excel.setEuSize(item.getEuSize());
+                    excel.setStandardLowestPrice(item.getLowestPrice());
+                    excel.setFlexLowestPrice(item.getFlexLowestPrice());
+                    excel.setTargetPrice(item.getTargetPrice());
+                    excel.setQuantity(item.getListingQuantity());
+                    excel.setOperateResult(item.getOperateResult());
+                    modelSearchRows.add(excel);
+                }
+                EasyExcel.write(response.getOutputStream(), ModelSearchListingExcel.class)
+                        .sheet("货号搜索上架")
+                        .doWrite(modelSearchRows);
+                return;
+            }
+        }
+
         // 转换为 Excel 模型
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         List<TaskItemExcel> excelList = new ArrayList<>();
@@ -119,6 +148,8 @@ public class TaskItemController {
             excel.setEuSize(item.getEuSize());
             excel.setCurrentPrice(item.getCurrentPrice() != null ? "$" + item.getCurrentPrice() : "-");
             excel.setLowestPrice(item.getLowestPrice() != null ? "$" + item.getLowestPrice() : "-");
+            excel.setFlexLowestPrice(item.getFlexLowestPrice() != null ? "$" + item.getFlexLowestPrice() : "-");
+            excel.setListingQuantity(item.getListingQuantity());
             excel.setPoisonPrice(item.getPoisonPrice() != null ? "¥" + item.getPoisonPrice() : "-");
             excel.setPoison35Price(item.getPoison35Price() != null ? "¥" + item.getPoison35Price() : "-");
             excel.setProfit35(item.getProfit35() != null ? "$" + item.getProfit35().setScale(2, java.math.RoundingMode.HALF_UP) : "-");

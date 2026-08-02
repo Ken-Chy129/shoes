@@ -225,10 +225,10 @@ const TaskPage = () => {
                 });
             } else if (createPlatform === 'stockx' && createTaskType === 'model_search') {
                 const file = values.modelNoExcel?.[0]?.originFileObj;
-                if (!file) { message.error('请上传货号Excel'); setCreating(false); return; }
+                if (!file) { message.error('请上传Excel'); setCreating(false); return; }
                 doUploadRequestWithParams(TASK_API.START_MODEL_NO_SEARCH_LIST, file, {
                     accountId: values.accountId,
-                    maxListCount: values.maxListCount || 0,
+                    operation: values.modelSearchOperation || 'fetch_price',
                 }, {
                     onSuccess: () => { message.success('货号搜索上架任务已创建'); setCreateModalVisible(false); queryTaskList(); setCreating(false); },
                     onError: () => { message.error('任务创建失败'); setCreating(false); },
@@ -515,16 +515,32 @@ const TaskPage = () => {
         }
 
         if (createPlatform === 'stockx' && createTaskType === 'model_search') {
+            const operation = createForm.getFieldValue('modelSearchOperation') || 'fetch_price';
             return <>
-                <Form.Item name="modelNoExcel" label="货号Excel" valuePropName="fileList"
-                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传货号Excel'}]}
-                           extra="Excel需包含「货号」列，可选「尺码」列（支持 US 或 EU）；尺码为空时不限制">
-                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
-                        <Button icon={<UploadOutlined/>}>选择文件</Button>
-                    </Upload>
+                <Form.Item name="modelSearchOperation" label="操作" initialValue="fetch_price">
+                    <Radio.Group onChange={() => {
+                        createForm.setFieldValue('modelNoExcel', undefined);
+                        createForm.validateFields(['modelNoExcel']).catch(() => undefined);
+                    }}>
+                        <Radio.Button value="fetch_price">获取最低价</Radio.Button>
+                        <Radio.Button value="create_listing">按指定价格上架</Radio.Button>
+                    </Radio.Group>
                 </Form.Item>
-                <Form.Item name="maxListCount" label="最大上架数" extra="不填或填0表示不限制">
-                    <InputNumber min={0} style={{width: 160}} placeholder="不限"/>
+                <Form.Item shouldUpdate={(prev, current) => prev.modelSearchOperation !== current.modelSearchOperation} noStyle>
+                    {({getFieldValue}) => {
+                        const currentOperation = getFieldValue('modelSearchOperation') || operation;
+                        const fetching = currentOperation === 'fetch_price';
+                        return <Form.Item name="modelNoExcel" label={fetching ? '货号尺码Excel' : '上架Excel'}
+                                          valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
+                                          rules={[{required: true, message: '请上传Excel'}]}
+                                          extra={fetching
+                                              ? '货号、尺码均必填；尺码支持 US 9、EU 42.5，也可直接写 9 或 42.5。任务完成后导出结果。'
+                                              : '建议直接使用“获取最低价”任务导出的Excel，填写「目标上架价($)」和「上架数量」后上传；上架时不再比价或判断盈利。'}>
+                            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                                <Button icon={<UploadOutlined/>}>选择文件</Button>
+                            </Upload>
+                        </Form.Item>;
+                    }}
                 </Form.Item>
             </>;
         }
@@ -632,13 +648,15 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
         orderTypes: '订单类型',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
 
     const formatParamValue = (k: string, v: any): string => {
         if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
+        if (k === 'operation') return v === 'fetch_price' ? '获取最低价' : '按指定价格上架';
+        if (k === 'inputCount') return `${v}行`;
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'listingFetchMode') return v === 'excel_search' ? '按Excel货号搜索' : '全量扫描';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';

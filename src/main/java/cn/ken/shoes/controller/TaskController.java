@@ -6,6 +6,7 @@ import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.manager.ConfigManager;
@@ -13,9 +14,9 @@ import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.manager.StockXPriceRateStateManager;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
-import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
@@ -30,8 +31,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("task")
@@ -224,23 +223,37 @@ public class TaskController {
     @PostMapping("stockx/startModelNoSearchList")
     public Result<String> startModelNoSearchList(@RequestParam("file") MultipartFile file,
                                                   @RequestParam("accountId") String accountId,
-                                                  @RequestParam(value = "maxListCount", required = false, defaultValue = "0") Integer maxListCount) throws IOException {
-        List<ModelNoSearchExcel> list = EasyExcel.read(file.getInputStream())
-                .head(ModelNoSearchExcel.class)
-                .sheet()
-                .doReadSync();
-        String keywords = list.stream()
-                .map(ModelNoSearchExcel::getModelNo)
-                .filter(m -> m != null && !m.trim().isEmpty())
-                .map(String::trim)
-                .distinct()
-                .collect(Collectors.joining("\n"));
-        if (keywords.isEmpty()) {
-            return Result.buildError("Excel中未找到有效货号");
+                                                  @RequestParam(value = "operation", required = false,
+                                                          defaultValue = "fetch_price") String operationCode) throws IOException {
+        ModelSearchOperation operation = ModelSearchOperation.fromCode(operationCode);
+        if (operation == null) {
+            return Result.buildError("无效的操作类型: " + operationCode);
         }
-        Map<String, Set<String>> sizeFilters = ModelNoSearchSizeFilter.build(list);
-        Long taskId = taskExecutorManager.startSearchList(
-                accountId, keywords, "featured", 1, "shoes", maxListCount, true, sizeFilters);
+        Long taskId;
+        if (operation == ModelSearchOperation.FETCH_PRICE) {
+            List<ModelNoSearchExcel> list = EasyExcel.read(file.getInputStream())
+                    .head(ModelNoSearchExcel.class)
+                    .sheet()
+                    .doReadSync();
+            if (list == null || list.isEmpty()) {
+                return Result.buildError("Excel中未找到数据");
+            }
+            boolean hasInvalidRow = list.stream().anyMatch(row -> row == null
+                    || StrUtil.isBlank(row.getModelNo()) || StrUtil.isBlank(row.getSize()));
+            if (hasInvalidRow) {
+                return Result.buildError("获取最低价时，Excel中的货号和尺码均为必填");
+            }
+            taskId = taskExecutorManager.startModelSearchPriceFetch(accountId, list);
+        } else {
+            List<ModelSearchListingExcel> list = EasyExcel.read(file.getInputStream())
+                    .head(ModelSearchListingExcel.class)
+                    .sheet()
+                    .doReadSync();
+            if (list == null || list.isEmpty()) {
+                return Result.buildError("Excel中未找到上架数据");
+            }
+            taskId = taskExecutorManager.startModelSearchListing(accountId, list);
+        }
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }

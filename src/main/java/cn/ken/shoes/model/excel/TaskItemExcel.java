@@ -36,6 +36,12 @@ public class TaskItemExcel {
     @ExcelProperty("最低价($)")
     private String lowestPrice;
 
+    @ExcelProperty("Flex最低价($)")
+    private String flexLowestPrice;
+
+    @ExcelProperty("上架数量")
+    private Integer listingQuantity;
+
     @ExcelProperty("毒价格(¥)")
     private String poisonPrice;
 

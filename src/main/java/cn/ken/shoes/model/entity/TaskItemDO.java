@@ -121,6 +121,18 @@ public class TaskItemDO {
     private BigDecimal lowestPrice;
 
     /**
+     * Flex/寄存市场最低价
+     */
+    @TableField("flex_lowest_price")
+    private BigDecimal flexLowestPrice;
+
+    /**
+     * 本次请求的上架数量
+     */
+    @TableField("listing_quantity")
+    private Integer listingQuantity;
+
+    /**
      * 得物价格
      */
     private BigDecimal poisonPrice;
