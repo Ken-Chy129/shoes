@@ -16,7 +16,7 @@ public class StockXShippingExtensionScheduler {
     }
 
     @Scheduled(
-            initialDelayString = "${stockx.shipping-extension.initial-delay-ms:120000}",
+            initialDelayString = "${stockx.shipping-extension.interval-ms:43200000}",
             fixedDelayString = "${stockx.shipping-extension.interval-ms:43200000}")
     public void autoExtendPendingOrders() {
         try {
