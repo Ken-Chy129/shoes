@@ -538,8 +538,7 @@ const TaskPage = () => {
             return <>
                 <Form.Item name="modelSearchOperation" label="操作" initialValue="fetch_price">
                     <Radio.Group onChange={() => {
-                        createForm.setFieldValue('modelNoExcel', undefined);
-                        createForm.validateFields(['modelNoExcel']).catch(() => undefined);
+                        createForm.resetFields(['modelNoExcel']);
                     }}>
                         <Radio.Button value="fetch_price">获取最低价</Radio.Button>
                         <Radio.Button value="create_listing">按指定价格上架</Radio.Button>
@@ -549,14 +548,14 @@ const TaskPage = () => {
                     {({getFieldValue}) => {
                         const currentOperation = getFieldValue('modelSearchOperation') || operation;
                         const fetching = currentOperation === 'fetch_price';
-                        return <Form.Item name="modelNoExcel" label={fetching ? '货号尺码Excel' : '上架Excel'}
+                        return <Form.Item name="modelNoExcel" label="Excel文件"
                                           valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
                                           rules={[{required: true, message: '请上传Excel'}]}
                                           extra={fetching
-                                              ? '货号、尺码均必填；尺码支持 US 9、EU 42.5，也可直接写 9 或 42.5。任务完成后导出结果。'
-                                              : '建议直接使用“获取最低价”任务导出的Excel，填写「目标上架价($)」和「上架数量」后上传；上架时不再比价或判断盈利。'}>
+                                              ? '获取最低价：货号、尺码均必填；尺码可写 US 9、EU 42.5，也可直接写 9 或 42.5。完成后可导出结果。'
+                                              : '指定价格上架：建议使用“获取最低价”导出的Excel，填写「目标上架价($)」和「上架数量」；上架时不再比价或判断盈利。'}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
-                                <Button icon={<UploadOutlined/>}>选择文件</Button>
+                                <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                             </Upload>
                         </Form.Item>;
                     }}
