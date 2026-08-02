@@ -272,15 +272,31 @@ const TaskPage = () => {
             } else if (createPlatform === 'stockx' && createTaskType === 'excel_delist') {
                 const accountId = values.accountId;
                 const inventoryType = values.inventoryType || 'STANDARD';
+                const delistMode = values.delistMode || 'excel';
                 const file = values.delistExcelFile?.[0]?.originFileObj;
+                const startDelist = (mode: 'excel' | 'all') => {
+                    doPostRequest(TASK_API.START_DELIST, {accountId, inventoryType, delistMode: mode}, {
+                        onSuccess: () => { message.success('下架任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                        onFinally: () => setCreating(false),
+                    });
+                };
+                if (delistMode === 'all') {
+                    setCreating(false);
+                    Modal.confirm({
+                        title: '确认全量下架？',
+                        content: `将下架账号 ${accountId} 的全部${inventoryType === 'CUSTODIAL' ? '寄存' : '现货'}挂单，此操作影响范围较大。`,
+                        okText: '确认全量下架',
+                        okButtonProps: {danger: true},
+                        cancelText: '取消',
+                        onOk: () => { setCreating(true); startDelist('all'); },
+                    });
+                    return;
+                }
                 if (!file) { message.error('请上传下架Excel文件'); setCreating(false); return; }
                 doUploadRequestWithParams(TASK_API.UPLOAD_DELIST_EXCEL, file, {accountId, inventoryType}, {
                     onSuccess: (res: any) => {
                         message.success(`已加载${res.data}条下架规则`);
-                        doPostRequest(TASK_API.START_EXCEL_DELIST, {accountId, inventoryType}, {
-                            onSuccess: () => { message.success('Excel下架任务已创建'); setCreateModalVisible(false); queryTaskList(); },
-                            onFinally: () => setCreating(false),
-                        });
+                        startDelist('excel');
                     },
                     onError: () => { message.error('Excel上传失败'); setCreating(false); },
                 });
@@ -435,7 +451,10 @@ const TaskPage = () => {
                             } catch {}
                         }}>Excel</Button>
                     )}
-                    {record.taskType === 'excel_delist' && record.platform === 'stockx' && (
+                    {record.taskType === 'excel_delist' && record.platform === 'stockx' && (() => {
+                        try { return JSON.parse(record.params || '{}').delistMode !== 'all'; }
+                        catch { return true; }
+                    })() && (
                         <Button type="link" size="small" onClick={() => {
                             try {
                                 const p = JSON.parse(record.params || '{}');
@@ -612,18 +631,32 @@ const TaskPage = () => {
 
         if (createPlatform === 'stockx' && createTaskType === 'excel_delist') {
             return <>
+                <Form.Item name="delistMode" label="下架类型" initialValue="excel">
+                    <Radio.Group>
+                        <Radio.Button value="excel">Excel下架</Radio.Button>
+                        <Radio.Button value="all">全量下架</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
                 <Form.Item name="inventoryType" label="库存类型" initialValue="STANDARD">
                     <Radio.Group>
                         <Radio.Button value="STANDARD">现货</Radio.Button>
                         <Radio.Button value="CUSTODIAL">寄存</Radio.Button>
                     </Radio.Group>
                 </Form.Item>
-                <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
-                           getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
-                           extra="使用获取上架商品导出的Excel，需包含listingId列">
-                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
-                        <Button icon={<UploadOutlined/>}>选择文件</Button>
-                    </Upload>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.delistMode !== cur.delistMode}>
+                    {({getFieldValue}) => getFieldValue('delistMode') !== 'all' ? (
+                        <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
+                                   getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
+                                   extra="使用获取上架商品导出的Excel，需包含listingId列">
+                            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                                <Button icon={<UploadOutlined/>}>选择文件</Button>
+                            </Upload>
+                        </Form.Item>
+                    ) : (
+                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                            <Alert type="warning" showIcon message="无需上传Excel，将下架所选库存类型下的全部挂单。创建前会再次确认。"/>
+                        </Form.Item>
+                    )}
                 </Form.Item>
             </>;
         }
@@ -648,7 +681,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作',
+        maxListCount: '最大上架数', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
         orderTypes: '订单类型',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
@@ -656,6 +689,7 @@ const TaskPage = () => {
     const formatParamValue = (k: string, v: any): string => {
         if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
         if (k === 'operation') return v === 'fetch_price' ? '获取最低价' : '按指定价格上架';
+        if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
         if (k === 'inputCount') return `${v}行`;
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'listingFetchMode') return v === 'excel_search' ? '按Excel货号搜索' : '全量扫描';

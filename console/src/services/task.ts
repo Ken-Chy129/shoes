@@ -31,9 +31,10 @@ enum TASK_API {
     START_SEARCH_LIST = '/api/task/stockx/startSearchList',
     // StockX 获取上架商品
     START_FETCH_LISTINGS = '/api/task/stockx/startFetchListings',
-    // StockX Excel下架
+    // StockX 下架
     UPLOAD_DELIST_EXCEL = '/api/task/stockx/uploadDelistExcel',
     DELIST_EXCEL_DATA = '/api/task/stockx/delistExcelData',
+    START_DELIST = '/api/task/stockx/startDelist',
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
     // StockX 获取订单（待处理/已完成/已取消/待付款）
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',

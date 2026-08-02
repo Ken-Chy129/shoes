@@ -2,7 +2,9 @@ package cn.ken.shoes.task;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.manager.TaskInputSnapshotStore;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -14,9 +16,11 @@ import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
+import com.alibaba.fastjson.JSONObject;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -24,13 +28,16 @@ import java.util.Map;
 public class StockXExcelDelistTaskRunner implements Runnable {
 
     private static final int BATCH_SIZE = 50;
+    private static final int FULL_FETCH_MAX_PAGES = 1000;
 
     private final StockXAccount account;
     private final Long taskId;
     private final String inventoryType;
+    private final DelistMode delistMode;
     private final StockXClient stockXClient;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final TaskInputSnapshotStore taskInputSnapshotStore;
     private final int completedBatchCount;
     private final List<StockXDelistInputExcel> taskInput;
 
@@ -52,14 +59,24 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                                        StockXClient stockXClient, TaskMapper taskMapper,
                                        TaskItemMapper taskItemMapper, int completedBatchCount,
                                        List<StockXDelistInputExcel> taskInput) {
+        this(account, taskId, inventoryType, DelistMode.EXCEL, stockXClient, taskMapper, taskItemMapper,
+                null, completedBatchCount, taskInput);
+    }
+
+    public StockXExcelDelistTaskRunner(StockXAccount account, Long taskId, String inventoryType,
+                                       DelistMode delistMode, StockXClient stockXClient, TaskMapper taskMapper,
+                                       TaskItemMapper taskItemMapper, TaskInputSnapshotStore taskInputSnapshotStore,
+                                       int completedBatchCount, List<StockXDelistInputExcel> taskInput) {
         this.account = account;
         this.taskId = taskId;
         this.inventoryType = inventoryType;
+        this.delistMode = delistMode != null ? delistMode : DelistMode.EXCEL;
         this.stockXClient = stockXClient;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.taskInputSnapshotStore = taskInputSnapshotStore;
         this.completedBatchCount = Math.max(completedBatchCount, 0);
-        this.taskInput = List.copyOf(taskInput);
+        this.taskInput = taskInput != null ? List.copyOf(taskInput) : List.of();
     }
 
     @Override
@@ -72,7 +89,7 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                 reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
-            List<StockXDelistInputExcel> delistList = taskInput;
+            List<StockXDelistInputExcel> delistList = resolveDelistList(accountId, key);
             int totalDelist = 0;
             int totalFailed = 0;
             int batchIndex = completedBatchCount;
@@ -82,7 +99,7 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                 if (TaskSwitch.isExcelDelistCancelled(key)) {
                     taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
                     taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
-                    log.info("[{}] Excel下架任务已取消", accountId);
+                    log.info("[{}] 下架任务已取消", accountId);
                     return;
                 }
 
@@ -154,20 +171,20 @@ public class StockXExcelDelistTaskRunner implements Runnable {
                 summary += ", 未成功" + notSuccessful + "条";
             }
             taskMapper.updateTaskFailReason(taskId, summary);
-            log.info("[{}] Excel下架任务完成, inventoryType:{}, total:{}, delist:{}, failed:{}, 耗时:{}",
-                    accountId, inventoryType, delistList.size(), totalDelist, totalFailed, cost);
+            log.info("[{}] 下架任务完成, mode:{}, inventoryType:{}, total:{}, delist:{}, failed:{}, 耗时:{}",
+                    accountId, delistMode.getCode(), inventoryType, delistList.size(), totalDelist, totalFailed, cost);
         } catch (TaskCancelledException ce) {
-            log.info("[{}] Excel下架任务在限流冷却中被取消", accountId);
+            log.info("[{}] 下架任务在限流冷却中被取消", accountId);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
         } catch (StockXRateLimitException rateLimitException) {
-            log.warn("[{}] Excel下架任务因持续限流暂停: {}", accountId, rateLimitException.getMessage());
+            log.warn("[{}] 下架任务因持续限流暂停: {}", accountId, rateLimitException.getMessage());
             taskMapper.updateTaskPaused(taskId, rateLimitException.getMessage());
         } catch (Exception e) {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
-                log.error("[{}] Excel下架任务因Token过期终止，请更新Token后重新启动", accountId);
+                log.error("[{}] 下架任务因Token过期终止，请更新Token后重新启动", accountId);
                 taskMapper.updateTaskFailed(taskId, "Token已过期，请更新Token");
             } else {
-                log.error("[{}] Excel下架任务异常: {}", accountId, e.getMessage(), e);
+                log.error("[{}] 下架任务异常: {}", accountId, e.getMessage(), e);
                 String reason = e.getMessage();
                 if (reason != null && reason.length() > 200) {
                     reason = reason.substring(0, 200);
@@ -180,5 +197,55 @@ public class StockXExcelDelistTaskRunner implements Runnable {
             StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearExcelDelistState(key);
         }
+    }
+
+    private List<StockXDelistInputExcel> resolveDelistList(String accountId, String key) {
+        if (!taskInput.isEmpty() || delistMode == DelistMode.EXCEL) {
+            return taskInput;
+        }
+        LinkedHashMap<String, StockXDelistInputExcel> byListingId = new LinkedHashMap<>();
+        boolean hasMore = true;
+        int page = 1;
+        while (hasMore) {
+            if (TaskSwitch.isExcelDelistCancelled(key)) {
+                throw new TaskCancelledException();
+            }
+            if (page > FULL_FETCH_MAX_PAGES) {
+                throw new IllegalStateException("全量下架获取挂单超过" + FULL_FETCH_MAX_PAGES + "页安全上限");
+            }
+            JSONObject response = stockXClient.querySellingItemsByInventoryType(inventoryType, page, account);
+            if (response == null) {
+                throw new IllegalStateException("全量下架获取挂单失败，页码:" + page);
+            }
+            if (response.getBooleanValue("_unauthorized")) {
+                throw new RuntimeException("TOKEN_EXPIRED");
+            }
+            if (response.getJSONArray("items") != null) {
+                for (JSONObject item : response.getJSONArray("items").toJavaList(JSONObject.class)) {
+                    String listingId = item.getString("id");
+                    if (listingId == null || listingId.isBlank()) {
+                        continue;
+                    }
+                    StockXDelistInputExcel input = new StockXDelistInputExcel();
+                    input.setListingId(listingId);
+                    input.setStyleId(item.getString("styleId"));
+                    input.setSize(item.getString("size"));
+                    byListingId.putIfAbsent(listingId, input);
+                }
+            }
+            hasMore = response.getBooleanValue("hasMore");
+            JSONObject attrs = new JSONObject(true)
+                    .fluentPut("detail", "正在获取全量挂单，第" + page + "页")
+                    .fluentPut("fetched", byListingId.size());
+            taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
+            page++;
+        }
+        List<StockXDelistInputExcel> result = List.copyOf(byListingId.values());
+        if (taskInputSnapshotStore != null) {
+            taskInputSnapshotStore.saveDelist(taskId, result);
+        }
+        log.info("[{}] 全量下架获取挂单完成, inventoryType:{}, count:{}",
+                accountId, inventoryType, result.size());
+        return result;
     }
 }

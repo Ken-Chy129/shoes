@@ -13,7 +13,7 @@ public enum TaskTypeEnum {
     LISTING("listing", "上架", true),
     PRICE_DOWN("price_down", "压价", true),
     FETCH_LISTINGS("fetch_listings", "获取上架商品", false),
-    EXCEL_DELIST("excel_delist", "Excel下架", false),
+    EXCEL_DELIST("excel_delist", "下架", false),
     MODEL_SEARCH("model_search", "货号搜索上架", true),
     FETCH_ORDERS("fetch_orders", "获取订单", false),
     EXTEND_SHIPPING("extend_shipping", "订单延期", false),

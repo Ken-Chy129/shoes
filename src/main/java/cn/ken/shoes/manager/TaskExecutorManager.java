@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
@@ -316,9 +317,13 @@ public class TaskExecutorManager {
             case FETCH_LISTINGS -> startFetchListings(account, inventoryType(params));
             case EXCEL_DELIST -> {
                 String inventoryType = inventoryType(params);
+                DelistMode mode = delistMode(params);
+                if (mode == DelistMode.ALL) {
+                    yield startDelist(account, inventoryType, mode);
+                }
                 var snapshot = taskInputSnapshotStore.loadDelist(source.getId());
                 yield snapshot.isEmpty() || snapshot.get().isEmpty()
-                        ? null : startExcelDelist(account, inventoryType, snapshot.get());
+                        ? null : startDelist(account, inventoryType, mode, snapshot.get());
             }
             case FETCH_ORDERS -> {
                 List<StockXOrderCategory> categories = parseOrderCategories(params);
@@ -334,6 +339,11 @@ public class TaskExecutorManager {
 
     private ListingFetchMode listingFetchMode(JSONObject params) {
         return ListingFetchMode.fromCode(params.getString("listingFetchMode"));
+    }
+
+    private DelistMode delistMode(JSONObject params) {
+        DelistMode mode = DelistMode.fromCode(params.getString("delistMode"));
+        return mode != null ? mode : DelistMode.EXCEL;
     }
 
     private String defaultIfBlank(String value, String defaultValue) {
@@ -772,17 +782,26 @@ public class TaskExecutorManager {
         }
     }
 
-    // ==================== StockX Excel下架 ====================
+    // ==================== StockX 下架 ====================
 
     public Long startExcelDelist(String accountId, String inventoryType) {
-        return startExcelDelist(accountId, inventoryType,
+        return startDelist(accountId, inventoryType, DelistMode.EXCEL,
                 List.copyOf(ShoesContext.getDelistList(accountId, defaultIfBlank(inventoryType, "STANDARD"))));
     }
 
-    private Long startExcelDelist(String accountId, String inventoryType, List<StockXDelistInputExcel> input) {
+    public Long startDelist(String accountId, String inventoryType, DelistMode mode) {
+        List<StockXDelistInputExcel> input = mode == DelistMode.EXCEL
+                ? List.copyOf(ShoesContext.getDelistList(accountId, defaultIfBlank(inventoryType, "STANDARD")))
+                : List.of();
+        return startDelist(accountId, inventoryType, mode, input);
+    }
+
+    private Long startDelist(String accountId, String inventoryType, DelistMode mode,
+                             List<StockXDelistInputExcel> input) {
         inventoryType = defaultIfBlank(inventoryType, "STANDARD");
+        mode = mode != null ? mode : DelistMode.EXCEL;
         String key = accountId + ":" + inventoryType;
-        if (input == null || input.isEmpty()) {
+        if (mode == DelistMode.EXCEL && (input == null || input.isEmpty())) {
             return null;
         }
         StockXAccount account = StockXConfig.getAccount(accountId);
@@ -791,22 +810,29 @@ public class TaskExecutorManager {
             return null;
         }
         if (!TaskSwitch.tryStartExcelDelist(key)) {
-            log.info("Excel下架任务已在运行: {}", key);
+            log.info("下架任务已在运行: {}", key);
             return null;
         }
-        String params = new JSONObject().fluentPut("inventoryType", inventoryType).toJSONString();
+        String params = new JSONObject()
+                .fluentPut("inventoryType", inventoryType)
+                .fluentPut("delistMode", mode.getCode())
+                .toJSONString();
         Long taskId = null;
         try {
             taskId = createTask("stockx", TaskTypeEnum.EXCEL_DELIST.getCode(), account.getName(), params);
-            List<StockXDelistInputExcel> snapshot = List.copyOf(input);
-            taskInputSnapshotStore.saveDelist(taskId, snapshot);
+            List<StockXDelistInputExcel> snapshot = input != null ? List.copyOf(input) : List.of();
+            if (mode == DelistMode.EXCEL) {
+                taskInputSnapshotStore.saveDelist(taskId, snapshot);
+            }
             TaskSwitch.setExcelDelistTaskId(key, taskId);
             TaskSwitch.resetExcelDelistCancel(key);
 
             StockXExcelDelistTaskRunner runner = new StockXExcelDelistTaskRunner(
-                    account, taskId, inventoryType, stockXClient, taskMapper, taskItemMapper, 0, snapshot);
-            new Thread(runner, "StockX-ExcelDelist-" + account.getName() + "-" + inventoryType).start();
-            log.info("Excel下架任务已启动: [{}] {}", account.getName(), inventoryType);
+                    account, taskId, inventoryType, mode, stockXClient, taskMapper, taskItemMapper,
+                    taskInputSnapshotStore, 0, snapshot);
+            new Thread(runner, "StockX-Delist-" + mode.getCode() + "-" + account.getName()
+                    + "-" + inventoryType).start();
+            log.info("下架任务已启动: [{}] {} mode:{}", account.getName(), inventoryType, mode.getCode());
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
@@ -820,16 +846,20 @@ public class TaskExecutorManager {
     private Long resumeExcelDelist(TaskDO task, JSONObject params) {
         String accountId = task.getAccountName();
         String inventoryType = inventoryType(params);
+        DelistMode mode = delistMode(params);
         String key = accountId + ":" + inventoryType;
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             return null;
         }
         var snapshot = taskInputSnapshotStore.loadDelist(task.getId());
-        if (snapshot.isEmpty() || snapshot.get().isEmpty() || !TaskSwitch.tryStartExcelDelist(key)) {
+        if (mode == DelistMode.EXCEL && (snapshot.isEmpty() || snapshot.get().isEmpty())) {
             return null;
         }
-        List<StockXDelistInputExcel> input = snapshot.get();
+        if (!TaskSwitch.tryStartExcelDelist(key)) {
+            return null;
+        }
+        List<StockXDelistInputExcel> input = snapshot.orElseGet(List::of);
         if (taskMapper.resumeTask(task.getId()) == 0) {
             TaskSwitch.setExcelDelistRunning(key, false);
             return null;
@@ -838,9 +868,10 @@ public class TaskExecutorManager {
             TaskSwitch.setExcelDelistTaskId(key, task.getId());
             TaskSwitch.resetExcelDelistCancel(key);
             StockXExcelDelistTaskRunner runner = new StockXExcelDelistTaskRunner(
-                    account, task.getId(), inventoryType, stockXClient, taskMapper, taskItemMapper,
-                    task.getRound() != null ? task.getRound() : 0, input);
-            new Thread(runner, "StockX-ExcelDelist-" + account.getName() + "-" + inventoryType).start();
+                    account, task.getId(), inventoryType, mode, stockXClient, taskMapper, taskItemMapper,
+                    taskInputSnapshotStore, task.getRound() != null ? task.getRound() : 0, input);
+            new Thread(runner, "StockX-Delist-" + mode.getCode() + "-" + account.getName()
+                    + "-" + inventoryType).start();
             return task.getId();
         } catch (RuntimeException e) {
             taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());

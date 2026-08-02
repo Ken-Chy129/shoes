@@ -2,7 +2,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   price_down: '压价',
   listing: '搜索上架',
   model_search: '货号搜索上架',
-  excel_delist: 'Excel下架',
+  excel_delist: '下架',
   fetch_listings: '获取上架商品',
   fetch_orders: '获取订单',
   extend_shipping: '订单延期',

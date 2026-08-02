@@ -2,6 +2,8 @@ package cn.ken.shoes.task;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.DelistMode;
+import cn.ken.shoes.manager.TaskInputSnapshotStore;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -17,6 +19,10 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class StockXExcelDelistTaskRunnerTest {
 
@@ -100,6 +106,63 @@ class StockXExcelDelistTaskRunnerTest {
         } finally {
             ShoesContext.loadDelistExcel(accountName, "STANDARD", List.of());
         }
+    }
+
+    @Test
+    void fullModeFetchesEveryListingPageBeforeDeleting() {
+        StockXAccount account = new StockXAccount();
+        account.setName("delist-all-account");
+        AtomicInteger queriedPages = new AtomicInteger();
+        AtomicReference<List<String>> submittedIds = new AtomicReference<>();
+        StockXClient client = new StockXClient() {
+            @Override
+            public com.alibaba.fastjson.JSONObject querySellingItemsByInventoryType(
+                    String inventoryType, Integer pageNumber, StockXAccount ignored) {
+                queriedPages.incrementAndGet();
+                com.alibaba.fastjson.JSONObject item = new com.alibaba.fastjson.JSONObject(true)
+                        .fluentPut("id", "listing-" + pageNumber)
+                        .fluentPut("styleId", "STYLE-" + pageNumber)
+                        .fluentPut("size", String.valueOf(pageNumber));
+                return new com.alibaba.fastjson.JSONObject(true)
+                        .fluentPut("hasMore", pageNumber == 1)
+                        .fluentPut("items", new com.alibaba.fastjson.JSONArray(java.util.List.of(item)));
+            }
+
+            @Override
+            public String deleteItems(List<String> idList, StockXAccount ignored) {
+                submittedIds.set(List.copyOf(idList));
+                return "batch-all";
+            }
+
+            @Override
+            public java.util.Map<String, String> verifyDeleteBatch(
+                    String batchId, List<String> listingIds, StockXAccount ignored,
+                    Supplier<Boolean> cancelled) {
+                return java.util.Map.of(
+                        "listing-1", "下架成功",
+                        "listing-2", "下架成功");
+            }
+        };
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> null);
+        AtomicInteger itemId = new AtomicInteger();
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if ("insert".equals(method)) {
+                ((cn.ken.shoes.model.entity.TaskItemDO) args[0]).setId((long) itemId.incrementAndGet());
+                return 1;
+            }
+            if ("countSuccessfulDelistsByTaskId".equals(method)) return 2L;
+            return null;
+        });
+
+        TaskInputSnapshotStore snapshotStore = mock(TaskInputSnapshotStore.class);
+        new StockXExcelDelistTaskRunner(account, 93L, "STANDARD", DelistMode.ALL, client,
+                taskMapper, taskItemMapper, snapshotStore, 0, List.of()).run();
+
+        assertThat(queriedPages).hasValue(2);
+        assertThat(submittedIds.get()).containsExactly("listing-1", "listing-2");
+        verify(snapshotStore).saveDelist(eq(93L), argThat(items ->
+                items.stream().map(StockXDelistInputExcel::getListingId).toList()
+                        .equals(List.of("listing-1", "listing-2"))));
     }
 
     @SuppressWarnings("unchecked")

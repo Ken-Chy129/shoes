@@ -6,6 +6,7 @@ import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
@@ -291,7 +292,7 @@ public class TaskController {
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
-    // ==================== StockX Excel下架 ====================
+    // ==================== StockX 下架 ====================
 
     @PostMapping("stockx/uploadDelistExcel")
     public Result<Integer> uploadDelistExcel(@RequestParam("file") MultipartFile file,
@@ -326,21 +327,37 @@ public class TaskController {
         return Result.buildSuccess(result);
     }
 
-    @PostMapping("stockx/startExcelDelist")
-    public Result<String> startExcelDelist(@RequestBody JSONObject body) {
+    @PostMapping("stockx/startDelist")
+    public Result<String> startDelist(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");
         String inventoryType = body.getString("inventoryType");
         if (StrUtil.isBlank(accountId) || StrUtil.isBlank(inventoryType)) {
             return Result.buildError("accountId和inventoryType不能为空");
         }
-        if (ShoesContext.getDelistList(accountId, inventoryType).isEmpty()) {
+        if (!"STANDARD".equals(inventoryType) && !"CUSTODIAL".equals(inventoryType)) {
+            return Result.buildError("无效的库存类型: " + inventoryType);
+        }
+        DelistMode delistMode = DelistMode.fromCode(body.getString("delistMode"));
+        if (delistMode == null) {
+            return Result.buildError("无效的下架类型: " + body.getString("delistMode"));
+        }
+        if (delistMode == DelistMode.EXCEL && ShoesContext.getDelistList(accountId, inventoryType).isEmpty()) {
             return Result.buildError("请先上传下架Excel");
         }
-        Long taskId = taskExecutorManager.startExcelDelist(accountId, inventoryType);
+        Long taskId = taskExecutorManager.startDelist(accountId, inventoryType, delistMode);
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    /** 兼容旧前端：未传模式时仍按 Excel 下架处理。 */
+    @PostMapping("stockx/startExcelDelist")
+    public Result<String> startExcelDelist(@RequestBody JSONObject body) {
+        if (StrUtil.isBlank(body.getString("delistMode"))) {
+            body.put("delistMode", DelistMode.EXCEL.getCode());
+        }
+        return startDelist(body);
     }
 
     // ==================== StockX 获取订单 ====================
