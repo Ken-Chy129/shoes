@@ -203,14 +203,35 @@ public class ShoesContext {
         return outerMap.computeIfAbsent(accountId, k -> new ConcurrentHashMap<>());
     }
 
-    // Excel 下架数据（按账号+库存类型隔离），直接存 listingId 列表
+    // Excel 下架数据（按账号+库存类型隔离），支持 listingId 或 货号+尺码
     private final static ConcurrentHashMap<String, List<StockXDelistInputExcel>> DELIST_EXCEL_MAP = new ConcurrentHashMap<>();
 
     public static void loadDelistExcel(String accountId, String inventoryType, List<StockXDelistInputExcel> list) {
         String key = STR."\{accountId}:\{inventoryType}";
-        DELIST_EXCEL_MAP.put(key, list.stream()
-                .filter(item -> StrUtil.isNotBlank(item.getListingId()))
-                .toList());
+        List<StockXDelistInputExcel> validRows = new ArrayList<>();
+        if (list != null) {
+            for (int i = 0; i < list.size(); i++) {
+                StockXDelistInputExcel item = list.get(i);
+                if (item == null) {
+                    continue;
+                }
+                boolean hasListingId = StrUtil.isNotBlank(item.getListingId());
+                boolean hasStyleId = StrUtil.isNotBlank(item.getStyleId());
+                boolean hasSize = StrUtil.isNotBlank(item.getSize());
+                if (!hasListingId && !hasStyleId && !hasSize) {
+                    continue;
+                }
+                if (!hasListingId && (!hasStyleId || !hasSize)) {
+                    throw new IllegalArgumentException("下架Excel第" + (i + 2)
+                            + "行需填写listingId，或同时填写货号和尺码");
+                }
+                item.setListingId(StrUtil.trim(item.getListingId()));
+                item.setStyleId(StrUtil.trim(item.getStyleId()));
+                item.setSize(StrUtil.trim(item.getSize()));
+                validRows.add(item);
+            }
+        }
+        DELIST_EXCEL_MAP.put(key, List.copyOf(validRows));
     }
 
     public static List<StockXDelistInputExcel> getDelistList(String accountId, String inventoryType) {

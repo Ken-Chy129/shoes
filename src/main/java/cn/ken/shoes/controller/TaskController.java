@@ -308,7 +308,11 @@ public class TaskController {
                 .head(StockXDelistInputExcel.class)
                 .sheet()
                 .doReadSync();
-        ShoesContext.loadDelistExcel(accountId, inventoryType, list);
+        try {
+            ShoesContext.loadDelistExcel(accountId, inventoryType, list);
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
         configManager.saveDelistExcel(accountId, inventoryType);
         return Result.buildSuccess(ShoesContext.getDelistList(accountId, inventoryType).size());
     }

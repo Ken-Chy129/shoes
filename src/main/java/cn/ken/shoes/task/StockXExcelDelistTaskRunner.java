@@ -1,5 +1,6 @@
 package cn.ken.shoes.task;
 
+import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.DelistMode;
@@ -14,6 +15,7 @@ import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.util.StockXRateLimitGuard;
+import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.TimeUtil;
 import lombok.extern.slf4j.Slf4j;
 import com.alibaba.fastjson.JSONObject;
@@ -21,8 +23,11 @@ import com.alibaba.fastjson.JSONObject;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 public class StockXExcelDelistTaskRunner implements Runnable {
@@ -200,8 +205,11 @@ public class StockXExcelDelistTaskRunner implements Runnable {
     }
 
     private List<StockXDelistInputExcel> resolveDelistList(String accountId, String key) {
-        if (!taskInput.isEmpty() || delistMode == DelistMode.EXCEL) {
-            return taskInput;
+        if (delistMode == DelistMode.EXCEL) {
+            if (taskInput.stream().allMatch(item -> StrUtil.isNotBlank(item.getListingId()))) {
+                return taskInput;
+            }
+            return resolveExcelStyleSizeRules(accountId, key);
         }
         LinkedHashMap<String, StockXDelistInputExcel> byListingId = new LinkedHashMap<>();
         boolean hasMore = true;
@@ -247,5 +255,107 @@ public class StockXExcelDelistTaskRunner implements Runnable {
         log.info("[{}] 全量下架获取挂单完成, inventoryType:{}, count:{}",
                 accountId, inventoryType, result.size());
         return result;
+    }
+
+    private List<StockXDelistInputExcel> resolveExcelStyleSizeRules(String accountId, String key) {
+        LinkedHashMap<String, StockXDelistInputExcel> byListingId = new LinkedHashMap<>();
+        LinkedHashMap<String, String> queryStyleIds = new LinkedHashMap<>();
+        LinkedHashMap<String, Set<String>> requestedSizes = new LinkedHashMap<>();
+        for (StockXDelistInputExcel input : taskInput) {
+            if (StrUtil.isNotBlank(input.getListingId())) {
+                byListingId.putIfAbsent(input.getListingId(), input);
+                continue;
+            }
+            String normalizedStyleId = normalizeStyleId(input.getStyleId());
+            String normalizedSize = normalizeSize(input.getSize());
+            if (normalizedStyleId == null || normalizedSize == null) {
+                continue;
+            }
+            queryStyleIds.putIfAbsent(normalizedStyleId, input.getStyleId().trim());
+            requestedSizes.computeIfAbsent(normalizedStyleId, ignored -> new LinkedHashSet<>())
+                    .add(normalizedSize);
+        }
+
+        int searchedStyles = 0;
+        for (Map.Entry<String, String> styleEntry : queryStyleIds.entrySet()) {
+            String normalizedStyleId = styleEntry.getKey();
+            String queryStyleId = styleEntry.getValue();
+            Set<String> sizes = requestedSizes.getOrDefault(normalizedStyleId, Set.of());
+            boolean hasMore = true;
+            int page = 1;
+            while (hasMore) {
+                if (TaskSwitch.isExcelDelistCancelled(key)) {
+                    throw new TaskCancelledException();
+                }
+                if (page > FULL_FETCH_MAX_PAGES) {
+                    throw new IllegalStateException("按货号查询挂单超过" + FULL_FETCH_MAX_PAGES
+                            + "页安全上限, 货号:" + queryStyleId);
+                }
+                JSONObject response = stockXClient.querySellingItemsByStyleId(
+                        inventoryType, page, queryStyleId, account);
+                if (response == null) {
+                    throw new IllegalStateException("按货号获取挂单失败, 货号:" + queryStyleId + ", 页码:" + page);
+                }
+                if (response.getBooleanValue("_unauthorized")) {
+                    throw new RuntimeException("TOKEN_EXPIRED");
+                }
+                if (response.getJSONArray("items") != null) {
+                    for (JSONObject item : response.getJSONArray("items").toJavaList(JSONObject.class)) {
+                        if (!normalizedStyleId.equals(normalizeStyleId(item.getString("styleId")))
+                                || !matchesSize(sizes, item.getString("size"), item.getString("euSize"))) {
+                            continue;
+                        }
+                        String listingId = item.getString("id");
+                        if (StrUtil.isBlank(listingId)) {
+                            continue;
+                        }
+                        StockXDelistInputExcel resolved = new StockXDelistInputExcel();
+                        resolved.setListingId(listingId);
+                        resolved.setStyleId(item.getString("styleId"));
+                        resolved.setSize(item.getString("size"));
+                        byListingId.putIfAbsent(listingId, resolved);
+                    }
+                }
+                hasMore = response.getBooleanValue("hasMore");
+                taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+                        .fluentPut("detail", "正在按货号匹配挂单: " + queryStyleId + "，第" + page + "页")
+                        .fluentPut("searchedStyles", searchedStyles + 1)
+                        .fluentPut("totalStyles", queryStyleIds.size())
+                        .fluentPut("matched", byListingId.size())
+                        .toJSONString());
+                page++;
+            }
+            searchedStyles++;
+        }
+
+        List<StockXDelistInputExcel> result = List.copyOf(byListingId.values());
+        if (taskInputSnapshotStore != null) {
+            taskInputSnapshotStore.saveDelist(taskId, result);
+        }
+        log.info("[{}] Excel货号尺码规则匹配完成, inventoryType:{}, rules:{}, listings:{}",
+                accountId, inventoryType, taskInput.size(), result.size());
+        return result;
+    }
+
+    private static boolean matchesSize(Set<String> requestedSizes, String usSize, String euSize) {
+        return requestedSizes.contains(normalizeSize(usSize))
+                || requestedSizes.contains(normalizeSize(euSize));
+    }
+
+    private static String normalizeStyleId(String styleId) {
+        return StrUtil.isBlank(styleId) ? null : styleId.trim().toUpperCase(Locale.ROOT);
+    }
+
+    static String normalizeSize(String size) {
+        if (StrUtil.isBlank(size)) {
+            return null;
+        }
+        String normalized = size.trim().toUpperCase(Locale.ROOT)
+                .replaceFirst("^(US|EU)\\s*", "");
+        normalized = ShoesUtil.normalizeUnicodeFraction(normalized).replaceAll("\\s+", "");
+        if (normalized.matches("\\d+\\.0+")) {
+            normalized = normalized.substring(0, normalized.indexOf('.'));
+        }
+        return normalized;
     }
 }

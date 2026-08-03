@@ -646,7 +646,7 @@ const TaskPage = () => {
                     {({getFieldValue}) => getFieldValue('delistMode') !== 'all' ? (
                         <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
-                                   extra="使用获取上架商品导出的Excel，需包含listingId列">
+                                   extra="支持 listingId；或“货号 + 尺码”两列。按货号尺码时会搜索当前挂单，同尺码有多条将全部下架">
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
