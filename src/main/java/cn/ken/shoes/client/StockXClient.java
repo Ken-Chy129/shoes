@@ -617,6 +617,73 @@ public class StockXClient {
         return Pair.of(pageCount, result);
     }
 
+    /**
+     * 按货号精确查询商品价格。与通用搜索不同，这里不会展开全部搜索结果：
+     * 依次校验候选商品的 styleId，命中后只查询该商品的市场数据并立即返回。
+     */
+    public List<StockXPriceExcel> searchExactItemWithPrice(String modelNo, String searchType,
+                                                           String country, StockXAccount account) {
+        SearchTypeEnum searchTypeEnum = SearchTypeEnum.from(searchType);
+        if (searchTypeEnum == null || StrUtil.isBlank(modelNo)) {
+            return Collections.emptyList();
+        }
+        String finalCountry = country != null ? country : "HK";
+        Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
+        String accountName = account != null ? account.getName() : null;
+        List<String> aliases = Arrays.stream(modelNo.split("\\s*/\\s*"))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+
+        Set<String> checkedUrlKeys = new HashSet<>();
+        for (String alias : aliases) {
+            JSONObject searchResponse = queryPro(
+                    buildItemSearchRequest(alias, 1, "featured", finalCountry), headers, accountName);
+            if (searchResponse == null) {
+                continue;
+            }
+            if ("Unauthorized".equals(searchResponse.getString("message"))) {
+                log.error("searchExactItemWithPrice|Token已过期或无效，请更新Token");
+                return null;
+            }
+            JSONObject data = searchResponse.getJSONObject("data");
+            JSONObject browse = data != null ? data.getJSONObject("browse") : null;
+            JSONObject results = browse != null ? browse.getJSONObject("results") : null;
+            JSONArray edges = results != null ? results.getJSONArray("edges") : null;
+            if (CollectionUtils.isEmpty(edges)) {
+                continue;
+            }
+
+            for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
+                JSONObject node = edge.getJSONObject("node");
+                JSONObject productSummary = node != null && node.getJSONObject("product") != null
+                        ? node.getJSONObject("product") : node;
+                String urlKey = productSummary != null ? productSummary.getString("urlKey") : null;
+                if (StrUtil.isBlank(urlKey) || !checkedUrlKeys.add(urlKey)) {
+                    continue;
+                }
+                JSONObject productResponse = queryPro(buildGetProductRequest(urlKey), headers, accountName);
+                JSONObject productData = productResponse != null ? productResponse.getJSONObject("data") : null;
+                JSONObject product = productData != null ? productData.getJSONObject("product") : null;
+                String actualModelNo = product != null ? product.getString("styleId") : null;
+                if (!matchesAnyModelAlias(aliases, actualModelNo)) {
+                    continue;
+                }
+
+                JSONObject marketResponse = queryPro(buildGetMarketDataRequest(urlKey, finalCountry), headers, accountName);
+                String title = productSummary != null ? productSummary.getString("title") : null;
+                return buildPriceRows(urlKey, title, searchTypeEnum, productResponse, marketResponse);
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private static boolean matchesAnyModelAlias(List<String> aliases, String actualModelNo) {
+        return StrUtil.isNotBlank(actualModelNo)
+                && aliases.stream().anyMatch(alias -> alias.equalsIgnoreCase(actualModelNo.trim()));
+    }
+
     private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers, String accountName) {
         JSONObject[] responses = new JSONObject[2];
         CountDownLatch detailLatch = new CountDownLatch(2);
@@ -640,8 +707,11 @@ public class StockXClient {
             Thread.currentThread().interrupt();
             return Collections.emptyList();
         }
-        JSONObject productResp = responses[0];
-        JSONObject marketResp = responses[1];
+        return buildPriceRows(urlKey, title, searchTypeEnum, responses[0], responses[1]);
+    }
+
+    private List<StockXPriceExcel> buildPriceRows(String urlKey, String title, SearchTypeEnum searchTypeEnum,
+                                                   JSONObject productResp, JSONObject marketResp) {
         if (productResp == null || marketResp == null) {
             log.info("fetchItemDetail response is null, urlKey:{}", urlKey);
             return Collections.emptyList();
@@ -1206,7 +1276,7 @@ public class StockXClient {
         }
     }
 
-    private JSONObject queryPro(String body, Headers headers, String accountName) {
+    protected JSONObject queryPro(String body, Headers headers, String accountName) {
         // 默认按"读"处理：不进限流冷却 Guard。StockX 的 "Batch usage limit" 429 只对批量写计数，读不消耗该配额。
         return queryPro(body, headers, accountName, false);
     }

@@ -744,18 +744,23 @@ public class StockXService {
             String cacheKey = modelNo.toUpperCase(Locale.ROOT);
             List<StockXPriceExcel> candidates = searchCache.get(cacheKey);
             if (candidates == null) {
-                Pair<Integer, List<StockXPriceExcel>> searchResult = stockXClient.searchItemWithPrice(
-                        modelNo, 1, "featured", "shoes", country, account);
+                List<StockXPriceExcel> searchResult = stockXClient.searchExactItemWithPrice(
+                        modelNo, "shoes", country, account);
                 if (searchResult == null) {
                     throw new RuntimeException("StockX Token已过期或无效，请更新Token");
                 }
-                candidates = Optional.ofNullable(searchResult.getValue()).orElseGet(List::of).stream()
-                        .filter(item -> item.getModelNo() != null && item.getModelNo().equalsIgnoreCase(modelNo))
-                        .toList();
+                candidates = searchResult;
                 searchCache.put(cacheKey, candidates);
             }
 
-            Map<String, Set<String>> sizeFilter = ModelNoSearchSizeFilter.build(List.of(input));
+            ModelNoSearchExcel resolvedInput = new ModelNoSearchExcel();
+            resolvedInput.setModelNo(candidates.stream()
+                    .map(StockXPriceExcel::getModelNo)
+                    .filter(StrUtil::isNotBlank)
+                    .findFirst()
+                    .orElse(modelNo));
+            resolvedInput.setSize(requestedSize);
+            Map<String, Set<String>> sizeFilter = ModelNoSearchSizeFilter.build(List.of(resolvedInput));
             StockXPriceExcel matched = candidates.stream()
                     .filter(item -> ModelNoSearchSizeFilter.matches(
                             sizeFilter, item.getModelNo(), item.getUsmSize(), item.getEuSize()))

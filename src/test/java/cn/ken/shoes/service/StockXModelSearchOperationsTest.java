@@ -1,6 +1,5 @@
 package cn.ken.shoes.service;
 
-import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -38,8 +37,8 @@ class StockXModelSearchOperationsTest {
         result.setEuSize("42.5");
         result.setStandardPrice(300);
         result.setFlexPrice(315);
-        when(client.searchItemWithPrice(eq("STYLE-1"), eq(1), eq("featured"), eq("shoes"),
-                eq("US"), any(StockXAccount.class))).thenReturn(Pair.of(1, List.of(result)));
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(result));
 
         ModelNoSearchExcel input = new ModelNoSearchExcel();
         input.setModelNo("STYLE-1");
@@ -52,6 +51,29 @@ class StockXModelSearchOperationsTest {
         assertThat(item.getValue().getLowestPrice()).isEqualByComparingTo("300");
         assertThat(item.getValue().getFlexLowestPrice()).isEqualByComparingTo("315");
         assertThat(item.getValue().getOperateResult()).isEqualTo("获取成功");
+        verify(client, never()).searchItemWithPrice(anyString(), anyInt(), anyString(), anyString(),
+                anyString(), any(StockXAccount.class));
+    }
+
+    @Test
+    void keepsSpecifiedSizeWhenStockXReturnsOneAliasFromCombinedModelNumber() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        StockXPriceExcel wrongSize = price("STYLE-1", "8", "41", "variant-8");
+        StockXPriceExcel exactSize = price("STYLE-1", "9", "42.5", "variant-9");
+        when(client.searchExactItemWithPrice(eq("ALIAS-1 / STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(wrongSize, exactSize));
+
+        ModelNoSearchExcel input = new ModelNoSearchExcel();
+        input.setModelNo("ALIAS-1 / STYLE-1");
+        input.setSize("EU 42.5");
+        service.fetchModelSearchPrices(account(), 12L, List.of(input));
+
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).insert(item.capture());
+        assertThat(item.getValue().getProductId()).isEqualTo("variant-9");
+        assertThat(item.getValue().getSize()).isEqualTo("9");
     }
 
     @Test
@@ -95,6 +117,16 @@ class StockXModelSearchOperationsTest {
         account.setName("account-1");
         account.setCountry("US");
         return account;
+    }
+
+    private static StockXPriceExcel price(String modelNo, String usSize, String euSize, String variantId) {
+        StockXPriceExcel result = new StockXPriceExcel();
+        result.setModelNo(modelNo);
+        result.setUsmSize(usSize);
+        result.setEuSize(euSize);
+        result.setId(variantId);
+        result.setStandardPrice(300);
+        return result;
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {
