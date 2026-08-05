@@ -45,5 +45,11 @@ public interface SearchTaskMapper extends BaseMapper<SearchTaskDO> {
                            @Param("status") String status,
                            @Param("startTime") Date startTime);
 
+    /**
+     * 仅更新已落盘的结果文件路径，用于任务执行中的增量保存，
+     * 使中断（取消/重启搁置）的任务也能下载已爬取到的部分数据。
+     */
+    void updateFilePath(@Param("id") Long id, @Param("filePath") String filePath);
+
     void shelveRunningTasks(@Param("excludeId") Long excludeId);
 }

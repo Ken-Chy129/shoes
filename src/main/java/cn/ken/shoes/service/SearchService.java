@@ -46,6 +46,12 @@ public class SearchService {
 
     private final Set<Long> cancelledTaskIds = ConcurrentHashMap.newKeySet();
 
+    /** 执行中增量落盘的最小间隔，避免大任务（多排序×多页）频繁全量重写 Excel。 */
+    private static final long PARTIAL_FLUSH_INTERVAL_MS = 30_000L;
+
+    /** taskId -> 最近一次增量落盘时间 */
+    private final Map<Long, Long> partialFlushAt = new ConcurrentHashMap<>();
+
     @Resource
     private SearchTaskMapper searchTaskMapper;
 
@@ -108,8 +114,10 @@ public class SearchService {
             }
         } catch (Exception e) {
             log.error("executeSearchTask error, taskId:{}, msg:{}", taskId, e.getMessage(), e);
-            // 更新任务状态为FAILED
+            // 更新任务状态为FAILED（已增量落盘的 file_path 保留，失败任务同样可下载部分结果）
             searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.FAILED.getCode(), new Date(), null);
+        } finally {
+            partialFlushAt.remove(taskId);
         }
     }
 
@@ -140,6 +148,10 @@ public class SearchService {
             // 使用LinkedHashMap保证去重后保持顺序
             Map<String, JSONObject> resultMap = new LinkedHashMap<>();
 
+            // 结果文件在首次拿到数据时就落盘，并随进度覆盖写入，
+            // 这样任务被取消或因重启置为 shelved 时，已爬到的数据仍可下载。
+            String filePath = buildFilePath(platform, type, query);
+
             // 计算总的查询次数用于进度计算
             int totalQueries = sortsList.size() * pageCount;
             int completedQueries = 0;
@@ -148,6 +160,7 @@ public class SearchService {
             for (String sort : sortsList) {
                 if (isCancelled(taskId)) {
                     cancelledTaskIds.remove(taskId);
+                    flushPartialResult(taskId, platform, filePath, resultMap, true);
                     return;
                 }
                 Pair<Integer, JSONArray> firstPair = doSearch(taskId, platform, query, sort.trim(), searchType, 1, searchTask.getAccountName());
@@ -176,11 +189,13 @@ public class SearchService {
                 completedQueries++;
                 int progress = (int) ((completedQueries * 100.0) / totalQueries);
                 searchTaskMapper.updateProgress(taskId, progress);
+                flushPartialResult(taskId, platform, filePath, resultMap);
 
                 // 处理后续页
                 for (int i = 2; i <= Math.min(pageCount, totalPage); i++) {
                     if (isCancelled(taskId)) {
                         cancelledTaskIds.remove(taskId);
+                        flushPartialResult(taskId, platform, filePath, resultMap, true);
                         return;
                     }
                     Pair<Integer, JSONArray> pair = doSearch(taskId, platform, query, sort.trim(), searchType, i, searchTask.getAccountName());
@@ -204,13 +219,9 @@ public class SearchService {
                     completedQueries++;
                     progress = (int) ((completedQueries * 100.0) / totalQueries);
                     searchTaskMapper.updateProgress(taskId, progress);
+                    flushPartialResult(taskId, platform, filePath, resultMap);
                 }
             }
-
-        // 生成文件名（使用时间戳避免重复）
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        String filename = STR."\{platform}_\{type}_\{query}_\{timestamp}";
-        String filePath = STR."files/search/\{platform}/\{filename}.xlsx";
 
         // 保存到Excel
         List<JSONObject> resultList = new ArrayList<>(resultMap.values());
@@ -245,6 +256,9 @@ public class SearchService {
         // 使用LinkedHashMap保证去重后保持顺序
         Map<String, JSONObject> resultMap = new LinkedHashMap<>();
 
+        // 与关键词搜索一致：边爬边落盘，中断也能下载已获取的货号数据
+        String filePath = buildFilePath(platform, type, null);
+
         // 计算总任务数:按货号数量计算
         int totalModelNos = modelNoList.size();
         int completedModelNos = 0;
@@ -253,6 +267,7 @@ public class SearchService {
         for (String modelNo : modelNoList) {
             if (isCancelled(taskId)) {
                 cancelledTaskIds.remove(taskId);
+                flushPartialResult(taskId, platform, filePath, resultMap, true);
                 return;
             }
             // 只查询第一页,pageIndex=1,searchType默认为"shoes"
@@ -281,13 +296,8 @@ public class SearchService {
             completedModelNos++;
             int progress = (int) ((completedModelNos * 100.0) / totalModelNos);
             searchTaskMapper.updateProgress(taskId, progress);
+            flushPartialResult(taskId, platform, filePath, resultMap);
         }
-
-        // 生成文件名(使用时间戳避免重复)
-        String timestamp = String.valueOf(System.currentTimeMillis());
-        // 货号搜索统一文件名格式: stockx_modelNo_{时间戳}
-        String filename = STR."\{platform}_\{type}_\{timestamp}";
-        String filePath = STR."files/search/\{platform}/\{filename}.xlsx";
 
         // 保存到Excel
         List<JSONObject> resultList = new ArrayList<>(resultMap.values());
@@ -431,6 +441,55 @@ public class SearchService {
                 WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(DunkPriceExcel.class).build();
                 excelWriter.write(excels, writeSheet);
             }
+        }
+    }
+
+    /** 结果文件路径：任务开始即确定，便于执行过程中反复覆盖写入同一个文件。 */
+    private String buildFilePath(String platform, String type, String query) {
+        String timestamp = String.valueOf(System.currentTimeMillis());
+        String filename = query == null || query.isBlank()
+                ? STR."\{platform}_\{type}_\{timestamp}"
+                : STR."\{platform}_\{type}_\{query}_\{timestamp}";
+        return STR."files/search/\{platform}/\{sanitizeFileName(filename)}.xlsx";
+    }
+
+    /** 关键词可能含换行、斜杠等非法文件名字符，统一替换避免落盘失败。 */
+    private String sanitizeFileName(String filename) {
+        return filename.replaceAll("[\\\\/:*?\"<>|\\r\\n]", "_").trim();
+    }
+
+    /**
+     * 把当前已抓取到的结果写入文件并回写 file_path。
+     * 任务仍在执行时也保证磁盘上有一份可下载的快照，避免中断后长时间抓取的数据全部作废。
+     */
+    private void flushPartialResult(Long taskId, String platform, String filePath,
+                                    Map<String, JSONObject> resultMap) {
+        flushPartialResult(taskId, platform, filePath, resultMap, false);
+    }
+
+    /**
+     * @param force true 表示必须落盘（任务取消/结束时），false 时按 {@link #PARTIAL_FLUSH_INTERVAL_MS} 节流，
+     *              避免多排序多页任务频繁全量重写 Excel。
+     */
+    private void flushPartialResult(Long taskId, String platform, String filePath,
+                                    Map<String, JSONObject> resultMap, boolean force) {
+        if (resultMap.isEmpty()) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (!force) {
+            Long lastFlushAt = partialFlushAt.get(taskId);
+            if (lastFlushAt != null && now - lastFlushAt < PARTIAL_FLUSH_INTERVAL_MS) {
+                return;
+            }
+        }
+        try {
+            saveItemsToExcel(platform, filePath, new ArrayList<>(resultMap.values()));
+            searchTaskMapper.updateFilePath(taskId, filePath);
+            partialFlushAt.put(taskId, now);
+        } catch (Exception e) {
+            // 落盘失败不能影响主搜索流程，下一次进度更新会再试
+            log.error("flushPartialResult error, taskId:{}, filePath:{}", taskId, filePath, e);
         }
     }
 

@@ -227,15 +227,16 @@ const SearchPage = () => {
     }
 
     const batchDownload = () => {
-        const successTasks = taskList.filter(
-            task => selectedRowKeys.includes(task.id) && task.status === 'success' && task.filePath
+        // 只要已落盘就能下载：中断的任务也保留了已爬取的部分结果
+        const downloadableTasks = taskList.filter(
+            task => selectedRowKeys.includes(task.id) && task.filePath
         );
-        if (successTasks.length === 0) {
-            message.warning('请选择已完成的任务');
+        if (downloadableTasks.length === 0) {
+            message.warning('所选任务暂无可下载结果');
             return;
         }
-        message.success(`开始下载 ${successTasks.length} 个文件`);
-        successTasks.forEach((task, index) => {
+        message.success(`开始下载 ${downloadableTasks.length} 个文件`);
+        downloadableTasks.forEach((task, index) => {
             setTimeout(() => {
                 const link = document.createElement('a');
                 link.href = `${STOCKX_DOWNLOAD_API.DOWNLOAD_SEARCH}?searchTaskId=${task.id}`;
@@ -417,14 +418,14 @@ const SearchPage = () => {
                             终止
                         </Button>
                     )}
-                    {record.status === 'success' && record.filePath && (
+                    {record.filePath && (
                         <Button
-                            type="primary"
+                            type={record.status === 'success' ? 'primary' : 'default'}
                             size="small"
                             icon={<DownloadOutlined />}
                             onClick={() => downloadResult(record.id)}
                         >
-                            下载
+                            {record.status === 'success' ? '下载' : '下载部分'}
                         </Button>
                     )}
                 </Space>

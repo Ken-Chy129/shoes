@@ -60,6 +60,13 @@
         where id = #{id}
     </update>
 
+    <update id="updateFilePath">
+        update search_task
+        set file_path = #{filePath},
+            gmt_modified = now()
+        where id = #{id}
+    </update>
+
     <update id="shelveRunningTasks">
         update search_task
         set status = 'shelved', end_time = now(), gmt_modified = now()
