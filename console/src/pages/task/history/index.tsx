@@ -696,10 +696,16 @@ const TaskPage = () => {
             return <>
                 <Form.Item name="soldTimeRange" label="售出时间" initialValue={[moment().subtract(12, 'hours'), moment()]}
                            rules={[{required: true, message: '请选择售出时间范围'}]}
-                           extra="仅查询待处理订单；每笔售出独立判断并补回1件">
-                    <DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{width: '100%'}}/>
+                           extra="仅查询待处理订单，每笔售出独立补回 1 件">
+                    <DatePicker.RangePicker
+                        showTime={{format: 'HH:mm'}}
+                        format="YYYY-MM-DD HH:mm"
+                        separator="至"
+                        allowClear={false}
+                        placeholder={['开始时间', '结束时间']}
+                        style={{width: '100%'}}
+                    />
                 </Form.Item>
-                <Alert type="info" showIcon message="任务会强制获取最新得物价格，以当前最低价减1判断利润，盈利后按该价格补单。"/>
             </>;
         }
 
