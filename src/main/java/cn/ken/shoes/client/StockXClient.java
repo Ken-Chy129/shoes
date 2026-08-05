@@ -242,6 +242,7 @@ public class StockXClient {
         variables.put("order", "DESC");
         variables.put("country", country);
         variables.put("market", country);
+        variables.put("currencyCode", "USD");
         variables.put("state", "PENDING");
         variables.put("query", "");
         if (StrUtil.isNotBlank(after)) {

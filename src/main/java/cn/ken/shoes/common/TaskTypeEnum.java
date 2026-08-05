@@ -17,6 +17,7 @@ public enum TaskTypeEnum {
     MODEL_SEARCH("model_search", "货号搜索上架", true),
     FETCH_ORDERS("fetch_orders", "获取订单", false),
     EXTEND_SHIPPING("extend_shipping", "订单延期", false),
+    REPLENISHMENT("replenishment", "补单", false),
     ;
 
     private final String code;

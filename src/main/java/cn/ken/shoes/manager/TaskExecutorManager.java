@@ -20,12 +20,17 @@ import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
+import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -64,6 +69,9 @@ public class TaskExecutorManager {
 
     @Resource
     private StockXShippingExtensionService shippingExtensionService;
+
+    @Resource
+    private StockXReplenishmentService replenishmentService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -330,7 +338,17 @@ public class TaskExecutorManager {
                 yield categories.isEmpty() ? null : startFetchOrders(account, categories);
             }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
+            case REPLENISHMENT -> startReplenishmentFromParams(account, params);
         };
+    }
+
+    private Long startReplenishmentFromParams(String account, JSONObject params) {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        Instant startTime = LocalDateTime.parse(params.getString("soldStartTime"), formatter)
+                .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+        Instant endTime = LocalDateTime.parse(params.getString("soldEndTime"), formatter)
+                .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+        return replenishmentService.startManualAccount(account, startTime, endTime);
     }
 
     private String inventoryType(JSONObject params) {

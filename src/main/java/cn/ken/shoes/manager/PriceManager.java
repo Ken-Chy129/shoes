@@ -248,6 +248,27 @@ public class PriceManager {
         }
     }
 
+    /** 强制绕过24小时缓存，调用当前得物价格主链路刷新指定货号。 */
+    public void refreshPrices(Set<String> modelNos) {
+        if (modelNos == null || modelNos.isEmpty()) {
+            return;
+        }
+        Set<String> cacheKeys = new HashSet<>();
+        for (String modelNo : modelNos) {
+            if (modelNo == null || modelNo.isBlank()) {
+                continue;
+            }
+            cacheKeys.add(modelNo);
+            if (modelNo.contains("/")) {
+                cacheKeys.addAll(Arrays.stream(modelNo.split("\\s*/\\s*"))
+                        .filter(value -> !value.isBlank())
+                        .toList());
+            }
+        }
+        CACHE.invalidateAll(cacheKeys);
+        batchLoadPrices(modelNos);
+    }
+
     /**
      * 批量查询价格，每200个一批
      */

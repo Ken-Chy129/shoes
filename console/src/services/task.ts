@@ -6,6 +6,7 @@ const TASK_TYPE = {
     EXCEL_DELIST: 'excel_delist',
     MODEL_SEARCH: 'model_search',
     EXTEND_SHIPPING: 'extend_shipping',
+    REPLENISHMENT: 'replenishment',
 };
 
 enum TASK_API {
@@ -40,6 +41,8 @@ enum TASK_API {
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
+    // StockX 补单（按售出时间范围）
+    START_REPLENISHMENT = '/api/task/stockx/startReplenishment',
 }
 
 export {TASK_API, TASK_TYPE}

@@ -911,6 +911,13 @@ public class StockXService {
         });
     }
 
+    /** 复用任务上架与异步结果校验链路，供补单等任务提交已校验的上架项。 */
+    public void submitTaskListings(Long taskId, List<StockXListingCreateItem> items,
+                                   Map<String, Long> variantToTaskItemId,
+                                   StockXAccount account) {
+        batchCreateSpecifiedListings(taskId, items, variantToTaskItemId, account);
+    }
+
     private void updateModelSearchProgress(Long taskId, int current, int total, String detail) {
         JSONObject attrs = new JSONObject(true);
         attrs.put("progress", total > 0 ? Math.min(current * 100 / total, 100) : 100);

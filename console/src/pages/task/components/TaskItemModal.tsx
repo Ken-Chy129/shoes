@@ -325,11 +325,45 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 170},
     ];
 
+    const replenishmentColumns = [
+        {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 155},
+        {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 220, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 125},
+        {title: 'US码', dataIndex: 'size', key: 'size', width: 70},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 70},
+        {
+            title: '原售出价', dataIndex: 'salePrice', key: 'salePrice', width: 95,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {
+            title: '当前最低价', dataIndex: 'lowestPrice', key: 'lowestPrice', width: 100,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {
+            title: '补单价', dataIndex: 'targetPrice', key: 'targetPrice', width: 85,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {
+            title: '最新得物价', dataIndex: 'poisonPrice', key: 'poisonPrice', width: 105,
+            render: (value: number) => value !== null && value !== undefined ? `¥${value}` : '-',
+        },
+        {
+            title: '预计利润', dataIndex: 'profit35', key: 'profit35', width: 90,
+            render: (value: number) => value !== null && value !== undefined
+                ? <span style={{color: value >= 0 ? 'green' : 'red'}}>{`¥${value}`}</span> : '-',
+        },
+        {title: '出售时间', dataIndex: 'soldOn', key: 'soldOn', width: 165},
+        {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 170, ellipsis: true},
+    ];
+
     const columns = taskType === 'fetch_orders'
         ? orderColumns
         : taskType === 'extend_shipping'
             ? shippingExtensionColumns
-            : taskType === 'model_search' ? modelSearchColumns : productColumns;
+            : taskType === 'replenishment'
+                ? replenishmentColumns
+                : taskType === 'model_search' ? modelSearchColumns : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -345,7 +379,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
 
     return (
         <Modal
-            title={taskType === 'extend_shipping' ? '订单延期明细' : '任务明细'}
+            title={taskType === 'extend_shipping' ? '订单延期明细' : taskType === 'replenishment' ? '补单明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
             footer={null}
@@ -353,7 +387,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
-                    {taskType !== 'fetch_orders' && taskType !== 'extend_shipping' && <Input
+                    {taskType !== 'fetch_orders' && taskType !== 'extend_shipping' && taskType !== 'replenishment' && <Input
                         placeholder="轮次"
                         value={filterRound}
                         onChange={e => { setFilterRound(e.target.value); setPageIndex(1); }}
@@ -406,6 +440,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                     })()}
+                    {taskType === 'replenishment' && attributes && (() => {
+                        try {
+                            const attrs = JSON.parse(attributes);
+                            return <span style={{color: '#1677ff', fontWeight: 500}}>
+                                售出 {attrs.scanned ?? 0} | 符合利润 {attrs.profitable ?? 0}笔 | 提交补单 {attrs.listingQuantity ?? 0}件
+                            </span>;
+                        } catch { return null; }
+                    })()}
                     <span>自动刷新</span>
                     <Switch checked={autoRefresh} onChange={setAutoRefresh}/>
                 </Space>
@@ -414,7 +456,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: taskType === 'fetch_orders' ? 1700 : taskType === 'model_search' ? 1450 : 1130}}
+                scroll={{x: taskType === 'fetch_orders' ? 1700
+                    : taskType === 'model_search' ? 1450
+                        : taskType === 'replenishment' ? 1550 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,

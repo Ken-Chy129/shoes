@@ -1,16 +1,39 @@
 package cn.ken.shoes.manager;
 
 import cn.ken.shoes.ShoesContext;
+import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.common.PoisonPriceMode;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.SpecialPriceDO;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
+import java.util.Date;
 import java.util.List;
+import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PriceManagerSizeNormalizationTest {
+
+    @Test
+    void refreshPricesBypassesExistingCacheEntries() throws Exception {
+        PriceManager manager = new PriceManager();
+        manager.putModelNoPrice("STYLE-A", List.of(poisonPrice("STYLE-A", "42", 100)));
+        PoisonClient client = new PoisonClient() {
+            @Override
+            public List<PoisonPriceDO> batchQueryPrice(List<String> modelNos) {
+                PoisonPriceDO fresh = poisonPrice("STYLE-A", "42", 200);
+                fresh.setUpdateTime(new Date());
+                return List.of(fresh);
+            }
+        };
+        setField(manager, "poisonClient", client);
+
+        manager.refreshPrices(Set.of("STYLE-A"));
+
+        assertThat(manager.getPoisonPrice("STYLE-A", "42")).isEqualTo(200);
+    }
 
     @Test
     void matchesStockXAsciiFractionSizesAgainstNormalizedPoisonSizes() {
@@ -70,5 +93,11 @@ class PriceManagerSizeNormalizationTest {
         item.setEuSize(euSize);
         item.setPrice(price);
         return item;
+    }
+
+    private static void setField(Object target, String fieldName, Object value) throws Exception {
+        Field field = target.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(target, value);
     }
 }

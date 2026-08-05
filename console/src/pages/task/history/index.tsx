@@ -315,6 +315,16 @@ const TaskPage = () => {
                     onSuccess: () => { message.success('订单延期任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'replenishment') {
+                const range = values.soldTimeRange || [];
+                doPostRequest(TASK_API.START_REPLENISHMENT, {
+                    accountId: values.accountId,
+                    soldStartTime: range[0]?.format('YYYY-MM-DD HH:mm:ss'),
+                    soldEndTime: range[1]?.format('YYYY-MM-DD HH:mm:ss'),
+                }, {
+                    onSuccess: () => { message.success('补单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else {
                 // KC
                 doPostRequest(`${TASK_API.START}?taskType=${createTaskType}`, {}, {
@@ -408,6 +418,17 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'replenishment' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        const tip = `扫描售出 ${attrs.scanned ?? 0} | 跳过 ${attrs.skipped ?? 0}`;
+                        return <Tooltip title={tip}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                符合利润 {attrs.profitable ?? 0}笔<br/>提交 {attrs.listingQuantity ?? 0}件
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.round == null) return '-';
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
@@ -473,7 +494,8 @@ const TaskPage = () => {
                             } catch {}
                         }}>Excel</Button>
                     )}
-                    {(record.status === 'running' || record.status === '运行中') && record.taskType !== 'extend_shipping' && (
+                    {(record.status === 'running' || record.status === '运行中')
+                        && record.taskType !== 'extend_shipping' && record.taskType !== 'replenishment' && (
                         <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>
@@ -670,6 +692,17 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'replenishment') {
+            return <>
+                <Form.Item name="soldTimeRange" label="售出时间" initialValue={[moment().subtract(12, 'hours'), moment()]}
+                           rules={[{required: true, message: '请选择售出时间范围'}]}
+                           extra="仅查询待处理订单；每笔售出独立判断并补回1件">
+                    <DatePicker.RangePicker showTime format="YYYY-MM-DD HH:mm:ss" style={{width: '100%'}}/>
+                </Form.Item>
+                <Alert type="info" showIcon message="任务会强制获取最新得物价格，以当前最低价减1判断利润，盈利后按该价格补单。"/>
+            </>;
+        }
+
         return <div style={{color: '#999', padding: '8px 0', textAlign: 'center'}}>
             该任务类型无需额外配置，直接点击创建即可
         </div>;
@@ -681,7 +714,7 @@ const TaskPage = () => {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
-        orderTypes: '订单类型',
+        orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
 

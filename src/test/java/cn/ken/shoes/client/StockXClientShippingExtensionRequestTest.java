@@ -15,6 +15,7 @@ class StockXClientShippingExtensionRequestTest {
         JSONObject variables = request.getJSONObject("variables");
         assertThat(variables.getString("after")).isEqualTo("cursor-2");
         assertThat(variables.getString("state")).isEqualTo("PENDING");
+        assertThat(variables.getString("currencyCode")).isEqualTo("USD");
         assertThat(variables.getInteger("pageSize")).isEqualTo(30);
         assertThat(variables.getJSONObject("filters").getJSONObject("statesList")
                 .getJSONArray("in").toJavaList(Integer.class))

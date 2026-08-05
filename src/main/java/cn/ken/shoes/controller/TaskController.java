@@ -20,6 +20,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
+import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
@@ -28,6 +29,11 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -48,6 +54,9 @@ public class TaskController {
 
     @Resource
     private StockXShippingExtensionService shippingExtensionService;
+
+    @Resource
+    private StockXReplenishmentService replenishmentService;
 
     @Resource
     private StockXPriceRateStateManager stockXPriceRateStateManager;
@@ -290,6 +299,35 @@ public class TaskController {
             return Result.buildError("任务正在运行、账号不存在或账号未启用");
         }
         return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    // ==================== StockX 补单 ====================
+
+    @PostMapping("stockx/startReplenishment")
+    public Result<String> startReplenishment(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String soldStartTime = body.getString("soldStartTime");
+        String soldEndTime = body.getString("soldEndTime");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(soldStartTime) || StrUtil.isBlank(soldEndTime)) {
+            return Result.buildError("accountId和售出时间范围不能为空");
+        }
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+            Instant startTime = LocalDateTime.parse(soldStartTime, formatter)
+                    .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+            Instant endTime = LocalDateTime.parse(soldEndTime, formatter)
+                    .atZone(ZoneId.of("Asia/Shanghai")).toInstant();
+            if (!startTime.isBefore(endTime)) {
+                return Result.buildError("售出开始时间必须早于结束时间");
+            }
+            Long taskId = replenishmentService.startManualAccount(accountId, startTime, endTime);
+            if (taskId == null) {
+                return Result.buildError("任务正在运行、账号不存在或账号未启用");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (DateTimeParseException e) {
+            return Result.buildError("售出时间格式应为yyyy-MM-dd HH:mm:ss");
+        }
     }
 
     // ==================== StockX 下架 ====================
