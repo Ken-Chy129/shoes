@@ -943,10 +943,11 @@ public class StockXService {
 
         // 计算预估总步数（关键词数 × 排序数 × 页数）
         String[] keywordArr = keywords.split("\n");
-        String[] sortArr = sorts.split(",");
+        String[] sortArr = modelNoSearch ? new String[]{"featured"} : sorts.split(",");
+        int effectivePageCount = modelNoSearch ? 1 : pageCount;
         long validKeywords = Arrays.stream(keywordArr).map(String::trim).filter(s -> !s.isEmpty()).count();
         long validSorts = Arrays.stream(sortArr).map(String::trim).filter(s -> !s.isEmpty()).count();
-        int totalSteps = (int) (validKeywords * validSorts * pageCount);
+        int totalSteps = (int) (validKeywords * validSorts * effectivePageCount);
         int currentStep = 0;
 
         List<String> previousProductIds = taskItemMapper.selectProcessedProductIdsByTaskId(taskId);
@@ -1003,15 +1004,24 @@ public class StockXService {
                 sort = sort.trim();
                 if (sort.isEmpty()) continue;
 
-                for (int pageIdx = 1; pageIdx <= pageCount; pageIdx++) {
+                for (int pageIdx = 1; pageIdx <= effectivePageCount; pageIdx++) {
                     if (TaskSwitch.isSearchListCancelled(accountName)) break;
                     currentStep++;
                     int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
-                    String detail = STR."关键词: \{keyword} | 排序: \{sort} | 页码: \{pageIdx}/\{pageCount}";
+                    String detail = modelNoSearch
+                            ? STR."货号: \{keyword} | 精确搜索"
+                            : STR."关键词: \{keyword} | 排序: \{sort} | 页码: \{pageIdx}/\{effectivePageCount}";
                     updateSearchProgress(taskId, progress, totalSteps, currentStep, totalListed, totalProcessed, keywordIdx, (int) validKeywords, detail);
 
-                    Pair<Integer, List<StockXPriceExcel>> searchResult =
-                            stockXClient.searchItemWithPrice(keyword, pageIdx, sort, searchType, country, account);
+                    Pair<Integer, List<StockXPriceExcel>> searchResult;
+                    if (modelNoSearch) {
+                        List<StockXPriceExcel> exactItems = stockXClient.searchExactItemWithPrice(
+                                keyword, searchType, country, account);
+                        searchResult = exactItems != null ? Pair.of(1, exactItems) : null;
+                    } else {
+                        searchResult = stockXClient.searchItemWithPrice(
+                                keyword, pageIdx, sort, searchType, country, account);
+                    }
                     if (searchResult == null) {
                         throw new RuntimeException("StockX Token已过期或无效，请更新Token");
                     }
@@ -1037,9 +1047,6 @@ public class StockXService {
                         totalProcessed++;
 
                         String modelNo = item.getModelNo();
-                        if (modelNoSearch && (modelNo == null || !modelNo.equalsIgnoreCase(keyword))) {
-                            continue;
-                        }
                         String euSize = item.getEuSize();
                         if (modelNoSearch && !ModelNoSearchSizeFilter.matches(
                                 modelNoSizeFilters, modelNo, item.getUsmSize(), euSize)) {

@@ -18,7 +18,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
@@ -28,6 +31,63 @@ class TaskExecutorManagerSafetyTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void exactModelSearchIsStoredAsAListingTaskAndNormalizedToOnePage() throws Exception {
+        String accountName = "exact-search-account";
+        List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setEnabled(true);
+        StockXConfig.setAccounts(List.of(account));
+
+        AtomicReference<TaskDO> createdTask = new AtomicReference<>();
+        AtomicReference<String> executedSorts = new AtomicReference<>();
+        AtomicLong ids = new AtomicLong(300);
+        CountDownLatch executed = new CountDownLatch(1);
+        TaskMapper taskMapper = (TaskMapper) Proxy.newProxyInstance(
+                TaskMapper.class.getClassLoader(), new Class<?>[]{TaskMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        TaskDO task = (TaskDO) args[0];
+                        task.setId(ids.incrementAndGet());
+                        createdTask.set(task);
+                        return 1;
+                    }
+                    if (method.getReturnType() == int.class) return 1;
+                    if (method.getReturnType() == long.class) return 0L;
+                    if (method.getReturnType() == boolean.class) return false;
+                    return null;
+                });
+        StockXService service = new StockXService() {
+            @Override
+            public boolean searchAndList(StockXAccount ignored, Long taskId, String keywords, String sorts,
+                                         int pageCount, String searchType, int maxListCount,
+                                         boolean modelNoSearch, Map<String, Set<String>> modelNoSizeFilters) {
+                executedSorts.set(sorts + ":" + pageCount + ":" + modelNoSearch);
+                executed.countDown();
+                return false;
+            }
+        };
+        TaskExecutorManager manager = new TaskExecutorManager();
+        setField(manager, "taskMapper", taskMapper);
+        setField(manager, "stockXService", service);
+
+        try {
+            Long taskId = manager.startSearchList(accountName, "IF4396-104",
+                    "lowest_ask,highest_bid", 25, "shoes", 0, true);
+
+            assertThat(taskId).isEqualTo(301L);
+            assertThat(executed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(executedSorts.get()).isEqualTo("featured:1:true");
+            assertThat(createdTask.get().getTaskType()).isEqualTo("listing");
+            assertThat(createdTask.get().getParams()).contains(
+                    "\"searchMode\":\"model_no\"", "\"pageCount\":1", "\"sorts\":\"featured\"");
+        } finally {
+            TaskSwitch.clearSearchListRunState(accountName);
+            StockXConfig.setAccounts(originalAccounts);
+        }
+    }
 
     @Test
     void excelSearchAndFullScanCanRunTogetherWithoutSharingExcelInput() throws Exception {

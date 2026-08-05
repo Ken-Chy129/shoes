@@ -210,17 +210,25 @@ public class TaskController {
         Integer pageCount = body.getInteger("pageCount");
         String searchType = body.getString("searchType");
         Integer maxListCount = body.getInteger("maxListCount");
+        String searchMode = StrUtil.blankToDefault(body.getString("searchMode"), "keyword");
+        boolean modelNoSearch = "model_no".equals(searchMode);
 
-        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords) || StrUtil.isBlank(sorts)) {
-            return Result.buildError("accountId、keywords和sorts不能为空");
+        if (!"keyword".equals(searchMode) && !modelNoSearch) {
+            return Result.buildError("无效的搜索模式: " + searchMode);
+        }
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords)
+                || (!modelNoSearch && StrUtil.isBlank(sorts))) {
+            return Result.buildError(modelNoSearch
+                    ? "accountId和货号不能为空"
+                    : "accountId、keywords和sorts不能为空");
         }
 
         Long taskId = taskExecutorManager.startSearchList(
-                accountId, keywords, sorts,
-                pageCount != null ? pageCount : 3,
+                accountId, keywords, modelNoSearch ? "featured" : sorts,
+                modelNoSearch ? 1 : (pageCount != null ? pageCount : 3),
                 searchType != null ? searchType : "shoes",
                 maxListCount != null ? maxListCount : 0,
-                false);
+                modelNoSearch);
 
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");

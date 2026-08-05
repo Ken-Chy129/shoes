@@ -212,11 +212,13 @@ const TaskPage = () => {
         createForm.validateFields().then((values: any) => {
             setCreating(true);
             if (createPlatform === 'stockx' && createTaskType === 'listing') {
+                const modelNoSearch = values.searchMode === 'model_no';
                 doPostRequest(TASK_API.START_SEARCH_LIST, {
                     accountId: values.accountId,
+                    searchMode: values.searchMode || 'keyword',
                     keywords: values.keywords,
-                    sorts: (values.sorts || ['lowest_ask']).join(','),
-                    pageCount: values.pageCount || 3,
+                    sorts: modelNoSearch ? 'featured' : (values.sorts || ['featured']).join(','),
+                    pageCount: modelNoSearch ? 1 : (values.pageCount || 3),
                     searchType: values.searchType || 'shoes',
                     maxListCount: values.maxListCount || 0,
                 }, {
@@ -533,15 +535,35 @@ const TaskPage = () => {
     const renderCreateForm = () => {
         if (createPlatform === 'stockx' && createTaskType === 'listing') {
             return <>
-                <Form.Item name="keywords" label="关键词" rules={[{required: true, message: '请输入关键词'}]}
-                           extra="每行一个关键词">
-                    <Input.TextArea rows={3} placeholder={"jordan retro\nyeezy slides"}/>
+                <Form.Item name="searchMode" label="搜索方式" initialValue="keyword">
+                    <Radio.Group onChange={() => createForm.resetFields(['keywords', 'sorts', 'pageCount'])}>
+                        <Radio.Button value="keyword">关键字搜索</Radio.Button>
+                        <Radio.Button value="model_no">货号搜索</Radio.Button>
+                    </Radio.Group>
                 </Form.Item>
-                <Form.Item name="sorts" label="排序方式" initialValue={['featured']}>
-                    <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
-                </Form.Item>
-                <Form.Item name="pageCount" label="查询页数" initialValue={25}>
-                    <InputNumber min={1} max={50} style={{width: 120}}/>
+                <Form.Item noStyle shouldUpdate={(prev, current) => prev.searchMode !== current.searchMode}>
+                    {({getFieldValue}) => {
+                        const modelNoSearch = getFieldValue('searchMode') === 'model_no';
+                        return <>
+                            <Form.Item name="keywords" label={modelNoSearch ? '货号' : '关键词'}
+                                       rules={[{required: true, message: modelNoSearch ? '请输入货号' : '请输入关键词'}]}
+                                       extra={modelNoSearch
+                                           ? '每行一个货号；每个货号只精确查询目标商品的一页价格'
+                                           : '每行一个关键词'}>
+                                <Input.TextArea rows={3} placeholder={modelNoSearch
+                                    ? "IF4396-104\nDZ5485-612"
+                                    : "jordan retro\nyeezy slides"}/>
+                            </Form.Item>
+                            {!modelNoSearch && <>
+                                <Form.Item name="sorts" label="排序方式" initialValue={['featured']}>
+                                    <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
+                                </Form.Item>
+                                <Form.Item name="pageCount" label="查询页数" initialValue={25}>
+                                    <InputNumber min={1} max={50} style={{width: 120}}/>
+                                </Form.Item>
+                            </>}
+                        </>;
+                    }}
                 </Form.Item>
                 <Form.Item name="searchType" label="搜索类型" initialValue="shoes">
                     <Radio.Group>
@@ -719,7 +741,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
+        maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         trigger: '触发方式', intervalHours: '自动间隔',
     };
@@ -744,6 +766,7 @@ const TaskPage = () => {
         if (k === 'interval') return `${v}秒`;
         if (k === 'sorts') return String(v).split(',').join(', ');
         if (k === 'keywords') return String(v).split('\n').join(', ');
+        if (k === 'searchMode') return v === 'model_no' ? '货号搜索' : '关键字搜索';
         if (k === 'modelNoSizeFilters' && v && typeof v === 'object') {
             return Object.entries(v)
                 .map(([modelNo, sizes]) => `${modelNo}: ${(sizes as string[]).join(', ')}`)

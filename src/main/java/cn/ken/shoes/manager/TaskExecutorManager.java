@@ -213,7 +213,7 @@ public class TaskExecutorManager {
                         params.getIntValue("pageCount"),
                         params.getString("searchType"),
                         params.getIntValue("maxListCount"),
-                        false) != null;
+                        isModelNoSearch(params)) != null;
                 default -> false;
             };
         }
@@ -235,7 +235,7 @@ public class TaskExecutorManager {
         JSONObject params = task.getParams() == null ? new JSONObject() : JSONObject.parseObject(task.getParams());
         return switch (taskType) {
             case PRICE_DOWN -> resumeExcelPriceDown(task, params);
-            case LISTING -> resumeSearchList(task, params, false);
+            case LISTING -> resumeSearchList(task, params, isModelNoSearch(params));
             case MODEL_SEARCH -> ModelSearchOperation.fromCode(params.getString("operation")) != null
                     ? resumeModelSearch(task, params)
                     : resumeSearchList(task, params, true);
@@ -307,7 +307,7 @@ public class TaskExecutorManager {
                     params.getIntValue("pageCount"),
                     params.getString("searchType"),
                     params.getIntValue("maxListCount"),
-                    false);
+                    isModelNoSearch(params));
             case MODEL_SEARCH -> {
                 ModelSearchOperation operation = ModelSearchOperation.fromCode(params.getString("operation"));
                 yield operation != null
@@ -669,6 +669,10 @@ public class TaskExecutorManager {
         searchType = defaultIfBlank(searchType, "shoes");
         maxListCount = Math.max(maxListCount, 0);
         modelNoSizeFilters = modelNoSizeFilters != null ? modelNoSizeFilters : Map.of();
+        if (modelNoSearch) {
+            sorts = "featured";
+            pageCount = 1;
+        }
         if (keywords == null || keywords.isBlank()) {
             return null;
         }
@@ -681,13 +685,14 @@ public class TaskExecutorManager {
             log.info("搜索上架任务已在运行: {}", accountId);
             return null;
         }
-        String taskTypeCode = modelNoSearch ? TaskTypeEnum.MODEL_SEARCH.getCode() : TaskTypeEnum.LISTING.getCode();
+        String taskTypeCode = TaskTypeEnum.LISTING.getCode();
         JSONObject paramsJson = new JSONObject()
                 .fluentPut("keywords", keywords)
                 .fluentPut("sorts", sorts)
                 .fluentPut("pageCount", pageCount)
                 .fluentPut("searchType", searchType)
                 .fluentPut("maxListCount", maxListCount)
+                .fluentPut("searchMode", modelNoSearch ? "model_no" : "keyword")
                 .fluentPut("modelNoSearch", modelNoSearch);
         if (modelNoSearch && !modelNoSizeFilters.isEmpty()) {
             paramsJson.put("modelNoSizeFilters", modelNoSizeFilters);
@@ -763,6 +768,11 @@ public class TaskExecutorManager {
             filters.put(modelNo, new LinkedHashSet<>(sizesJson.toJavaList(String.class)));
         }
         return filters;
+    }
+
+    private boolean isModelNoSearch(JSONObject params) {
+        return params != null && (params.getBooleanValue("modelNoSearch")
+                || "model_no".equals(params.getString("searchMode")));
     }
 
     // ==================== StockX 获取上架商品 ====================

@@ -25,6 +25,30 @@ import static org.mockito.Mockito.*;
 class StockXModelSearchOperationsTest {
 
     @Test
+    void searchListingByModelNumberUsesExactLookupOncePerModel() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        TaskMapper taskMapper = mock(TaskMapper.class);
+        PriceManager priceManager = mock(PriceManager.class);
+        StockXService service = service(client, itemMapper, taskMapper, priceManager);
+        when(client.searchExactItemWithPrice(anyString(), eq("shoes"), eq("US"), any(StockXAccount.class)))
+                .thenAnswer(invocation -> {
+                    String modelNo = invocation.getArgument(0);
+                    StockXPriceExcel item = price(modelNo, "9", "42.5", "variant-" + modelNo);
+                    item.setPrice(0);
+                    return List.of(item);
+                });
+
+        service.searchAndList(account(), 20L, "STYLE-1\nSTYLE-2",
+                "featured,lowest_ask", 25, "shoes", 0, true);
+
+        verify(client).searchExactItemWithPrice("STYLE-1", "shoes", "US", account());
+        verify(client).searchExactItemWithPrice("STYLE-2", "shoes", "US", account());
+        verify(client, never()).searchItemWithPrice(anyString(), anyInt(), anyString(), anyString(),
+                anyString(), any(StockXAccount.class));
+    }
+
+    @Test
     void fetchesStandardAndFlexPricesForExactModelAndSize() throws Exception {
         StockXClient client = mock(StockXClient.class);
         TaskItemMapper itemMapper = mock(TaskItemMapper.class);
