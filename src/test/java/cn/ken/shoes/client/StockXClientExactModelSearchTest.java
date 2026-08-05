@@ -29,6 +29,7 @@ class StockXClientExactModelSearchTest {
             assertThat(item.getId()).isEqualTo("variant-1");
             assertThat(item.getStandardPrice()).isEqualTo(300);
             assertThat(item.getFlexPrice()).isEqualTo(315);
+            assertThat(item.getLast90DaysSales()).isEqualTo(826);
         });
         assertThat(client.calls).containsExactly(
                 "search:ALIAS-1", "product:wrong-product", "product:exact-product", "market:exact-product");
@@ -66,6 +67,11 @@ class StockXClientExactModelSearchTest {
             }
             if ("GetMarketData".equals(operation)) {
                 calls.add("market:" + id);
+                assertThat(request.getJSONObject("variables").getBoolean("includeProcessingFeeForPricing"))
+                        .isFalse();
+                assertThat(request.getJSONObject("extensions")
+                        .getJSONObject("persistedQuery").getString("sha256Hash"))
+                        .isEqualTo("5ba554f0c3f881e67a555da21d7f16a36416a67ef9898bc8b9a78c2371641453");
                 return JSON.parseObject("""
                         {"data":{"product":{"variants":[
                           {"id":"variant-1","market":{"state":{
@@ -74,7 +80,8 @@ class StockXClientExactModelSearchTest {
                               "standard":{"lowest":{"amount":300}},
                               "expressStandard":{"lowest":{"amount":315}}
                             }
-                          }}}
+                          },"salesInformation":{"salesLast72Hours":68},
+                          "statistics":{"last90Days":{"averagePrice":173,"salesCount":826}}}}
                         ]}}}
                         """);
             }

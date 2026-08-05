@@ -785,6 +785,12 @@ public class StockXClient {
             if (mvMarket != null && mvMarket.getJSONObject("salesInformation") != null) {
                 excel.setLast72HoursSales(Optional.ofNullable(mvMarket.getJSONObject("salesInformation").getInteger("salesLast72Hours")).orElse(0));
             }
+            if (mvMarket != null && mvMarket.getJSONObject("statistics") != null) {
+                excel.setLast90DaysSales(Optional.ofNullable(mvMarket.getJSONObject("statistics")
+                                .getJSONObject("last90Days"))
+                        .map(statistics -> statistics.getInteger("salesCount"))
+                        .orElse(0));
+            }
             itemResult.add(excel);
         }
         return itemResult;
@@ -890,11 +896,12 @@ public class StockXClient {
         variables.put("currencyCode", "USD");
         variables.put("marketName", country);
         variables.put("viewerContext", "BUYER");
+        variables.put("includeProcessingFeeForPricing", false);
         requestJson.put("variables", variables);
         JSONObject extensions = new JSONObject(true);
         JSONObject persistedQuery = new JSONObject(true);
         persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "589955a4e8c0e714c09999d857089ebc54569d0fe216e5e8538cade33572eb16");
+        persistedQuery.put("sha256Hash", "5ba554f0c3f881e67a555da21d7f16a36416a67ef9898bc8b9a78c2371641453");
         extensions.put("persistedQuery", persistedQuery);
         requestJson.put("extensions", extensions);
         return requestJson.toJSONString();

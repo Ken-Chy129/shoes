@@ -44,6 +44,9 @@ public class StockXPriceExcel {
     @ExcelProperty("绿叉72小时销量")
     private Integer last72HoursSales;
 
+    @ExcelProperty("绿叉90天销量")
+    private Integer last90DaysSales;
+
     @ExcelProperty("得物价格")
     private Integer poisonPrice;
 
