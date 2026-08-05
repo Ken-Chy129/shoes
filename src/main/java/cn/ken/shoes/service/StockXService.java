@@ -722,7 +722,7 @@ public class StockXService {
         int total = inputRows.size();
 
         for (ModelNoSearchExcel input : inputRows) {
-            if (TaskSwitch.isSearchListCancelled(accountName)) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
                 return;
             }
             String modelNo = input != null && input.getModelNo() != null ? input.getModelNo().trim() : null;
@@ -809,7 +809,7 @@ public class StockXService {
         int processed = 0;
 
         for (ModelSearchListingExcel input : inputRows) {
-            if (TaskSwitch.isSearchListCancelled(accountName)) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
                 return;
             }
             String variantId = input != null && input.getVariantId() != null ? input.getVariantId().trim() : null;
@@ -970,7 +970,7 @@ public class StockXService {
         int page = 1;
         boolean hasMore = true;
         while (hasMore) {
-            if (TaskSwitch.isSearchListCancelled(accountName)) return false;
+            if (TaskSwitch.isSearchListCancelled(taskId)) return false;
             JSONObject result = stockXClient.querySellingItemsByInventoryType("STANDARD", page, account);
             if (result == null) break;
             if (result.getBooleanValue("_unauthorized")) {
@@ -998,14 +998,14 @@ public class StockXService {
             keyword = keyword.trim();
             if (keyword.isEmpty()) continue;
             keywordIdx++;
-            if (TaskSwitch.isSearchListCancelled(accountName)) break;
+            if (TaskSwitch.isSearchListCancelled(taskId)) break;
 
             for (String sort : sortArr) {
                 sort = sort.trim();
                 if (sort.isEmpty()) continue;
 
                 for (int pageIdx = 1; pageIdx <= effectivePageCount; pageIdx++) {
-                    if (TaskSwitch.isSearchListCancelled(accountName)) break;
+                    if (TaskSwitch.isSearchListCancelled(taskId)) break;
                     currentStep++;
                     int progress = totalSteps > 0 ? Math.min(currentStep * 100 / totalSteps, 99) : 0;
                     String detail = modelNoSearch
@@ -1039,7 +1039,7 @@ public class StockXService {
                     }
 
                     for (StockXPriceExcel item : items) {
-                        if (TaskSwitch.isSearchListCancelled(accountName)) break;
+                        if (TaskSwitch.isSearchListCancelled(taskId)) break;
 
                         String variantId = item.getId();
                         if (variantId == null || processedVariantIds.contains(variantId)) continue;

@@ -189,6 +189,27 @@ class TaskServiceLifecycleTest {
         }
     }
 
+    @Test
+    void cancellingOneSearchListTaskLeavesTheOtherSearchListTaskRunning() {
+        TaskDO running = task(21L, "running");
+        running.setTaskType("listing");
+        running.setParams("{\"keywords\":\"jordan retro\"}");
+        TaskService taskService = new TaskService(
+                mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
+        TaskSwitch.resetSearchListCancel(21L);
+        TaskSwitch.resetSearchListCancel(22L);
+
+        try {
+            taskService.cancelTaskById(21L);
+
+            assertThat(TaskSwitch.isSearchListCancelled(21L)).isTrue();
+            assertThat(TaskSwitch.isSearchListCancelled(22L)).isFalse();
+        } finally {
+            TaskSwitch.clearSearchListRunState(21L);
+            TaskSwitch.clearSearchListRunState(22L);
+        }
+    }
+
     private static TaskMapper mapperReturning(TaskDO task) {
         return proxy(TaskMapper.class, (method, args) -> "selectById".equals(method) ? task : null);
     }

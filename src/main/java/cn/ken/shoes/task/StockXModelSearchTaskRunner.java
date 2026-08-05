@@ -44,7 +44,7 @@ public class StockXModelSearchTaskRunner implements Runnable {
     public void run() {
         String accountName = account.getName();
         StockXRateLimitGuard.beginTaskContext(account,
-                () -> TaskSwitch.isSearchListCancelled(accountName),
+                () -> TaskSwitch.isSearchListCancelled(taskId),
                 reason -> taskMapper.updateTaskFailReason(taskId, reason));
         long start = System.currentTimeMillis();
         try {
@@ -53,7 +53,7 @@ public class StockXModelSearchTaskRunner implements Runnable {
             } else {
                 stockXService.createModelSearchListings(account, taskId, listingRows);
             }
-            if (TaskSwitch.isSearchListCancelled(accountName)) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
                 TaskSwitch.cancelSearchVerification(taskId);
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             } else {
@@ -76,7 +76,7 @@ public class StockXModelSearchTaskRunner implements Runnable {
             log.error("[{}] 货号搜索任务异常, operation:{}", accountName, operation.getCode(), e);
         } finally {
             StockXRateLimitGuard.endTaskContext();
-            TaskSwitch.clearSearchListRunState(accountName);
+            TaskSwitch.clearSearchListRunState(taskId);
         }
     }
 }

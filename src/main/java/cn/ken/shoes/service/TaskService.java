@@ -183,9 +183,9 @@ public class TaskService {
             }
             case "listing", "model_search" -> {
                 if (clearState) {
-                    TaskSwitch.clearSearchListRunState(accountName);
+                    TaskSwitch.clearSearchListRunState(task.getId());
                 } else {
-                    TaskSwitch.cancelSearchList(accountName);
+                    TaskSwitch.cancelSearchList(task.getId());
                     TaskSwitch.cancelSearchVerification(task.getId());
                 }
             }

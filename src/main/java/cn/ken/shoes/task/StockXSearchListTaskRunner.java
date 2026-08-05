@@ -51,7 +51,7 @@ public class StockXSearchListTaskRunner implements Runnable {
     public void run() {
         String accountName = account.getName();
         StockXRateLimitGuard.beginTaskContext(account,
-                () -> TaskSwitch.isSearchListCancelled(accountName),
+                () -> TaskSwitch.isSearchListCancelled(taskId),
                 reason -> taskMapper.updateTaskFailReason(taskId, reason));
         try {
             long startTime = System.currentTimeMillis();
@@ -59,7 +59,7 @@ public class StockXSearchListTaskRunner implements Runnable {
                     searchType, maxListCount, modelNoSearch, modelNoSizeFilters);
             String cost = TimeUtil.getCostMin(startTime);
 
-            if (TaskSwitch.isSearchListCancelled(accountName)) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
                 TaskSwitch.cancelSearchVerification(taskId);
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
                 taskMapper.updateTaskCost(taskId, cost);
@@ -90,7 +90,7 @@ public class StockXSearchListTaskRunner implements Runnable {
             taskMapper.updateTaskFailed(taskId, reason);
         } finally {
             StockXRateLimitGuard.endTaskContext();
-            TaskSwitch.clearSearchListRunState(accountName);
+            TaskSwitch.clearSearchListRunState(taskId);
         }
     }
 }

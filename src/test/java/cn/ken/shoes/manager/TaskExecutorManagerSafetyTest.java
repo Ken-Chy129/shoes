@@ -84,7 +84,7 @@ class TaskExecutorManagerSafetyTest {
             assertThat(createdTask.get().getParams()).contains(
                     "\"searchMode\":\"model_no\"", "\"pageCount\":1", "\"sorts\":\"featured\"");
         } finally {
-            TaskSwitch.clearSearchListRunState(accountName);
+            TaskSwitch.clearSearchListRunState(301L);
             StockXConfig.setAccounts(originalAccounts);
         }
     }
@@ -159,6 +159,68 @@ class TaskExecutorManagerSafetyTest {
             release.countDown();
             TaskSwitch.clearExcelState(accountName, "STANDARD");
             ShoesContext.getPriceDownMap(accountName, "STANDARD").clear();
+            StockXConfig.setAccounts(originalAccounts);
+        }
+    }
+
+    @Test
+    void multipleSearchListTasksCanRunConcurrentlyForTheSameAccount() throws Exception {
+        String accountName = "concurrent-search-account";
+        List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setEnabled(true);
+        StockXConfig.setAccounts(List.of(account));
+
+        AtomicLong ids = new AtomicLong(400);
+        TaskMapper taskMapper = (TaskMapper) Proxy.newProxyInstance(
+                TaskMapper.class.getClassLoader(), new Class<?>[]{TaskMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        ((TaskDO) args[0]).setId(ids.incrementAndGet());
+                        return 1;
+                    }
+                    if (method.getReturnType() == int.class) return 1;
+                    if (method.getReturnType() == long.class) return 0L;
+                    if (method.getReturnType() == boolean.class) return false;
+                    return null;
+                });
+        CountDownLatch bothRunning = new CountDownLatch(2);
+        CountDownLatch release = new CountDownLatch(1);
+        List<Long> runningTaskIds = java.util.Collections.synchronizedList(new ArrayList<>());
+        StockXService service = new StockXService() {
+            @Override
+            public boolean searchAndList(StockXAccount ignored, Long taskId, String keywords, String sorts,
+                                         int pageCount, String searchType, int maxListCount,
+                                         boolean modelNoSearch, Map<String, Set<String>> modelNoSizeFilters) {
+                runningTaskIds.add(taskId);
+                bothRunning.countDown();
+                awaitRelease(release);
+                return false;
+            }
+        };
+        TaskExecutorManager manager = new TaskExecutorManager();
+        setField(manager, "taskMapper", taskMapper);
+        setField(manager, "stockXService", service);
+
+        Long firstTaskId = null;
+        Long secondTaskId = null;
+        try {
+            firstTaskId = manager.startSearchList(accountName, "jordan retro",
+                    "featured", 3, "shoes", 0, false);
+            secondTaskId = manager.startSearchList(accountName, "yeezy slides",
+                    "featured", 3, "shoes", 0, false);
+
+            assertThat(firstTaskId).isNotNull();
+            assertThat(secondTaskId).isNotNull().isNotEqualTo(firstTaskId);
+            assertThat(bothRunning.await(3, TimeUnit.SECONDS)).isTrue();
+            assertThat(runningTaskIds).containsExactlyInAnyOrder(firstTaskId, secondTaskId);
+            assertThat(TaskSwitch.getAllSearchListTaskIds())
+                    .contains(firstTaskId, secondTaskId);
+        } finally {
+            release.countDown();
+            TaskSwitch.clearSearchListRunState(firstTaskId);
+            TaskSwitch.clearSearchListRunState(secondTaskId);
             StockXConfig.setAccounts(originalAccounts);
         }
     }

@@ -568,10 +568,6 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartSearchList(accountId)) {
-            log.info("货号搜索任务已在运行: {}", accountId);
-            return null;
-        }
         JSONObject params = new JSONObject(true)
                 .fluentPut("operation", operation.getCode())
                 .fluentPut("inputCount", operation == ModelSearchOperation.FETCH_PRICE
@@ -589,8 +585,8 @@ public class TaskExecutorManager {
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+                TaskSwitch.clearSearchListRunState(taskId);
             }
-            TaskSwitch.clearSearchListRunState(accountId);
             throw e;
         }
     }
@@ -598,8 +594,8 @@ public class TaskExecutorManager {
     private void startModelSearchRunner(StockXAccount account, Long taskId, ModelSearchOperation operation,
                                         List<ModelNoSearchExcel> priceRows,
                                         List<ModelSearchListingExcel> listingRows) {
-        TaskSwitch.setSearchListTaskId(account.getName(), taskId);
-        TaskSwitch.resetSearchListCancel(account.getName());
+        TaskSwitch.markSearchListRunning(taskId);
+        TaskSwitch.resetSearchListCancel(taskId);
         TaskSwitch.resetSearchVerification(taskId);
         StockXModelSearchTaskRunner runner = new StockXModelSearchTaskRunner(
                 account, taskId, operation, priceRows, listingRows, stockXService, taskMapper);
@@ -620,7 +616,7 @@ public class TaskExecutorManager {
     private Long resumeModelSearch(TaskDO task, JSONObject params) {
         ModelSearchOperation operation = ModelSearchOperation.fromCode(params.getString("operation"));
         StockXAccount account = StockXConfig.getAccount(task.getAccountName());
-        if (operation == null || account == null || !TaskSwitch.tryStartSearchList(task.getAccountName())) {
+        if (operation == null || account == null || TaskSwitch.isSearchListRunning(task.getId())) {
             return null;
         }
         List<ModelNoSearchExcel> priceRows = List.of();
@@ -628,20 +624,17 @@ public class TaskExecutorManager {
         if (operation == ModelSearchOperation.FETCH_PRICE) {
             var input = taskInputSnapshotStore.loadModelSearchPriceInput(task.getId());
             if (input.isEmpty() || input.get().isEmpty()) {
-                TaskSwitch.clearSearchListRunState(task.getAccountName());
                 return null;
             }
             priceRows = input.get();
         } else {
             var input = taskInputSnapshotStore.loadModelSearchListingInput(task.getId());
             if (input.isEmpty() || input.get().isEmpty()) {
-                TaskSwitch.clearSearchListRunState(task.getAccountName());
                 return null;
             }
             listingRows = input.get();
         }
         if (taskMapper.resumeTask(task.getId()) == 0) {
-            TaskSwitch.clearSearchListRunState(task.getAccountName());
             return null;
         }
         try {
@@ -649,7 +642,7 @@ public class TaskExecutorManager {
             return task.getId();
         } catch (RuntimeException e) {
             taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());
-            TaskSwitch.clearSearchListRunState(task.getAccountName());
+            TaskSwitch.clearSearchListRunState(task.getId());
             throw e;
         }
     }
@@ -681,10 +674,6 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartSearchList(accountId)) {
-            log.info("搜索上架任务已在运行: {}", accountId);
-            return null;
-        }
         String taskTypeCode = TaskTypeEnum.LISTING.getCode();
         JSONObject paramsJson = new JSONObject()
                 .fluentPut("keywords", keywords)
@@ -701,22 +690,22 @@ public class TaskExecutorManager {
         Long taskId = null;
         try {
             taskId = createTask("stockx", taskTypeCode, account.getName(), params);
-            TaskSwitch.setSearchListTaskId(accountId, taskId);
-            TaskSwitch.resetSearchListCancel(accountId);
+            TaskSwitch.markSearchListRunning(taskId);
+            TaskSwitch.resetSearchListCancel(taskId);
             TaskSwitch.resetSearchVerification(taskId);
 
             StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
                     account, taskId, keywords, sorts, pageCount, searchType, maxListCount, modelNoSearch,
                     modelNoSizeFilters,
                     stockXService, taskMapper);
-            new Thread(runner, "StockX-SearchList-" + account.getName()).start();
+            new Thread(runner, "StockX-SearchList-" + account.getName() + "-" + taskId).start();
             log.info("搜索上架任务已启动: [{}]", account.getName());
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+                TaskSwitch.clearSearchListRunState(taskId);
             }
-            TaskSwitch.clearSearchListRunState(accountId);
             throw e;
         }
     }
@@ -727,16 +716,15 @@ public class TaskExecutorManager {
         if (account == null || params.getString("keywords") == null || params.getString("keywords").isBlank()) {
             return null;
         }
-        if (!TaskSwitch.tryStartSearchList(accountId)) {
+        if (TaskSwitch.isSearchListRunning(task.getId())) {
             return null;
         }
         if (taskMapper.resumeTask(task.getId()) == 0) {
-            TaskSwitch.clearSearchListRunState(accountId);
             return null;
         }
         try {
-            TaskSwitch.setSearchListTaskId(accountId, task.getId());
-            TaskSwitch.resetSearchListCancel(accountId);
+            TaskSwitch.markSearchListRunning(task.getId());
+            TaskSwitch.resetSearchListCancel(task.getId());
             TaskSwitch.resetSearchVerification(task.getId());
             StockXSearchListTaskRunner runner = new StockXSearchListTaskRunner(
                     account, task.getId(), params.getString("keywords"),
@@ -745,11 +733,11 @@ public class TaskExecutorManager {
                     defaultIfBlank(params.getString("searchType"), "shoes"),
                     Math.max(params.getIntValue("maxListCount"), 0), modelNoSearch,
                     readModelNoSizeFilters(params), stockXService, taskMapper);
-            new Thread(runner, "StockX-SearchList-" + account.getName()).start();
+            new Thread(runner, "StockX-SearchList-" + account.getName() + "-" + task.getId()).start();
             return task.getId();
         } catch (RuntimeException e) {
             taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());
-            TaskSwitch.clearSearchListRunState(accountId);
+            TaskSwitch.clearSearchListRunState(task.getId());
             throw e;
         }
     }

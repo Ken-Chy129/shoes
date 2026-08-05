@@ -231,7 +231,7 @@ public class TaskController {
                 modelNoSearch);
 
         if (taskId == null) {
-            return Result.buildError("任务已在运行或账号不存在");
+            return Result.buildError("账号不存在或搜索内容为空");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }
@@ -273,7 +273,7 @@ public class TaskController {
             taskId = taskExecutorManager.startModelSearchListing(accountId, list);
         }
         if (taskId == null) {
-            return Result.buildError("任务已在运行或账号不存在");
+            return Result.buildError("账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }

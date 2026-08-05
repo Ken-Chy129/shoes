@@ -263,50 +263,46 @@ public class TaskSwitch {
     }
 
     // ==================== StockX 搜索上架任务 ====================
-    private static final ConcurrentHashMap<String, Long> SEARCH_LIST_TASK_ID_MAP = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_CANCELLED_MAP = new ConcurrentHashMap<>();
-    private static final ConcurrentHashMap<String, Boolean> SEARCH_LIST_RUNNING_MAP = new ConcurrentHashMap<>();
+    /** 搜索上架支持同账号多任务并行，运行态按 taskId 隔离，避免互相取消。 */
+    private static final ConcurrentHashMap<Long, Boolean> SEARCH_LIST_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<Long, Boolean> SEARCH_LIST_RUNNING_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<Long, Boolean> SEARCH_VERIFICATION_CANCELLED_MAP = new ConcurrentHashMap<>();
 
-    public static void setSearchListTaskId(String accountId, Long taskId) {
-        SEARCH_LIST_TASK_ID_MAP.put(accountId, taskId);
-    }
-
-    public static Long getSearchListTaskId(String accountId) {
-        return SEARCH_LIST_TASK_ID_MAP.get(accountId);
-    }
-
     public static List<Long> getAllSearchListTaskIds() {
-        return new ArrayList<>(SEARCH_LIST_TASK_ID_MAP.values());
+        return new ArrayList<>(SEARCH_LIST_RUNNING_MAP.keySet());
     }
 
-    public static boolean isSearchListCancelled(String accountId) {
-        return Boolean.TRUE.equals(SEARCH_LIST_CANCELLED_MAP.get(accountId));
+    public static boolean isSearchListCancelled(Long taskId) {
+        return taskId != null && Boolean.TRUE.equals(SEARCH_LIST_CANCELLED_MAP.get(taskId));
     }
 
-    public static void cancelSearchList(String accountId) {
-        SEARCH_LIST_CANCELLED_MAP.put(accountId, true);
+    public static void cancelSearchList(Long taskId) {
+        if (taskId != null) {
+            SEARCH_LIST_CANCELLED_MAP.put(taskId, true);
+        }
     }
 
-    public static void resetSearchListCancel(String accountId) {
-        SEARCH_LIST_CANCELLED_MAP.remove(accountId);
+    public static void resetSearchListCancel(Long taskId) {
+        if (taskId != null) {
+            SEARCH_LIST_CANCELLED_MAP.remove(taskId);
+        }
     }
 
-    public static boolean isSearchListRunning(String accountId) {
-        return Boolean.TRUE.equals(SEARCH_LIST_RUNNING_MAP.get(accountId));
+    public static boolean isSearchListRunning(Long taskId) {
+        return taskId != null && Boolean.TRUE.equals(SEARCH_LIST_RUNNING_MAP.get(taskId));
     }
 
-    public static boolean tryStartSearchList(String accountId) {
-        return tryStart(SEARCH_LIST_RUNNING_MAP, accountId);
+    public static void markSearchListRunning(Long taskId) {
+        if (taskId != null) {
+            SEARCH_LIST_RUNNING_MAP.put(taskId, true);
+        }
     }
 
-    public static void setSearchListRunning(String accountId, boolean running) {
-        SEARCH_LIST_RUNNING_MAP.put(accountId, running);
-    }
-
-    public static void clearSearchListRunState(String accountId) {
-        SEARCH_LIST_CANCELLED_MAP.remove(accountId);
-        SEARCH_LIST_RUNNING_MAP.remove(accountId);
+    public static void clearSearchListRunState(Long taskId) {
+        if (taskId != null) {
+            SEARCH_LIST_CANCELLED_MAP.remove(taskId);
+            SEARCH_LIST_RUNNING_MAP.remove(taskId);
+        }
     }
 
     public static void cancelSearchVerification(Long taskId) {
