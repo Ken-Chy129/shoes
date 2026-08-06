@@ -7,10 +7,18 @@ import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXFeeConfig;
 import cn.ken.shoes.common.PriceDownType;
 
+import java.math.BigDecimal;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class ShoesUtil {
+
+    /**
+     * StockX 报价的合理上限（美元）。StockX 偶发会返回远超真实市场价的天价挂单，
+     * 这类报价一是不可能成交，二是超出 task_item 价格列 DECIMAL(10,2) 的范围，
+     * 直接写库会抛 Data truncation 并让整个任务失败，因此统一按无效报价处理。
+     */
+    private static final int MAX_STOCKX_PRICE = 1_000_000;
 
     private static final Pattern KC_EU_SIZE_PATTEN = Pattern.compile("EU\\s*(\\d+\\.?\\d*)", Pattern.CASE_INSENSITIVE);
 
@@ -142,6 +150,8 @@ public class ShoesUtil {
      * 与压价决策口径保持一致，避免导出展示的最低价与压价所用最低价不一致。
      */
     public static Integer resolveStockxLowest(String inventoryType, Integer standardLowest, Integer expressStandardLowest) {
+        standardLowest = normalizeStockxPrice(standardLowest);
+        expressStandardLowest = normalizeStockxPrice(expressStandardLowest);
         if ("STANDARD".equals(inventoryType)) {
             if (standardLowest != null && expressStandardLowest != null) {
                 return Math.min(standardLowest, expressStandardLowest);
@@ -149,6 +159,23 @@ public class ShoesUtil {
             return standardLowest != null ? standardLowest : expressStandardLowest;
         }
         return expressStandardLowest;
+    }
+
+    /**
+     * 过滤 StockX 的异常报价：非正数或超出 {@link #MAX_STOCKX_PRICE} 的价格一律视为无价(null)，
+     * 避免天价挂单既污染上架决策，又撑爆数据库价格列导致任务整体失败。
+     */
+    public static Integer normalizeStockxPrice(Integer price) {
+        if (price == null || price <= 0 || price > MAX_STOCKX_PRICE) {
+            return null;
+        }
+        return price;
+    }
+
+    /** 价格列写库前的统一转换：异常报价落库为 null，而非超范围数值。 */
+    public static BigDecimal toStockxPriceColumn(Integer price) {
+        Integer normalized = normalizeStockxPrice(price);
+        return normalized != null ? BigDecimal.valueOf(normalized) : null;
     }
 
     public static Integer getThreeFivePrice(Integer normalPrice) {

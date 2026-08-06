@@ -53,4 +53,18 @@ class ShoesUtilStockXFeeTest {
         assertThat(ShoesUtil.getStockxEarn(500, 100, fees))
                 .isEqualTo((100 - 3 - 7 - 4) * PriceSwitch.EXCHANGE_RATE - 25 - 500);
     }
+
+    @Test
+    void treatsAbsurdStockxAsksAsMissingPrice() {
+        assertThat(ShoesUtil.normalizeStockxPrice(150)).isEqualTo(150);
+        assertThat(ShoesUtil.normalizeStockxPrice(0)).isNull();
+        assertThat(ShoesUtil.normalizeStockxPrice(123456789)).isNull();
+
+        assertThat(ShoesUtil.toStockxPriceColumn(150)).isEqualByComparingTo("150");
+        assertThat(ShoesUtil.toStockxPriceColumn(123456789)).isNull();
+
+        assertThat(ShoesUtil.resolveStockxLowest("STANDARD", 123456789, 200)).isEqualTo(200);
+        assertThat(ShoesUtil.resolveStockxLowest("STANDARD", 123456789, null)).isNull();
+        assertThat(ShoesUtil.resolveStockxLowest("CUSTODIAL", 200, 123456789)).isNull();
+    }
 }

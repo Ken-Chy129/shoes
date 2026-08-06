@@ -91,7 +91,7 @@ public class StockXFetchListingsTaskRunner implements Runnable {
                     Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
                             item.getInteger("standardLowest"),
                             item.getInteger("expressStandardLowest"));
-                    taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
+                    taskItemDO.setLowestPrice(ShoesUtil.toStockxPriceColumn(lowestPrice));
                     taskItemDO.setOperateResult("已获取");
                     taskItemMapper.insert(taskItemDO);
                 }

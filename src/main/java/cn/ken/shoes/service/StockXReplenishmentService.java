@@ -277,10 +277,7 @@ public class StockXReplenishmentService {
                 continue;
             }
             TaskItemDO item = StockXOrderItemConverter.convertPending(taskId, node);
-            Integer lowestAsk = extractLowestAsk(node);
-            if (lowestAsk != null) {
-                item.setLowestPrice(BigDecimal.valueOf(lowestAsk));
-            }
+            item.setLowestPrice(ShoesUtil.toStockxPriceColumn(extractLowestAsk(node)));
             Date soldOn = item.getSoldOn();
             if (soldOn == null) {
                 continue;

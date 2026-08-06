@@ -778,12 +778,8 @@ public class StockXService {
             taskItem.setProductId(matched.getId());
             taskItem.setSize(matched.getUsmSize());
             taskItem.setEuSize(matched.getEuSize());
-            if (matched.getStandardPrice() != null && matched.getStandardPrice() > 0) {
-                taskItem.setLowestPrice(BigDecimal.valueOf(matched.getStandardPrice()));
-            }
-            if (matched.getFlexPrice() != null && matched.getFlexPrice() > 0) {
-                taskItem.setFlexLowestPrice(BigDecimal.valueOf(matched.getFlexPrice()));
-            }
+            taskItem.setLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getStandardPrice()));
+            taskItem.setFlexLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getFlexPrice()));
             if (taskItem.getLowestPrice() == null && taskItem.getFlexLowestPrice() == null) {
                 taskItem.setOperateResult("获取成功-暂无最低价");
             } else if (taskItem.getLowestPrice() == null) {
@@ -1052,7 +1048,7 @@ public class StockXService {
                                 modelNoSizeFilters, modelNo, item.getUsmSize(), euSize)) {
                             continue;
                         }
-                        Integer lowestAsk = item.getPrice();
+                        Integer lowestAsk = ShoesUtil.normalizeStockxPrice(item.getPrice());
 
                         // 插入 TaskItemDO
                         TaskItemDO taskItemDO = new TaskItemDO();
@@ -1064,7 +1060,7 @@ public class StockXService {
                         taskItemDO.setStyleId(modelNo);
                         taskItemDO.setSize(item.getUsmSize());
                         taskItemDO.setEuSize(euSize);
-                        taskItemDO.setLowestPrice(lowestAsk != null ? BigDecimal.valueOf(lowestAsk) : null);
+                        taskItemDO.setLowestPrice(ShoesUtil.toStockxPriceColumn(lowestAsk));
                         taskItemDO.setOperateTime(new Date());
 
                         // 跳过无价格
@@ -1637,7 +1633,7 @@ public class StockXService {
         Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,
                 item.getInteger("standardLowest"),
                 item.getInteger("expressStandardLowest"));
-        taskItemDO.setLowestPrice(lowestPrice != null ? BigDecimal.valueOf(lowestPrice) : null);
+        taskItemDO.setLowestPrice(ShoesUtil.toStockxPriceColumn(lowestPrice));
 
         taskItemDO.setOperateTime(new Date());
         taskItemDO.setOperateResult("待处理");
