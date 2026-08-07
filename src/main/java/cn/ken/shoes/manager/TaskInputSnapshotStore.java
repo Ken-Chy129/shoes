@@ -25,6 +25,7 @@ public class TaskInputSnapshotStore {
     private static final String DELIST_FILE = "delist.json";
     private static final String MODEL_SEARCH_PRICE_FILE = "model-search-price.json";
     private static final String MODEL_SEARCH_LISTING_FILE = "model-search-listing.json";
+    private static final String SEARCH_MODEL_NO_FILE = "search-model-no.json";
 
     private final Path root;
 
@@ -96,6 +97,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<ModelSearchListingExcel>> loadModelSearchListingInput(Long taskId) {
         return loadList(taskId, MODEL_SEARCH_LISTING_FILE, ModelSearchListingExcel.class, "指定价格上架");
+    }
+
+    public void saveSearchModelNoInput(Long taskId, List<ModelNoSearchExcel> input) {
+        write(taskPath(taskId, SEARCH_MODEL_NO_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<ModelNoSearchExcel>> loadSearchModelNoInput(Long taskId) {
+        return loadList(taskId, SEARCH_MODEL_NO_FILE, ModelNoSearchExcel.class, "货号搜索上架");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {

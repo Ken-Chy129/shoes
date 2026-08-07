@@ -6,6 +6,7 @@ import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
 import org.junit.jupiter.api.Test;
@@ -404,6 +405,73 @@ class TaskExecutorManagerSafetyTest {
         Field field = TaskExecutorManager.class.getDeclaredField(fieldName);
         field.setAccessible(true);
         field.set(target, value);
+    }
+
+    @Test
+    void excelModelNoSearchTaskIsRestoredFromSnapshotOnRestart() throws Exception {
+        String accountName = "restart-model-no-account";
+        List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount account = new StockXAccount();
+        account.setName(accountName);
+        account.setEnabled(true);
+        StockXConfig.setAccounts(List.of(account));
+
+        TaskInputSnapshotStore snapshots = new TaskInputSnapshotStore(tempDir);
+        snapshots.saveSearchModelNoInput(900L, List.of(
+                modelNoRow("IF4396-104"), modelNoRow("DZ5485-612")));
+
+        AtomicLong ids = new AtomicLong(900);
+        AtomicReference<String> executedKeywords = new AtomicReference<>();
+        CountDownLatch executed = new CountDownLatch(1);
+        TaskMapper taskMapper = (TaskMapper) Proxy.newProxyInstance(
+                TaskMapper.class.getClassLoader(), new Class<?>[]{TaskMapper.class},
+                (proxy, method, args) -> {
+                    if ("insert".equals(method.getName())) {
+                        ((TaskDO) args[0]).setId(ids.incrementAndGet());
+                        return 1;
+                    }
+                    if (method.getReturnType() == int.class) return 1;
+                    if (method.getReturnType() == long.class) return 0L;
+                    if (method.getReturnType() == boolean.class) return false;
+                    return null;
+                });
+        StockXService service = new StockXService() {
+            @Override
+            public boolean searchAndList(StockXAccount ignored, Long taskId, String keywords, String sorts,
+                                         int pageCount, String searchType, int maxListCount,
+                                         boolean modelNoSearch, Map<String, Set<String>> modelNoSizeFilters) {
+                executedKeywords.set(keywords + "|" + modelNoSearch);
+                executed.countDown();
+                return false;
+            }
+        };
+        TaskExecutorManager manager = new TaskExecutorManager();
+        setField(manager, "taskMapper", taskMapper);
+        setField(manager, "stockXService", service);
+        setField(manager, "taskInputSnapshotStore", snapshots);
+
+        TaskDO interrupted = new TaskDO();
+        interrupted.setId(900L);
+        interrupted.setPlatform("stockx");
+        interrupted.setTaskType("listing");
+        interrupted.setAccountName(accountName);
+        interrupted.setParams("{\"searchMode\":\"model_no\",\"modelNoSearch\":true,"
+                + "\"searchType\":\"shoes\",\"maxListCount\":0,\"modelNoCount\":2}");
+
+        try {
+            assertThat(manager.resumePausedTask(interrupted)).isEqualTo(900L);
+            assertThat(executed.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(executedKeywords.get()).isEqualTo("IF4396-104\nDZ5485-612|true");
+        } finally {
+            TaskSwitch.clearSearchListRunState(900L);
+            StockXConfig.setAccounts(originalAccounts);
+        }
+    }
+
+    private static ModelNoSearchExcel modelNoRow(String modelNo) {
+        ModelNoSearchExcel row = new ModelNoSearchExcel();
+        row.setModelNo(modelNo);
+        return row;
     }
 
     private static void awaitRelease(CountDownLatch release) {

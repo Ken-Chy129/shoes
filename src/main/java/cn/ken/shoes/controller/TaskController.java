@@ -211,27 +211,53 @@ public class TaskController {
         String searchType = body.getString("searchType");
         Integer maxListCount = body.getInteger("maxListCount");
         String searchMode = StrUtil.blankToDefault(body.getString("searchMode"), "keyword");
-        boolean modelNoSearch = "model_no".equals(searchMode);
 
-        if (!"keyword".equals(searchMode) && !modelNoSearch) {
+        if (!"keyword".equals(searchMode)) {
             return Result.buildError("无效的搜索模式: " + searchMode);
         }
-        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords)
-                || (!modelNoSearch && StrUtil.isBlank(sorts))) {
-            return Result.buildError(modelNoSearch
-                    ? "accountId和货号不能为空"
-                    : "accountId、keywords和sorts不能为空");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords) || StrUtil.isBlank(sorts)) {
+            return Result.buildError("accountId、keywords和sorts不能为空");
         }
 
         Long taskId = taskExecutorManager.startSearchList(
-                accountId, keywords, modelNoSearch ? "featured" : sorts,
-                modelNoSearch ? 1 : (pageCount != null ? pageCount : 3),
+                accountId, keywords, sorts,
+                pageCount != null ? pageCount : 3,
                 searchType != null ? searchType : "shoes",
                 maxListCount != null ? maxListCount : 0,
-                modelNoSearch);
+                false);
 
         if (taskId == null) {
             return Result.buildError("账号不存在或搜索内容为空");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    /**
+     * 货号搜索上架：货号清单通过 Excel 上传，只需一列「货号」，可选填「尺码」限定上架尺码。
+     * 相比输入框粘贴，几万行货号不会卡死页面，也不会撑爆任务参数字段。
+     */
+    @PostMapping("stockx/startModelNoSearchListByExcel")
+    public Result<String> startModelNoSearchListByExcel(@RequestParam("file") MultipartFile file,
+                                                        @RequestParam("accountId") String accountId,
+                                                        @RequestParam(value = "searchType", required = false,
+                                                                defaultValue = "shoes") String searchType,
+                                                        @RequestParam(value = "maxListCount", required = false,
+                                                                defaultValue = "0") Integer maxListCount)
+            throws IOException {
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        List<ModelNoSearchExcel> rows = EasyExcel.read(file.getInputStream())
+                .head(ModelNoSearchExcel.class)
+                .sheet()
+                .doReadSync();
+        if (rows == null || rows.isEmpty()) {
+            return Result.buildError("Excel中未找到数据");
+        }
+        Long taskId = taskExecutorManager.startModelNoSearchList(accountId, rows, searchType,
+                maxListCount != null ? maxListCount : 0);
+        if (taskId == null) {
+            return Result.buildError("账号不存在或Excel中未找到有效货号");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }

@@ -30,6 +30,7 @@ enum TASK_API {
     // StockX 搜索上架
     START_MODEL_NO_SEARCH_LIST = '/api/task/stockx/startModelNoSearchList',
     START_SEARCH_LIST = '/api/task/stockx/startSearchList',
+    START_MODEL_NO_SEARCH_LIST_BY_EXCEL = '/api/task/stockx/startModelNoSearchListByExcel',
     // StockX 获取上架商品
     START_FETCH_LISTINGS = '/api/task/stockx/startFetchListings',
     // StockX 下架
