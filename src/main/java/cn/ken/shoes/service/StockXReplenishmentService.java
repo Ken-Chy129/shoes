@@ -83,7 +83,7 @@ public class StockXReplenishmentService {
             return;
         }
         try {
-            replenishAccounts(StockXConfig.getEnabledAccounts(), startTime, endTime, trigger);
+            replenishAccounts(StockXConfig.getAutoReplenishmentAccounts(), startTime, endTime, trigger);
         } finally {
             running.set(false);
         }
