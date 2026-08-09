@@ -35,8 +35,35 @@ class StockXClientExactModelSearchTest {
                 "search:ALIAS-1", "product:wrong-product", "product:exact-product", "market:exact-product");
     }
 
+    @Test
+    void matchesCaseInsensitiveAliasInsideStockXCombinedModelNumber() {
+        StubStockXClient client = new StubStockXClient("DL408-0490/1183C102-751");
+        StockXAccount account = new StockXAccount();
+        account.setName("account-1");
+        account.setAuthorization("Bearer test");
+
+        List<StockXPriceExcel> result = client.searchExactItemWithPrice(
+                "1183c102-751", "shoes", "US", account);
+
+        assertThat(result).singleElement().satisfies(item -> {
+            assertThat(item.getModelNo()).isEqualTo("DL408-0490/1183C102-751");
+            assertThat(item.getId()).isEqualTo("variant-1");
+        });
+        assertThat(client.calls).containsExactly(
+                "search:1183c102-751", "product:wrong-product", "product:exact-product", "market:exact-product");
+    }
+
     private static class StubStockXClient extends StockXClient {
         private final List<String> calls = new ArrayList<>();
+        private final String exactStyleId;
+
+        private StubStockXClient() {
+            this("STYLE-1");
+        }
+
+        private StubStockXClient(String exactStyleId) {
+            this.exactStyleId = exactStyleId;
+        }
 
         @Override
         protected JSONObject queryPro(String body, Headers headers, String accountName) {
@@ -56,7 +83,7 @@ class StockXClientExactModelSearchTest {
             }
             if ("GetProduct".equals(operation)) {
                 calls.add("product:" + id);
-                String styleId = "exact-product".equals(id) ? "STYLE-1" : "OTHER-1";
+                String styleId = "exact-product".equals(id) ? exactStyleId : "OTHER-1";
                 return JSON.parseObject("""
                         {"data":{"product":{"styleId":"%s","brand":"Brand","variants":[
                           {"id":"variant-1","sizeChart":{"displayOptions":[

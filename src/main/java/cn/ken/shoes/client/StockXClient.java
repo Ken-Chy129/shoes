@@ -631,11 +631,7 @@ public class StockXClient {
         String finalCountry = country != null ? country : "HK";
         Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
         String accountName = account != null ? account.getName() : null;
-        List<String> aliases = Arrays.stream(modelNo.split("\\s*/\\s*"))
-                .map(String::trim)
-                .filter(StrUtil::isNotBlank)
-                .distinct()
-                .toList();
+        List<String> aliases = splitModelAliases(modelNo);
 
         Set<String> checkedUrlKeys = new HashSet<>();
         for (String alias : aliases) {
@@ -681,8 +677,23 @@ public class StockXClient {
     }
 
     private static boolean matchesAnyModelAlias(List<String> aliases, String actualModelNo) {
-        return StrUtil.isNotBlank(actualModelNo)
-                && aliases.stream().anyMatch(alias -> alias.equalsIgnoreCase(actualModelNo.trim()));
+        if (aliases == null || aliases.isEmpty()) {
+            return false;
+        }
+        return splitModelAliases(actualModelNo).stream()
+                .anyMatch(actualAlias -> aliases.stream()
+                        .anyMatch(requestedAlias -> requestedAlias.equalsIgnoreCase(actualAlias)));
+    }
+
+    private static List<String> splitModelAliases(String modelNo) {
+        if (StrUtil.isBlank(modelNo)) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(modelNo.split("\\s*[/／]\\s*"))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
     }
 
     private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers, String accountName) {
