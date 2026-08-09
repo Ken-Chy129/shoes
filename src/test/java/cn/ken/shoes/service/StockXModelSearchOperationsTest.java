@@ -6,6 +6,7 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -126,6 +127,65 @@ class StockXModelSearchOperationsTest {
         verifyNoInteractions(priceManager);
     }
 
+    @Test
+    void resolvesVariantFromModelAndSizeBeforeListingSpecifiedPriceAndQuantity() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        TaskMapper taskMapper = mock(TaskMapper.class);
+        PriceManager priceManager = mock(PriceManager.class);
+        StockXService service = service(client, itemMapper, taskMapper, priceManager);
+        StockXPriceExcel wrongSize = price("DL408-0490/1183C102-751", "5", "38", "variant-5");
+        StockXPriceExcel exactSize = price("DL408-0490/1183C102-751", "6", "39", "variant-6");
+        when(client.searchExactItemWithPrice(eq("1183C102-751"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(wrongSize, exactSize));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-2");
+        when(client.verifyListingsByVariantIds(anyList(), any(StockXAccount.class))).thenReturn(Map.of());
+        ModelSearchListingByModelExcel input = new ModelSearchListingByModelExcel();
+        input.setModelNo("1183C102-751");
+        input.setSize("6");
+        input.setQuantity(5);
+        input.setTargetPrice(new BigDecimal("500"));
+
+        service.createModelSearchListingsByModel(account(), 13L, List.of(input));
+
+        ArgumentCaptor<List<StockXListingCreateItem>> listings = ArgumentCaptor.forClass(List.class);
+        verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
+        assertThat(listings.getValue()).singleElement().satisfies(item -> {
+            assertThat(item.variantId()).isEqualTo("variant-6");
+            assertThat(item.amount()).isEqualByComparingTo("500");
+            assertThat(item.quantity()).isEqualTo(5);
+        });
+        ArgumentCaptor<TaskItemDO> taskItem = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).insert(taskItem.capture());
+        assertThat(taskItem.getValue().getProductId()).isEqualTo("variant-6");
+        assertThat(taskItem.getValue().getStyleId()).isEqualTo("DL408-0490/1183C102-751");
+        assertThat(taskItem.getValue().getSize()).isEqualTo("6");
+        verifyNoInteractions(priceManager);
+    }
+
+    @Test
+    void listingByModelCachesLookupForMultipleSizesOfTheSameModel() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(
+                price("STYLE-1", "6", "39", "variant-6"),
+                price("STYLE-1", "7", "40", "variant-7")));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-3");
+
+        ModelSearchListingByModelExcel size6 = listingByModel("STYLE-1", "6", "500", 2);
+        ModelSearchListingByModelExcel size7 = listingByModel("STYLE-1", "7", "510", 3);
+
+        service.createModelSearchListingsByModel(account(), 14L, List.of(size6, size7));
+
+        verify(client, times(1)).searchExactItemWithPrice("STYLE-1", "shoes", "US", account());
+        ArgumentCaptor<List<StockXListingCreateItem>> listings = ArgumentCaptor.forClass(List.class);
+        verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
+        assertThat(listings.getValue()).extracting(StockXListingCreateItem::variantId)
+                .containsExactly("variant-6", "variant-7");
+    }
+
     private static StockXService service(StockXClient client, TaskItemMapper itemMapper,
                                          TaskMapper taskMapper, PriceManager priceManager) throws Exception {
         StockXService service = new StockXService();
@@ -151,6 +211,16 @@ class StockXModelSearchOperationsTest {
         result.setId(variantId);
         result.setStandardPrice(300);
         return result;
+    }
+
+    private static ModelSearchListingByModelExcel listingByModel(String modelNo, String size,
+                                                                 String price, int quantity) {
+        ModelSearchListingByModelExcel input = new ModelSearchListingByModelExcel();
+        input.setModelNo(modelNo);
+        input.setSize(size);
+        input.setTargetPrice(new BigDecimal(price));
+        input.setQuantity(quantity);
+        return input;
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {

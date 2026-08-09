@@ -15,6 +15,7 @@ import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.manager.StockXPriceRateStateManager;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
@@ -288,7 +289,7 @@ public class TaskController {
                 return Result.buildError("获取最低价时，Excel中的货号和尺码均为必填");
             }
             taskId = taskExecutorManager.startModelSearchPriceFetch(accountId, list);
-        } else {
+        } else if (operation == ModelSearchOperation.CREATE_LISTING) {
             List<ModelSearchListingExcel> list = EasyExcel.read(file.getInputStream())
                     .head(ModelSearchListingExcel.class)
                     .sheet()
@@ -297,6 +298,15 @@ public class TaskController {
                 return Result.buildError("Excel中未找到上架数据");
             }
             taskId = taskExecutorManager.startModelSearchListing(accountId, list);
+        } else {
+            List<ModelSearchListingByModelExcel> list = EasyExcel.read(file.getInputStream())
+                    .head(ModelSearchListingByModelExcel.class)
+                    .sheet()
+                    .doReadSync();
+            if (list == null || list.isEmpty()) {
+                return Result.buildError("Excel中未找到上架数据");
+            }
+            taskId = taskExecutorManager.startModelSearchListingByModel(accountId, list);
         }
         if (taskId == null) {
             return Result.buildError("账号不存在");

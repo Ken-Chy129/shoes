@@ -4,7 +4,8 @@ import java.util.Locale;
 
 public enum ModelSearchOperation {
     FETCH_PRICE("fetch_price", "获取最低价"),
-    CREATE_LISTING("create_listing", "按指定价格上架");
+    CREATE_LISTING("create_listing", "按指定价格上架"),
+    CREATE_LISTING_BY_MODEL("create_listing_by_model", "按货号尺码上架");
 
     private final String code;
     private final String desc;

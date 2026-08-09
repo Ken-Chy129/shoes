@@ -11,6 +11,7 @@ import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 import {STOCKX_ORDER_TYPE_OPTIONS, STOCKX_TASK_OPTIONS, TASK_TYPE_LABELS} from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
+import ExcelFieldHint, {ExcelFieldHintProps} from "@/components/ExcelFieldHint";
 
 interface TaskRecord {
     id: string;
@@ -561,7 +562,11 @@ const TaskPage = () => {
                             return <Form.Item name="searchModelNoExcel" label="货号Excel"
                                               valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
                                               rules={[{required: true, message: '请上传货号Excel'}]}
-                                              extra="Excel只需一列「货号」，可选再加一列「尺码」限定上架尺码；每个货号只精确查询目标商品的一页价格">
+                                              extra={<ExcelFieldHint
+                                                  requiredFields={['货号']}
+                                                  optionalFields={['尺码']}
+                                                  note="尺码留空表示处理该货号的全部尺码；每个货号只精确查询目标商品的一页价格。"
+                                              />}>
                                 <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                     <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                                 </Upload>
@@ -603,18 +608,31 @@ const TaskPage = () => {
                     }}>
                         <Radio.Button value="fetch_price">获取最低价</Radio.Button>
                         <Radio.Button value="create_listing">按指定价格上架</Radio.Button>
+                        <Radio.Button value="create_listing_by_model">按货号尺码上架</Radio.Button>
                     </Radio.Group>
                 </Form.Item>
                 <Form.Item shouldUpdate={(prev, current) => prev.modelSearchOperation !== current.modelSearchOperation} noStyle>
                     {({getFieldValue}) => {
                         const currentOperation = getFieldValue('modelSearchOperation') || operation;
-                        const fetching = currentOperation === 'fetch_price';
+                        const operationHints: Record<string, ExcelFieldHintProps> = {
+                            fetch_price: {
+                                requiredFields: ['货号', '尺码'],
+                                note: '尺码可写 US 9、EU 42.5，也可直接写 9 或 42.5；完成后可导出结果。',
+                            },
+                            create_listing: {
+                                requiredFields: ['variantId', '目标上架价($)', '上架数量'],
+                                note: '建议使用“获取最低价”导出的 Excel，其他导出列可以原样保留。',
+                            },
+                            create_listing_by_model: {
+                                requiredFields: ['货号', '尺码', '数量', '上架价格'],
+                                note: '系统会自动匹配 variantId 后上架，无需先执行“获取最低价”。',
+                            },
+                        };
+                        const operationHint = operationHints[currentOperation] || operationHints.fetch_price;
                         return <Form.Item name="modelNoExcel" label="Excel文件"
                                           valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
                                           rules={[{required: true, message: '请上传Excel'}]}
-                                          extra={fetching
-                                              ? '获取最低价：货号、尺码均必填；尺码可写 US 9、EU 42.5，也可直接写 9 或 42.5。完成后可导出结果。'
-                                              : '指定价格上架：建议使用“获取最低价”导出的Excel，填写「目标上架价($)」和「上架数量」；上架时不再比价或判断盈利。'}>
+                                          extra={<ExcelFieldHint {...operationHint}/>}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                             </Upload>
@@ -634,7 +652,11 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item name="excelFile" label="压价Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList}
-                           extra="列：货号、尺码、最低价($)、压价类型；压价类型留空即“默认”，还可填“得物”或“得物3.5”">
+                           extra={<ExcelFieldHint
+                               requiredFields={['货号', '尺码']}
+                               optionalFields={['最低价($)', '压价类型']}
+                               note="压价类型留空即“默认”，还可填写“得物”或“得物3.5”。"
+                           />}>
                     <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
@@ -707,7 +729,10 @@ const TaskPage = () => {
                     {({getFieldValue}) => getFieldValue('delistMode') !== 'all' ? (
                         <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
-                                   extra="支持 listingId；或“货号 + 尺码”两列。按货号尺码时会搜索当前挂单，同尺码有多条将全部下架">
+                                   extra={<ExcelFieldHint
+                                       requirement="填写「listingId」，或同时填写「货号」和「尺码」"
+                                       note="按货号尺码时会搜索当前挂单，同尺码有多条将全部下架。"
+                                   />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
@@ -765,7 +790,14 @@ const TaskPage = () => {
 
     const formatParamValue = (k: string, v: any): string => {
         if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
-        if (k === 'operation') return v === 'fetch_price' ? '获取最低价' : '按指定价格上架';
+        if (k === 'operation') {
+            const labels: Record<string, string> = {
+                fetch_price: '获取最低价',
+                create_listing: '按指定价格上架',
+                create_listing_by_model: '按货号尺码上架',
+            };
+            return labels[v] || String(v);
+        }
         if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
         if (k === 'inputCount') return `${v}行`;
         if (k === 'modelNoCount') return `${v}个`;

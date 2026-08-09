@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import com.alibaba.excel.EasyExcel;
 import org.junit.jupiter.api.Test;
@@ -74,6 +75,32 @@ class TaskControllerModelNoSearchUploadTest {
             assertThat(input.getVariantId()).isEqualTo("variant-1");
             assertThat(input.getTargetPrice()).isEqualByComparingTo("305");
             assertThat(input.getQuantity()).isEqualTo(2);
+        });
+    }
+
+    @Test
+    void startsListingByModelAndSizeWithoutVariantId() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startModelSearchListingByModel(eq("account-1"), anyList())).thenReturn(789L);
+        TaskController controller = controller(manager);
+        ModelSearchListingByModelExcel row = new ModelSearchListingByModelExcel();
+        row.setModelNo("1183C102-751");
+        row.setSize("6");
+        row.setQuantity(5);
+        row.setTargetPrice(new BigDecimal("500"));
+
+        Result<String> result = controller.startModelNoSearchList(
+                excelFile(List.of(row), ModelSearchListingByModelExcel.class),
+                "account-1", "create_listing_by_model");
+
+        assertThat(result.getSuccess()).isTrue();
+        ArgumentCaptor<List<ModelSearchListingByModelExcel>> rows = ArgumentCaptor.forClass(List.class);
+        verify(manager).startModelSearchListingByModel(eq("account-1"), rows.capture());
+        assertThat(rows.getValue()).singleElement().satisfies(input -> {
+            assertThat(input.getModelNo()).isEqualTo("1183C102-751");
+            assertThat(input.getSize()).isEqualTo("6");
+            assertThat(input.getQuantity()).isEqualTo(5);
+            assertThat(input.getTargetPrice()).isEqualByComparingTo("500");
         });
     }
 

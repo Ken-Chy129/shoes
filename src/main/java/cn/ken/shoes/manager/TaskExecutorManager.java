@@ -17,6 +17,7 @@ import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -573,34 +574,46 @@ public class TaskExecutorManager {
     // ==================== StockX 搜索上架 ====================
 
     public Long startModelSearchPriceFetch(String accountId, List<ModelNoSearchExcel> rows) {
-        return startModelSearch(accountId, ModelSearchOperation.FETCH_PRICE, rows, List.of());
+        return startModelSearch(accountId, ModelSearchOperation.FETCH_PRICE, rows, List.of(), List.of());
     }
 
     public Long startModelSearchListing(String accountId, List<ModelSearchListingExcel> rows) {
-        return startModelSearch(accountId, ModelSearchOperation.CREATE_LISTING, List.of(), rows);
+        return startModelSearch(accountId, ModelSearchOperation.CREATE_LISTING, List.of(), rows, List.of());
+    }
+
+    public Long startModelSearchListingByModel(String accountId, List<ModelSearchListingByModelExcel> rows) {
+        return startModelSearch(accountId, ModelSearchOperation.CREATE_LISTING_BY_MODEL,
+                List.of(), List.of(), rows);
     }
 
     private Long startModelSearch(String accountId, ModelSearchOperation operation,
                                   List<ModelNoSearchExcel> priceRows,
-                                  List<ModelSearchListingExcel> listingRows) {
+                                  List<ModelSearchListingExcel> listingRows,
+                                  List<ModelSearchListingByModelExcel> listingByModelRows) {
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             log.error("账号不存在: {}", accountId);
             return null;
         }
+        int inputCount = switch (operation) {
+            case FETCH_PRICE -> priceRows.size();
+            case CREATE_LISTING -> listingRows.size();
+            case CREATE_LISTING_BY_MODEL -> listingByModelRows.size();
+        };
         JSONObject params = new JSONObject(true)
                 .fluentPut("operation", operation.getCode())
-                .fluentPut("inputCount", operation == ModelSearchOperation.FETCH_PRICE
-                        ? priceRows.size() : listingRows.size());
+                .fluentPut("inputCount", inputCount);
         Long taskId = null;
         try {
             taskId = createTask("stockx", TaskTypeEnum.MODEL_SEARCH.getCode(), account.getName(), params.toJSONString());
             if (operation == ModelSearchOperation.FETCH_PRICE) {
                 taskInputSnapshotStore.saveModelSearchPriceInput(taskId, priceRows);
-            } else {
+            } else if (operation == ModelSearchOperation.CREATE_LISTING) {
                 taskInputSnapshotStore.saveModelSearchListingInput(taskId, listingRows);
+            } else {
+                taskInputSnapshotStore.saveModelSearchListingByModelInput(taskId, listingByModelRows);
             }
-            startModelSearchRunner(account, taskId, operation, priceRows, listingRows);
+            startModelSearchRunner(account, taskId, operation, priceRows, listingRows, listingByModelRows);
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
@@ -613,12 +626,14 @@ public class TaskExecutorManager {
 
     private void startModelSearchRunner(StockXAccount account, Long taskId, ModelSearchOperation operation,
                                         List<ModelNoSearchExcel> priceRows,
-                                        List<ModelSearchListingExcel> listingRows) {
+                                        List<ModelSearchListingExcel> listingRows,
+                                        List<ModelSearchListingByModelExcel> listingByModelRows) {
         TaskSwitch.markSearchListRunning(taskId);
         TaskSwitch.resetSearchListCancel(taskId);
         TaskSwitch.resetSearchVerification(taskId);
         StockXModelSearchTaskRunner runner = new StockXModelSearchTaskRunner(
-                account, taskId, operation, priceRows, listingRows, stockXService, taskMapper);
+                account, taskId, operation, priceRows, listingRows, listingByModelRows,
+                stockXService, taskMapper);
         new Thread(runner, "StockX-ModelSearch-" + operation.getCode() + "-" + account.getName()).start();
     }
 
@@ -628,9 +643,14 @@ public class TaskExecutorManager {
             return input.isPresent() && !input.get().isEmpty()
                     ? startModelSearchPriceFetch(accountId, input.get()) : null;
         }
-        var input = taskInputSnapshotStore.loadModelSearchListingInput(sourceTaskId);
+        if (operation == ModelSearchOperation.CREATE_LISTING) {
+            var input = taskInputSnapshotStore.loadModelSearchListingInput(sourceTaskId);
+            return input.isPresent() && !input.get().isEmpty()
+                    ? startModelSearchListing(accountId, input.get()) : null;
+        }
+        var input = taskInputSnapshotStore.loadModelSearchListingByModelInput(sourceTaskId);
         return input.isPresent() && !input.get().isEmpty()
-                ? startModelSearchListing(accountId, input.get()) : null;
+                ? startModelSearchListingByModel(accountId, input.get()) : null;
     }
 
     private Long resumeModelSearch(TaskDO task, JSONObject params) {
@@ -641,24 +661,32 @@ public class TaskExecutorManager {
         }
         List<ModelNoSearchExcel> priceRows = List.of();
         List<ModelSearchListingExcel> listingRows = List.of();
+        List<ModelSearchListingByModelExcel> listingByModelRows = List.of();
         if (operation == ModelSearchOperation.FETCH_PRICE) {
             var input = taskInputSnapshotStore.loadModelSearchPriceInput(task.getId());
             if (input.isEmpty() || input.get().isEmpty()) {
                 return null;
             }
             priceRows = input.get();
-        } else {
+        } else if (operation == ModelSearchOperation.CREATE_LISTING) {
             var input = taskInputSnapshotStore.loadModelSearchListingInput(task.getId());
             if (input.isEmpty() || input.get().isEmpty()) {
                 return null;
             }
             listingRows = input.get();
+        } else {
+            var input = taskInputSnapshotStore.loadModelSearchListingByModelInput(task.getId());
+            if (input.isEmpty() || input.get().isEmpty()) {
+                return null;
+            }
+            listingByModelRows = input.get();
         }
         if (taskMapper.resumeTask(task.getId()) == 0) {
             return null;
         }
         try {
-            startModelSearchRunner(account, task.getId(), operation, priceRows, listingRows);
+            startModelSearchRunner(account, task.getId(), operation,
+                    priceRows, listingRows, listingByModelRows);
             return task.getId();
         } catch (RuntimeException e) {
             taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());

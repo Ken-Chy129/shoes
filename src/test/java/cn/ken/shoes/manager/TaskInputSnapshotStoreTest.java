@@ -4,6 +4,7 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -44,7 +45,7 @@ class TaskInputSnapshotStoreTest {
     }
 
     @Test
-    void roundTripsBothModelSearchOperationInputs() {
+    void roundTripsAllModelSearchOperationInputs() {
         TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
         ModelNoSearchExcel priceRow = new ModelNoSearchExcel();
         priceRow.setModelNo("STYLE-1");
@@ -53,9 +54,15 @@ class TaskInputSnapshotStoreTest {
         listingRow.setVariantId("variant-1");
         listingRow.setTargetPrice(new BigDecimal("301"));
         listingRow.setQuantity(3);
+        ModelSearchListingByModelExcel listingByModelRow = new ModelSearchListingByModelExcel();
+        listingByModelRow.setModelNo("STYLE-2");
+        listingByModelRow.setSize("EU 42.5");
+        listingByModelRow.setTargetPrice(new BigDecimal("302"));
+        listingByModelRow.setQuantity(4);
 
         store.saveModelSearchPriceInput(12L, List.of(priceRow));
         store.saveModelSearchListingInput(13L, List.of(listingRow));
+        store.saveModelSearchListingByModelInput(14L, List.of(listingByModelRow));
 
         assertThat(store.loadModelSearchPriceInput(12L)).hasValueSatisfying(rows ->
                 assertThat(rows).singleElement().satisfies(row -> {
@@ -67,6 +74,13 @@ class TaskInputSnapshotStoreTest {
                     assertThat(row.getVariantId()).isEqualTo("variant-1");
                     assertThat(row.getTargetPrice()).isEqualByComparingTo("301");
                     assertThat(row.getQuantity()).isEqualTo(3);
+                }));
+        assertThat(store.loadModelSearchListingByModelInput(14L)).hasValueSatisfying(rows ->
+                assertThat(rows).singleElement().satisfies(row -> {
+                    assertThat(row.getModelNo()).isEqualTo("STYLE-2");
+                    assertThat(row.getSize()).isEqualTo("EU 42.5");
+                    assertThat(row.getTargetPrice()).isEqualByComparingTo("302");
+                    assertThat(row.getQuantity()).isEqualTo(4);
                 }));
     }
 

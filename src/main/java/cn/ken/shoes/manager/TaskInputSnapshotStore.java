@@ -4,6 +4,7 @@ import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.PriceDownType;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -25,6 +26,7 @@ public class TaskInputSnapshotStore {
     private static final String DELIST_FILE = "delist.json";
     private static final String MODEL_SEARCH_PRICE_FILE = "model-search-price.json";
     private static final String MODEL_SEARCH_LISTING_FILE = "model-search-listing.json";
+    private static final String MODEL_SEARCH_LISTING_BY_MODEL_FILE = "model-search-listing-by-model.json";
     private static final String SEARCH_MODEL_NO_FILE = "search-model-no.json";
 
     private final Path root;
@@ -97,6 +99,15 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<ModelSearchListingExcel>> loadModelSearchListingInput(Long taskId) {
         return loadList(taskId, MODEL_SEARCH_LISTING_FILE, ModelSearchListingExcel.class, "指定价格上架");
+    }
+
+    public void saveModelSearchListingByModelInput(Long taskId, List<ModelSearchListingByModelExcel> input) {
+        write(taskPath(taskId, MODEL_SEARCH_LISTING_BY_MODEL_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<ModelSearchListingByModelExcel>> loadModelSearchListingByModelInput(Long taskId) {
+        return loadList(taskId, MODEL_SEARCH_LISTING_BY_MODEL_FILE,
+                ModelSearchListingByModelExcel.class, "按货号尺码上架");
     }
 
     public void saveSearchModelNoInput(Long taskId, List<ModelNoSearchExcel> input) {
