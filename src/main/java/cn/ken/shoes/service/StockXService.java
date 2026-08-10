@@ -237,6 +237,7 @@ public class StockXService {
     /** 上架校验轮询：最多查 18 次、每次间隔 5 秒(约 90s，全部落定即提前结束)，等待 StockX 异步创建 listing 落地 */
     private static final int CREATE_VERIFY_MAX_ATTEMPTS = 18;
     private static final long CREATE_VERIFY_DELAY_MS = 5000;
+    private static final String ASKS_SUBGRAPH_FETCH_FAILURE = "Failed to fetch from Subgraph 'asks'";
 
     /**
      * 上架校验后台线程池：提交上架(QUEUED)后不阻塞搜索上架主任务，由后台线程按 variantID 异步回查并回填结果。
@@ -999,6 +1000,14 @@ public class StockXService {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 throw e;
             }
+            if (isAmbiguousListingCreateFailure(e)) {
+                List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
+                log.warn("[{}] StockX asks子图暂不可用，上架结果未知，转入异步对账, taskId:{}, variants:{}",
+                        account.getName(), taskId, variants.size());
+                markCreatePendingAndVerify("asks-subgraph-unknown", taskId, account,
+                        variants, variantToTaskItemId);
+                return;
+            }
             String reason = StrUtil.blankToDefault(e.getMessage(), "上架失败");
             if (reason.length() > 100) {
                 reason = reason.substring(0, 100);
@@ -1010,15 +1019,7 @@ public class StockXService {
         }
 
         List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
-        Map<String, Long> taskItems = new HashMap<>(variantToTaskItemId);
-        variants.forEach(variantId -> updateTaskItemResult(taskItems.get(variantId), "上架处理中"));
-        listingVerifyExecutor.submit(() -> {
-            try {
-                verifyCreateBatchAsync(batchId, taskId, account, variants, taskItems);
-            } catch (Exception e) {
-                log.error("[{}] 指定价格上架校验异常, batchId:{}", account.getName(), batchId, e);
-            }
-        });
+        markCreatePendingAndVerify(batchId, taskId, account, variants, variantToTaskItemId);
     }
 
     /** 复用任务上架与异步结果校验链路，供补单等任务提交已校验的上架项。 */
@@ -1305,6 +1306,14 @@ public class StockXService {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 throw e; // Token 过期：终止任务
             }
+            if (isAmbiguousListingCreateFailure(e)) {
+                List<String> variants = items.stream().map(Pair::getKey).toList();
+                log.warn("[{}] StockX asks子图暂不可用，上架结果未知，转入异步对账, taskId:{}, variants:{}",
+                        account.getName(), taskId, variants.size());
+                markCreatePendingAndVerify("asks-subgraph-unknown", taskId, account,
+                        variants, variantToTaskItemId);
+                return;
+            }
             String reason = e.getMessage() != null ? e.getMessage() : "上架失败";
             if (reason.length() > 100) {
                 reason = reason.substring(0, 100);
@@ -1320,26 +1329,34 @@ public class StockXService {
         }
         // 提交成功(QUEUED)：先把这批全部标"上架处理中"，再丢给后台线程异步按 variantID 回查回填，
         // 主任务不阻塞、继续往下搜索上架。(不再等 REST 批次完成——GraphQL 的 batchId 在官方 REST 查不到、永远 timeout)
-        List<String> variantsSnapshot = new ArrayList<>(items.size());
-        Map<String, Long> idSnapshot = new HashMap<>();
-        for (Pair<String, Integer> item : items) {
-            String variantId = item.getKey();
-            Long taskItemId = variantToTaskItemId.get(variantId);
-            if (taskItemId != null) {
-                variantsSnapshot.add(variantId);
-                idSnapshot.put(variantId, taskItemId);
-                updateTaskItemResult(taskItemId, "上架处理中");
-            }
-        }
+        List<String> variants = items.stream().map(Pair::getKey).toList();
+        markCreatePendingAndVerify(batchId, taskId, account, variants, variantToTaskItemId);
+    }
+
+    private static boolean isAmbiguousListingCreateFailure(RuntimeException error) {
+        return error != null && StrUtil.containsIgnoreCase(error.getMessage(), ASKS_SUBGRAPH_FETCH_FAILURE);
+    }
+
+    private void markCreatePendingAndVerify(String verificationRef, Long taskId, StockXAccount account,
+                                            List<String> variants, Map<String, Long> variantToTaskItemId) {
+        List<String> variantsSnapshot = variants.stream()
+                .filter(StrUtil::isNotBlank)
+                .filter(variantId -> variantToTaskItemId.get(variantId) != null)
+                .toList();
         if (variantsSnapshot.isEmpty()) {
             return;
         }
-        String finalBatchId = batchId;
+        Map<String, Long> idSnapshot = new HashMap<>();
+        for (String variantId : variantsSnapshot) {
+            Long taskItemId = variantToTaskItemId.get(variantId);
+            idSnapshot.put(variantId, taskItemId);
+            updateTaskItemResult(taskItemId, "上架处理中");
+        }
         listingVerifyExecutor.submit(() -> {
             try {
-                verifyCreateBatchAsync(finalBatchId, taskId, account, variantsSnapshot, idSnapshot);
+                verifyCreateBatchAsync(verificationRef, taskId, account, variantsSnapshot, idSnapshot);
             } catch (Exception e) {
-                log.error("[{}] 异步上架校验异常, batchId:{}", account.getName(), finalBatchId, e);
+                log.error("[{}] 异步上架校验异常, ref:{}", account.getName(), verificationRef, e);
             }
         });
     }
@@ -1463,14 +1480,14 @@ public class StockXService {
         return null;
     }
 
-    /** 对账：只重查 "上架处理中" 超过该时长的条目(给同步内联校验留出时间) */
+    /** 对账：只重查结果不确定且超过该时长的条目(给同步内联校验留出时间) */
     private static final long RECONCILE_MIN_AGE_MS = 3 * 60 * 1000;
     /** "上架处理中" 超过该时长仍查不到挂单，判为终态失败，避免永远卡处理中 */
     private static final long RECONCILE_TIMEOUT_MS = 30 * 60 * 1000;
     private static final int RECONCILE_BATCH_LIMIT = 500;
 
     /**
-     * 对账"上架处理中"：按 variantID 重查当前挂单，回填 已上架/上架失败:原因；超过 {@link #RECONCILE_TIMEOUT_MS}
+     * 对账"上架处理中"及历史 asks 子图异常：按 variantID 重查当前挂单，回填 已上架/上架失败:原因；超过 {@link #RECONCILE_TIMEOUT_MS}
      * 仍查不到挂单则判终态失败，避免永远卡处理中。<b>只读不重发</b>，无限流螺旋风险；
      * 同时补掉"进程重启导致后台异步校验丢失、条目永久卡处理中"的缺口。由 PriceScheduler 定时调用。
      */
@@ -1478,7 +1495,9 @@ public class StockXService {
         long now = System.currentTimeMillis();
         Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
         List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
-                .eq("operate_result", "上架处理中")
+                .and(query -> query.eq("operate_result", "上架处理中")
+                        .or()
+                        .like("operate_result", ASKS_SUBGRAPH_FETCH_FAILURE))
                 .lt("operate_time", ageCutoff)
                 .orderByAsc("operate_time")
                 .last("LIMIT " + RECONCILE_BATCH_LIMIT));

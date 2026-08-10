@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -47,6 +48,40 @@ class StockXModelSearchOperationsTest {
         verify(client).searchExactItemWithPrice("STYLE-2", "shoes", "US", account());
         verify(client, never()).searchItemWithPrice(anyString(), anyInt(), anyString(), anyString(),
                 anyString(), any(StockXAccount.class));
+    }
+
+    @Test
+    void keepsAutomaticSearchAsksSubgraphFailurePendingForReconciliation() throws Exception {
+        Long taskId = 21L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        TaskMapper taskMapper = mock(TaskMapper.class);
+        PriceManager priceManager = mock(PriceManager.class);
+        StockXService service = service(client, itemMapper, taskMapper, priceManager);
+        StockXPriceExcel item = price("STYLE-1", "9", "42.5", "variant-1");
+        item.setPrice(300);
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"), eq("US"), any(StockXAccount.class)))
+                .thenReturn(List.of(item));
+        when(priceManager.getPoisonPrice("STYLE-1", "42.5")).thenReturn(100);
+        when(client.createListingV2(anyList(), any(StockXAccount.class)))
+                .thenThrow(new RuntimeException("上架失败:Failed to fetch from Subgraph 'asks'."));
+        doAnswer(invocation -> {
+            TaskItemDO inserted = invocation.getArgument(0);
+            inserted.setId(201L);
+            return 1;
+        }).when(itemMapper).insert(any(TaskItemDO.class));
+
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.searchAndList(account(), taskId, "STYLE-1",
+                    "featured,lowest_ask", 25, "shoes", -1000, true);
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        ArgumentCaptor<TaskItemDO> update = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).updateById(update.capture());
+        assertThat(update.getValue().getOperateResult()).isEqualTo("上架处理中");
     }
 
     @Test
@@ -125,6 +160,37 @@ class StockXModelSearchOperationsTest {
             assertThat(item.quantity()).isEqualTo(4);
         });
         verifyNoInteractions(priceManager);
+    }
+
+    @Test
+    void keepsAmbiguousAsksSubgraphFailurePendingForReconciliation() throws Exception {
+        Long taskId = 15L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        TaskMapper taskMapper = mock(TaskMapper.class);
+        StockXService service = service(client, itemMapper, taskMapper, mock(PriceManager.class));
+        doAnswer(invocation -> {
+            TaskItemDO item = invocation.getArgument(0);
+            item.setId(101L);
+            return 1;
+        }).when(itemMapper).insert(any(TaskItemDO.class));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class)))
+                .thenThrow(new RuntimeException("上架失败:Failed to fetch from Subgraph 'asks'."));
+
+        ModelSearchListingExcel input = new ModelSearchListingExcel();
+        input.setVariantId("variant-1");
+        input.setTargetPrice(new BigDecimal("321"));
+        input.setQuantity(4);
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.createModelSearchListings(account(), taskId, List.of(input));
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        ArgumentCaptor<TaskItemDO> update = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).updateById(update.capture());
+        assertThat(update.getValue().getOperateResult()).isEqualTo("上架处理中");
     }
 
     @Test
