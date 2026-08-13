@@ -867,34 +867,36 @@ public class StockXService {
                                                  List<ModelSearchListingByModelExcel> inputRows) {
         String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
         Map<String, List<StockXPriceExcel>> searchCache = new LinkedHashMap<>();
-        Set<String> seenVariants = new HashSet<>();
         List<String> processedIds = taskItemMapper.selectProcessedProductIdsByTaskId(taskId);
         Set<String> alreadyProcessed = new HashSet<>(processedIds != null ? processedIds : List.of());
-        List<StockXListingCreateItem> pending = new ArrayList<>();
-        Map<String, Long> variantToTaskItemId = new HashMap<>();
+        List<TaskItemDO> pendingTaskItems = taskItemMapper.selectByCondition(
+                taskId, null, "待上架", null, null, 0, Integer.MAX_VALUE);
+        Map<String, TaskItemDO> pendingTaskItemByVariant = new LinkedHashMap<>();
+        if (pendingTaskItems != null) {
+            for (TaskItemDO pendingTaskItem : pendingTaskItems) {
+                if (pendingTaskItem != null && StrUtil.isNotBlank(pendingTaskItem.getProductId())) {
+                    pendingTaskItemByVariant.putIfAbsent(pendingTaskItem.getProductId().trim(), pendingTaskItem);
+                }
+            }
+        }
+        Map<String, ModelSearchListingGroup> groups = new LinkedHashMap<>();
         int processed = 0;
 
+        // 先解析完整份 Excel，再按 StockX variantId 合并。不能边读边按 50 条提交，否则同一货号尺码
+        // 分散在不同批次时仍会重复上架。尺码别名（如 US 9.5 / EU 43.5）最终也会合并到同一 variant。
         for (ModelSearchListingByModelExcel input : inputRows) {
             if (TaskSwitch.isSearchListCancelled(taskId)) {
                 return;
             }
             String modelNo = input != null && input.getModelNo() != null ? input.getModelNo().trim() : null;
             String requestedSize = input != null && input.getSize() != null ? input.getSize().trim() : null;
-            TaskItemDO taskItem = new TaskItemDO();
-            taskItem.setTaskId(taskId);
-            taskItem.setRound(1);
-            taskItem.setStyleId(modelNo);
-            taskItem.setSize(requestedSize);
-            taskItem.setTargetPrice(input != null ? input.getTargetPrice() : null);
-            taskItem.setCurrentPrice(input != null ? input.getTargetPrice() : null);
-            taskItem.setListingQuantity(input != null ? input.getQuantity() : null);
-            taskItem.setOperateTime(new Date());
 
             String invalidReason = validateModelSearchListingByModel(input, modelNo, requestedSize);
             if (invalidReason != null) {
+                TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, input, modelNo, requestedSize);
                 taskItem.setOperateResult("上架失败-" + invalidReason);
                 taskItemMapper.insert(taskItem);
-                updateModelSearchProgress(taskId, ++processed, inputRows.size(), "校验上架输入");
+                updateModelSearchPreparationProgress(taskId, ++processed, inputRows.size(), "校验上架输入");
                 continue;
             }
 
@@ -909,48 +911,157 @@ public class StockXService {
             }
             StockXPriceExcel matched = findModelSearchVariant(modelNo, requestedSize, candidates);
             if (matched == null || StrUtil.isBlank(matched.getId())) {
+                TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, input, modelNo, requestedSize);
                 taskItem.setOperateResult("上架失败-未找到对应货号尺码");
                 taskItemMapper.insert(taskItem);
-                updateModelSearchProgress(taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
+                updateModelSearchPreparationProgress(
+                        taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
                 continue;
             }
 
             String variantId = matched.getId().trim();
             if (alreadyProcessed.contains(variantId)) {
-                updateModelSearchProgress(taskId, ++processed, inputRows.size(), "已处理，跳过: " + variantId);
+                updateModelSearchPreparationProgress(
+                        taskId, ++processed, inputRows.size(), "已处理，跳过: " + variantId);
                 continue;
             }
+            groups.computeIfAbsent(variantId,
+                            ignored -> new ModelSearchListingGroup(
+                                    matched, modelNo, requestedSize, input.getTargetPrice()))
+                    .add(input);
+            updateModelSearchPreparationProgress(
+                    taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
+        }
+
+        List<StockXListingCreateItem> pending = new ArrayList<>();
+        Map<String, Long> variantToTaskItemId = new HashMap<>();
+        for (Map.Entry<String, ModelSearchListingGroup> entry : groups.entrySet()) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
+                return;
+            }
+            String variantId = entry.getKey();
+            ModelSearchListingGroup group = entry.getValue();
+            StockXPriceExcel matched = group.matched();
+            TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, null,
+                    StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()),
+                    StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
             taskItem.setProductId(variantId);
             taskItem.setBrand(matched.getBrand());
             taskItem.setTitle(matched.getTitle());
-            taskItem.setStyleId(StrUtil.blankToDefault(matched.getModelNo(), modelNo));
-            taskItem.setSize(matched.getUsmSize());
+            taskItem.setStyleId(StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()));
+            taskItem.setSize(StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
             taskItem.setEuSize(matched.getEuSize());
             taskItem.setLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getStandardPrice()));
             taskItem.setFlexLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getFlexPrice()));
-            if (seenVariants.contains(variantId)) {
-                taskItem.setOperateResult("上架失败-货号尺码重复");
+            taskItem.setTargetPrice(group.targetPrice());
+            taskItem.setCurrentPrice(group.targetPrice());
+
+            if (group.totalQuantity() > Integer.MAX_VALUE) {
+                taskItem.setOperateResult("上架失败-合并数量超过整数上限");
                 taskItemMapper.insert(taskItem);
-                updateModelSearchProgress(taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
+                continue;
+            }
+            int mergedQuantity = (int) group.totalQuantity();
+            taskItem.setListingQuantity(mergedQuantity);
+            if (group.priceConflict()) {
+                taskItem.setOperateResult("上架失败-相同货号尺码的上架价格不一致");
+                taskItemMapper.insert(taskItem);
                 continue;
             }
 
-            seenVariants.add(variantId);
             taskItem.setOperateResult("待上架");
-            taskItemMapper.insert(taskItem);
-            pending.add(new StockXListingCreateItem(variantId, input.getTargetPrice(), input.getQuantity()));
+            TaskItemDO existingPending = pendingTaskItemByVariant.get(variantId);
+            if (existingPending != null && existingPending.getId() != null) {
+                taskItem.setId(existingPending.getId());
+                taskItemMapper.updateById(taskItem);
+            } else {
+                taskItemMapper.insert(taskItem);
+            }
+            pending.add(new StockXListingCreateItem(variantId, group.targetPrice(), mergedQuantity));
             variantToTaskItemId.put(variantId, taskItem.getId());
-            processed++;
 
             if (pending.size() >= 50) {
                 batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
                 pending.clear();
                 variantToTaskItemId.clear();
             }
-            updateModelSearchProgress(taskId, processed, inputRows.size(), modelNo + " / " + requestedSize);
         }
         if (!pending.isEmpty()) {
             batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
+        }
+        updateModelSearchProgress(taskId, inputRows.size(), inputRows.size(), "完成");
+    }
+
+    private void updateModelSearchPreparationProgress(Long taskId, int current, int total, String detail) {
+        JSONObject attrs = new JSONObject(true);
+        int progress = total > 0 ? Math.min(current * 100 / total, 99) : 99;
+        attrs.put("progress", progress);
+        attrs.put("current", current);
+        attrs.put("total", total);
+        attrs.put("processed", current);
+        attrs.put("detail", detail);
+        taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
+    }
+
+    private TaskItemDO buildModelSearchListingTaskItem(Long taskId, ModelSearchListingByModelExcel input,
+                                                       String modelNo, String requestedSize) {
+        TaskItemDO taskItem = new TaskItemDO();
+        taskItem.setTaskId(taskId);
+        taskItem.setRound(1);
+        taskItem.setStyleId(modelNo);
+        taskItem.setSize(requestedSize);
+        taskItem.setTargetPrice(input != null ? input.getTargetPrice() : null);
+        taskItem.setCurrentPrice(input != null ? input.getTargetPrice() : null);
+        taskItem.setListingQuantity(input != null ? input.getQuantity() : null);
+        taskItem.setOperateTime(new Date());
+        return taskItem;
+    }
+
+    private static final class ModelSearchListingGroup {
+        private final StockXPriceExcel matched;
+        private final String modelNo;
+        private final String requestedSize;
+        private final BigDecimal targetPrice;
+        private long totalQuantity;
+        private boolean priceConflict;
+
+        private ModelSearchListingGroup(StockXPriceExcel matched, String modelNo,
+                                        String requestedSize, BigDecimal targetPrice) {
+            this.matched = matched;
+            this.modelNo = modelNo;
+            this.requestedSize = requestedSize;
+            this.targetPrice = targetPrice;
+        }
+
+        private void add(ModelSearchListingByModelExcel input) {
+            totalQuantity += input.getQuantity();
+            if (targetPrice.compareTo(input.getTargetPrice()) != 0) {
+                priceConflict = true;
+            }
+        }
+
+        private StockXPriceExcel matched() {
+            return matched;
+        }
+
+        private String modelNo() {
+            return modelNo;
+        }
+
+        private String requestedSize() {
+            return requestedSize;
+        }
+
+        private BigDecimal targetPrice() {
+            return targetPrice;
+        }
+
+        private long totalQuantity() {
+            return totalQuantity;
+        }
+
+        private boolean priceConflict() {
+            return priceConflict;
         }
     }
 

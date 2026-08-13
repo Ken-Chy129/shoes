@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.TaskSwitch;
+import com.alibaba.fastjson.JSONObject;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -17,6 +18,7 @@ import org.mockito.ArgumentCaptor;
 
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -250,6 +252,160 @@ class StockXModelSearchOperationsTest {
         verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
         assertThat(listings.getValue()).extracting(StockXListingCreateItem::variantId)
                 .containsExactly("variant-6", "variant-7");
+    }
+
+    @Test
+    void listingByModelMergesDuplicateModelAndSizeQuantitiesBeforeSubmitting() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(eq("1183C102-751"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(
+                price("1183C102-751", "9.5", "43.5", "variant-9.5")));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-4");
+
+        ModelSearchListingByModelExcel first = listingByModel("1183C102-751", "9.5", "500", 1);
+        ModelSearchListingByModelExcel second = listingByModel("1183C102-751", "US 9.5", "500", 2);
+        ModelSearchListingByModelExcel third = listingByModel("1183C102-751", "EU 43.5", "500", 3);
+
+        service.createModelSearchListingsByModel(account(), 16L, List.of(first, second, third));
+
+        ArgumentCaptor<List<StockXListingCreateItem>> listings = ArgumentCaptor.forClass(List.class);
+        verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
+        assertThat(listings.getValue()).singleElement().satisfies(item -> {
+            assertThat(item.variantId()).isEqualTo("variant-9.5");
+            assertThat(item.amount()).isEqualByComparingTo("500");
+            assertThat(item.quantity()).isEqualTo(6);
+        });
+
+        ArgumentCaptor<TaskItemDO> taskItem = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).insert(taskItem.capture());
+        assertThat(taskItem.getValue().getProductId()).isEqualTo("variant-9.5");
+        assertThat(taskItem.getValue().getListingQuantity()).isEqualTo(6);
+        assertThat(taskItem.getValue().getOperateResult()).isEqualTo("待上架");
+    }
+
+    @Test
+    void listingByModelRejectsConflictingPricesForTheSameResolvedVariant() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(
+                price("STYLE-1", "9", "42.5", "variant-9")));
+
+        ModelSearchListingByModelExcel first = listingByModel("STYLE-1", "9", "500", 2);
+        ModelSearchListingByModelExcel second = listingByModel("STYLE-1", "EU 42.5", "510", 3);
+
+        service.createModelSearchListingsByModel(account(), 17L, List.of(first, second));
+
+        verify(client, never()).createListingsWithQuantity(anyList(), any(StockXAccount.class));
+        ArgumentCaptor<TaskItemDO> taskItem = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).insert(taskItem.capture());
+        assertThat(taskItem.getValue().getProductId()).isEqualTo("variant-9");
+        assertThat(taskItem.getValue().getListingQuantity()).isEqualTo(5);
+        assertThat(taskItem.getValue().getOperateResult())
+                .isEqualTo("上架失败-相同货号尺码的上架价格不一致");
+    }
+
+    @Test
+    void listingByModelMergesDuplicatesAcrossThePreviousFiftyItemBatchBoundary() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(
+                price("STYLE-1", "9", "42.5", "variant-9")));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-5");
+
+        List<ModelSearchListingByModelExcel> rows = new ArrayList<>();
+        for (int i = 0; i < 51; i++) {
+            rows.add(listingByModel("STYLE-1", "9", "500", 1));
+        }
+
+        service.createModelSearchListingsByModel(account(), 18L, rows);
+
+        ArgumentCaptor<List<StockXListingCreateItem>> listings = ArgumentCaptor.forClass(List.class);
+        verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
+        assertThat(listings.getValue()).singleElement()
+                .extracting(StockXListingCreateItem::quantity)
+                .isEqualTo(51);
+        verify(itemMapper, times(1)).insert(any(TaskItemDO.class));
+    }
+
+    @Test
+    void listingByModelResumeReusesExistingPendingTaskItem() throws Exception {
+        Long taskId = 19L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        StockXPriceExcel matched = price("STYLE-1", "9", "42.5", "variant-9");
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(matched));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-resume");
+        TaskItemDO pending = new TaskItemDO();
+        pending.setId(901L);
+        pending.setTaskId(taskId);
+        pending.setProductId("variant-9");
+        pending.setOperateResult("待上架");
+        pending.setListingQuantity(3);
+        when(itemMapper.selectByCondition(taskId, null, "待上架", null, null, 0, Integer.MAX_VALUE))
+                .thenReturn(List.of(pending));
+
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.createModelSearchListingsByModel(account(), taskId,
+                    List.of(listingByModel("STYLE-1", "9", "500", 3)));
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        verify(itemMapper, never()).insert(any(TaskItemDO.class));
+        ArgumentCaptor<TaskItemDO> updates = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper, times(2)).updateById(updates.capture());
+        assertThat(updates.getAllValues().get(0)).satisfies(update -> {
+            assertThat(update.getId()).isEqualTo(901L);
+            assertThat(update.getListingQuantity()).isEqualTo(3);
+            assertThat(update.getTargetPrice()).isEqualByComparingTo("500");
+        });
+        assertThat(updates.getAllValues().get(1)).satisfies(update -> {
+            assertThat(update.getId()).isEqualTo(901L);
+            assertThat(update.getOperateResult()).isEqualTo("上架处理中");
+        });
+    }
+
+    @Test
+    void listingByModelReportsOneHundredPercentOnlyAfterSubmissionCompletes() throws Exception {
+        Long taskId = 20L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        TaskMapper taskMapper = mock(TaskMapper.class);
+        StockXService service = service(client, itemMapper, taskMapper, mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(eq("STYLE-1"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(
+                price("STYLE-1", "9", "42.5", "variant-9")));
+        List<Integer> progressValues = new ArrayList<>();
+        doAnswer(invocation -> {
+            JSONObject attributes = JSONObject.parseObject(invocation.getArgument(1));
+            progressValues.add(attributes.getIntValue("progress"));
+            return null;
+        }).when(taskMapper).updateTaskAttributes(eq(taskId), anyString());
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenAnswer(invocation -> {
+            assertThat(progressValues).isNotEmpty();
+            assertThat(progressValues.get(progressValues.size() - 1)).isLessThan(100);
+            return "batch-progress";
+        });
+
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.createModelSearchListingsByModel(account(), taskId,
+                    List.of(listingByModel("STYLE-1", "9", "500", 1)));
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        assertThat(progressValues).isNotEmpty();
+        assertThat(progressValues.get(progressValues.size() - 1)).isEqualTo(100);
     }
 
     private static StockXService service(StockXClient client, TaskItemMapper itemMapper,

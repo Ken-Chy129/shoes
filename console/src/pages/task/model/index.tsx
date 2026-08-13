@@ -5,7 +5,6 @@ import {PlusOutlined, UploadOutlined, DownloadOutlined} from "@ant-design/icons"
 import React, {useEffect, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
-import ExcelFieldHint from "@/components/ExcelFieldHint";
 
 interface SpecialModelRecord {
     modelNo: string;
@@ -154,23 +153,16 @@ const ModelPage = () => {
                     </Space>
                 </Form.Item>
             </Form>
-            <Space direction="vertical" align="end" size={2}>
-                <Space>
-                    <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
-                        下载模板
-                    </Button>
-                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
-                        <Button icon={<UploadOutlined/>}>导入Excel</Button>
-                    </Upload>
-                    <Button type="primary" icon={<PlusOutlined/>} onClick={() => setAddModalVisible(true)}>
-                        添加
-                    </Button>
-                </Space>
-                <ExcelFieldHint
-                    requiredFields={['类型', '货号']}
-                    optionalFields={['尺码']}
-                    note="类型支持：必爬、禁爬、不比价。也可以先下载模板后填写。"
-                />
+            <Space>
+                <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
+                    下载模板
+                </Button>
+                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={handleImport} showUploadList={false}>
+                    <Button icon={<UploadOutlined/>}>导入Excel</Button>
+                </Upload>
+                <Button type="primary" icon={<PlusOutlined/>} onClick={() => setAddModalVisible(true)}>
+                    添加
+                </Button>
             </Space>
         </div>
 
