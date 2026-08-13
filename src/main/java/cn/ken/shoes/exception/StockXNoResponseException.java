@@ -5,7 +5,24 @@ package cn.ken.shoes.exception;
  */
 public class StockXNoResponseException extends RuntimeException {
 
+    public enum FailureType {
+        NETWORK_NO_RESPONSE,
+        HTTP_403,
+        BLOCK_SCRIPT
+    }
+
+    private final FailureType failureType;
+
     public StockXNoResponseException(String message) {
+        this(message, FailureType.NETWORK_NO_RESPONSE);
+    }
+
+    public StockXNoResponseException(String message, FailureType failureType) {
         super(message);
+        this.failureType = failureType != null ? failureType : FailureType.NETWORK_NO_RESPONSE;
+    }
+
+    public FailureType getFailureType() {
+        return failureType;
     }
 }

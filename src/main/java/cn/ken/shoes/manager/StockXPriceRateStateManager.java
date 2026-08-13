@@ -1,5 +1,6 @@
 package cn.ken.shoes.manager;
 
+import cn.ken.shoes.exception.StockXNoResponseException;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.TypeReference;
 import lombok.extern.slf4j.Slf4j;
@@ -29,11 +30,13 @@ public class StockXPriceRateStateManager {
         BULK_ACTIVE,
         SINGLE_FALLBACK,
         BULK_RECOVERING,
-        GLOBAL_COOLDOWN
+        GLOBAL_COOLDOWN,
+        BLOCKED_COOLDOWN
     }
 
     private static final long BATCH_PROBE_DELAY_MS = 310_000L;
     private static final long GLOBAL_PROBE_DELAY_MS = 3 * 60 * 60 * 1000L;
+    private static final long BLOCKED_PROBE_DELAY_MS = 15 * 60 * 1000L;
     private static final int DEFAULT_BATCH_SIZE = 100;
 
     private final Clock clock;
@@ -90,14 +93,21 @@ public class StockXPriceRateStateManager {
     public boolean shouldProbeGlobal(String accountName) {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
-            return state.mode == Mode.GLOBAL_COOLDOWN && clock.millis() >= state.nextGlobalProbeAt;
+            return isProbeCooldownMode(state.mode) && clock.millis() >= state.nextGlobalProbeAt;
+        }
+    }
+
+    public boolean isProbeCooldown(String accountName) {
+        RuntimeState state = state(normalize(accountName));
+        synchronized (state) {
+            return isProbeCooldownMode(state.mode);
         }
     }
 
     public long globalCooldownRemainingMs(String accountName) {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
-            return state.mode == Mode.GLOBAL_COOLDOWN
+            return isProbeCooldownMode(state.mode)
                     ? Math.max(0L, state.nextGlobalProbeAt - clock.millis()) : 0L;
         }
     }
@@ -106,7 +116,7 @@ public class StockXPriceRateStateManager {
     public boolean tryAcquireGlobalProbe(String accountName) {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
-            if (state.mode != Mode.GLOBAL_COOLDOWN
+            if (!isProbeCooldownMode(state.mode)
                     || clock.millis() < state.nextGlobalProbeAt
                     || state.globalProbeInFlight) {
                 return false;
@@ -131,6 +141,7 @@ public class StockXPriceRateStateManager {
             state.nextGlobalProbeAt = 0L;
             state.recoveryBatchSize = 20;
             state.batchRateLimitCount++;
+            state.bulkBatchRateLimitCount++;
             state.lastSignal = signal;
             state.lastRateLimitAt = clock.millis();
         }
@@ -146,6 +157,7 @@ public class StockXPriceRateStateManager {
             state.nextGlobalProbeAt = 0L;
             state.recoveryBatchSize = 20;
             state.generalRateLimitCount++;
+            state.bulkGeneralRateLimitCount++;
             state.lastSignal = signal;
             state.lastRateLimitAt = clock.millis();
         }
@@ -156,6 +168,7 @@ public class StockXPriceRateStateManager {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
             state.generalRateLimitCount++;
+            state.singleGeneralRateLimitCount++;
             state.lastSignal = signal;
             state.lastRateLimitAt = clock.millis();
         }
@@ -165,6 +178,7 @@ public class StockXPriceRateStateManager {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
             state.batchRateLimitCount++;
+            state.singleBatchRateLimitCount++;
             state.lastSignal = signal;
             state.lastRateLimitAt = clock.millis();
         }
@@ -212,12 +226,33 @@ public class StockXPriceRateStateManager {
     public void onGlobalLimit(String accountName, String signal) {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
+            boolean enteringCooldown = state.mode != Mode.GLOBAL_COOLDOWN;
             state.mode = Mode.GLOBAL_COOLDOWN;
             state.nextGlobalProbeAt = clock.millis() + GLOBAL_PROBE_DELAY_MS;
             state.nextBatchProbeAt = 0L;
             state.globalProbeInFlight = false;
             state.lastSignal = signal;
             state.lastRateLimitAt = clock.millis();
+            if (enteringCooldown) {
+                state.globalCooldownCount++;
+            }
+        }
+        persist();
+    }
+
+    public void onBlocked(String accountName, String signal) {
+        RuntimeState state = state(normalize(accountName));
+        synchronized (state) {
+            boolean enteringCooldown = state.mode != Mode.BLOCKED_COOLDOWN;
+            state.mode = Mode.BLOCKED_COOLDOWN;
+            state.nextGlobalProbeAt = clock.millis() + BLOCKED_PROBE_DELAY_MS;
+            state.nextBatchProbeAt = 0L;
+            state.globalProbeInFlight = false;
+            state.lastSignal = signal;
+            state.lastRateLimitAt = clock.millis();
+            if (enteringCooldown) {
+                state.blockedCooldownCount++;
+            }
         }
         persist();
     }
@@ -254,9 +289,47 @@ public class StockXPriceRateStateManager {
     }
 
     public void recordNoResponse(String accountName) {
+        recordNoResponse(accountName, StockXNoResponseException.FailureType.NETWORK_NO_RESPONSE);
+    }
+
+    public void recordNoResponse(String accountName, StockXNoResponseException.FailureType failureType) {
+        recordFailure(accountName, failureType, null);
+    }
+
+    public void recordBulkFailure(String accountName, StockXNoResponseException.FailureType failureType) {
+        recordFailure(accountName, failureType, Boolean.TRUE);
+    }
+
+    public void recordSingleFailure(String accountName, StockXNoResponseException.FailureType failureType) {
+        recordFailure(accountName, failureType, Boolean.FALSE);
+    }
+
+    private void recordFailure(String accountName, StockXNoResponseException.FailureType failureType,
+                               Boolean bulkChannel) {
         RuntimeState state = state(normalize(accountName));
         synchronized (state) {
             state.noResponseCount++;
+            StockXNoResponseException.FailureType resolved = failureType != null
+                    ? failureType : StockXNoResponseException.FailureType.NETWORK_NO_RESPONSE;
+            state.lastSignal = resolved.name();
+            state.lastRateLimitAt = clock.millis();
+            switch (resolved) {
+                case NETWORK_NO_RESPONSE -> {
+                    state.networkNoResponseCount++;
+                    if (Boolean.TRUE.equals(bulkChannel)) state.bulkNetworkNoResponseCount++;
+                    if (Boolean.FALSE.equals(bulkChannel)) state.singleNetworkNoResponseCount++;
+                }
+                case HTTP_403 -> {
+                    state.http403Count++;
+                    if (Boolean.TRUE.equals(bulkChannel)) state.bulkHttp403Count++;
+                    if (Boolean.FALSE.equals(bulkChannel)) state.singleHttp403Count++;
+                }
+                case BLOCK_SCRIPT -> {
+                    state.blockScriptCount++;
+                    if (Boolean.TRUE.equals(bulkChannel)) state.bulkBlockScriptCount++;
+                    if (Boolean.FALSE.equals(bulkChannel)) state.singleBlockScriptCount++;
+                }
+            }
         }
     }
 
@@ -280,6 +353,10 @@ public class StockXPriceRateStateManager {
 
     private static String normalize(String accountName) {
         return accountName == null || accountName.isBlank() ? "_global" : accountName;
+    }
+
+    private static boolean isProbeCooldownMode(Mode mode) {
+        return mode == Mode.GLOBAL_COOLDOWN || mode == Mode.BLOCKED_COOLDOWN;
     }
 
     private void load() {
@@ -329,7 +406,25 @@ public class StockXPriceRateStateManager {
             long singleItemCount,
             long batchRateLimitCount,
             long generalRateLimitCount,
+            long bulkBatchRateLimitCount,
+            long singleBatchRateLimitCount,
+            long bulkGeneralRateLimitCount,
+            long singleGeneralRateLimitCount,
+            long unclassifiedBatchRateLimitCount,
+            long unclassifiedGeneralRateLimitCount,
             long noResponseCount,
+            long networkNoResponseCount,
+            long http403Count,
+            long blockScriptCount,
+            long bulkNetworkNoResponseCount,
+            long singleNetworkNoResponseCount,
+            long bulkHttp403Count,
+            long singleHttp403Count,
+            long bulkBlockScriptCount,
+            long singleBlockScriptCount,
+            long unclassifiedNoResponseCount,
+            long globalCooldownCount,
+            long blockedCooldownCount,
             long probeAttemptCount,
             long probeSuccessCount,
             long confirmedPriceUpdateCount,
@@ -348,7 +443,22 @@ public class StockXPriceRateStateManager {
         public long singleItemCount;
         public long batchRateLimitCount;
         public long generalRateLimitCount;
+        public long bulkBatchRateLimitCount;
+        public long singleBatchRateLimitCount;
+        public long bulkGeneralRateLimitCount;
+        public long singleGeneralRateLimitCount;
         public long noResponseCount;
+        public long networkNoResponseCount;
+        public long http403Count;
+        public long blockScriptCount;
+        public long bulkNetworkNoResponseCount;
+        public long singleNetworkNoResponseCount;
+        public long bulkHttp403Count;
+        public long singleHttp403Count;
+        public long bulkBlockScriptCount;
+        public long singleBlockScriptCount;
+        public long globalCooldownCount;
+        public long blockedCooldownCount;
         public long probeAttemptCount;
         public long probeSuccessCount;
         public long confirmedPriceUpdateCount;
@@ -360,7 +470,21 @@ public class StockXPriceRateStateManager {
             int batchSize = mode == Mode.BULK_RECOVERING ? recoveryBatchSize : DEFAULT_BATCH_SIZE;
             return new Snapshot(accountName, mode, nextBatchProbeAt, nextGlobalProbeAt, batchSize,
                     bulkRequestCount, bulkItemCount, singleRequestCount, singleItemCount,
-                    batchRateLimitCount, generalRateLimitCount, noResponseCount,
+                    batchRateLimitCount, generalRateLimitCount,
+                    bulkBatchRateLimitCount, singleBatchRateLimitCount,
+                    bulkGeneralRateLimitCount, singleGeneralRateLimitCount,
+                    Math.max(0L, batchRateLimitCount - bulkBatchRateLimitCount - singleBatchRateLimitCount),
+                    Math.max(0L, generalRateLimitCount - bulkGeneralRateLimitCount - singleGeneralRateLimitCount),
+                    noResponseCount, networkNoResponseCount, http403Count, blockScriptCount,
+                    bulkNetworkNoResponseCount, singleNetworkNoResponseCount,
+                    bulkHttp403Count, singleHttp403Count,
+                    bulkBlockScriptCount, singleBlockScriptCount,
+                    Math.max(0L, noResponseCount
+                            - bulkNetworkNoResponseCount - singleNetworkNoResponseCount
+                            - bulkHttp403Count - singleHttp403Count
+                            - bulkBlockScriptCount - singleBlockScriptCount),
+                    globalCooldownCount,
+                    blockedCooldownCount,
                     probeAttemptCount, probeSuccessCount, confirmedPriceUpdateCount,
                     lastSignal, lastRateLimitAt);
         }

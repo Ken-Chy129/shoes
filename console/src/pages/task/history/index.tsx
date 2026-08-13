@@ -35,7 +35,7 @@ interface TaskRecord {
 
 interface StockXRateStatus {
     accountName: string;
-    mode: 'BULK_ACTIVE' | 'SINGLE_FALLBACK' | 'BULK_RECOVERING' | 'GLOBAL_COOLDOWN';
+    mode: 'BULK_ACTIVE' | 'SINGLE_FALLBACK' | 'BULK_RECOVERING' | 'GLOBAL_COOLDOWN' | 'BLOCKED_COOLDOWN';
     nextBatchProbeAt: number;
     nextGlobalProbeAt: number;
     currentBulkBatchSize: number;
@@ -46,6 +46,24 @@ interface StockXRateStatus {
     batchRateLimitCount: number;
     generalRateLimitCount: number;
     noResponseCount: number;
+    bulkBatchRateLimitCount?: number;
+    singleBatchRateLimitCount?: number;
+    bulkGeneralRateLimitCount?: number;
+    singleGeneralRateLimitCount?: number;
+    unclassifiedBatchRateLimitCount?: number;
+    unclassifiedGeneralRateLimitCount?: number;
+    networkNoResponseCount?: number;
+    http403Count?: number;
+    blockScriptCount?: number;
+    bulkNetworkNoResponseCount?: number;
+    singleNetworkNoResponseCount?: number;
+    bulkHttp403Count?: number;
+    singleHttp403Count?: number;
+    bulkBlockScriptCount?: number;
+    singleBlockScriptCount?: number;
+    unclassifiedNoResponseCount?: number;
+    globalCooldownCount?: number;
+    blockedCooldownCount?: number;
     probeAttemptCount: number;
     probeSuccessCount: number;
     confirmedPriceUpdateCount: number;
@@ -137,12 +155,13 @@ const TaskPage = () => {
             SINGLE_FALLBACK: {label: 'Single降级', color: 'orange'},
             BULK_RECOVERING: {label: 'Bulk恢复中', color: 'blue'},
             GLOBAL_COOLDOWN: {label: '双通道冷却', color: 'red'},
+            BLOCKED_COOLDOWN: {label: '403/Block拦截冷却', color: 'volcano'},
         } as const;
         return values[mode] || {label: mode, color: 'default'};
     };
 
     const nextProbeText = (record: StockXRateStatus) => {
-        const timestamp = record.mode === 'GLOBAL_COOLDOWN'
+        const timestamp = record.mode === 'GLOBAL_COOLDOWN' || record.mode === 'BLOCKED_COOLDOWN'
             ? record.nextGlobalProbeAt : record.nextBatchProbeAt;
         return timestamp > 0 ? moment(timestamp).format('MM-DD HH:mm:ss') : '-';
     };
@@ -156,8 +175,20 @@ const TaskPage = () => {
         {title: '下次真实探测', width: 145, render: (_: any, record: StockXRateStatus) => nextProbeText(record)},
         {title: 'Bulk请求 / 商品', width: 135, render: (_: any, r: StockXRateStatus) => `${r.bulkRequestCount} / ${r.bulkItemCount}`},
         {title: 'Single请求 / 商品', width: 140, render: (_: any, r: StockXRateStatus) => `${r.singleRequestCount} / ${r.singleItemCount}`},
-        {title: '批量429 / 通用429', width: 140, render: (_: any, r: StockXRateStatus) => `${r.batchRateLimitCount} / ${r.generalRateLimitCount}`},
-        {title: '无响应', dataIndex: 'noResponseCount', width: 80},
+        {title: 'Bulk限流 配额 / 通用', width: 155, render: (_: any, r: StockXRateStatus) =>
+                `${r.bulkBatchRateLimitCount ?? 0} / ${r.bulkGeneralRateLimitCount ?? 0}`},
+        {title: 'Single限流 配额 / 通用', width: 165, render: (_: any, r: StockXRateStatus) =>
+                `${r.singleBatchRateLimitCount ?? 0} / ${r.singleGeneralRateLimitCount ?? 0}`},
+        {title: 'Bulk异常 网络 / 403 / Block', width: 185, render: (_: any, r: StockXRateStatus) =>
+                `${r.bulkNetworkNoResponseCount ?? 0} / ${r.bulkHttp403Count ?? 0} / ${r.bulkBlockScriptCount ?? 0}`},
+        {title: 'Single异常 网络 / 403 / Block', width: 195, render: (_: any, r: StockXRateStatus) =>
+                `${r.singleNetworkNoResponseCount ?? 0} / ${r.singleHttp403Count ?? 0} / ${r.singleBlockScriptCount ?? 0}`},
+        {title: '历史未细分429 批量 / 通用', width: 190, render: (_: any, r: StockXRateStatus) =>
+                `${r.unclassifiedBatchRateLimitCount ?? r.batchRateLimitCount ?? 0} / ${r.unclassifiedGeneralRateLimitCount ?? r.generalRateLimitCount ?? 0}`},
+        {title: '历史未细分异常', width: 125, render: (_: any, r: StockXRateStatus) =>
+                r.unclassifiedNoResponseCount ?? r.noResponseCount ?? 0},
+        {title: '完全限流 / 拦截冷却', width: 155, render: (_: any, r: StockXRateStatus) =>
+                `${r.globalCooldownCount ?? 0} / ${r.blockedCooldownCount ?? 0}`},
         {title: '探测成功 / 次数', width: 125, render: (_: any, r: StockXRateStatus) => `${r.probeSuccessCount} / ${r.probeAttemptCount}`},
         {title: '已确认压价', dataIndex: 'confirmedPriceUpdateCount', width: 100},
         {title: '最近信号', dataIndex: 'lastSignal', width: 125, render: (v: string) => v || '-'},
@@ -830,9 +861,9 @@ const TaskPage = () => {
     return <>
         <Card title="StockX 压价通道观测" size="small" style={{marginBottom: 16}}>
             <Alert type="info" showIcon style={{marginBottom: 12}}
-                   message="以下是本服务实际调用计数与真实429观测，不是StockX官方剩余额度，也不会按计数主动拦截请求。"/>
+                   message="以下按 Bulk、Single、HTTP 403、BlockScript 和网络无响应分别统计。双通道429进入3小时限流冷却；HTTP 403/BlockScript进入独立15分钟拦截冷却；本地1 QPS忙只切号或排队。"/>
             <Table columns={rateColumns} dataSource={stockxRateStatus} rowKey="accountName"
-                   size="small" pagination={false} scroll={{x: 1250}}/>
+                   size="small" pagination={false} scroll={{x: 2200}}/>
         </Card>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
             <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>

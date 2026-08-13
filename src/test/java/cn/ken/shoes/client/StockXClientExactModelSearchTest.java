@@ -1,5 +1,6 @@
 package cn.ken.shoes.client;
 
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import com.alibaba.fastjson.JSON;
@@ -11,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StockXClientExactModelSearchTest {
 
@@ -53,6 +55,32 @@ class StockXClientExactModelSearchTest {
                 "search:1183c102-751", "product:wrong-product", "product:exact-product", "market:exact-product");
     }
 
+    @Test
+    void propagatesPoolExhaustionFromParallelDetailReads() {
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                String operation = JSON.parseObject(body).getString("operationName");
+                if ("getDiscoveryData".equals(operation)) {
+                    return JSON.parseObject("""
+                            {"data":{"browse":{"results":{"pageInfo":{"pageCount":1},"edges":[
+                              {"node":{"urlKey":"limited-product","title":"Limited"}}
+                            ]}}}}
+                            """);
+                }
+                throw new StockXRateLimitException("us-a", 300_000L);
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("us-a");
+        account.setCountry("US");
+        account.setAuthorization("Bearer test");
+
+        assertThatThrownBy(() -> client.searchItemWithPrice(
+                "shoe", 1, "featured", "shoes", "US", account))
+                .isInstanceOf(StockXRateLimitException.class);
+    }
+
     private static class StubStockXClient extends StockXClient {
         private final List<String> calls = new ArrayList<>();
         private final String exactStyleId;
@@ -66,7 +94,7 @@ class StockXClientExactModelSearchTest {
         }
 
         @Override
-        protected JSONObject queryPro(String body, Headers headers, String accountName) {
+        protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
             JSONObject request = JSON.parseObject(body);
             String operation = request.getString("operationName");
             String id = request.getJSONObject("variables").getString("id");
@@ -113,6 +141,11 @@ class StockXClientExactModelSearchTest {
                         """);
             }
             throw new AssertionError("Unexpected operation: " + operation);
+        }
+
+        @Override
+        protected JSONObject queryPro(String body, Headers headers, String accountName) {
+            throw new AssertionError("账号无关搜索必须经过同区域只读账号池");
         }
     }
 }

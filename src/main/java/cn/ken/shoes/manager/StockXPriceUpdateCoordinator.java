@@ -18,7 +18,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /**
- * 压价提交状态机：优先 Bulk，真实触发批量限流后切 Single；两个通道都持续限流时每3小时真实探测。
+ * 压价提交状态机：优先 Bulk，批量限流后切 Single；双通道429每3小时探测，403/Block每15分钟探测。
  */
 @Slf4j
 @Component
@@ -56,9 +56,9 @@ public class StockXPriceUpdateCoordinator {
             checkCancelled(cancelled);
             StockXPriceRateStateManager.Mode mode = stateManager.mode(accountName);
 
-            if (mode == StockXPriceRateStateManager.Mode.GLOBAL_COOLDOWN) {
+            if (stateManager.isProbeCooldown(accountName)) {
                 awaitGlobalProbe(accountName, cancelled, onCooldown);
-                if (stateManager.mode(accountName) != StockXPriceRateStateManager.Mode.GLOBAL_COOLDOWN) {
+                if (!stateManager.isProbeCooldown(accountName)) {
                     continue;
                 }
                 if (!stateManager.tryAcquireGlobalProbe(accountName)) {
@@ -89,6 +89,9 @@ public class StockXPriceUpdateCoordinator {
                     continue;
                 }
                 SingleOutcome outcome = submitSingleWithRetry(item, account, cancelled, onItemFailure, onCooldown);
+                if (outcome == SingleOutcome.DEFERRED) {
+                    continue;
+                }
                 if (outcome == SingleOutcome.ACCEPTED) {
                     accepted.add(item);
                 }
@@ -107,8 +110,9 @@ public class StockXPriceUpdateCoordinator {
                     stateManager.onRecoveryBatchSuccess(accountName);
                 }
             } catch (StockXNoResponseException noResponse) {
-                stateManager.recordNoResponse(accountName);
-                log.warn("[{}] Bulk无响应，保持当前配额模式并逐条改用Single，items:{}", accountName, batch.size());
+                stateManager.recordBulkFailure(accountName, noResponse.getFailureType());
+                log.warn("[{}] Bulk请求异常({})，保持当前配额模式并逐条改用Single，items:{}",
+                        accountName, failureLabel(noResponse), batch.size());
                 index += submitIndividually(batch, account, cancelled, onItemFailure, onCooldown, accepted);
             } catch (StockXRateLimitException rateLimit) {
                 log.warn("[{}] Bulk真实限流, type:{}, signal:{}, items:{}",
@@ -143,9 +147,10 @@ public class StockXPriceUpdateCoordinator {
                     accountName, rateLimit.getType(), rateLimit.getSignal());
             return false;
         } catch (StockXNoResponseException noResponse) {
-            stateManager.recordNoResponse(accountName);
-            stateManager.onBatchProbeDeferred(accountName, 60_000L, "NoResponse");
-            log.warn("[{}] Bulk真实探测无响应，1分钟后再探测，本条改用Single", accountName);
+            stateManager.recordBulkFailure(accountName, noResponse.getFailureType());
+            stateManager.onBatchProbeDeferred(accountName, 60_000L, noResponse.getFailureType().name());
+            log.warn("[{}] Bulk真实探测异常({})，1分钟后再探测，本条改用Single",
+                    accountName, failureLabel(noResponse));
             return false;
         }
     }
@@ -160,7 +165,7 @@ public class StockXPriceUpdateCoordinator {
         for (Map<String, String> item : batch) {
             SingleOutcome outcome = submitSingleWithRetry(item, account, cancelled, onItemFailure, onCooldown);
             if (outcome == SingleOutcome.DEFERRED) {
-                // 该条仍未提交，保留在当前位置；外层进入GLOBAL_COOLDOWN后醒来用同一真实商品探测。
+                // 该条仍未提交，保留在当前位置；外层冷却后用同一真实商品探测。
                 break;
             }
             if (outcome == SingleOutcome.ACCEPTED) {
@@ -184,11 +189,19 @@ public class StockXPriceUpdateCoordinator {
                 client.updateSellerListingGraphql(item, account);
                 return SingleOutcome.ACCEPTED;
             } catch (StockXNoResponseException noResponse) {
-                // 请求可能已到达StockX，后续按listingId真实校验，避免重复改单。
-                stateManager.recordNoResponse(accountName);
-                log.warn("[{}] Single无响应，按已提交待校验处理, listingId:{}",
-                        accountName, item.get("listingId"));
-                return SingleOutcome.ACCEPTED;
+                stateManager.recordSingleFailure(accountName, noResponse.getFailureType());
+                if (noResponse.getFailureType() == StockXNoResponseException.FailureType.NETWORK_NO_RESPONSE) {
+                    // 真正无响应时请求可能已到达StockX，后续按listingId真实校验，避免重复改单。
+                    log.warn("[{}] Single请求异常({})，按已提交待校验处理, listingId:{}",
+                            accountName, failureLabel(noResponse), item.get("listingId"));
+                    return SingleOutcome.ACCEPTED;
+                }
+                String reason = "Single请求被拦截:" + failureLabel(noResponse);
+                stateManager.onBlocked(accountName, noResponse.getFailureType().name());
+                notify(onCooldown, reason + "，任务进入15分钟拦截冷却后真实探测");
+                log.warn("[{}] {}，停止继续撞接口并保留当前商品, listingId:{}",
+                        accountName, reason, item.get("listingId"));
+                return SingleOutcome.DEFERRED;
             } catch (StockXRateLimitException rateLimit) {
                 recordRateLimit(accountName, rateLimit);
                 if (attempt >= SINGLE_RETRY_DELAYS_MS.length) {
@@ -221,13 +234,15 @@ public class StockXPriceUpdateCoordinator {
     }
 
     private void awaitGlobalProbe(String accountName, Supplier<Boolean> cancelled, Consumer<String> onCooldown) {
-        while (stateManager.mode(accountName) == StockXPriceRateStateManager.Mode.GLOBAL_COOLDOWN) {
+        while (stateManager.isProbeCooldown(accountName)) {
             long remaining = stateManager.globalCooldownRemainingMs(accountName);
             if (remaining <= 0) {
                 return;
             }
-            notify(onCooldown, String.format("StockX限流冷却中，任务保持运行，约%d分钟后真实探测",
-                    Math.max(1L, remaining / 60_000L)));
+            String reason = stateManager.mode(accountName) == StockXPriceRateStateManager.Mode.BLOCKED_COOLDOWN
+                    ? "StockX拦截冷却中" : "StockX限流冷却中";
+            notify(onCooldown, String.format("%s，任务保持运行，约%d分钟后真实探测",
+                    reason, Math.max(1L, remaining / 60_000L)));
             await(remaining, cancelled);
         }
     }
@@ -242,13 +257,19 @@ public class StockXPriceUpdateCoordinator {
             stateManager.recordSingleAttempt(accountName);
             client.updateSellerListingGraphql(item, account);
             stateManager.onGlobalProbeSuccess(accountName);
-            log.info("[{}] 3小时后Single真实探测成功，恢复执行并立即允许Bulk探测", accountName);
+            log.info("[{}] 冷却后Single真实探测成功，恢复执行并立即允许Bulk探测", accountName);
             return true;
         } catch (StockXNoResponseException noResponse) {
-            stateManager.recordNoResponse(accountName);
-            stateManager.onGlobalProbeSuccess(accountName);
-            log.warn("[{}] 3小时后Single探测无响应，按已提交待校验处理并恢复执行", accountName);
-            return true;
+            stateManager.recordSingleFailure(accountName, noResponse.getFailureType());
+            if (noResponse.getFailureType() == StockXNoResponseException.FailureType.NETWORK_NO_RESPONSE) {
+                stateManager.onGlobalProbeSuccess(accountName);
+                log.warn("[{}] 冷却后Single探测异常({})，按已提交待校验处理并恢复执行",
+                        accountName, failureLabel(noResponse));
+                return true;
+            }
+            stateManager.onBlocked(accountName, noResponse.getFailureType().name());
+            notify(onCooldown, "StockX Single探测仍被拦截，任务保持运行，15分钟后再次探测");
+            return false;
         } catch (StockXRateLimitException rateLimit) {
             recordRateLimit(accountName, rateLimit);
             stateManager.onGlobalLimit(accountName, rateLimit.getSignal());
@@ -297,6 +318,14 @@ public class StockXPriceUpdateCoordinator {
         } else {
             stateManager.recordGeneralRateLimit(accountName, rateLimit.getSignal());
         }
+    }
+
+    private static String failureLabel(StockXNoResponseException error) {
+        return switch (error.getFailureType()) {
+            case NETWORK_NO_RESPONSE -> "网络无响应";
+            case HTTP_403 -> "HTTP403";
+            case BLOCK_SCRIPT -> "BlockScript";
+        };
     }
 
     public record Submission(String reference, List<Map<String, String>> submittedItems) {

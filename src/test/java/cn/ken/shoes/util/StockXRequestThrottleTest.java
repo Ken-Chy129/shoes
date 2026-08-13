@@ -30,4 +30,13 @@ class StockXRequestThrottleTest {
         assertThat(StockXRateLimitGuard.isRateLimited(marked)).isTrue();
         assertThat(StockXRateLimitGuard.matchedSignal(marked)).isEqualTo("HTTP429");
     }
+
+    @Test
+    void http403IsPreservedSeparatelyFromRateLimitResponses() {
+        String marked = HttpUtil.attachHttpStatusMarker("request blocked", 403);
+
+        assertThat(StockXRateLimitGuard.isRateLimited(marked)).isFalse();
+        assertThat(StockXRateLimitGuard.matchedSignal(marked)).isEqualTo("HTTP403");
+        assertThat(marked).doesNotContain("httpStatusCode");
+    }
 }
