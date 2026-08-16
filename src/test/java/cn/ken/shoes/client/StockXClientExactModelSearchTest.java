@@ -29,6 +29,9 @@ class StockXClientExactModelSearchTest {
         assertThat(result).singleElement().satisfies(item -> {
             assertThat(item.getModelNo()).isEqualTo("STYLE-1");
             assertThat(item.getId()).isEqualTo("variant-1");
+            assertThat(item.getUsmSize()).isEqualTo("8");
+            assertThat(item.getUswSize()).isEqualTo("9.5");
+            assertThat(item.getEuSize()).isEqualTo("41.5");
             assertThat(item.getStandardPrice()).isEqualTo(300);
             assertThat(item.getFlexPrice()).isEqualTo(315);
             assertThat(item.getLast90DaysSales()).isEqualTo(826);
@@ -115,7 +118,9 @@ class StockXClientExactModelSearchTest {
                 return JSON.parseObject("""
                         {"data":{"product":{"styleId":"%s","brand":"Brand","variants":[
                           {"id":"variant-1","sizeChart":{"displayOptions":[
-                            {"type":"us","size":"9"},{"type":"eu","size":"42.5"}
+                            {"type":"us m","size":"US M 8"},
+                            {"type":"us w","size":"US W 9.5"},
+                            {"type":"eu","size":"EU 41.5"}
                           ]}}
                         ]}}}
                         """.formatted(styleId));

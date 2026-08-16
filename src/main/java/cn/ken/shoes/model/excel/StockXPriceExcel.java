@@ -28,6 +28,9 @@ public class StockXPriceExcel {
     @ExcelProperty("us码")
     private String usmSize;
 
+    @ExcelProperty("US女码")
+    private String uswSize;
+
     @ExcelProperty("EU码")
     private String euSize;
 

@@ -56,6 +56,31 @@ class ModelNoSearchSizeFilterTest {
         assertThat(ModelNoSearchSizeFilter.matches(filters, "STYLE-4", "10", "42")).isTrue();
     }
 
+    @Test
+    void matchesWomenSizeOnlyAgainstStockXWomenScale() {
+        Map<String, Set<String>> filters = ModelNoSearchSizeFilter.build(List.of(
+                row("1182A678-001", "9.5W")
+        ));
+
+        assertThat(ModelNoSearchSizeFilter.matches(
+                filters, "1182A678-001", "8", "9.5", "41.5")).isTrue();
+        assertThat(ModelNoSearchSizeFilter.matches(
+                filters, "1182A678-001", "9.5", "11", "42.5")).isFalse();
+    }
+
+    @Test
+    void acceptsStockXWomenSizeAliases() {
+        Map<String, Set<String>> filters = ModelNoSearchSizeFilter.build(List.of(
+                row("STYLE-W", "US W 6.0"),
+                row("STYLE-W", "6.5 W")
+        ));
+
+        assertThat(ModelNoSearchSizeFilter.matches(
+                filters, "STYLE-W", "4.5", "6", "37.5")).isTrue();
+        assertThat(ModelNoSearchSizeFilter.matches(
+                filters, "STYLE-W", "5", "6.5", "38")).isTrue();
+    }
+
     private static ModelNoSearchExcel row(String modelNo, String size) {
         ModelNoSearchExcel row = new ModelNoSearchExcel();
         row.setModelNo(modelNo);

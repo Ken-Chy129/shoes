@@ -13,6 +13,10 @@ import java.util.Set;
 
 public final class ModelNoSearchSizeFilter {
 
+    private static final String US_W_PREFIX = "USW:";
+    private static final String US_M_PREFIX = "USM:";
+    private static final String EU_PREFIX = "EU:";
+
     private ModelNoSearchSizeFilter() {
     }
 
@@ -27,7 +31,7 @@ public final class ModelNoSearchSizeFilter {
                 continue;
             }
             String modelNo = normalizeModelNo(row.getModelNo());
-            String size = normalizeSize(row.getSize());
+            String size = normalizeRequestedSize(row.getSize());
             if (size == null) {
                 unrestrictedModels.add(modelNo);
                 filters.remove(modelNo);
@@ -40,6 +44,11 @@ public final class ModelNoSearchSizeFilter {
 
     public static boolean matches(Map<String, Set<String>> filters, String modelNo,
                                   String usSize, String euSize) {
+        return matches(filters, modelNo, usSize, null, euSize);
+    }
+
+    public static boolean matches(Map<String, Set<String>> filters, String modelNo,
+                                  String usmSize, String uswSize, String euSize) {
         if (filters == null || filters.isEmpty() || StrUtil.isBlank(modelNo)) {
             return true;
         }
@@ -47,21 +56,74 @@ public final class ModelNoSearchSizeFilter {
         if (requestedSizes == null || requestedSizes.isEmpty()) {
             return true;
         }
-        return requestedSizes.contains(normalizeSize(usSize))
-                || requestedSizes.contains(normalizeSize(euSize));
+        String normalizedUsmSize = normalizeCandidateSize(usmSize);
+        String normalizedUswSize = normalizeCandidateSize(uswSize);
+        String normalizedEuSize = normalizeCandidateSize(euSize);
+        return requestedSizes.stream().anyMatch(requestedSize -> {
+            if (requestedSize.startsWith(US_W_PREFIX)) {
+                return requestedSize.substring(US_W_PREFIX.length()).equals(normalizedUswSize);
+            }
+            if (requestedSize.startsWith(US_M_PREFIX)) {
+                return requestedSize.substring(US_M_PREFIX.length()).equals(normalizedUsmSize);
+            }
+            if (requestedSize.startsWith(EU_PREFIX)) {
+                return requestedSize.substring(EU_PREFIX.length()).equals(normalizedEuSize);
+            }
+            // 兼容无前缀输入和旧任务快照：仍按原逻辑同时尝试 US 默认码与 EU 码。
+            return requestedSize.equals(normalizedUsmSize) || requestedSize.equals(normalizedEuSize);
+        });
+    }
+
+    public static boolean isWomenSize(String size) {
+        String normalized = normalizeRequestedSize(size);
+        return normalized != null && normalized.startsWith(US_W_PREFIX);
     }
 
     private static String normalizeModelNo(String modelNo) {
         return modelNo.trim().toUpperCase(Locale.ROOT);
     }
 
-    private static String normalizeSize(String size) {
+    private static String normalizeRequestedSize(String size) {
         if (StrUtil.isBlank(size)) {
             return null;
         }
-        String normalized = size.trim().toUpperCase(Locale.ROOT)
-                .replaceFirst("^(US|EU)\\s*", "");
-        normalized = ShoesUtil.normalizeUnicodeFraction(normalized).replaceAll("\\s+", "");
+        String normalized = ShoesUtil.normalizeUnicodeFraction(size.trim().toUpperCase(Locale.ROOT))
+                .replaceAll("\\s+", "");
+        if (normalized.startsWith("USW")) {
+            return US_W_PREFIX + normalizeCoreSize(normalized.substring(3));
+        }
+        if (normalized.startsWith("W")) {
+            return US_W_PREFIX + normalizeCoreSize(normalized.substring(1));
+        }
+        if (normalized.endsWith("W")) {
+            return US_W_PREFIX + normalizeCoreSize(normalized.substring(0, normalized.length() - 1));
+        }
+        if (normalized.startsWith("USM")) {
+            return US_M_PREFIX + normalizeCoreSize(normalized.substring(3));
+        }
+        if (normalized.startsWith("EU")) {
+            return EU_PREFIX + normalizeCoreSize(normalized.substring(2));
+        }
+        if (normalized.startsWith("US")) {
+            return US_M_PREFIX + normalizeCoreSize(normalized.substring(2));
+        }
+        return normalizeCoreSize(normalized);
+    }
+
+    private static String normalizeCandidateSize(String size) {
+        if (StrUtil.isBlank(size)) {
+            return null;
+        }
+        String normalized = ShoesUtil.normalizeUnicodeFraction(size.trim().toUpperCase(Locale.ROOT))
+                .replaceAll("\\s+", "")
+                .replaceFirst("^(USW|USM|US|EU|W)", "");
+        if (normalized.endsWith("W")) {
+            normalized = normalized.substring(0, normalized.length() - 1);
+        }
+        return normalizeCoreSize(normalized);
+    }
+
+    private static String normalizeCoreSize(String normalized) {
         if (normalized.matches("\\d+\\.0+")) {
             normalized = normalized.substring(0, normalized.indexOf('.'));
         }

@@ -766,7 +766,7 @@ public class StockXService {
             taskItem.setTitle(matched.getTitle());
             taskItem.setBrand(matched.getBrand());
             taskItem.setProductId(matched.getId());
-            taskItem.setSize(matched.getUsmSize());
+            taskItem.setSize(resolveMatchedUsSize(requestedSize, matched));
             taskItem.setEuSize(matched.getEuSize());
             taskItem.setLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getStandardPrice()));
             taskItem.setFlexLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getFlexPrice()));
@@ -796,9 +796,16 @@ public class StockXService {
         Map<String, Set<String>> sizeFilter = ModelNoSearchSizeFilter.build(List.of(resolvedInput));
         return candidates.stream()
                 .filter(item -> ModelNoSearchSizeFilter.matches(
-                        sizeFilter, item.getModelNo(), item.getUsmSize(), item.getEuSize()))
+                        sizeFilter, item.getModelNo(), item.getUsmSize(), item.getUswSize(), item.getEuSize()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private String resolveMatchedUsSize(String requestedSize, StockXPriceExcel matched) {
+        if (ModelNoSearchSizeFilter.isWomenSize(requestedSize) && StrUtil.isNotBlank(matched.getUswSize())) {
+            return requestedSize.trim();
+        }
+        return StrUtil.blankToDefault(matched.getUsmSize(), requestedSize);
     }
 
     public void createModelSearchListings(StockXAccount account, Long taskId,
@@ -942,14 +949,15 @@ public class StockXService {
             String variantId = entry.getKey();
             ModelSearchListingGroup group = entry.getValue();
             StockXPriceExcel matched = group.matched();
+            String matchedUsSize = resolveMatchedUsSize(group.requestedSize(), matched);
             TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, null,
                     StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()),
-                    StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
+                    matchedUsSize);
             taskItem.setProductId(variantId);
             taskItem.setBrand(matched.getBrand());
             taskItem.setTitle(matched.getTitle());
             taskItem.setStyleId(StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()));
-            taskItem.setSize(StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
+            taskItem.setSize(matchedUsSize);
             taskItem.setEuSize(matched.getEuSize());
             taskItem.setLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getStandardPrice()));
             taskItem.setFlexLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getFlexPrice()));
@@ -1271,7 +1279,7 @@ public class StockXService {
                         String modelNo = item.getModelNo();
                         String euSize = item.getEuSize();
                         if (modelNoSearch && !ModelNoSearchSizeFilter.matches(
-                                modelNoSizeFilters, modelNo, item.getUsmSize(), euSize)) {
+                                modelNoSizeFilters, modelNo, item.getUsmSize(), item.getUswSize(), euSize)) {
                             continue;
                         }
                         Integer lowestAsk = ShoesUtil.normalizeStockxPrice(item.getPrice());

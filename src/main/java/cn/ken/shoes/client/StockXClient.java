@@ -795,6 +795,7 @@ public class StockXClient {
                     .stream().collect(Collectors.toMap(o -> o.getString("type"), o -> o.getString("size")));
             excel.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
             excel.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
+            excel.setUswSize(getUsWomenSize(searchTypeEnum, sizeMap));
             JSONObject mvMarket = marketVariant.getJSONObject("market");
             if (mvMarket != null && mvMarket.getJSONObject("state") != null) {
                 JSONObject state = mvMarket.getJSONObject("state");
@@ -831,6 +832,19 @@ public class StockXClient {
 
     private String getUsSize(SearchTypeEnum searchTypeEnum, Map<String, String> sizeMap) {
         return searchTypeEnum == SearchTypeEnum.SHOES ? getUsShoesSize(sizeMap) : getUsClothesSize(sizeMap);
+    }
+
+    private String getUsWomenSize(SearchTypeEnum searchTypeEnum, Map<String, String> sizeMap) {
+        String womenSize = sizeMap.get("us w");
+        if (StrUtil.isBlank(womenSize)) {
+            String genericUsSize = sizeMap.get("us");
+            if (StrUtil.containsIgnoreCase(genericUsSize, "W")) {
+                womenSize = genericUsSize;
+            }
+        }
+        return searchTypeEnum == SearchTypeEnum.SHOES
+                ? ShoesUtil.getShoesSizeFrom(womenSize)
+                : ShoesUtil.getClothesSize(womenSize);
     }
 
     private String getUsShoesSize(Map<String, String> sizeMap) {

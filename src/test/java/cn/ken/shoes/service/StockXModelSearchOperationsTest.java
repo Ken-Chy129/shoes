@@ -232,6 +232,32 @@ class StockXModelSearchOperationsTest {
     }
 
     @Test
+    void resolvesWomenVariantUsingStockXWomenScale() throws Exception {
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        StockXPriceExcel wrongVariant = price("1182A678-001", "9.5", "42.5", "variant-men-9.5");
+        wrongVariant.setUswSize("11");
+        StockXPriceExcel womenVariant = price("1182A678-001", "8", "41.5", "variant-women-9.5");
+        womenVariant.setUswSize("9.5");
+        when(client.searchExactItemWithPrice(eq("1182A678-001"), eq("shoes"),
+                eq("US"), any(StockXAccount.class))).thenReturn(List.of(wrongVariant, womenVariant));
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch-women");
+
+        service.createModelSearchListingsByModel(account(), 131L,
+                List.of(listingByModel("1182A678-001", "9.5W", "500", 1)));
+
+        ArgumentCaptor<List<StockXListingCreateItem>> listings = ArgumentCaptor.forClass(List.class);
+        verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
+        assertThat(listings.getValue()).singleElement()
+                .extracting(StockXListingCreateItem::variantId)
+                .isEqualTo("variant-women-9.5");
+        ArgumentCaptor<TaskItemDO> taskItem = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(itemMapper).insert(taskItem.capture());
+        assertThat(taskItem.getValue().getSize()).isEqualTo("9.5W");
+    }
+
+    @Test
     void listingByModelCachesLookupForMultipleSizesOfTheSameModel() throws Exception {
         StockXClient client = mock(StockXClient.class);
         TaskItemMapper itemMapper = mock(TaskItemMapper.class);
