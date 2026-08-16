@@ -63,6 +63,18 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
+const formatTaskFailReason = (record: TaskRecord) => {
+    const reason = record.failReason?.trim();
+    if (!reason) return '';
+    if (record.taskType === 'fetch_orders') {
+        const legacyPageFailure = reason.match(/^已完成第(\d+)页查询失败$/);
+        if (legacyPageFailure) {
+            return `订单查询在累计完成 ${legacyPageFailure[1]} 页后中断，请重跑任务继续尝试`;
+        }
+    }
+    return reason;
+};
+
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
@@ -375,7 +387,7 @@ const TaskPage = () => {
             title: '耗时', dataIndex: 'cost', key: 'cost', width: 100,
         },
         {
-            title: '状态', dataIndex: 'status', key: 'status', width: 90,
+            title: '状态', dataIndex: 'status', key: 'status', width: 260,
             render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
@@ -392,7 +404,17 @@ const TaskPage = () => {
                 };
                 const info = statusMap[status] || {text: status, color: 'default'};
                 const node = <span style={{color: info.color, fontWeight: 500}}>{info.text}</span>;
-                return record.failReason ? <Tooltip title={record.failReason}>{node}</Tooltip> : node;
+                const failReason = formatTaskFailReason(record);
+                if (!failReason) return node;
+                return <Tooltip title={failReason}>
+                    <div style={{lineHeight: 1.35}}>
+                        {node}
+                        <div style={{color: '#8c8c8c', fontSize: 12, marginTop: 3,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
+                            {failReason}
+                        </div>
+                    </div>
+                </Tooltip>;
             }
         },
         {
@@ -445,10 +467,14 @@ const TaskPage = () => {
                     } catch { return '-'; }
                 }
                 if (record.round == null) return '-';
+                if (record.taskType === 'fetch_orders') {
+                    return <Tooltip title="跨订单分类累计完成页数">
+                        <span>累计 {record.round} 页</span>
+                    </Tooltip>;
+                }
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
                     excel_delist: '批',
-                    fetch_orders: '页',
                 };
                 const unit = unitMap[record.taskType] || '轮';
                 return `第${record.round}${unit}`;
