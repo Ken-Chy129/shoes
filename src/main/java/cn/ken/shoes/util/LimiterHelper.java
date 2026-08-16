@@ -38,6 +38,13 @@ public class LimiterHelper {
         stockxAccountLimiter(accountName).acquire();
     }
 
+    /**
+     * 尝试立即占用账号级 StockX 令牌，不等待。只读账号池用它判断是否应先尝试同区其他账号。
+     */
+    public static boolean tryLimitStockx(String accountName) {
+        return stockxAccountLimiter(accountName).tryAcquire();
+    }
+
     static RateLimiter stockxAccountLimiter(String accountName) {
         if (accountName == null) {
             return STOCKX_GLOBAL_LIMITER;

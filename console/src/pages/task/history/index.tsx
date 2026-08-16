@@ -1,6 +1,6 @@
 import {
     Alert, Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
-    Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider,
+    Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider, Typography,
 } from "antd";
 import {PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useRef, useState} from "react";
@@ -11,6 +11,7 @@ import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 import {STOCKX_ORDER_TYPE_OPTIONS, STOCKX_TASK_OPTIONS, TASK_TYPE_LABELS} from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
+import ExcelFieldHint, {ExcelFieldHintProps} from "@/components/ExcelFieldHint";
 
 interface TaskRecord {
     id: string;
@@ -34,7 +35,7 @@ interface TaskRecord {
 
 interface StockXRateStatus {
     accountName: string;
-    mode: 'BULK_ACTIVE' | 'SINGLE_FALLBACK' | 'BULK_RECOVERING' | 'GLOBAL_COOLDOWN';
+    mode: 'BULK_ACTIVE' | 'SINGLE_FALLBACK' | 'BULK_RECOVERING' | 'GLOBAL_COOLDOWN' | 'BLOCKED_COOLDOWN';
     nextBatchProbeAt: number;
     nextGlobalProbeAt: number;
     currentBulkBatchSize: number;
@@ -45,12 +46,39 @@ interface StockXRateStatus {
     batchRateLimitCount: number;
     generalRateLimitCount: number;
     noResponseCount: number;
+    bulkBatchRateLimitCount?: number;
+    singleBatchRateLimitCount?: number;
+    bulkGeneralRateLimitCount?: number;
+    singleGeneralRateLimitCount?: number;
+    unclassifiedBatchRateLimitCount?: number;
+    unclassifiedGeneralRateLimitCount?: number;
+    networkNoResponseCount?: number;
+    http403Count?: number;
+    blockScriptCount?: number;
+    bulkNetworkNoResponseCount?: number;
+    singleNetworkNoResponseCount?: number;
+    bulkHttp403Count?: number;
+    singleHttp403Count?: number;
+    bulkBlockScriptCount?: number;
+    singleBlockScriptCount?: number;
+    unclassifiedNoResponseCount?: number;
+    globalCooldownCount?: number;
+    blockedCooldownCount?: number;
     probeAttemptCount: number;
     probeSuccessCount: number;
     confirmedPriceUpdateCount: number;
     lastSignal?: string;
     lastRateLimitAt: number;
 }
+
+const formatTaskReason = (record: TaskRecord) => {
+    if (!record.failReason || record.taskType !== 'fetch_orders') return record.failReason;
+    return record.failReason
+        .replace(/^(已完成|已取消|待处理|待付款)第(\d+)页查询失败$/,
+            '$1订单第$2页查询失败（历史任务，未自动重试）')
+        .replace(/^(已完成|已取消|待处理|待付款)响应缺少edges字段$/,
+            '$1订单查询失败（StockX响应缺少订单数据）');
+};
 
 const SORT_OPTIONS = [
     {label: '精选', value: 'featured'},
@@ -62,18 +90,6 @@ const SORT_OPTIONS = [
     {label: '发布日期', value: 'release_date'},
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
-
-const formatTaskFailReason = (record: TaskRecord) => {
-    const reason = record.failReason?.trim();
-    if (!reason) return '';
-    if (record.taskType === 'fetch_orders') {
-        const legacyPageFailure = reason.match(/^已完成第(\d+)页查询失败$/);
-        if (legacyPageFailure) {
-            return `订单查询在累计完成 ${legacyPageFailure[1]} 页后中断，请重跑任务继续尝试`;
-        }
-    }
-    return reason;
-};
 
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
@@ -148,12 +164,13 @@ const TaskPage = () => {
             SINGLE_FALLBACK: {label: 'Single降级', color: 'orange'},
             BULK_RECOVERING: {label: 'Bulk恢复中', color: 'blue'},
             GLOBAL_COOLDOWN: {label: '双通道冷却', color: 'red'},
+            BLOCKED_COOLDOWN: {label: '403/Block拦截冷却', color: 'volcano'},
         } as const;
         return values[mode] || {label: mode, color: 'default'};
     };
 
     const nextProbeText = (record: StockXRateStatus) => {
-        const timestamp = record.mode === 'GLOBAL_COOLDOWN'
+        const timestamp = record.mode === 'GLOBAL_COOLDOWN' || record.mode === 'BLOCKED_COOLDOWN'
             ? record.nextGlobalProbeAt : record.nextBatchProbeAt;
         return timestamp > 0 ? moment(timestamp).format('MM-DD HH:mm:ss') : '-';
     };
@@ -167,8 +184,20 @@ const TaskPage = () => {
         {title: '下次真实探测', width: 145, render: (_: any, record: StockXRateStatus) => nextProbeText(record)},
         {title: 'Bulk请求 / 商品', width: 135, render: (_: any, r: StockXRateStatus) => `${r.bulkRequestCount} / ${r.bulkItemCount}`},
         {title: 'Single请求 / 商品', width: 140, render: (_: any, r: StockXRateStatus) => `${r.singleRequestCount} / ${r.singleItemCount}`},
-        {title: '批量429 / 通用429', width: 140, render: (_: any, r: StockXRateStatus) => `${r.batchRateLimitCount} / ${r.generalRateLimitCount}`},
-        {title: '无响应', dataIndex: 'noResponseCount', width: 80},
+        {title: 'Bulk限流 配额 / 通用', width: 155, render: (_: any, r: StockXRateStatus) =>
+                `${r.bulkBatchRateLimitCount ?? 0} / ${r.bulkGeneralRateLimitCount ?? 0}`},
+        {title: 'Single限流 配额 / 通用', width: 165, render: (_: any, r: StockXRateStatus) =>
+                `${r.singleBatchRateLimitCount ?? 0} / ${r.singleGeneralRateLimitCount ?? 0}`},
+        {title: 'Bulk异常 网络 / 403 / Block', width: 185, render: (_: any, r: StockXRateStatus) =>
+                `${r.bulkNetworkNoResponseCount ?? 0} / ${r.bulkHttp403Count ?? 0} / ${r.bulkBlockScriptCount ?? 0}`},
+        {title: 'Single异常 网络 / 403 / Block', width: 195, render: (_: any, r: StockXRateStatus) =>
+                `${r.singleNetworkNoResponseCount ?? 0} / ${r.singleHttp403Count ?? 0} / ${r.singleBlockScriptCount ?? 0}`},
+        {title: '历史未细分429 批量 / 通用', width: 190, render: (_: any, r: StockXRateStatus) =>
+                `${r.unclassifiedBatchRateLimitCount ?? r.batchRateLimitCount ?? 0} / ${r.unclassifiedGeneralRateLimitCount ?? r.generalRateLimitCount ?? 0}`},
+        {title: '历史未细分异常', width: 125, render: (_: any, r: StockXRateStatus) =>
+                r.unclassifiedNoResponseCount ?? r.noResponseCount ?? 0},
+        {title: '完全限流 / 拦截冷却', width: 155, render: (_: any, r: StockXRateStatus) =>
+                `${r.globalCooldownCount ?? 0} / ${r.blockedCooldownCount ?? 0}`},
         {title: '探测成功 / 次数', width: 125, render: (_: any, r: StockXRateStatus) => `${r.probeSuccessCount} / ${r.probeAttemptCount}`},
         {title: '已确认压价', dataIndex: 'confirmedPriceUpdateCount', width: 100},
         {title: '最近信号', dataIndex: 'lastSignal', width: 125, render: (v: string) => v || '-'},
@@ -387,7 +416,7 @@ const TaskPage = () => {
             title: '耗时', dataIndex: 'cost', key: 'cost', width: 100,
         },
         {
-            title: '状态', dataIndex: 'status', key: 'status', width: 260,
+            title: '状态', dataIndex: 'status', key: 'status', width: 220,
             render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
@@ -404,17 +433,19 @@ const TaskPage = () => {
                 };
                 const info = statusMap[status] || {text: status, color: 'default'};
                 const node = <span style={{color: info.color, fontWeight: 500}}>{info.text}</span>;
-                const failReason = formatTaskFailReason(record);
-                if (!failReason) return node;
-                return <Tooltip title={failReason}>
-                    <div style={{lineHeight: 1.35}}>
+                const reason = formatTaskReason(record);
+                const failed = status === 'failed' || status === '执行失败';
+                if (failed && reason) {
+                    return <Space direction="vertical" size={0} style={{maxWidth: 210}}>
                         {node}
-                        <div style={{color: '#8c8c8c', fontSize: 12, marginTop: 3,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'}}>
-                            {failReason}
-                        </div>
-                    </div>
-                </Tooltip>;
+                        <Tooltip title={reason}>
+                            <Typography.Text type="secondary" ellipsis style={{maxWidth: 210}}>
+                                {reason}
+                            </Typography.Text>
+                        </Tooltip>
+                    </Space>;
+                }
+                return reason ? <Tooltip title={reason}>{node}</Tooltip> : node;
             }
         },
         {
@@ -429,7 +460,7 @@ const TaskPage = () => {
             ),
         },
         {
-            title: '进度', key: 'progress', width: 100,
+            title: '进度', key: 'progress', width: 120,
             render: (_: any, record: TaskRecord) => {
                 if (record.taskType === 'listing' && record.attributes) {
                     try {
@@ -468,7 +499,7 @@ const TaskPage = () => {
                 }
                 if (record.round == null) return '-';
                 if (record.taskType === 'fetch_orders') {
-                    return <Tooltip title="跨订单分类累计完成页数">
+                    return <Tooltip title="跨订单分类累计完成页数；失败原因中的页码是当前订单分类内页码">
                         <span>累计 {record.round} 页</span>
                     </Tooltip>;
                 }
@@ -587,7 +618,11 @@ const TaskPage = () => {
                             return <Form.Item name="searchModelNoExcel" label="货号Excel"
                                               valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
                                               rules={[{required: true, message: '请上传货号Excel'}]}
-                                              extra="Excel只需一列「货号」，可选再加一列「尺码」限定上架尺码；每个货号只精确查询目标商品的一页价格">
+                                              extra={<ExcelFieldHint
+                                                  requiredFields={['货号']}
+                                                  optionalFields={['尺码']}
+                                                  note="尺码留空表示处理该货号的全部尺码；每个货号只精确查询目标商品的一页价格。"
+                                              />}>
                                 <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                     <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                                 </Upload>
@@ -629,18 +664,31 @@ const TaskPage = () => {
                     }}>
                         <Radio.Button value="fetch_price">获取最低价</Radio.Button>
                         <Radio.Button value="create_listing">按指定价格上架</Radio.Button>
+                        <Radio.Button value="create_listing_by_model">按货号尺码上架</Radio.Button>
                     </Radio.Group>
                 </Form.Item>
                 <Form.Item shouldUpdate={(prev, current) => prev.modelSearchOperation !== current.modelSearchOperation} noStyle>
                     {({getFieldValue}) => {
                         const currentOperation = getFieldValue('modelSearchOperation') || operation;
-                        const fetching = currentOperation === 'fetch_price';
+                        const operationHints: Record<string, ExcelFieldHintProps> = {
+                            fetch_price: {
+                                requiredFields: ['货号', '尺码'],
+                                note: '尺码可写 US 9、EU 42.5，也可直接写 9 或 42.5；完成后可导出结果。',
+                            },
+                            create_listing: {
+                                requiredFields: ['variantId', '目标上架价($)', '上架数量'],
+                                note: '建议使用“获取最低价”导出的 Excel，其他导出列可以原样保留。',
+                            },
+                            create_listing_by_model: {
+                                requiredFields: ['货号', '尺码', '数量', '上架价格'],
+                                note: '系统会自动匹配 variantId 后上架，无需先执行“获取最低价”。',
+                            },
+                        };
+                        const operationHint = operationHints[currentOperation] || operationHints.fetch_price;
                         return <Form.Item name="modelNoExcel" label="Excel文件"
                                           valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
                                           rules={[{required: true, message: '请上传Excel'}]}
-                                          extra={fetching
-                                              ? '获取最低价：货号、尺码均必填；尺码可写 US 9、EU 42.5，也可直接写 9 或 42.5。完成后可导出结果。'
-                                              : '指定价格上架：建议使用“获取最低价”导出的Excel，填写「目标上架价($)」和「上架数量」；上架时不再比价或判断盈利。'}>
+                                          extra={<ExcelFieldHint {...operationHint}/>}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                             </Upload>
@@ -660,7 +708,11 @@ const TaskPage = () => {
                 </Form.Item>
                 <Form.Item name="excelFile" label="压价Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList}
-                           extra="列：货号、尺码、最低价($)、压价类型；压价类型留空即“默认”，还可填“得物”或“得物3.5”">
+                           extra={<ExcelFieldHint
+                               requiredFields={['货号', '尺码']}
+                               optionalFields={['最低价($)', '压价类型']}
+                               note="压价类型留空即“默认”，还可填写“得物”或“得物3.5”。"
+                           />}>
                     <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
@@ -733,7 +785,10 @@ const TaskPage = () => {
                     {({getFieldValue}) => getFieldValue('delistMode') !== 'all' ? (
                         <Form.Item name="delistExcelFile" label="下架Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList} rules={[{required: true, message: '请上传Excel'}]}
-                                   extra="支持 listingId；或“货号 + 尺码”两列。按货号尺码时会搜索当前挂单，同尺码有多条将全部下架">
+                                   extra={<ExcelFieldHint
+                                       requirement="填写「listingId」，或同时填写「货号」和「尺码」"
+                                       note="按货号尺码时会搜索当前挂单，同尺码有多条将全部下架。"
+                                   />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
@@ -791,7 +846,14 @@ const TaskPage = () => {
 
     const formatParamValue = (k: string, v: any): string => {
         if (k === 'inventoryType') return v === 'STANDARD' ? '现货' : '寄存';
-        if (k === 'operation') return v === 'fetch_price' ? '获取最低价' : '按指定价格上架';
+        if (k === 'operation') {
+            const labels: Record<string, string> = {
+                fetch_price: '获取最低价',
+                create_listing: '按指定价格上架',
+                create_listing_by_model: '按货号尺码上架',
+            };
+            return labels[v] || String(v);
+        }
         if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
         if (k === 'inputCount') return `${v}行`;
         if (k === 'modelNoCount') return `${v}个`;
@@ -824,9 +886,9 @@ const TaskPage = () => {
     return <>
         <Card title="StockX 压价通道观测" size="small" style={{marginBottom: 16}}>
             <Alert type="info" showIcon style={{marginBottom: 12}}
-                   message="以下是本服务实际调用计数与真实429观测，不是StockX官方剩余额度，也不会按计数主动拦截请求。"/>
+                   message="以下按 Bulk、Single、HTTP 403、BlockScript 和网络无响应分别统计。双通道429进入3小时限流冷却；HTTP 403/BlockScript进入独立15分钟拦截冷却；本地1 QPS忙只切号或排队。"/>
             <Table columns={rateColumns} dataSource={stockxRateStatus} rowKey="accountName"
-                   size="small" pagination={false} scroll={{x: 1250}}/>
+                   size="small" pagination={false} scroll={{x: 2200}}/>
         </Card>
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
             <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>

@@ -7,6 +7,7 @@ import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
@@ -24,18 +25,21 @@ public class StockXModelSearchTaskRunner implements Runnable {
     private final ModelSearchOperation operation;
     private final List<ModelNoSearchExcel> priceRows;
     private final List<ModelSearchListingExcel> listingRows;
+    private final List<ModelSearchListingByModelExcel> listingByModelRows;
     private final StockXService stockXService;
     private final TaskMapper taskMapper;
 
     public StockXModelSearchTaskRunner(StockXAccount account, Long taskId, ModelSearchOperation operation,
                                        List<ModelNoSearchExcel> priceRows,
                                        List<ModelSearchListingExcel> listingRows,
+                                       List<ModelSearchListingByModelExcel> listingByModelRows,
                                        StockXService stockXService, TaskMapper taskMapper) {
         this.account = account;
         this.taskId = taskId;
         this.operation = operation;
         this.priceRows = priceRows != null ? List.copyOf(priceRows) : List.of();
         this.listingRows = listingRows != null ? List.copyOf(listingRows) : List.of();
+        this.listingByModelRows = listingByModelRows != null ? List.copyOf(listingByModelRows) : List.of();
         this.stockXService = stockXService;
         this.taskMapper = taskMapper;
     }
@@ -50,8 +54,10 @@ public class StockXModelSearchTaskRunner implements Runnable {
         try {
             if (operation == ModelSearchOperation.FETCH_PRICE) {
                 stockXService.fetchModelSearchPrices(account, taskId, priceRows);
-            } else {
+            } else if (operation == ModelSearchOperation.CREATE_LISTING) {
                 stockXService.createModelSearchListings(account, taskId, listingRows);
+            } else {
+                stockXService.createModelSearchListingsByModel(account, taskId, listingByModelRows);
             }
             if (TaskSwitch.isSearchListCancelled(taskId)) {
                 TaskSwitch.cancelSearchVerification(taskId);

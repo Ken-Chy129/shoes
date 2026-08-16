@@ -19,6 +19,13 @@ public class StockXConfig {
         return ACCOUNTS.stream().filter(StockXAccount::isEnabled).toList();
     }
 
+    public static List<StockXAccount> getAutoReplenishmentAccounts() {
+        return ACCOUNTS.stream()
+                .filter(StockXAccount::isEnabled)
+                .filter(StockXAccount::isAutoReplenishmentEnabled)
+                .toList();
+    }
+
     public static StockXAccount getAccount(String name) {
         return ACCOUNTS.stream().filter(a -> a.getName().equals(name)).findFirst().orElse(null);
     }

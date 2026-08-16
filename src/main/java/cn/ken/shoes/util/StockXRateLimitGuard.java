@@ -1,6 +1,7 @@
 package cn.ken.shoes.util;
 
 import cn.ken.shoes.config.StockXConfig;
+import cn.ken.shoes.exception.StockXNoResponseException;
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.StockXRateLimitType;
 import cn.ken.shoes.exception.TaskCancelledException;
@@ -132,6 +133,11 @@ public class StockXRateLimitGuard {
             if (raw == null) {
                 return null;
             }
+            StockXNoResponseException.FailureType blockedType = blockedFailureType(raw);
+            if (blockedType != null) {
+                throw new StockXNoResponseException(
+                        "StockX请求被拦截(" + matchedSignal(raw) + ")", blockedType);
+            }
             if (!isRateLimited(raw)) {
                 onSuccess(key);
                 if (ctx != null) {
@@ -218,7 +224,22 @@ public class StockXRateLimitGuard {
         return rawBody.contains("\"httpStatusCode\":429")
                 || rawBody.contains("\"transportHttpStatus\":429")
                 || rawBody.contains("Too Many Requests")
+                || rawBody.contains("TOO_MANY_REQUESTS")
+                || rawBody.contains("RATE_LIMITED")
                 || rawBody.contains("Batch usage limit exceeded");
+    }
+
+    private static StockXNoResponseException.FailureType blockedFailureType(String rawBody) {
+        if (rawBody == null) {
+            return null;
+        }
+        if (rawBody.contains("\"transportHttpStatus\":403")) {
+            return StockXNoResponseException.FailureType.HTTP_403;
+        }
+        if (rawBody.contains("blockScript")) {
+            return StockXNoResponseException.FailureType.BLOCK_SCRIPT;
+        }
+        return null;
     }
 
     private static boolean isPriceUpdateOperation(String label) {
@@ -240,11 +261,17 @@ public class StockXRateLimitGuard {
         if (rawBody.contains("Batch usage limit exceeded")) {
             return "BatchUsageLimit";
         }
+        if (rawBody.contains("TOO_MANY_REQUESTS") || rawBody.contains("RATE_LIMITED")) {
+            return "GraphQLTooManyRequests";
+        }
         if (rawBody.contains("Too Many Requests")) {
             return "TooManyRequests";
         }
         if (rawBody.contains("\"transportHttpStatus\":429")) {
             return "HTTP429";
+        }
+        if (rawBody.contains("\"transportHttpStatus\":403")) {
+            return "HTTP403";
         }
         if (httpStatus == 429) {
             return "HTTP429";

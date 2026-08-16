@@ -58,6 +58,61 @@ class StockXPriceUpdateCoordinatorTest {
         assertThat(state.snapshot("account-a").mode())
                 .isEqualTo(StockXPriceRateStateManager.Mode.BULK_ACTIVE);
         assertThat(state.snapshot("account-a").noResponseCount()).isEqualTo(1);
+        assertThat(state.snapshot("account-a").bulkNetworkNoResponseCount()).isEqualTo(1);
+    }
+
+    @Test
+    void singleHttp403StopsTheBatchAndEntersSeparateBlockedCooldown() {
+        MutableClock clock = new MutableClock();
+        FakeClient client = new FakeClient();
+        client.bulkFailures.add(limit(StockXRateLimitType.BATCH, "BatchUsageLimit"));
+        client.singleFailure = new StockXNoResponseException(
+                "blocked", StockXNoResponseException.FailureType.HTTP_403);
+        StockXPriceRateStateManager state = state(clock);
+        AtomicBoolean cancelled = new AtomicBoolean();
+        StockXPriceUpdateCoordinator coordinator = new StockXPriceUpdateCoordinator(client, state, millis -> {
+            clock.advanceMillis(millis);
+            if (state.mode("account-a") == StockXPriceRateStateManager.Mode.BLOCKED_COOLDOWN) {
+                cancelled.set(true);
+            }
+        });
+
+        assertThatThrownBy(() -> coordinator.submit(
+                items(100), account(), cancelled::get, null, null, null))
+                .isInstanceOf(TaskCancelledException.class);
+
+        StockXPriceRateStateManager.Snapshot snapshot = state.snapshot("account-a");
+        assertThat(client.singleIds).containsExactly("listing-1");
+        assertThat(snapshot.mode()).isEqualTo(StockXPriceRateStateManager.Mode.BLOCKED_COOLDOWN);
+        assertThat(snapshot.singleHttp403Count()).isEqualTo(1);
+        assertThat(snapshot.singleGeneralRateLimitCount()).isZero();
+        assertThat(snapshot.globalCooldownCount()).isZero();
+        assertThat(snapshot.blockedCooldownCount()).isEqualTo(1);
+    }
+
+    @Test
+    void deferredItemIsRetainedWhenAlreadyRunningInSingleFallback() {
+        MutableClock clock = new MutableClock();
+        FakeClient client = new FakeClient();
+        client.singleFailure = new StockXNoResponseException(
+                "blocked", StockXNoResponseException.FailureType.BLOCK_SCRIPT);
+        StockXPriceRateStateManager state = state(clock);
+        state.onBatchLimit("account-a", "BatchUsageLimit");
+        AtomicBoolean cancelled = new AtomicBoolean();
+        StockXPriceUpdateCoordinator coordinator = new StockXPriceUpdateCoordinator(client, state, millis -> {
+            clock.advanceMillis(millis);
+            if (state.mode("account-a") == StockXPriceRateStateManager.Mode.BLOCKED_COOLDOWN) {
+                cancelled.set(true);
+            }
+        });
+
+        assertThatThrownBy(() -> coordinator.submit(
+                items(2), account(), cancelled::get, null, null, null))
+                .isInstanceOf(TaskCancelledException.class);
+
+        assertThat(client.bulkCalls).isZero();
+        assertThat(client.singleIds).containsExactly("listing-1");
+        assertThat(state.snapshot("account-a").singleBlockScriptCount()).isEqualTo(1);
     }
 
     @Test
@@ -81,6 +136,9 @@ class StockXPriceUpdateCoordinatorTest {
         assertThat(state.snapshot("account-a").mode())
                 .isEqualTo(StockXPriceRateStateManager.Mode.GLOBAL_COOLDOWN);
         assertThat(state.snapshot("account-a").generalRateLimitCount()).isEqualTo(5);
+        assertThat(state.snapshot("account-a").bulkGeneralRateLimitCount()).isEqualTo(1);
+        assertThat(state.snapshot("account-a").singleGeneralRateLimitCount()).isEqualTo(4);
+        assertThat(state.snapshot("account-a").globalCooldownCount()).isEqualTo(1);
         assertThat(client.singleIds).hasSize(4);
     }
 
@@ -161,6 +219,7 @@ class StockXPriceUpdateCoordinatorTest {
     private static class FakeClient extends StockXClient {
         int bulkCalls;
         boolean alwaysLimitSingle;
+        RuntimeException singleFailure;
         final List<RuntimeException> bulkFailures = new ArrayList<>();
         final List<String> singleIds = new ArrayList<>();
 
@@ -178,6 +237,9 @@ class StockXPriceUpdateCoordinatorTest {
             singleIds.add(item.get("listingId"));
             if (alwaysLimitSingle) {
                 throw limit(StockXRateLimitType.GENERAL, "HTTP429");
+            }
+            if (singleFailure != null) {
+                throw singleFailure;
             }
         }
     }

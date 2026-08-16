@@ -31,6 +31,34 @@ class StockXConfigTest {
         assertThat(new StockXAccount().getBatchItemLimit()).isZero();
     }
 
+    @Test
+    void automaticReplenishmentOnlyUsesEnabledAccountsThatOptedIn() {
+        List<StockXAccount> original = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount optedIn = account("opted-in", 0);
+        optedIn.setEnabled(true);
+        optedIn.setAutoReplenishmentEnabled(true);
+        StockXAccount optedOut = account("opted-out", 0);
+        optedOut.setEnabled(true);
+        StockXAccount disabled = account("disabled", 0);
+        disabled.setEnabled(false);
+        disabled.setAutoReplenishmentEnabled(true);
+
+        try {
+            StockXConfig.setAccounts(List.of(optedIn, optedOut, disabled));
+
+            assertThat(StockXConfig.getAutoReplenishmentAccounts())
+                    .extracting(StockXAccount::getName)
+                    .containsExactly("opted-in");
+        } finally {
+            StockXConfig.setAccounts(original);
+        }
+    }
+
+    @Test
+    void automaticReplenishmentIsDisabledByDefault() {
+        assertThat(new StockXAccount().isAutoReplenishmentEnabled()).isFalse();
+    }
+
     private static StockXAccount account(String name, int batchItemLimit) {
         StockXAccount account = new StockXAccount();
         account.setName(name);

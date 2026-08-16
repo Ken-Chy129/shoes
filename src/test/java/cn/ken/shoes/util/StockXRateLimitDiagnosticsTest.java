@@ -1,5 +1,6 @@
 package cn.ken.shoes.util;
 
+import cn.ken.shoes.exception.StockXNoResponseException;
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.StockXRateLimitType;
 import okhttp3.Headers;
@@ -24,6 +25,14 @@ class StockXRateLimitDiagnosticsTest {
         String response = "{\"errors\":[{\"message\":\"rate limited\"}]}";
 
         assertThat(StockXRateLimitGuard.matchedSignal(429, response)).isEqualTo("HTTP429");
+    }
+
+    @Test
+    void recognizesGraphqlRateLimitCodeWithoutTransport429() {
+        String response = "{\"errors\":[{\"extensions\":{\"code\":\"TOO_MANY_REQUESTS\"}}]}";
+
+        assertThat(StockXRateLimitGuard.isRateLimited(response)).isTrue();
+        assertThat(StockXRateLimitGuard.matchedSignal(response)).isEqualTo("GraphQLTooManyRequests");
     }
 
     @Test
@@ -75,5 +84,25 @@ class StockXRateLimitDiagnosticsTest {
                     assertThat(error.getType()).isEqualTo(StockXRateLimitType.GENERAL);
                     assertThat(error.getSignal()).isEqualTo("GraphQL429");
                 });
+    }
+
+    @Test
+    void priceUpdateKeepsHttp403SeparateFromGeneral429() {
+        assertThatThrownBy(() -> StockXRateLimitGuard.execute(
+                () -> "{\"transportHttpStatus\":403,\"message\":\"request blocked\"}",
+                "account-a", "UpdateSellerListing", null))
+                .isInstanceOfSatisfying(StockXNoResponseException.class, error ->
+                        assertThat(error.getFailureType())
+                                .isEqualTo(StockXNoResponseException.FailureType.HTTP_403));
+    }
+
+    @Test
+    void priceUpdateKeepsBlockScriptSeparateFromNetworkNoResponse() {
+        assertThatThrownBy(() -> StockXRateLimitGuard.execute(
+                () -> "{\"blockScript\":\"challenge\"}",
+                "account-a", "BulkUpdateListings", null))
+                .isInstanceOfSatisfying(StockXNoResponseException.class, error ->
+                        assertThat(error.getFailureType())
+                                .isEqualTo(StockXNoResponseException.FailureType.BLOCK_SCRIPT));
     }
 }

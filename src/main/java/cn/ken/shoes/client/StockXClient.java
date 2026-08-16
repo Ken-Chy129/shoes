@@ -7,6 +7,9 @@ import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.exception.StockXNoResponseException;
+import cn.ken.shoes.exception.StockXRateLimitException;
+import cn.ken.shoes.exception.StockXRateLimitType;
+import cn.ken.shoes.manager.StockXReadAccountPool;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.entity.BrandDO;
 import cn.ken.shoes.model.entity.StockXItemDO;
@@ -34,6 +37,7 @@ import org.springframework.util.CollectionUtils;
 import java.nio.charset.Charset;
 import java.math.BigDecimal;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -42,6 +46,8 @@ import static java.lang.StringTemplate.STR;
 @Slf4j
 @Component
 public class StockXClient {
+
+    private final StockXReadAccountPool readAccountPool = new StockXReadAccountPool();
 
     @Value("${stockx.clientId}")
     private String clientId;
@@ -474,7 +480,7 @@ public class StockXClient {
     }
 
     public List<StockXPriceDO> queryPrice(String productId) {
-        JSONObject jsonObject = queryPro(buildPriceQueryRequest(productId));
+        JSONObject jsonObject = queryReadPro(buildPriceQueryRequest(productId), "HK", null);
         if (jsonObject == null) {
             return Collections.emptyList();
         }
@@ -571,9 +577,8 @@ public class StockXClient {
             return Pair.of(0, Collections.emptyList());
         }
         String finalCountry = country != null ? country : "HK";
-        Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
-        String accName = account != null ? account.getName() : null;
-        JSONObject jsonObject = queryPro(buildItemSearchRequest(query, pageIndex, sort, finalCountry), headers, accName);
+        JSONObject jsonObject = queryReadPro(
+                buildItemSearchRequest(query, pageIndex, sort, finalCountry), finalCountry, account);
         if (jsonObject == null) {
             return Pair.of(0, Collections.emptyList());
         }
@@ -595,14 +600,18 @@ public class StockXClient {
         List<JSONObject> itemList = results.getJSONArray("edges").toJavaList(JSONObject.class);
         List<StockXPriceExcel> result = Collections.synchronizedList(new ArrayList<>());
         CountDownLatch latch = new CountDownLatch(itemList.size());
+        AtomicReference<StockXRateLimitException> rateLimitFailure = new AtomicReference<>();
         for (JSONObject item : itemList) {
             Thread.startVirtualThread(() -> {
                 try {
                     JSONObject node = item.getJSONObject("node");
                     String title = node.getString("title");
                     String urlKey = node.getString("urlKey");
-                    List<StockXPriceExcel> itemResult = fetchItemDetail(urlKey, title, searchTypeEnum, finalCountry, headers, accName);
+                    List<StockXPriceExcel> itemResult = fetchItemDetail(
+                            urlKey, title, searchTypeEnum, finalCountry, account);
                     result.addAll(itemResult);
+                } catch (StockXRateLimitException e) {
+                    rateLimitFailure.compareAndSet(null, e);
                 } catch (Exception e) {
                     log.error("searchItemWithPrice fetchItemDetail error", e);
                 } finally {
@@ -614,6 +623,9 @@ public class StockXClient {
             latch.await();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
+        }
+        if (rateLimitFailure.get() != null) {
+            throw rateLimitFailure.get();
         }
         return Pair.of(pageCount, result);
     }
@@ -629,18 +641,12 @@ public class StockXClient {
             return Collections.emptyList();
         }
         String finalCountry = country != null ? country : "HK";
-        Headers headers = account != null ? buildProHeaders(account, finalCountry) : buildProHeaders();
-        String accountName = account != null ? account.getName() : null;
-        List<String> aliases = Arrays.stream(modelNo.split("\\s*/\\s*"))
-                .map(String::trim)
-                .filter(StrUtil::isNotBlank)
-                .distinct()
-                .toList();
+        List<String> aliases = splitModelAliases(modelNo);
 
         Set<String> checkedUrlKeys = new HashSet<>();
         for (String alias : aliases) {
-            JSONObject searchResponse = queryPro(
-                    buildItemSearchRequest(alias, 1, "featured", finalCountry), headers, accountName);
+            JSONObject searchResponse = queryReadPro(
+                    buildItemSearchRequest(alias, 1, "featured", finalCountry), finalCountry, account);
             if (searchResponse == null) {
                 continue;
             }
@@ -664,7 +670,7 @@ public class StockXClient {
                 if (StrUtil.isBlank(urlKey) || !checkedUrlKeys.add(urlKey)) {
                     continue;
                 }
-                JSONObject productResponse = queryPro(buildGetProductRequest(urlKey), headers, accountName);
+                JSONObject productResponse = queryReadPro(buildGetProductRequest(urlKey), finalCountry, account);
                 JSONObject productData = productResponse != null ? productResponse.getJSONObject("data") : null;
                 JSONObject product = productData != null ? productData.getJSONObject("product") : null;
                 String actualModelNo = product != null ? product.getString("styleId") : null;
@@ -672,7 +678,8 @@ public class StockXClient {
                     continue;
                 }
 
-                JSONObject marketResponse = queryPro(buildGetMarketDataRequest(urlKey, finalCountry), headers, accountName);
+                JSONObject marketResponse = queryReadPro(
+                        buildGetMarketDataRequest(urlKey, finalCountry), finalCountry, account);
                 String title = productSummary != null ? productSummary.getString("title") : null;
                 return buildPriceRows(urlKey, title, searchTypeEnum, productResponse, marketResponse);
             }
@@ -681,23 +688,46 @@ public class StockXClient {
     }
 
     private static boolean matchesAnyModelAlias(List<String> aliases, String actualModelNo) {
-        return StrUtil.isNotBlank(actualModelNo)
-                && aliases.stream().anyMatch(alias -> alias.equalsIgnoreCase(actualModelNo.trim()));
+        if (aliases == null || aliases.isEmpty()) {
+            return false;
+        }
+        return splitModelAliases(actualModelNo).stream()
+                .anyMatch(actualAlias -> aliases.stream()
+                        .anyMatch(requestedAlias -> requestedAlias.equalsIgnoreCase(actualAlias)));
     }
 
-    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title, SearchTypeEnum searchTypeEnum, String country, Headers headers, String accountName) {
+    private static List<String> splitModelAliases(String modelNo) {
+        if (StrUtil.isBlank(modelNo)) {
+            return Collections.emptyList();
+        }
+        return Arrays.stream(modelNo.split("\\s*[/／]\\s*"))
+                .map(String::trim)
+                .filter(StrUtil::isNotBlank)
+                .distinct()
+                .toList();
+    }
+
+    private List<StockXPriceExcel> fetchItemDetail(String urlKey, String title,
+                                                   SearchTypeEnum searchTypeEnum, String country,
+                                                   StockXAccount preferredAccount) {
         JSONObject[] responses = new JSONObject[2];
         CountDownLatch detailLatch = new CountDownLatch(2);
+        AtomicReference<StockXRateLimitException> rateLimitFailure = new AtomicReference<>();
         Thread.startVirtualThread(() -> {
             try {
-                responses[0] = queryPro(buildGetProductRequest(urlKey), headers, accountName);
+                responses[0] = queryReadPro(buildGetProductRequest(urlKey), country, preferredAccount);
+            } catch (StockXRateLimitException e) {
+                rateLimitFailure.compareAndSet(null, e);
             } finally {
                 detailLatch.countDown();
             }
         });
         Thread.startVirtualThread(() -> {
             try {
-                responses[1] = queryPro(buildGetMarketDataRequest(urlKey, country), headers, accountName);
+                responses[1] = queryReadPro(
+                        buildGetMarketDataRequest(urlKey, country), country, preferredAccount);
+            } catch (StockXRateLimitException e) {
+                rateLimitFailure.compareAndSet(null, e);
             } finally {
                 detailLatch.countDown();
             }
@@ -707,6 +737,9 @@ public class StockXClient {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return Collections.emptyList();
+        }
+        if (rateLimitFailure.get() != null) {
+            throw rateLimitFailure.get();
         }
         return buildPriceRows(urlKey, title, searchTypeEnum, responses[0], responses[1]);
     }
@@ -827,7 +860,7 @@ public class StockXClient {
     }
 
     public List<BrandDO> queryBrands() {
-        JSONObject jsonObject = queryPro(buildBrandQueryRequest("nike", 1, 1));
+        JSONObject jsonObject = queryReadPro(buildBrandQueryRequest("nike", 1, 1), "HK", null);
         if (jsonObject == null) {
             return Collections.emptyList();
         }
@@ -1290,6 +1323,103 @@ public class StockXClient {
     }
 
     /**
+     * 执行与卖家身份无关的只读 GraphQL 请求。同市场账号轮转使用；某账号限流时立即切换下一个账号。
+     */
+    protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+        StockXReadAccountPool.Selection selection = readAccountPool.selection(country, preferredAccount);
+        List<StockXAccount> candidates = selection.candidates();
+        if (candidates.isEmpty()) {
+            if (preferredAccount == null && !selection.configuredMarketPool()) {
+                // 兼容尚未配置账号池的旧单账号接口。
+                return queryPro(body, buildProHeaders(), null);
+            }
+            String accountName = preferredAccount != null ? preferredAccount.getName() : null;
+            throw new StockXRateLimitException(accountName,
+                    StockXReadAccountPool.DEFAULT_READ_COOLDOWN_MS,
+                    "StockX同区账号均在限流冷却中，请稍后再试");
+        }
+
+        StockXRateLimitException lastRateLimit = null;
+        int rateLimitedCount = 0;
+        JSONObject unauthorized = null;
+        List<StockXAccount> locallyBusy = new ArrayList<>();
+        for (StockXAccount candidate : candidates) {
+            if (!tryAcquireReadPermit(candidate.getName())) {
+                locallyBusy.add(candidate);
+                log.debug("StockX只读请求本地1QPS令牌忙，先尝试同区其他账号, market:{}, busyAccount:{}",
+                        country, candidate.getName());
+                continue;
+            }
+            ReadAttempt attempt = attemptReadCandidate(body, country, candidate);
+            if (attempt.rateLimit() != null) {
+                lastRateLimit = attempt.rateLimit();
+                rateLimitedCount++;
+            } else if (attempt.result() != null) {
+                if ("Unauthorized".equals(attempt.result().getString("message"))) {
+                    unauthorized = attempt.result();
+                } else {
+                    return attempt.result();
+                }
+            }
+        }
+
+        // 所有立即可用的账号均未成功时，再等待本地令牌忙的账号；不把本地排队记作StockX限流。
+        for (StockXAccount candidate : locallyBusy) {
+            acquireReadPermit(candidate.getName());
+            ReadAttempt attempt = attemptReadCandidate(body, country, candidate);
+            if (attempt.rateLimit() != null) {
+                lastRateLimit = attempt.rateLimit();
+                rateLimitedCount++;
+            } else if (attempt.result() != null) {
+                if ("Unauthorized".equals(attempt.result().getString("message"))) {
+                    unauthorized = attempt.result();
+                } else {
+                    return attempt.result();
+                }
+            }
+        }
+        if (rateLimitedCount == candidates.size() && lastRateLimit != null) {
+            String preferredName = preferredAccount != null ? preferredAccount.getName() : null;
+            throw new StockXRateLimitException(preferredName,
+                    StockXReadAccountPool.DEFAULT_READ_COOLDOWN_MS,
+                    "StockX同区账号均已限流，请稍后再试",
+                    StockXRateLimitType.GENERAL, lastRateLimit.getSignal());
+        }
+        return unauthorized;
+    }
+
+    protected boolean tryAcquireReadPermit(String accountName) {
+        return LimiterHelper.tryLimitStockx(accountName);
+    }
+
+    protected void acquireReadPermit(String accountName) {
+        LimiterHelper.limitStockxGraphql(accountName);
+    }
+
+    protected JSONObject executeReadCandidate(String body, Headers headers, String accountName) {
+        return queryPro(body, headers, accountName, false, null, true);
+    }
+
+    private ReadAttempt attemptReadCandidate(String body, String country, StockXAccount candidate) {
+        try {
+            JSONObject result = executeReadCandidate(
+                    body, buildProHeaders(candidate, country), candidate.getName());
+            if (result != null && !"Unauthorized".equals(result.getString("message"))) {
+                readAccountPool.markSuccess(candidate.getName());
+            }
+            return new ReadAttempt(result, null);
+        } catch (StockXRateLimitException e) {
+            readAccountPool.markRateLimited(candidate.getName());
+            log.warn("StockX只读请求因服务端限流切换账号, market:{}, limitedAccount:{}, signal:{}",
+                    country, candidate.getName(), e.getSignal());
+            return new ReadAttempt(null, e);
+        }
+    }
+
+    private record ReadAttempt(JSONObject result, StockXRateLimitException rateLimit) {
+    }
+
+    /**
      * @param rateLimited true 表示写操作需经 {@link StockXRateLimitGuard} 处理真实429。
      *                    无论读写，所有账号请求都共享官方1 request/s令牌。
      */
@@ -1298,8 +1428,15 @@ public class StockXClient {
     }
 
     private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited, Runnable onFirstRateLimit) {
+        return queryPro(body, headers, accountName, rateLimited, onFirstRateLimit, false);
+    }
+
+    private JSONObject queryPro(String body, Headers headers, String accountName, boolean rateLimited,
+                                Runnable onFirstRateLimit, boolean permitAlreadyAcquired) {
         String rawResult;
-        LimiterHelper.limitStockxGraphql(accountName);
+        if (!permitAlreadyAcquired) {
+            LimiterHelper.limitStockxGraphql(accountName);
+        }
         if (rateLimited) {
             String label = null;
             try {
@@ -1326,6 +1463,15 @@ public class StockXClient {
         if (jsonObject == null) {
             log.error("queryPro 响应体为空或解析为null, account:{}, rawLen:{}, raw:[{}]", accountName, rawResult.length(),
                     rawResult.substring(0, Math.min(500, rawResult.length())));
+            return null;
+        }
+        if (StockXRateLimitGuard.isRateLimited(rawResult)) {
+            String signal = StockXRateLimitGuard.matchedSignal(rawResult);
+            throw new StockXRateLimitException(accountName, StockXReadAccountPool.DEFAULT_READ_COOLDOWN_MS,
+                    "StockX只读请求限流(" + signal + ")", StockXRateLimitType.GENERAL, signal);
+        }
+        if (Integer.valueOf(403).equals(jsonObject.getInteger("transportHttpStatus"))) {
+            log.error("queryPro|只读请求HTTP403被拦截, account:{}", accountName);
             return null;
         }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {

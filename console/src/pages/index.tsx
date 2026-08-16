@@ -163,6 +163,7 @@ const SettingPage = () => {
         accountForm.setFieldsValue({
             inheritSpecialStyleFee: true,
             inheritSpecialStyle35Fee: true,
+            autoReplenishmentEnabled: false,
         });
         setAccountStep(0);
         setAccountModalVisible(true);
@@ -224,6 +225,12 @@ const SettingPage = () => {
         });
     }
 
+    const handleToggleAutoReplenishment = (record: any, autoReplenishmentEnabled: boolean) => {
+        doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${record.name}`, {...record, autoReplenishmentEnabled}, {
+            onSuccess: () => loadAccounts()
+        });
+    }
+
     const enableSpecialFeeProfile = (prefix: string) => {
         if (accountForm.getFieldValue(prefix)) return;
         const defaults = accountForm.getFieldsValue(FEE_FIELD_NAMES);
@@ -270,6 +277,14 @@ const SettingPage = () => {
             render: (v: boolean) => v
                 ? <Badge status="success" text={<span style={{color: '#52c41a', fontSize: 13}}>自动</span>}/>
                 : <Badge status="default" text={<span style={{color: '#bfbfbf', fontSize: 13}}>手动</span>}/>},
+        {title: '自动补单', dataIndex: 'autoReplenishmentEnabled', key: 'autoReplenishmentEnabled', width: 90,
+            render: (v: boolean, record: any) => (
+                <Tooltip title="开启后每12小时自动补单；账号停用时不会执行">
+                    <Switch checked={!!v}
+                            onChange={(checked) => handleToggleAutoReplenishment(record, checked)}
+                            size="small"/>
+                </Tooltip>
+            )},
         {title: '启用', dataIndex: 'enabled', key: 'enabled', width: 60,
             render: (v: boolean, record: any) => (
                 <Switch checked={v} onChange={(checked) => handleToggleAccount(record, checked)} size="small"/>
@@ -418,7 +433,7 @@ const SettingPage = () => {
                    accountStep > 0 && <Button key="prev" onClick={() => setAccountStep(s => s - 1)}>上一步</Button>,
                    accountStep < 2 && <Button key="next" type="primary" onClick={() => {
                        const fields: any[] = accountStep === 0
-                           ? ['name', 'country', 'apiKey', 'authorization', 'enabled']
+                           ? ['name', 'country', 'apiKey', 'authorization', 'enabled', 'autoReplenishmentEnabled']
                            : [...FEE_FIELD_NAMES];
                        if (accountStep === 1 && !inheritSpecialStyleFee) {
                            fields.push(...FEE_FIELD_NAMES.map(field => ['specialStyleFeeConfig', field]));
@@ -451,6 +466,11 @@ const SettingPage = () => {
                         <Input.TextArea rows={3}/>
                     </Form.Item>
                     <Form.Item name="enabled" label="启用" valuePropName="checked" initialValue={true}>
+                        <Switch/>
+                    </Form.Item>
+                    <Form.Item name="autoReplenishmentEnabled" label="自动补单" valuePropName="checked"
+                               initialValue={false}
+                               extra="开启后每12小时自动补单；仅账号处于启用状态时执行">
                         <Switch/>
                     </Form.Item>
                 </div>

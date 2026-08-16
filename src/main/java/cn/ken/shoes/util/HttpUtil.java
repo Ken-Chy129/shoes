@@ -113,27 +113,31 @@ public class HttpUtil {
     }
 
     /**
-     * OkHttp状态码不会自然出现在响应体里。为429补一个可解析字段，避免未知StockX响应结构被上层漏判。
+     * OkHttp状态码不会自然出现在响应体里。为429/403补可解析字段，避免未知响应结构被上层漏判或混判。
      */
     static String attachHttpStatusMarker(String body, int httpStatus) {
-        if (httpStatus != 429) {
+        if (httpStatus != 429 && httpStatus != 403) {
             return body;
         }
         try {
             JSONObject json = JSON.parseObject(body);
             if (json != null) {
-                json.putIfAbsent("httpStatusCode", 429);
-                json.put("transportHttpStatus", 429);
+                if (httpStatus == 429) {
+                    json.putIfAbsent("httpStatusCode", 429);
+                }
+                json.put("transportHttpStatus", httpStatus);
                 return json.toJSONString();
             }
         } catch (Exception ignored) {
             // 非JSON也包装成JSON，rawBody后续只用于脱敏诊断。
         }
-        return new JSONObject(true)
-                .fluentPut("httpStatusCode", 429)
-                .fluentPut("transportHttpStatus", 429)
-                .fluentPut("rawBody", body)
-                .toJSONString();
+        JSONObject wrapped = new JSONObject(true);
+        if (httpStatus == 429) {
+            wrapped.put("httpStatusCode", 429);
+        }
+        wrapped.put("transportHttpStatus", httpStatus);
+        wrapped.put("rawBody", body);
+        return wrapped.toJSONString();
     }
 
     private static String extractGraphqlOperation(Request request) {

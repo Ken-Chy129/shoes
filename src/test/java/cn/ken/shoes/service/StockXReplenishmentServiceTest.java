@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
@@ -119,6 +120,34 @@ class StockXReplenishmentServiceTest {
         assertThat(recorder.task.getTaskType()).isEqualTo(TaskTypeEnum.REPLENISHMENT.getCode());
         assertThat(recorder.task.getParams()).contains("scheduled", "2026-08-05 04:00:00", "2026-08-05 16:00:00");
         assertThat(recorder.completed).isTrue();
+    }
+
+    @Test
+    void scheduledRunSkipsAccountsWithoutAutomaticReplenishmentEnabled() {
+        List<StockXAccount> original = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount optedIn = account();
+        optedIn.setName("opted-in");
+        optedIn.setAutoReplenishmentEnabled(true);
+        StockXAccount optedOut = account();
+        optedOut.setName("opted-out");
+
+        FakeStockXClient client = new FakeStockXClient();
+        client.pendingPages.add(cursorPage(false, null));
+        InMemoryRecorder recorder = new InMemoryRecorder();
+        StockXReplenishmentService service = new StockXReplenishmentService(
+                client, new FakePriceManager(Map.of()), new FakeStockXService(), recorder,
+                Clock.fixed(Instant.parse("2026-08-05T08:00:00Z"), ZoneOffset.UTC));
+
+        try {
+            StockXConfig.setAccounts(List.of(optedIn, optedOut));
+
+            service.replenishAllEnabledAccountsLastHours(12, "scheduled");
+
+            assertThat(recorder.task.getAccountName()).isEqualTo("opted-in");
+            assertThat(recorder.completed).isTrue();
+        } finally {
+            StockXConfig.setAccounts(original);
+        }
     }
 
     private static StockXAccount account() {

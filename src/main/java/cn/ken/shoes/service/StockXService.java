@@ -25,6 +25,7 @@ import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.*;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
+import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.util.ShoesUtil;
@@ -236,6 +237,7 @@ public class StockXService {
     /** 上架校验轮询：最多查 18 次、每次间隔 5 秒(约 90s，全部落定即提前结束)，等待 StockX 异步创建 listing 落地 */
     private static final int CREATE_VERIFY_MAX_ATTEMPTS = 18;
     private static final long CREATE_VERIFY_DELAY_MS = 5000;
+    private static final String ASKS_SUBGRAPH_FETCH_FAILURE = "Failed to fetch from Subgraph 'asks'";
 
     /**
      * 上架校验后台线程池：提交上架(QUEUED)后不阻塞搜索上架主任务，由后台线程按 variantID 异步回查并回填结果。
@@ -753,19 +755,7 @@ public class StockXService {
                 searchCache.put(cacheKey, candidates);
             }
 
-            ModelNoSearchExcel resolvedInput = new ModelNoSearchExcel();
-            resolvedInput.setModelNo(candidates.stream()
-                    .map(StockXPriceExcel::getModelNo)
-                    .filter(StrUtil::isNotBlank)
-                    .findFirst()
-                    .orElse(modelNo));
-            resolvedInput.setSize(requestedSize);
-            Map<String, Set<String>> sizeFilter = ModelNoSearchSizeFilter.build(List.of(resolvedInput));
-            StockXPriceExcel matched = candidates.stream()
-                    .filter(item -> ModelNoSearchSizeFilter.matches(
-                            sizeFilter, item.getModelNo(), item.getUsmSize(), item.getEuSize()))
-                    .findFirst()
-                    .orElse(null);
+            StockXPriceExcel matched = findModelSearchVariant(modelNo, requestedSize, candidates);
             if (matched == null) {
                 taskItem.setOperateResult("获取失败-未找到对应货号尺码");
                 taskItemMapper.insert(taskItem);
@@ -792,6 +782,23 @@ public class StockXService {
             taskItemMapper.insert(taskItem);
             updateModelSearchProgress(taskId, ++completed, total, modelNo + " / " + requestedSize);
         }
+    }
+
+    private StockXPriceExcel findModelSearchVariant(String modelNo, String requestedSize,
+                                                     List<StockXPriceExcel> candidates) {
+        ModelNoSearchExcel resolvedInput = new ModelNoSearchExcel();
+        resolvedInput.setModelNo(candidates.stream()
+                .map(StockXPriceExcel::getModelNo)
+                .filter(StrUtil::isNotBlank)
+                .findFirst()
+                .orElse(modelNo));
+        resolvedInput.setSize(requestedSize);
+        Map<String, Set<String>> sizeFilter = ModelNoSearchSizeFilter.build(List.of(resolvedInput));
+        return candidates.stream()
+                .filter(item -> ModelNoSearchSizeFilter.matches(
+                        sizeFilter, item.getModelNo(), item.getUsmSize(), item.getEuSize()))
+                .findFirst()
+                .orElse(null);
     }
 
     public void createModelSearchListings(StockXAccount account, Long taskId,
@@ -856,6 +863,225 @@ public class StockXService {
         }
     }
 
+    public void createModelSearchListingsByModel(StockXAccount account, Long taskId,
+                                                 List<ModelSearchListingByModelExcel> inputRows) {
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        Map<String, List<StockXPriceExcel>> searchCache = new LinkedHashMap<>();
+        List<String> processedIds = taskItemMapper.selectProcessedProductIdsByTaskId(taskId);
+        Set<String> alreadyProcessed = new HashSet<>(processedIds != null ? processedIds : List.of());
+        List<TaskItemDO> pendingTaskItems = taskItemMapper.selectByCondition(
+                taskId, null, "待上架", null, null, 0, Integer.MAX_VALUE);
+        Map<String, TaskItemDO> pendingTaskItemByVariant = new LinkedHashMap<>();
+        if (pendingTaskItems != null) {
+            for (TaskItemDO pendingTaskItem : pendingTaskItems) {
+                if (pendingTaskItem != null && StrUtil.isNotBlank(pendingTaskItem.getProductId())) {
+                    pendingTaskItemByVariant.putIfAbsent(pendingTaskItem.getProductId().trim(), pendingTaskItem);
+                }
+            }
+        }
+        Map<String, ModelSearchListingGroup> groups = new LinkedHashMap<>();
+        int processed = 0;
+
+        // 先解析完整份 Excel，再按 StockX variantId 合并。不能边读边按 50 条提交，否则同一货号尺码
+        // 分散在不同批次时仍会重复上架。尺码别名（如 US 9.5 / EU 43.5）最终也会合并到同一 variant。
+        for (ModelSearchListingByModelExcel input : inputRows) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
+                return;
+            }
+            String modelNo = input != null && input.getModelNo() != null ? input.getModelNo().trim() : null;
+            String requestedSize = input != null && input.getSize() != null ? input.getSize().trim() : null;
+
+            String invalidReason = validateModelSearchListingByModel(input, modelNo, requestedSize);
+            if (invalidReason != null) {
+                TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, input, modelNo, requestedSize);
+                taskItem.setOperateResult("上架失败-" + invalidReason);
+                taskItemMapper.insert(taskItem);
+                updateModelSearchPreparationProgress(taskId, ++processed, inputRows.size(), "校验上架输入");
+                continue;
+            }
+
+            String cacheKey = modelNo.toUpperCase(Locale.ROOT);
+            List<StockXPriceExcel> candidates = searchCache.get(cacheKey);
+            if (candidates == null) {
+                candidates = stockXClient.searchExactItemWithPrice(modelNo, "shoes", country, account);
+                if (candidates == null) {
+                    throw new RuntimeException("StockX Token已过期或无效，请更新Token");
+                }
+                searchCache.put(cacheKey, candidates);
+            }
+            StockXPriceExcel matched = findModelSearchVariant(modelNo, requestedSize, candidates);
+            if (matched == null || StrUtil.isBlank(matched.getId())) {
+                TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, input, modelNo, requestedSize);
+                taskItem.setOperateResult("上架失败-未找到对应货号尺码");
+                taskItemMapper.insert(taskItem);
+                updateModelSearchPreparationProgress(
+                        taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
+                continue;
+            }
+
+            String variantId = matched.getId().trim();
+            if (alreadyProcessed.contains(variantId)) {
+                updateModelSearchPreparationProgress(
+                        taskId, ++processed, inputRows.size(), "已处理，跳过: " + variantId);
+                continue;
+            }
+            groups.computeIfAbsent(variantId,
+                            ignored -> new ModelSearchListingGroup(
+                                    matched, modelNo, requestedSize, input.getTargetPrice()))
+                    .add(input);
+            updateModelSearchPreparationProgress(
+                    taskId, ++processed, inputRows.size(), modelNo + " / " + requestedSize);
+        }
+
+        List<StockXListingCreateItem> pending = new ArrayList<>();
+        Map<String, Long> variantToTaskItemId = new HashMap<>();
+        for (Map.Entry<String, ModelSearchListingGroup> entry : groups.entrySet()) {
+            if (TaskSwitch.isSearchListCancelled(taskId)) {
+                return;
+            }
+            String variantId = entry.getKey();
+            ModelSearchListingGroup group = entry.getValue();
+            StockXPriceExcel matched = group.matched();
+            TaskItemDO taskItem = buildModelSearchListingTaskItem(taskId, null,
+                    StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()),
+                    StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
+            taskItem.setProductId(variantId);
+            taskItem.setBrand(matched.getBrand());
+            taskItem.setTitle(matched.getTitle());
+            taskItem.setStyleId(StrUtil.blankToDefault(matched.getModelNo(), group.modelNo()));
+            taskItem.setSize(StrUtil.blankToDefault(matched.getUsmSize(), group.requestedSize()));
+            taskItem.setEuSize(matched.getEuSize());
+            taskItem.setLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getStandardPrice()));
+            taskItem.setFlexLowestPrice(ShoesUtil.toStockxPriceColumn(matched.getFlexPrice()));
+            taskItem.setTargetPrice(group.targetPrice());
+            taskItem.setCurrentPrice(group.targetPrice());
+
+            if (group.totalQuantity() > Integer.MAX_VALUE) {
+                taskItem.setOperateResult("上架失败-合并数量超过整数上限");
+                taskItemMapper.insert(taskItem);
+                continue;
+            }
+            int mergedQuantity = (int) group.totalQuantity();
+            taskItem.setListingQuantity(mergedQuantity);
+            if (group.priceConflict()) {
+                taskItem.setOperateResult("上架失败-相同货号尺码的上架价格不一致");
+                taskItemMapper.insert(taskItem);
+                continue;
+            }
+
+            taskItem.setOperateResult("待上架");
+            TaskItemDO existingPending = pendingTaskItemByVariant.get(variantId);
+            if (existingPending != null && existingPending.getId() != null) {
+                taskItem.setId(existingPending.getId());
+                taskItemMapper.updateById(taskItem);
+            } else {
+                taskItemMapper.insert(taskItem);
+            }
+            pending.add(new StockXListingCreateItem(variantId, group.targetPrice(), mergedQuantity));
+            variantToTaskItemId.put(variantId, taskItem.getId());
+
+            if (pending.size() >= 50) {
+                batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
+                pending.clear();
+                variantToTaskItemId.clear();
+            }
+        }
+        if (!pending.isEmpty()) {
+            batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
+        }
+        updateModelSearchProgress(taskId, inputRows.size(), inputRows.size(), "完成");
+    }
+
+    private void updateModelSearchPreparationProgress(Long taskId, int current, int total, String detail) {
+        JSONObject attrs = new JSONObject(true);
+        int progress = total > 0 ? Math.min(current * 100 / total, 99) : 99;
+        attrs.put("progress", progress);
+        attrs.put("current", current);
+        attrs.put("total", total);
+        attrs.put("processed", current);
+        attrs.put("detail", detail);
+        taskMapper.updateTaskAttributes(taskId, attrs.toJSONString());
+    }
+
+    private TaskItemDO buildModelSearchListingTaskItem(Long taskId, ModelSearchListingByModelExcel input,
+                                                       String modelNo, String requestedSize) {
+        TaskItemDO taskItem = new TaskItemDO();
+        taskItem.setTaskId(taskId);
+        taskItem.setRound(1);
+        taskItem.setStyleId(modelNo);
+        taskItem.setSize(requestedSize);
+        taskItem.setTargetPrice(input != null ? input.getTargetPrice() : null);
+        taskItem.setCurrentPrice(input != null ? input.getTargetPrice() : null);
+        taskItem.setListingQuantity(input != null ? input.getQuantity() : null);
+        taskItem.setOperateTime(new Date());
+        return taskItem;
+    }
+
+    private static final class ModelSearchListingGroup {
+        private final StockXPriceExcel matched;
+        private final String modelNo;
+        private final String requestedSize;
+        private final BigDecimal targetPrice;
+        private long totalQuantity;
+        private boolean priceConflict;
+
+        private ModelSearchListingGroup(StockXPriceExcel matched, String modelNo,
+                                        String requestedSize, BigDecimal targetPrice) {
+            this.matched = matched;
+            this.modelNo = modelNo;
+            this.requestedSize = requestedSize;
+            this.targetPrice = targetPrice;
+        }
+
+        private void add(ModelSearchListingByModelExcel input) {
+            totalQuantity += input.getQuantity();
+            if (targetPrice.compareTo(input.getTargetPrice()) != 0) {
+                priceConflict = true;
+            }
+        }
+
+        private StockXPriceExcel matched() {
+            return matched;
+        }
+
+        private String modelNo() {
+            return modelNo;
+        }
+
+        private String requestedSize() {
+            return requestedSize;
+        }
+
+        private BigDecimal targetPrice() {
+            return targetPrice;
+        }
+
+        private long totalQuantity() {
+            return totalQuantity;
+        }
+
+        private boolean priceConflict() {
+            return priceConflict;
+        }
+    }
+
+    private String validateModelSearchListingByModel(ModelSearchListingByModelExcel input,
+                                                     String modelNo, String requestedSize) {
+        if (StrUtil.isBlank(modelNo)) {
+            return "货号必填";
+        }
+        if (StrUtil.isBlank(requestedSize)) {
+            return "尺码必填";
+        }
+        if (input.getTargetPrice() == null || input.getTargetPrice().compareTo(BigDecimal.ZERO) <= 0) {
+            return "上架价格必须大于0";
+        }
+        if (input.getQuantity() == null || input.getQuantity() <= 0) {
+            return "数量必须为正整数";
+        }
+        return null;
+    }
+
     private String validateModelSearchListing(ModelSearchListingExcel input, String variantId,
                                               Set<String> seenVariants) {
         if (StrUtil.isBlank(variantId)) {
@@ -885,6 +1111,14 @@ public class StockXService {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 throw e;
             }
+            if (isAmbiguousListingCreateFailure(e)) {
+                List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
+                log.warn("[{}] StockX asks子图暂不可用，上架结果未知，转入异步对账, taskId:{}, variants:{}",
+                        account.getName(), taskId, variants.size());
+                markCreatePendingAndVerify("asks-subgraph-unknown", taskId, account,
+                        variants, variantToTaskItemId);
+                return;
+            }
             String reason = StrUtil.blankToDefault(e.getMessage(), "上架失败");
             if (reason.length() > 100) {
                 reason = reason.substring(0, 100);
@@ -896,15 +1130,7 @@ public class StockXService {
         }
 
         List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
-        Map<String, Long> taskItems = new HashMap<>(variantToTaskItemId);
-        variants.forEach(variantId -> updateTaskItemResult(taskItems.get(variantId), "上架处理中"));
-        listingVerifyExecutor.submit(() -> {
-            try {
-                verifyCreateBatchAsync(batchId, taskId, account, variants, taskItems);
-            } catch (Exception e) {
-                log.error("[{}] 指定价格上架校验异常, batchId:{}", account.getName(), batchId, e);
-            }
-        });
+        markCreatePendingAndVerify(batchId, taskId, account, variants, variantToTaskItemId);
     }
 
     /** 复用任务上架与异步结果校验链路，供补单等任务提交已校验的上架项。 */
@@ -1191,6 +1417,14 @@ public class StockXService {
             if ("TOKEN_EXPIRED".equals(e.getMessage())) {
                 throw e; // Token 过期：终止任务
             }
+            if (isAmbiguousListingCreateFailure(e)) {
+                List<String> variants = items.stream().map(Pair::getKey).toList();
+                log.warn("[{}] StockX asks子图暂不可用，上架结果未知，转入异步对账, taskId:{}, variants:{}",
+                        account.getName(), taskId, variants.size());
+                markCreatePendingAndVerify("asks-subgraph-unknown", taskId, account,
+                        variants, variantToTaskItemId);
+                return;
+            }
             String reason = e.getMessage() != null ? e.getMessage() : "上架失败";
             if (reason.length() > 100) {
                 reason = reason.substring(0, 100);
@@ -1206,26 +1440,34 @@ public class StockXService {
         }
         // 提交成功(QUEUED)：先把这批全部标"上架处理中"，再丢给后台线程异步按 variantID 回查回填，
         // 主任务不阻塞、继续往下搜索上架。(不再等 REST 批次完成——GraphQL 的 batchId 在官方 REST 查不到、永远 timeout)
-        List<String> variantsSnapshot = new ArrayList<>(items.size());
-        Map<String, Long> idSnapshot = new HashMap<>();
-        for (Pair<String, Integer> item : items) {
-            String variantId = item.getKey();
-            Long taskItemId = variantToTaskItemId.get(variantId);
-            if (taskItemId != null) {
-                variantsSnapshot.add(variantId);
-                idSnapshot.put(variantId, taskItemId);
-                updateTaskItemResult(taskItemId, "上架处理中");
-            }
-        }
+        List<String> variants = items.stream().map(Pair::getKey).toList();
+        markCreatePendingAndVerify(batchId, taskId, account, variants, variantToTaskItemId);
+    }
+
+    private static boolean isAmbiguousListingCreateFailure(RuntimeException error) {
+        return error != null && StrUtil.containsIgnoreCase(error.getMessage(), ASKS_SUBGRAPH_FETCH_FAILURE);
+    }
+
+    private void markCreatePendingAndVerify(String verificationRef, Long taskId, StockXAccount account,
+                                            List<String> variants, Map<String, Long> variantToTaskItemId) {
+        List<String> variantsSnapshot = variants.stream()
+                .filter(StrUtil::isNotBlank)
+                .filter(variantId -> variantToTaskItemId.get(variantId) != null)
+                .toList();
         if (variantsSnapshot.isEmpty()) {
             return;
         }
-        String finalBatchId = batchId;
+        Map<String, Long> idSnapshot = new HashMap<>();
+        for (String variantId : variantsSnapshot) {
+            Long taskItemId = variantToTaskItemId.get(variantId);
+            idSnapshot.put(variantId, taskItemId);
+            updateTaskItemResult(taskItemId, "上架处理中");
+        }
         listingVerifyExecutor.submit(() -> {
             try {
-                verifyCreateBatchAsync(finalBatchId, taskId, account, variantsSnapshot, idSnapshot);
+                verifyCreateBatchAsync(verificationRef, taskId, account, variantsSnapshot, idSnapshot);
             } catch (Exception e) {
-                log.error("[{}] 异步上架校验异常, batchId:{}", account.getName(), finalBatchId, e);
+                log.error("[{}] 异步上架校验异常, ref:{}", account.getName(), verificationRef, e);
             }
         });
     }
@@ -1349,14 +1591,14 @@ public class StockXService {
         return null;
     }
 
-    /** 对账：只重查 "上架处理中" 超过该时长的条目(给同步内联校验留出时间) */
+    /** 对账：只重查结果不确定且超过该时长的条目(给同步内联校验留出时间) */
     private static final long RECONCILE_MIN_AGE_MS = 3 * 60 * 1000;
     /** "上架处理中" 超过该时长仍查不到挂单，判为终态失败，避免永远卡处理中 */
     private static final long RECONCILE_TIMEOUT_MS = 30 * 60 * 1000;
     private static final int RECONCILE_BATCH_LIMIT = 500;
 
     /**
-     * 对账"上架处理中"：按 variantID 重查当前挂单，回填 已上架/上架失败:原因；超过 {@link #RECONCILE_TIMEOUT_MS}
+     * 对账"上架处理中"及历史 asks 子图异常：按 variantID 重查当前挂单，回填 已上架/上架失败:原因；超过 {@link #RECONCILE_TIMEOUT_MS}
      * 仍查不到挂单则判终态失败，避免永远卡处理中。<b>只读不重发</b>，无限流螺旋风险；
      * 同时补掉"进程重启导致后台异步校验丢失、条目永久卡处理中"的缺口。由 PriceScheduler 定时调用。
      */
@@ -1364,7 +1606,9 @@ public class StockXService {
         long now = System.currentTimeMillis();
         Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
         List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
-                .eq("operate_result", "上架处理中")
+                .and(query -> query.eq("operate_result", "上架处理中")
+                        .or()
+                        .like("operate_result", ASKS_SUBGRAPH_FETCH_FAILURE))
                 .lt("operate_time", ageCutoff)
                 .orderByAsc("operate_time")
                 .last("LIMIT " + RECONCILE_BATCH_LIMIT));
