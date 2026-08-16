@@ -47,6 +47,9 @@ import java.util.stream.Collectors;
 @Service
 public class StockXService {
 
+    /** StockX asks 子图在 50 条批量创建时持续失败；25 条在同一生产链路上稳定入队。 */
+    private static final int MODEL_SEARCH_LISTING_BATCH_SIZE = 25;
+
     @Resource
     private StockXClient stockXClient;
 
@@ -858,7 +861,7 @@ public class StockXService {
             variantToTaskItemId.put(variantId, taskItem.getId());
             processed++;
 
-            if (pending.size() >= 50) {
+            if (pending.size() >= MODEL_SEARCH_LISTING_BATCH_SIZE) {
                 batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
                 pending.clear();
                 variantToTaskItemId.clear();
@@ -889,7 +892,7 @@ public class StockXService {
         Map<String, ModelSearchListingGroup> groups = new LinkedHashMap<>();
         int processed = 0;
 
-        // 先解析完整份 Excel，再按 StockX variantId 合并。不能边读边按 50 条提交，否则同一货号尺码
+        // 先解析完整份 Excel，再按 StockX variantId 合并。不能边读边分批提交，否则同一货号尺码
         // 分散在不同批次时仍会重复上架。尺码别名（如 US 9.5 / EU 43.5）最终也会合并到同一 variant。
         for (ModelSearchListingByModelExcel input : inputRows) {
             if (TaskSwitch.isSearchListCancelled(taskId)) {
@@ -988,7 +991,7 @@ public class StockXService {
             pending.add(new StockXListingCreateItem(variantId, group.targetPrice(), mergedQuantity));
             variantToTaskItemId.put(variantId, taskItem.getId());
 
-            if (pending.size() >= 50) {
+            if (pending.size() >= MODEL_SEARCH_LISTING_BATCH_SIZE) {
                 batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
                 pending.clear();
                 variantToTaskItemId.clear();
@@ -1110,9 +1113,14 @@ public class StockXService {
     private void batchCreateSpecifiedListings(Long taskId, List<StockXListingCreateItem> items,
                                               Map<String, Long> variantToTaskItemId,
                                               StockXAccount account) {
+        List<StockXListingCreateItem> createItems = excludeAlreadyActiveListings(
+                items, variantToTaskItemId, account);
+        if (createItems.isEmpty()) {
+            return;
+        }
         String batchId;
         try {
-            batchId = stockXClient.createListingsWithQuantity(items, account);
+            batchId = stockXClient.createListingsWithQuantity(createItems, account);
         } catch (StockXRateLimitException | TaskCancelledException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -1120,7 +1128,7 @@ public class StockXService {
                 throw e;
             }
             if (isAmbiguousListingCreateFailure(e)) {
-                List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
+                List<String> variants = createItems.stream().map(StockXListingCreateItem::variantId).toList();
                 log.warn("[{}] StockX asks子图暂不可用，上架结果未知，转入异步对账, taskId:{}, variants:{}",
                         account.getName(), taskId, variants.size());
                 markCreatePendingAndVerify("asks-subgraph-unknown", taskId, account,
@@ -1131,14 +1139,45 @@ public class StockXService {
             if (reason.length() > 100) {
                 reason = reason.substring(0, 100);
             }
-            for (StockXListingCreateItem item : items) {
+            for (StockXListingCreateItem item : createItems) {
                 updateTaskItemResult(variantToTaskItemId.get(item.variantId()), reason);
             }
             return;
         }
 
-        List<String> variants = items.stream().map(StockXListingCreateItem::variantId).toList();
+        List<String> variants = createItems.stream().map(StockXListingCreateItem::variantId).toList();
         markCreatePendingAndVerify(batchId, taskId, account, variants, variantToTaskItemId);
+    }
+
+    /**
+     * 重跑历史任务前先按 variant 查询当前真实挂单；已经 ACTIVE 的条目直接复用，避免重复创建或叠加数量。
+     * 查询失败时保持原行为继续提交，避免只读接口偶发故障阻断正常上架。
+     */
+    private List<StockXListingCreateItem> excludeAlreadyActiveListings(
+            List<StockXListingCreateItem> items, Map<String, Long> variantToTaskItemId,
+            StockXAccount account) {
+        List<StockXListingCreateItem> candidates = new ArrayList<>(items);
+        List<String> variantIds = candidates.stream().map(StockXListingCreateItem::variantId).toList();
+        Map<String, JSONObject> states = stockXClient.verifyListingsByVariantIds(variantIds, account);
+        if (states == null || states.isEmpty()) {
+            return candidates;
+        }
+        int activeCount = 0;
+        Iterator<StockXListingCreateItem> iterator = candidates.iterator();
+        while (iterator.hasNext()) {
+            StockXListingCreateItem item = iterator.next();
+            if (!isListingActive(states.get(item.variantId()))) {
+                continue;
+            }
+            updateTaskItemResult(variantToTaskItemId.get(item.variantId()), "已上架");
+            iterator.remove();
+            activeCount++;
+        }
+        if (activeCount > 0) {
+            log.info("[{}] 搜索上架提交前跳过已在架variant: {}, 待创建: {}",
+                    account.getName(), activeCount, candidates.size());
+        }
+        return candidates;
     }
 
     /** 复用任务上架与异步结果校验链路，供补单等任务提交已校验的上架项。 */
