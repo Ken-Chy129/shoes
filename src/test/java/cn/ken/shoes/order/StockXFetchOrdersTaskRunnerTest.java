@@ -2,6 +2,7 @@ package cn.ken.shoes.order;
 
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.StockXOrderCategory;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -22,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -133,6 +135,117 @@ class StockXFetchOrdersTaskRunnerTest {
         assertThat(priceManager.priceLookups).isEmpty();
     }
 
+    @Test
+    void retriesHistoricalPageAfterTemporaryNoResponse() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.historicalPages.add(null);
+        client.historicalPages.add(page(false, null,
+                historicalOrder("listing-retried", "order-retried", "STYLE-RETRIED", "42")));
+        AtomicReference<String> finalStatus = new AtomicReference<>();
+        AtomicReference<String> failureReason = new AtomicReference<>();
+        AtomicInteger completedPages = new AtomicInteger();
+        List<TaskItemDO> recordedItems = new ArrayList<>();
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> {
+            if (method.equals("updateTaskStatus")) {
+                finalStatus.set((String) args[1]);
+            } else if (method.equals("updateTaskFailed")) {
+                finalStatus.set(TaskDO.TaskStatusEnum.FAILED.getCode());
+                failureReason.set((String) args[1]);
+            } else if (method.equals("updateTaskRound")) {
+                completedPages.set((Integer) args[1]);
+            }
+            return null;
+        });
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if (method.equals("insert")) {
+                recordedItems.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account(), 91L, List.of(StockXOrderCategory.CANCELLED),
+                client, new FakePriceManager(), taskMapper, taskItemMapper) {
+            @Override
+            protected void waitBeforeRetry(long delayMs) {
+                // 测试无需真实等待。
+            }
+        };
+
+        runner.run();
+
+        assertThat(client.historicalRequests).isEqualTo(2);
+        assertThat(recordedItems).hasSize(1);
+        assertThat(completedPages.get()).isEqualTo(1);
+        assertThat(finalStatus.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+        assertThat(failureReason.get()).isNull();
+    }
+
+    @Test
+    void reportsCategoryPageAndRetryCountAfterRetriesAreExhausted() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.historicalPages.add(null);
+        client.historicalPages.add(null);
+        client.historicalPages.add(null);
+        AtomicReference<String> failureReason = new AtomicReference<>();
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> {
+            if (method.equals("updateTaskFailed")) {
+                failureReason.set((String) args[1]);
+            }
+            return null;
+        });
+
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account(), 92L, List.of(StockXOrderCategory.COMPLETED),
+                client, new FakePriceManager(), taskMapper,
+                proxy(TaskItemMapper.class, (method, args) -> null)) {
+            @Override
+            protected void waitBeforeRetry(long delayMs) {
+                // 测试无需真实等待。
+            }
+        };
+
+        runner.run();
+
+        assertThat(client.historicalRequests).isEqualTo(3);
+        assertThat(failureReason.get())
+                .contains("已完成订单第1页查询失败")
+                .contains("已重试2次")
+                .contains("网络、代理或风控拦截");
+    }
+
+    @Test
+    void honorsRateLimitCooldownBeforeRetryingPage() {
+        AtomicInteger requests = new AtomicInteger();
+        StockXClient client = new StockXClient() {
+            @Override
+            public JSONObject queryOrderListings(StockXOrderCategory category, int pageNumber,
+                                                 StockXAccount account) {
+                if (requests.getAndIncrement() == 0) {
+                    throw new StockXRateLimitException(account.getName(), 5 * 60 * 1000L);
+                }
+                return page(false, null);
+            }
+        };
+        List<Long> waits = new ArrayList<>();
+        StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
+                account(), 93L, List.of(StockXOrderCategory.CANCELLED),
+                client, new FakePriceManager(),
+                proxy(TaskMapper.class, (method, args) -> null),
+                proxy(TaskItemMapper.class, (method, args) -> null)) {
+            @Override
+            protected void waitBeforeRetry(long delayMs) {
+                waits.add(delayMs);
+            }
+        };
+
+        runner.run();
+
+        assertThat(requests.get()).isEqualTo(2);
+        assertThat(waits).containsExactly(5 * 60 * 1000L);
+    }
+
     private static StockXAccount account() {
         StockXAccount account = new StockXAccount();
         account.setName("account-a");
@@ -215,9 +328,10 @@ class StockXFetchOrdersTaskRunnerTest {
 
     private static class FakeStockXClient extends StockXClient {
         private final Deque<JSONObject> pendingPages = new ArrayDeque<>();
-        private final Deque<JSONObject> historicalPages = new ArrayDeque<>();
+        private final List<JSONObject> historicalPages = new ArrayList<>();
         private final List<String> requestedCursors = new ArrayList<>();
         private final List<String> payoutRequests = new ArrayList<>();
+        private int historicalRequests;
         private Map<String, BigDecimal> payouts = Map.of();
 
         @Override
@@ -231,7 +345,7 @@ class StockXFetchOrdersTaskRunnerTest {
             if (historicalPages.isEmpty()) {
                 throw new AssertionError("待处理订单不应调用SellerListings");
             }
-            return historicalPages.removeFirst();
+            return historicalPages.get(historicalRequests++);
         }
 
         @Override

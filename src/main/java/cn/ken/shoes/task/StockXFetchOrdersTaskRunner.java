@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -22,9 +23,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Supplier;
 
 @Slf4j
 public class StockXFetchOrdersTaskRunner implements Runnable {
+
+    private static final int MAX_PAGE_ATTEMPTS = 3;
+    private static final long MAX_RETRY_DELAY_MS = 5 * 60 * 1000L;
 
     private final StockXAccount account;
     private final Long taskId;
@@ -82,6 +87,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             if (reason != null && reason.length() > 200) {
                 reason = reason.substring(0, 200);
             }
+            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
             taskMapper.updateTaskFailed(taskId, reason != null ? reason : "未知异常");
         } finally {
             TaskSwitch.clearFetchOrdersState(account.getName());
@@ -95,8 +101,10 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         boolean hasNextPage;
         do {
             ensureNotCancelled();
-            JSONObject result = stockXClient.queryOrderListings(category, pageNumber, account);
-            JSONArray edges = requireEdges(result, category.getLabel(), pageNumber);
+            int currentPage = pageNumber;
+            JSONObject result = queryPageWithRetry(category.getLabel(), currentPage,
+                    () -> stockXClient.queryOrderListings(category, currentPage, account));
+            JSONArray edges = result.getJSONArray("edges");
             List<TaskItemDO> items = new ArrayList<>();
             for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
@@ -126,8 +134,11 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         String after = null;
         while (true) {
             ensureNotCancelled();
-            JSONObject result = stockXClient.queryPendingAsks(after, account);
-            JSONArray edges = requireEdges(result, StockXOrderCategory.PENDING.getLabel(), pages + 1);
+            String currentCursor = after;
+            int currentPage = pages + 1;
+            JSONObject result = queryPageWithRetry(StockXOrderCategory.PENDING.getLabel(), currentPage,
+                    () -> stockXClient.queryPendingAsks(currentCursor, account));
+            JSONArray edges = result.getJSONArray("edges");
             List<TaskItemDO> items = new ArrayList<>();
             for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
@@ -153,18 +164,65 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         }
     }
 
-    private JSONArray requireEdges(JSONObject result, String label, int pageNumber) {
-        if (result == null) {
-            throw new IllegalStateException(label + "第" + pageNumber + "页查询失败");
+    private JSONObject queryPageWithRetry(String categoryLabel, int pageNumber,
+                                          Supplier<JSONObject> query) {
+        String lastFailure = "StockX无响应（网络、代理或风控拦截）";
+        RuntimeException lastException = null;
+        for (int attempt = 1; attempt <= MAX_PAGE_ATTEMPTS; attempt++) {
+            ensureNotCancelled();
+            long delayMs = retryDelayMs(attempt);
+            try {
+                JSONObject result = query.get();
+                if (result != null && result.getBooleanValue("_unauthorized")) {
+                    throw new IllegalStateException("StockX Token已过期，请更新Token");
+                }
+                if (result != null && result.getJSONArray("edges") != null) {
+                    if (attempt > 1) {
+                        taskMapper.updateTaskFailReason(taskId, null);
+                    }
+                    return result;
+                }
+                if (result == null) {
+                    lastFailure = "StockX无响应（网络、代理或风控拦截）";
+                } else {
+                    lastFailure = "StockX响应缺少订单数据";
+                }
+            } catch (StockXRateLimitException e) {
+                lastException = e;
+                lastFailure = e.getMessage() != null ? e.getMessage() : "StockX请求限流";
+                delayMs = Math.max(delayMs, Math.min(e.getCooldownMs(), MAX_RETRY_DELAY_MS));
+            }
+
+            if (attempt < MAX_PAGE_ATTEMPTS) {
+                String retryMessage = categoryLabel + "订单第" + pageNumber + "页请求异常，"
+                        + (delayMs / 1000) + "秒后重试（" + attempt + "/" + (MAX_PAGE_ATTEMPTS - 1) + "）";
+                taskMapper.updateTaskFailReason(taskId, retryMessage);
+                log.warn("[{}] {}, 原因:{}", account.getName(), retryMessage, lastFailure);
+                waitBeforeRetry(delayMs);
+            }
         }
-        if (result.getBooleanValue("_unauthorized")) {
-            throw new IllegalStateException("Token已过期，请更新Token");
+        throw new IllegalStateException(categoryLabel + "订单第" + pageNumber
+                + "页查询失败（已重试" + (MAX_PAGE_ATTEMPTS - 1) + "次：" + lastFailure + "）",
+                lastException);
+    }
+
+    private long retryDelayMs(int attempt) {
+        return attempt == 1 ? 2000L : 5000L;
+    }
+
+    protected void waitBeforeRetry(long delayMs) {
+        long remainingMs = delayMs;
+        while (remainingMs > 0) {
+            ensureNotCancelled();
+            long sleepMs = Math.min(remainingMs, 1000L);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TaskCancelledException();
+            }
+            remainingMs -= sleepMs;
         }
-        JSONArray edges = result.getJSONArray("edges");
-        if (edges == null) {
-            throw new IllegalStateException(label + "响应缺少edges字段");
-        }
-        return edges;
     }
 
     private void storeWithPoisonPrices(List<TaskItemDO> items) {

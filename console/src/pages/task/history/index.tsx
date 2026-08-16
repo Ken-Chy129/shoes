@@ -1,6 +1,6 @@
 import {
     Alert, Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
-    Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider,
+    Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider, Typography,
 } from "antd";
 import {PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useRef, useState} from "react";
@@ -70,6 +70,15 @@ interface StockXRateStatus {
     lastSignal?: string;
     lastRateLimitAt: number;
 }
+
+const formatTaskReason = (record: TaskRecord) => {
+    if (!record.failReason || record.taskType !== 'fetch_orders') return record.failReason;
+    return record.failReason
+        .replace(/^(已完成|已取消|待处理|待付款)第(\d+)页查询失败$/,
+            '$1订单第$2页查询失败（历史任务，未自动重试）')
+        .replace(/^(已完成|已取消|待处理|待付款)响应缺少edges字段$/,
+            '$1订单查询失败（StockX响应缺少订单数据）');
+};
 
 const SORT_OPTIONS = [
     {label: '精选', value: 'featured'},
@@ -407,7 +416,7 @@ const TaskPage = () => {
             title: '耗时', dataIndex: 'cost', key: 'cost', width: 100,
         },
         {
-            title: '状态', dataIndex: 'status', key: 'status', width: 90,
+            title: '状态', dataIndex: 'status', key: 'status', width: 220,
             render: (status: string, record: TaskRecord) => {
                 const statusMap: Record<string, {text: string, color: string}> = {
                     'running': {text: '运行中', color: 'blue'},
@@ -424,7 +433,19 @@ const TaskPage = () => {
                 };
                 const info = statusMap[status] || {text: status, color: 'default'};
                 const node = <span style={{color: info.color, fontWeight: 500}}>{info.text}</span>;
-                return record.failReason ? <Tooltip title={record.failReason}>{node}</Tooltip> : node;
+                const reason = formatTaskReason(record);
+                const failed = status === 'failed' || status === '执行失败';
+                if (failed && reason) {
+                    return <Space direction="vertical" size={0} style={{maxWidth: 210}}>
+                        {node}
+                        <Tooltip title={reason}>
+                            <Typography.Text type="secondary" ellipsis style={{maxWidth: 210}}>
+                                {reason}
+                            </Typography.Text>
+                        </Tooltip>
+                    </Space>;
+                }
+                return reason ? <Tooltip title={reason}>{node}</Tooltip> : node;
             }
         },
         {
@@ -439,7 +460,7 @@ const TaskPage = () => {
             ),
         },
         {
-            title: '进度', key: 'progress', width: 100,
+            title: '进度', key: 'progress', width: 120,
             render: (_: any, record: TaskRecord) => {
                 if (record.taskType === 'listing' && record.attributes) {
                     try {
@@ -477,10 +498,14 @@ const TaskPage = () => {
                     } catch { return '-'; }
                 }
                 if (record.round == null) return '-';
+                if (record.taskType === 'fetch_orders') {
+                    return <Tooltip title="跨订单分类累计完成页数；失败原因中的页码是当前订单分类内页码">
+                        <span>累计 {record.round} 页</span>
+                    </Tooltip>;
+                }
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
                     excel_delist: '批',
-                    fetch_orders: '页',
                 };
                 const unit = unitMap[record.taskType] || '轮';
                 return `第${record.round}${unit}`;
