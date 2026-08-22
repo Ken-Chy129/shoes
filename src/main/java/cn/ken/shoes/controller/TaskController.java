@@ -20,6 +20,7 @@ import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
+import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.service.StockXReplenishmentService;
@@ -31,6 +32,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -40,10 +42,15 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Locale;
+import java.util.Set;
 
 @RestController
 @RequestMapping("task")
 public class TaskController {
+
+    private static final long MAX_BID_EXCEL_SIZE = 10 * 1024 * 1024L;
 
     @Resource
     private TaskService taskService;
@@ -483,11 +490,88 @@ public class TaskController {
         if (operation == null) {
             return Result.buildError("无效的购买操作: " + body.getString("operation"));
         }
+        if (operation == StockXPurchaseOperation.CREATE_BIDS) {
+            return Result.buildError("创建出价请使用Excel上传接口");
+        }
         Long taskId = taskExecutorManager.startPurchase(accountId, operation);
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    @PostMapping("stockx/startCreateBids")
+    public Result<String> startCreateBids(@RequestParam("file") MultipartFile file,
+                                          @RequestParam("accountId") String accountId) throws IOException {
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        String fileError = validateBidExcelFile(file);
+        if (fileError != null) {
+            return Result.buildError(fileError);
+        }
+        List<StockXBidInputExcel> rows;
+        try {
+            rows = EasyExcel.read(file.getInputStream())
+                    .head(StockXBidInputExcel.class)
+                    .sheet()
+                    .doReadSync();
+        } catch (RuntimeException e) {
+            return Result.buildError("无法读取Excel，请确认文件格式和表头正确");
+        }
+        String rowsError = validateBidRows(rows);
+        if (rowsError != null) {
+            return Result.buildError(rowsError);
+        }
+        Long taskId = taskExecutorManager.startCreateBids(accountId, rows);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    private String validateBidExcelFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            return "请上传出价Excel";
+        }
+        if (file.getSize() > MAX_BID_EXCEL_SIZE) {
+            return "出价Excel不能超过10MB";
+        }
+        String filename = StrUtil.blankToDefault(file.getOriginalFilename(), "").toLowerCase(Locale.ROOT);
+        if (!filename.endsWith(".xlsx") && !filename.endsWith(".xls")) {
+            return "仅支持.xlsx或.xls格式";
+        }
+        return null;
+    }
+
+    private String validateBidRows(List<StockXBidInputExcel> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "Excel中未找到出价数据";
+        }
+        Set<String> seen = new HashSet<>();
+        for (int index = 0; index < rows.size(); index++) {
+            StockXBidInputExcel row = rows.get(index);
+            int excelRow = index + 2;
+            if (row == null || StrUtil.isBlank(row.getStyleId()) || StrUtil.isBlank(row.getSize())) {
+                return "出价Excel第" + excelRow + "行的货号和尺码均为必填";
+            }
+            BigDecimal price = row.getPrice();
+            if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+                return "出价Excel第" + excelRow + "行的价格必须大于0";
+            }
+            if (price.stripTrailingZeros().scale() > 0) {
+                return "出价Excel第" + excelRow + "行的价格必须为整数美元";
+            }
+            row.setStyleId(row.getStyleId().trim());
+            row.setSize(row.getSize().trim());
+            row.setPrice(price.stripTrailingZeros());
+            String duplicateKey = row.getStyleId().toUpperCase(Locale.ROOT) + "\u0000"
+                    + row.getSize().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+            if (!seen.add(duplicateKey)) {
+                return "出价Excel第" + excelRow + "行的货号和尺码重复";
+            }
+        }
+        return null;
     }
 
 }

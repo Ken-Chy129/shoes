@@ -20,6 +20,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
+import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
@@ -361,6 +362,11 @@ public class TaskExecutorManager {
             }
             case PURCHASE -> {
                 StockXPurchaseOperation operation = StockXPurchaseOperation.fromCode(params.getString("operation"));
+                if (operation == StockXPurchaseOperation.CREATE_BIDS) {
+                    var snapshot = taskInputSnapshotStore.loadCreateBidsInput(source.getId());
+                    yield snapshot.isPresent() && !snapshot.get().isEmpty()
+                            ? startCreateBids(account, snapshot.get()) : null;
+                }
                 yield operation != null ? startPurchase(account, operation) : null;
             }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
@@ -1053,7 +1059,7 @@ public class TaskExecutorManager {
     // ==================== StockX 购买 ====================
 
     public Long startPurchase(String accountId, StockXPurchaseOperation operation) {
-        if (operation == null) {
+        if (operation == null || operation == StockXPurchaseOperation.CREATE_BIDS) {
             return null;
         }
         StockXAccount account = StockXConfig.getAccount(accountId);
@@ -1080,6 +1086,43 @@ public class TaskExecutorManager {
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+            }
+            TaskSwitch.clearPurchaseState(accountId);
+            throw e;
+        }
+    }
+
+    public Long startCreateBids(String accountId, List<StockXBidInputExcel> inputRows) {
+        if (inputRows == null || inputRows.isEmpty() || inputRows.stream().anyMatch(row -> row == null)) {
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        if (!TaskSwitch.tryStartPurchase(accountId)) {
+            log.info("购买任务已在运行: {}", accountId);
+            return null;
+        }
+        List<StockXBidInputExcel> snapshot = List.copyOf(inputRows);
+        String params = new JSONObject(true)
+                .fluentPut("operation", StockXPurchaseOperation.CREATE_BIDS.getCode())
+                .fluentPut("inputCount", snapshot.size())
+                .toJSONString();
+        Long taskId = null;
+        try {
+            taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
+            taskInputSnapshotStore.saveCreateBidsInput(taskId, snapshot);
+            TaskSwitch.resetPurchaseCancel(accountId);
+            StockXCreateBidsTaskRunner runner = new StockXCreateBidsTaskRunner(
+                    account, taskId, snapshot, stockXClient, taskMapper, taskItemMapper);
+            new Thread(runner, "StockX-Purchase-create-bids-" + account.getName()).start();
+            log.info("创建出价任务已启动: [{}], inputCount:{}", account.getName(), snapshot.size());
+            return taskId;
+        } catch (RuntimeException e) {
+            if (taskId != null) {
+                taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
             TaskSwitch.clearPurchaseState(accountId);
             throw e;
