@@ -873,8 +873,7 @@ const TaskPage = () => {
         if (createPlatform === 'stockx' && createTaskType === 'purchase') {
             return <>
                 <Form.Item name="purchaseOperation" label="操作" initialValue="bids"
-                           rules={[{required: true, message: '请选择购买操作'}]}
-                           extra="前三项只读取数据；创建和修改出价会按Excel内容向StockX提交真实变更">
+                           rules={[{required: true, message: '请选择购买操作'}]}>
                     <Radio.Group>
                         {STOCKX_PURCHASE_OPERATION_OPTIONS.map(option => (
                             <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
@@ -914,10 +913,6 @@ const TaskPage = () => {
                                    rules={[{required: true, message: '请输入轮询间隔'}]}
                                    extra="每轮重新读取当前出价和市场最高出价；建议5分钟，最短60秒。">
                             <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
-                        </Form.Item>
-                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
-                            <Alert type="warning" showIcon
-                                   message="任务会持续检查并自动修改StockX真实出价；请确认最高价格和轮询间隔无误。"/>
                         </Form.Item>
                     </> : null}
                 </Form.Item>
