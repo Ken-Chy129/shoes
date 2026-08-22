@@ -1,5 +1,6 @@
 import {InfoCircleOutlined} from '@ant-design/icons';
-import {Space, Tag, Typography} from 'antd';
+import {Tag, Typography} from 'antd';
+import {createStyles} from 'antd-style';
 import React from 'react';
 
 export interface ExcelFieldHintProps {
@@ -11,26 +12,71 @@ export interface ExcelFieldHintProps {
 
 const formatFields = (fields: string[]) => fields.map(field => `「${field}」`).join('、');
 
+const useStyles = createStyles(({token}) => ({
+    root: {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: token.marginXXS,
+        paddingTop: token.paddingXXS,
+    },
+    rule: {
+        display: 'grid',
+        gridTemplateColumns: 'max-content minmax(0, 1fr)',
+        alignItems: 'start',
+        gap: token.marginXS,
+    },
+    requirement: {
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: token.marginXS,
+        color: token.colorText,
+        lineHeight: token.lineHeight,
+    },
+    icon: {
+        flex: 'none',
+        color: token.colorTextSecondary,
+    },
+    tag: {
+        marginInlineEnd: 0,
+    },
+    value: {
+        color: token.colorText,
+        lineHeight: token.lineHeight,
+    },
+    note: {
+        color: token.colorTextSecondary,
+        fontSize: token.fontSizeSM,
+        lineHeight: token.lineHeight,
+    },
+}));
+
 const ExcelFieldHint: React.FC<ExcelFieldHintProps> = ({
     requiredFields = [], optionalFields = [], requirement, note,
-}) => (
-    <Space direction="vertical" size={2} role="note" aria-label="Excel字段要求">
-        <Space size={4} wrap>
-            <Typography.Text type="secondary"><InfoCircleOutlined/> Excel字段要求</Typography.Text>
+}) => {
+    const {styles} = useStyles();
+
+    return (
+        <div className={styles.root} role="note" aria-label="Excel字段要求">
             {requirement ? (
-                <><Tag color="blue">填写规则</Tag><Typography.Text>{requirement}</Typography.Text></>
+                <div className={styles.requirement}>
+                    <InfoCircleOutlined className={styles.icon}/>
+                    <Typography.Text className={styles.value}>{requirement}</Typography.Text>
+                </div>
             ) : requiredFields.length > 0 ? (
-                <><Tag color="blue">必填</Tag><Typography.Text>{formatFields(requiredFields)}</Typography.Text></>
+                <div className={styles.rule}>
+                    <Tag className={styles.tag} color="blue" bordered={false}>必填</Tag>
+                    <Typography.Text className={styles.value}>{formatFields(requiredFields)}</Typography.Text>
+                </div>
             ) : null}
-        </Space>
-        {optionalFields.length > 0 && (
-            <Space size={4} wrap>
-                <Tag>可选</Tag>
-                <Typography.Text type="secondary">{formatFields(optionalFields)}</Typography.Text>
-            </Space>
-        )}
-        {note && <Typography.Text type="secondary">{note}</Typography.Text>}
-    </Space>
-);
+            {optionalFields.length > 0 && (
+                <div className={styles.rule}>
+                    <Tag className={styles.tag} bordered={false}>可选</Tag>
+                    <Typography.Text type="secondary">{formatFields(optionalFields)}</Typography.Text>
+                </div>
+            )}
+            {note && <Typography.Text className={styles.note}>{note}</Typography.Text>}
+        </div>
+    );
+};
 
 export default ExcelFieldHint;

@@ -903,7 +903,6 @@ const TaskPage = () => {
                                    rules={[{required: true, message: '请上传修改出价Excel'}]}
                                    extra={<ExcelFieldHint
                                        requirement="填写「出价ID」「价格」两列"
-                                       note="价格是最高可接受价；仅在被超过且市场最高价+1不超过该价格时追价。"
                                    />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
