@@ -19,6 +19,7 @@ import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXListingCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
@@ -304,6 +305,33 @@ public class StockXClient {
                 + "}");
         request.put("variables", new JSONObject(true).fluentPut("input", input));
         return request;
+    }
+
+    public StockXBidBatch createBids(List<StockXBidCreateItem> items, StockXAccount account) {
+        JSONObject request = buildCreateBidsRequest(items);
+        JSONObject response = queryPro(request.toJSONString(), buildViperHeaders(account),
+                account.getName(), true);
+        if (response == null) {
+            throw new StockXNoResponseException("创建出价失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("TOKEN_EXPIRED");
+        }
+        return parseCreateBidsResponse(response);
+    }
+
+    static StockXBidBatch parseCreateBidsResponse(JSONObject response) {
+        JSONObject data = response != null ? response.getJSONObject("data") : null;
+        JSONObject batch = data != null ? data.getJSONObject("createBids") : null;
+        if (batch == null || StrUtil.isBlank(batch.getString("id"))
+                || StrUtil.isBlank(batch.getString("status"))) {
+            throw new IllegalStateException("创建出价响应缺少批次信息");
+        }
+        String status = batch.getString("status").trim().toUpperCase(Locale.ROOT);
+        if ("FAILED".equals(status) || "CREATION_FAILED".equals(status)) {
+            throw new IllegalStateException("创建出价批次失败:" + status);
+        }
+        return new StockXBidBatch(batch.getString("id").trim(), status);
     }
 
     /** 请求单个订单延期。chainId 必须使用 ViewerAsks.node.id（即 askId）。 */
