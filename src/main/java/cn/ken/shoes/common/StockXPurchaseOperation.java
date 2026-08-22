@@ -6,7 +6,7 @@ import lombok.Getter;
 import java.util.Locale;
 
 /**
- * StockX Pro「购买」任务支持的只读操作。
+ * StockX Pro「购买」任务支持的操作。
  */
 @Getter
 @AllArgsConstructor
@@ -16,6 +16,7 @@ public enum StockXPurchaseOperation {
     ORDERS("orders", "获取订单", "Buying", "PENDING"),
     HISTORY("history", "获取历史记录", "Buying", "HISTORICAL"),
     CREATE_BIDS("create_bids", "创建出价", null, null),
+    UPDATE_BIDS("update_bids", "修改出价", null, null),
     ;
 
     private final String code;

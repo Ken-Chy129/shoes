@@ -156,7 +156,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const purchaseOperation = useMemo(() => {
         if (taskType !== 'purchase' || !params) return undefined;
         try {
-            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | 'create_bids' | undefined;
+            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | 'create_bids' | 'update_bids' | undefined;
         } catch {
             return undefined;
         }
@@ -302,6 +302,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
 
     const purchaseBidColumns = [
         {title: purchaseOperation === 'create_bids' ? '批次 ID' : '出价 ID', dataIndex: 'listingId', key: 'listingId', width: 180, ellipsis: true},
+        ...(purchaseOperation === 'update_bids' ? [
+            {title: '修改批次 ID', dataIndex: 'orderNumber', key: 'orderNumber', width: 180, ellipsis: true},
+        ] : []),
         {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 240, ellipsis: true},
         {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
@@ -400,7 +403,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     ];
 
     const columns = taskType === 'purchase'
-        ? (purchaseOperation === 'bids' || purchaseOperation === 'create_bids'
+        ? (purchaseOperation === 'bids' || purchaseOperation === 'create_bids' || purchaseOperation === 'update_bids'
             ? purchaseBidColumns : purchaseOrderColumns)
         : taskType === 'fetch_orders'
         ? orderColumns

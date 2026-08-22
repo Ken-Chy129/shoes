@@ -21,6 +21,7 @@ import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
+import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.service.StockXReplenishmentService;
@@ -490,8 +491,9 @@ public class TaskController {
         if (operation == null) {
             return Result.buildError("无效的购买操作: " + body.getString("operation"));
         }
-        if (operation == StockXPurchaseOperation.CREATE_BIDS) {
-            return Result.buildError("创建出价请使用Excel上传接口");
+        if (operation == StockXPurchaseOperation.CREATE_BIDS
+                || operation == StockXPurchaseOperation.UPDATE_BIDS) {
+            return Result.buildError(operation.getLabel() + "请使用Excel上传接口");
         }
         Long taskId = taskExecutorManager.startPurchase(accountId, operation);
         if (taskId == null) {
@@ -524,6 +526,36 @@ public class TaskController {
             return Result.buildError(rowsError);
         }
         Long taskId = taskExecutorManager.startCreateBids(accountId, rows);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    @PostMapping("stockx/startUpdateBids")
+    public Result<String> startUpdateBids(@RequestParam("file") MultipartFile file,
+                                          @RequestParam("accountId") String accountId) throws IOException {
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        String fileError = validateBidExcelFile(file);
+        if (fileError != null) {
+            return Result.buildError(fileError);
+        }
+        List<StockXBidUpdateInputExcel> rows;
+        try {
+            rows = EasyExcel.read(file.getInputStream())
+                    .head(StockXBidUpdateInputExcel.class)
+                    .sheet()
+                    .doReadSync();
+        } catch (RuntimeException e) {
+            return Result.buildError("无法读取Excel，请确认文件格式和表头为出价ID、价格");
+        }
+        String rowsError = validateBidUpdateRows(rows);
+        if (rowsError != null) {
+            return Result.buildError(rowsError);
+        }
+        Long taskId = taskExecutorManager.startUpdateBids(accountId, rows);
         if (taskId == null) {
             return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
         }
@@ -569,6 +601,33 @@ public class TaskController {
                     + row.getSize().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
             if (!seen.add(duplicateKey)) {
                 return "出价Excel第" + excelRow + "行的货号和尺码重复";
+            }
+        }
+        return null;
+    }
+
+    private String validateBidUpdateRows(List<StockXBidUpdateInputExcel> rows) {
+        if (rows == null || rows.isEmpty()) {
+            return "Excel中未找到修改出价数据";
+        }
+        Set<String> seen = new HashSet<>();
+        for (int index = 0; index < rows.size(); index++) {
+            StockXBidUpdateInputExcel row = rows.get(index);
+            int excelRow = index + 2;
+            if (row == null || StrUtil.isBlank(row.getBidId())) {
+                return "修改出价Excel第" + excelRow + "行的出价ID必填";
+            }
+            BigDecimal price = row.getPrice();
+            if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
+                return "修改出价Excel第" + excelRow + "行的价格必须大于0";
+            }
+            if (price.stripTrailingZeros().scale() > 0) {
+                return "修改出价Excel第" + excelRow + "行的价格必须为整数美元";
+            }
+            row.setBidId(row.getBidId().trim());
+            row.setPrice(price.stripTrailingZeros());
+            if (!seen.add(row.getBidId().toLowerCase(Locale.ROOT))) {
+                return "修改出价Excel第" + excelRow + "行的出价ID重复";
             }
         }
         return null;

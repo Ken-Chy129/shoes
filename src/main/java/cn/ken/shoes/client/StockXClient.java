@@ -19,6 +19,7 @@ import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXListingCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
@@ -39,6 +40,8 @@ import org.springframework.util.CollectionUtils;
 
 import java.nio.charset.Charset;
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.*;
@@ -248,8 +251,9 @@ public class StockXClient {
 
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
         Objects.requireNonNull(operation, "operation");
-        if (operation == StockXPurchaseOperation.CREATE_BIDS) {
-            throw new IllegalArgumentException("创建出价使用BulkCreateBids写接口");
+        if (operation == StockXPurchaseOperation.CREATE_BIDS
+                || operation == StockXPurchaseOperation.UPDATE_BIDS) {
+            throw new IllegalArgumentException(operation.getLabel() + "使用独立写接口");
         }
         String market = StrUtil.isNotBlank(country) ? country : "US";
         JSONObject request = new JSONObject(true);
@@ -320,6 +324,55 @@ public class StockXClient {
         return parseCreateBidsResponse(response);
     }
 
+    static JSONObject buildUpdateBidsRequest(List<StockXBidUpdateItem> items) {
+        if (items == null || items.isEmpty() || items.size() > 50) {
+            throw new IllegalArgumentException("每批修改出价数量必须在1到50之间");
+        }
+        String expires = Instant.now().plus(365, ChronoUnit.DAYS).toString();
+        JSONArray input = new JSONArray();
+        for (StockXBidUpdateItem item : items) {
+            if (item == null || StrUtil.isBlank(item.id()) || item.amount() == null
+                    || item.amount().compareTo(BigDecimal.ZERO) <= 0
+                    || item.amount().stripTrailingZeros().scale() > 0
+                    || StrUtil.isBlank(item.deliveryOptionType())
+                    || StrUtil.isBlank(item.currency())) {
+                throw new IllegalArgumentException("修改出价的出价ID、正整数金额、配送方式和币种不能为空");
+            }
+            JSONObject update = new JSONObject(true)
+                    .fluentPut("id", item.id().trim())
+                    .fluentPut("amount", item.amount())
+                    .fluentPut("deliveryOptionType", item.deliveryOptionType().trim())
+                    .fluentPut("currency", item.currency().trim().toUpperCase(Locale.ROOT))
+                    .fluentPut("expires", expires);
+            if (StrUtil.isNotBlank(item.checkoutType())) {
+                update.put("checkoutType", item.checkoutType().trim());
+            }
+            input.add(update);
+        }
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", "BulkUpdateBids");
+        request.put("query", "mutation BulkUpdateBids($input: [UpdateBidInput!]) {\n"
+                + "  updateBids(input: $input) {\n"
+                + "    id\n"
+                + "    status\n"
+                + "  }\n"
+                + "}");
+        request.put("variables", new JSONObject(true).fluentPut("input", input));
+        return request;
+    }
+
+    public StockXBidBatch updateBids(List<StockXBidUpdateItem> items, StockXAccount account) {
+        JSONObject response = queryPro(buildUpdateBidsRequest(items).toJSONString(),
+                buildViperHeaders(account), account.getName(), true);
+        if (response == null) {
+            throw new StockXNoResponseException("修改出价失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("TOKEN_EXPIRED");
+        }
+        return parseUpdateBidsResponse(response);
+    }
+
     static StockXBidBatch parseCreateBidsResponse(JSONObject response) {
         JSONObject data = response != null ? response.getJSONObject("data") : null;
         JSONObject batch = data != null ? data.getJSONObject("createBids") : null;
@@ -330,6 +383,20 @@ public class StockXClient {
         String status = batch.getString("status").trim().toUpperCase(Locale.ROOT);
         if ("FAILED".equals(status) || "CREATION_FAILED".equals(status)) {
             throw new IllegalStateException("创建出价批次失败:" + status);
+        }
+        return new StockXBidBatch(batch.getString("id").trim(), status);
+    }
+
+    static StockXBidBatch parseUpdateBidsResponse(JSONObject response) {
+        JSONObject data = response != null ? response.getJSONObject("data") : null;
+        JSONObject batch = data != null ? data.getJSONObject("updateBids") : null;
+        if (batch == null || StrUtil.isBlank(batch.getString("id"))
+                || StrUtil.isBlank(batch.getString("status"))) {
+            throw new IllegalStateException("修改出价响应缺少批次信息");
+        }
+        String status = batch.getString("status").trim().toUpperCase(Locale.ROOT);
+        if ("FAILED".equals(status) || "UPDATE_FAILED".equals(status)) {
+            throw new IllegalStateException("修改出价批次失败:" + status);
         }
         return new StockXBidBatch(batch.getString("id").trim(), status);
     }

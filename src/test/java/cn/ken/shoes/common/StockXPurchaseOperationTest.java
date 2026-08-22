@@ -13,6 +13,8 @@ class StockXPurchaseOperationTest {
         assertThat(StockXPurchaseOperation.fromCode("history")).isEqualTo(StockXPurchaseOperation.HISTORY);
         assertThat(StockXPurchaseOperation.fromCode("create_bids"))
                 .isEqualTo(StockXPurchaseOperation.CREATE_BIDS);
+        assertThat(StockXPurchaseOperation.fromCode("update_bids"))
+                .isEqualTo(StockXPurchaseOperation.UPDATE_BIDS);
     }
 
     @Test

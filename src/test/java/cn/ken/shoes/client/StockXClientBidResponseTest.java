@@ -37,4 +37,24 @@ class StockXClientBidResponseTest {
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("缺少批次");
     }
+
+    @Test
+    void parsesBulkUpdateBidsBatchAndRejectsFailedResponses() {
+        JSONObject queued = new JSONObject(true).fluentPut("data", new JSONObject(true)
+                .fluentPut("updateBids", new JSONObject(true)
+                        .fluentPut("id", "update-batch-1")
+                        .fluentPut("status", "QUEUED")));
+        JSONObject failed = new JSONObject(true).fluentPut("data", new JSONObject(true)
+                .fluentPut("updateBids", new JSONObject(true)
+                        .fluentPut("id", "update-batch-2")
+                        .fluentPut("status", "FAILED")));
+
+        StockXBidBatch batch = StockXClient.parseUpdateBidsResponse(queued);
+
+        assertThat(batch.id()).isEqualTo("update-batch-1");
+        assertThat(batch.status()).isEqualTo("QUEUED");
+        assertThat(catchThrowable(() -> StockXClient.parseUpdateBidsResponse(failed)))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("FAILED");
+    }
 }

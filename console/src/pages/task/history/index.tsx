@@ -389,6 +389,24 @@ const TaskPage = () => {
                             },
                             onError: () => { message.error('创建出价Excel上传失败'); setCreating(false); },
                         });
+                } else if (operation === 'update_bids') {
+                    const file = values.updateBidsExcelFile?.[0]?.originFileObj;
+                    if (!file) { message.error('请上传修改出价Excel文件'); setCreating(false); return; }
+                    doUploadRequestWithParams(TASK_API.START_UPDATE_BIDS, file,
+                        {accountId: values.accountId}, {
+                            onSuccess: (res: any) => {
+                                if (!res.success) {
+                                    message.error(res.errorMsg || '修改出价任务创建失败');
+                                    setCreating(false);
+                                    return;
+                                }
+                                message.success('修改出价任务已创建');
+                                setCreateModalVisible(false);
+                                queryTaskList();
+                                setCreating(false);
+                            },
+                            onError: () => { message.error('修改出价Excel上传失败'); setCreating(false); },
+                        });
                 } else {
                     doPostRequest(TASK_API.START_PURCHASE, {
                         accountId: values.accountId,
@@ -545,7 +563,7 @@ const TaskPage = () => {
                 let unit = unitMap[record.taskType] || '轮';
                 if (record.taskType === 'purchase' && record.params) {
                     try {
-                        if (JSON.parse(record.params).operation === 'create_bids') unit = '批';
+                        if (['create_bids', 'update_bids'].includes(JSON.parse(record.params).operation)) unit = '批';
                     } catch { /* 保留默认单位 */ }
                 }
                 return `第${record.round}${unit}`;
@@ -856,7 +874,7 @@ const TaskPage = () => {
             return <>
                 <Form.Item name="purchaseOperation" label="操作" initialValue="bids"
                            rules={[{required: true, message: '请选择购买操作'}]}
-                           extra="前三项只读取数据；创建出价会按Excel内容向StockX提交真实出价">
+                           extra="前三项只读取数据；创建和修改出价会按Excel内容向StockX提交真实变更">
                     <Radio.Group>
                         {STOCKX_PURCHASE_OPERATION_OPTIONS.map(option => (
                             <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
@@ -879,6 +897,22 @@ const TaskPage = () => {
                         <Form.Item wrapperCol={{offset: 5, span: 18}}>
                             <Alert type="warning" showIcon
                                    message="创建任务后会向StockX提交真实出价，请确认Excel中的价格无误。"/>
+                        </Form.Item>
+                    </> : getFieldValue('purchaseOperation') === 'update_bids' ? <>
+                        <Form.Item name="updateBidsExcelFile" label="修改出价Excel" valuePropName="fileList"
+                                   getValueFromEvent={(e: any) => e?.fileList}
+                                   rules={[{required: true, message: '请上传修改出价Excel'}]}
+                                   extra={<ExcelFieldHint
+                                       requirement="填写「出价ID」「价格」两列"
+                                       note="出价ID必须是当前有效出价的ID，不是货号或variantId；价格为整数美元。"
+                                   />}>
+                            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                                <Button icon={<UploadOutlined/>}>选择文件</Button>
+                            </Upload>
+                        </Form.Item>
+                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                            <Alert type="warning" showIcon
+                                   message="创建任务后会修改StockX上的真实有效出价，并将有效期重置为365天，请确认价格无误。"/>
                         </Form.Item>
                     </> : null}
                 </Form.Item>
@@ -928,6 +962,7 @@ const TaskPage = () => {
                 orders: '获取订单',
                 history: '获取历史记录',
                 create_bids: '创建出价',
+                update_bids: '修改出价',
             };
             return labels[v] || String(v);
         }

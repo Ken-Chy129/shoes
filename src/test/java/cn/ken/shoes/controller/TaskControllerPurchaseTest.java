@@ -4,6 +4,7 @@ import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
+import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -69,6 +70,52 @@ class TaskControllerPurchaseTest {
     }
 
     @Test
+    void rejectsUpdateBidsOnTheReadOnlyJsonEndpoint() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startPurchase(new JSONObject(true)
+                .fluentPut("accountId", "account-a")
+                .fluentPut("operation", "update_bids"));
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("Excel上传接口");
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    void startsUpdateBidsFromValidatedExcelRows() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startUpdateBids(org.mockito.ArgumentMatchers.eq("account-a"), argThat(rows ->
+                rows.size() == 1 && "bid-123".equals(rows.get(0).getBidId())
+                        && rows.get(0).getPrice().compareTo(new BigDecimal("77")) == 0)))
+                .thenReturn(107L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startUpdateBids(
+                updateExcelFile("updates.xlsx", List.of(update(" bid-123 ", "77"))), "account-a");
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("107");
+    }
+
+    @Test
+    void rejectsDuplicateBidIdsInUpdateExcel() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startUpdateBids(updateExcelFile("updates.xlsx", List.of(
+                update("BID-1", "77"), update("bid-1", "78"))), "account-a");
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("出价ID重复");
+        verifyNoInteractions(manager);
+    }
+
+    @Test
     void startsCreateBidsFromValidatedExcelRows() throws Exception {
         TaskExecutorManager manager = mock(TaskExecutorManager.class);
         when(manager.startCreateBids(org.mockito.ArgumentMatchers.eq("account-a"), argThat(rows ->
@@ -114,6 +161,22 @@ class TaskControllerPurchaseTest {
     private static MockMultipartFile excelFile(String fileName, List<StockXBidInputExcel> rows) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         EasyExcel.write(output, StockXBidInputExcel.class).sheet().doWrite(rows);
+        return new MockMultipartFile("file", fileName,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                output.toByteArray());
+    }
+
+    private static StockXBidUpdateInputExcel update(String bidId, String price) {
+        StockXBidUpdateInputExcel row = new StockXBidUpdateInputExcel();
+        row.setBidId(bidId);
+        row.setPrice(new BigDecimal(price));
+        return row;
+    }
+
+    private static MockMultipartFile updateExcelFile(String fileName,
+                                                     List<StockXBidUpdateInputExcel> rows) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        EasyExcel.write(output, StockXBidUpdateInputExcel.class).sheet().doWrite(rows);
         return new MockMultipartFile("file", fileName,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 output.toByteArray());
