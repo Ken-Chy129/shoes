@@ -156,7 +156,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const purchaseOperation = useMemo(() => {
         if (taskType !== 'purchase' || !params) return undefined;
         try {
-            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | undefined;
+            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | 'create_bids' | undefined;
         } catch {
             return undefined;
         }
@@ -301,7 +301,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     ];
 
     const purchaseBidColumns = [
-        {title: '出价 ID', dataIndex: 'listingId', key: 'listingId', width: 180, ellipsis: true},
+        {title: purchaseOperation === 'create_bids' ? '批次 ID' : '出价 ID', dataIndex: 'listingId', key: 'listingId', width: 180, ellipsis: true},
         {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 240, ellipsis: true},
         {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
@@ -312,6 +312,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
         {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
+        {title: '操作结果', dataIndex: 'operateResult', key: 'operateResult', width: 180, ellipsis: true},
         {title: '创建时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
     ];
 
@@ -399,7 +400,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     ];
 
     const columns = taskType === 'purchase'
-        ? (purchaseOperation === 'bids' ? purchaseBidColumns : purchaseOrderColumns)
+        ? (purchaseOperation === 'bids' || purchaseOperation === 'create_bids'
+            ? purchaseBidColumns : purchaseOrderColumns)
         : taskType === 'fetch_orders'
         ? orderColumns
         : taskType === 'extend_shipping'

@@ -43,6 +43,8 @@ enum TASK_API {
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
     // StockX 购买（出价/进行中订单/历史记录）
     START_PURCHASE = '/api/task/stockx/startPurchase',
+    // StockX 创建出价（Excel：货号/尺码/价格）
+    START_CREATE_BIDS = '/api/task/stockx/startCreateBids',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）

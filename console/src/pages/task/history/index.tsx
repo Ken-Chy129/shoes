@@ -370,13 +370,34 @@ const TaskPage = () => {
                     onFinally: () => setCreating(false),
                 });
             } else if (createPlatform === 'stockx' && createTaskType === 'purchase') {
-                doPostRequest(TASK_API.START_PURCHASE, {
-                    accountId: values.accountId,
-                    operation: values.purchaseOperation || 'bids',
-                }, {
-                    onSuccess: () => { message.success('购买任务已创建'); setCreateModalVisible(false); queryTaskList(); },
-                    onFinally: () => setCreating(false),
-                });
+                const operation = values.purchaseOperation || 'bids';
+                if (operation === 'create_bids') {
+                    const file = values.createBidsExcelFile?.[0]?.originFileObj;
+                    if (!file) { message.error('请上传创建出价Excel文件'); setCreating(false); return; }
+                    doUploadRequestWithParams(TASK_API.START_CREATE_BIDS, file,
+                        {accountId: values.accountId}, {
+                            onSuccess: (res: any) => {
+                                if (!res.success) {
+                                    message.error(res.errorMsg || '创建出价任务创建失败');
+                                    setCreating(false);
+                                    return;
+                                }
+                                message.success('创建出价任务已创建');
+                                setCreateModalVisible(false);
+                                queryTaskList();
+                                setCreating(false);
+                            },
+                            onError: () => { message.error('创建出价Excel上传失败'); setCreating(false); },
+                        });
+                } else {
+                    doPostRequest(TASK_API.START_PURCHASE, {
+                        accountId: values.accountId,
+                        operation,
+                    }, {
+                        onSuccess: () => { message.success('购买任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                        onFinally: () => setCreating(false),
+                    });
+                }
             } else if (createPlatform === 'stockx' && createTaskType === 'extend_shipping') {
                 doPostRequest(TASK_API.START_SHIPPING_EXTENSION, {
                     accountId: values.accountId,
@@ -521,7 +542,12 @@ const TaskPage = () => {
                     excel_delist: '批',
                     purchase: '页',
                 };
-                const unit = unitMap[record.taskType] || '轮';
+                let unit = unitMap[record.taskType] || '轮';
+                if (record.taskType === 'purchase' && record.params) {
+                    try {
+                        if (JSON.parse(record.params).operation === 'create_bids') unit = '批';
+                    } catch { /* 保留默认单位 */ }
+                }
                 return `第${record.round}${unit}`;
             },
         },
@@ -830,12 +856,31 @@ const TaskPage = () => {
             return <>
                 <Form.Item name="purchaseOperation" label="操作" initialValue="bids"
                            rules={[{required: true, message: '请选择购买操作'}]}
-                           extra="只读取 StockX Pro 数据，不会创建、修改或取消出价和订单">
+                           extra="前三项只读取数据；创建出价会按Excel内容向StockX提交真实出价">
                     <Radio.Group>
                         {STOCKX_PURCHASE_OPERATION_OPTIONS.map(option => (
                             <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
                         ))}
                     </Radio.Group>
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.purchaseOperation !== cur.purchaseOperation}>
+                    {({getFieldValue}) => getFieldValue('purchaseOperation') === 'create_bids' ? <>
+                        <Form.Item name="createBidsExcelFile" label="出价Excel" valuePropName="fileList"
+                                   getValueFromEvent={(e: any) => e?.fileList}
+                                   rules={[{required: true, message: '请上传创建出价Excel'}]}
+                                   extra={<ExcelFieldHint
+                                       requirement="填写「货号」「尺码」「价格」三列"
+                                       note="价格为整数美元；尺码支持 US M、US W、EU 前缀。任务会跳过已有有效出价。"
+                                   />}>
+                            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                                <Button icon={<UploadOutlined/>}>选择文件</Button>
+                            </Upload>
+                        </Form.Item>
+                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                            <Alert type="warning" showIcon
+                                   message="创建任务后会向StockX提交真实出价，请确认Excel中的价格无误。"/>
+                        </Form.Item>
+                    </> : null}
                 </Form.Item>
             </>;
         }
@@ -882,6 +927,7 @@ const TaskPage = () => {
                 bids: '获取出价',
                 orders: '获取订单',
                 history: '获取历史记录',
+                create_bids: '创建出价',
             };
             return labels[v] || String(v);
         }

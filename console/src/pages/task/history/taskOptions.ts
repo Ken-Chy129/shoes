@@ -33,4 +33,5 @@ export const STOCKX_PURCHASE_OPERATION_OPTIONS = [
   {label: '获取出价', value: 'bids'},
   {label: '获取订单', value: 'orders'},
   {label: '获取历史记录', value: 'history'},
+  {label: '创建出价', value: 'create_bids'},
 ];
