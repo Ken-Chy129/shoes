@@ -371,7 +371,8 @@ public class TaskExecutorManager {
                 if (operation == StockXPurchaseOperation.UPDATE_BIDS) {
                     var snapshot = taskInputSnapshotStore.loadUpdateBidsInput(source.getId());
                     yield snapshot.isPresent() && !snapshot.get().isEmpty()
-                            ? startUpdateBids(account, snapshot.get()) : null;
+                            ? startUpdateBids(account, snapshot.get(),
+                            params.getLongValue("interval") > 0 ? params.getLongValue("interval") : 300L) : null;
                 }
                 yield operation != null ? startPurchase(account, operation) : null;
             }
@@ -1136,9 +1137,13 @@ public class TaskExecutorManager {
         }
     }
 
-    public Long startUpdateBids(String accountId, List<StockXBidUpdateInputExcel> inputRows) {
+    public Long startUpdateBids(String accountId, List<StockXBidUpdateInputExcel> inputRows,
+                                long intervalSeconds) {
         if (inputRows == null || inputRows.isEmpty() || inputRows.stream().anyMatch(row -> row == null)) {
             return null;
+        }
+        if (intervalSeconds < 60 || intervalSeconds > 86400) {
+            throw new IllegalArgumentException("轮询间隔必须在60到86400秒之间");
         }
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
@@ -1153,6 +1158,7 @@ public class TaskExecutorManager {
         String params = new JSONObject(true)
                 .fluentPut("operation", StockXPurchaseOperation.UPDATE_BIDS.getCode())
                 .fluentPut("inputCount", snapshot.size())
+                .fluentPut("interval", intervalSeconds)
                 .toJSONString();
         Long taskId = null;
         try {
@@ -1160,7 +1166,7 @@ public class TaskExecutorManager {
             taskInputSnapshotStore.saveUpdateBidsInput(taskId, snapshot);
             TaskSwitch.resetPurchaseCancel(accountId);
             StockXUpdateBidsTaskRunner runner = new StockXUpdateBidsTaskRunner(
-                    account, taskId, snapshot, stockXClient, taskMapper, taskItemMapper);
+                    account, taskId, snapshot, intervalSeconds, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-update-bids-" + account.getName()).start();
             log.info("修改出价任务已启动: [{}], inputCount:{}", account.getName(), snapshot.size());
             return taskId;

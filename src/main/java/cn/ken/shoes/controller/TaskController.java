@@ -534,9 +534,14 @@ public class TaskController {
 
     @PostMapping("stockx/startUpdateBids")
     public Result<String> startUpdateBids(@RequestParam("file") MultipartFile file,
-                                          @RequestParam("accountId") String accountId) throws IOException {
+                                          @RequestParam("accountId") String accountId,
+                                          @RequestParam(value = "interval", defaultValue = "300")
+                                          long intervalSeconds) throws IOException {
         if (StrUtil.isBlank(accountId)) {
             return Result.buildError("accountId不能为空");
+        }
+        if (intervalSeconds < 60 || intervalSeconds > 86400) {
+            return Result.buildError("轮询间隔必须在60到86400秒之间");
         }
         String fileError = validateBidExcelFile(file);
         if (fileError != null) {
@@ -555,7 +560,7 @@ public class TaskController {
         if (rowsError != null) {
             return Result.buildError(rowsError);
         }
-        Long taskId = taskExecutorManager.startUpdateBids(accountId, rows);
+        Long taskId = taskExecutorManager.startUpdateBids(accountId, rows, intervalSeconds);
         if (taskId == null) {
             return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
         }

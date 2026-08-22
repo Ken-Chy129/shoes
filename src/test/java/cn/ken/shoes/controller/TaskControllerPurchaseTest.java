@@ -89,13 +89,14 @@ class TaskControllerPurchaseTest {
         TaskExecutorManager manager = mock(TaskExecutorManager.class);
         when(manager.startUpdateBids(org.mockito.ArgumentMatchers.eq("account-a"), argThat(rows ->
                 rows.size() == 1 && "bid-123".equals(rows.get(0).getBidId())
-                        && rows.get(0).getPrice().compareTo(new BigDecimal("77")) == 0)))
+                        && rows.get(0).getPrice().compareTo(new BigDecimal("77")) == 0),
+                org.mockito.ArgumentMatchers.eq(300L)))
                 .thenReturn(107L);
         TaskController controller = new TaskController();
         setField(controller, "taskExecutorManager", manager);
 
         Result<String> result = controller.startUpdateBids(
-                updateExcelFile("updates.xlsx", List.of(update(" bid-123 ", "77"))), "account-a");
+                updateExcelFile("updates.xlsx", List.of(update(" bid-123 ", "77"))), "account-a", 300L);
 
         assertThat(result.getSuccess()).isTrue();
         assertThat(result.getData()).isEqualTo("107");
@@ -108,10 +109,24 @@ class TaskControllerPurchaseTest {
         setField(controller, "taskExecutorManager", manager);
 
         Result<String> result = controller.startUpdateBids(updateExcelFile("updates.xlsx", List.of(
-                update("BID-1", "77"), update("bid-1", "78"))), "account-a");
+                update("BID-1", "77"), update("bid-1", "78"))), "account-a", 300L);
 
         assertThat(result.getSuccess()).isFalse();
         assertThat(result.getErrorMsg()).contains("出价ID重复");
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    void rejectsUnsafeUpdateBidPollingIntervals() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startUpdateBids(
+                updateExcelFile("updates.xlsx", List.of(update("bid-1", "77"))), "account-a", 30L);
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("60到86400秒");
         verifyNoInteractions(manager);
     }
 

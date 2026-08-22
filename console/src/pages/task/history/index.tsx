@@ -393,7 +393,7 @@ const TaskPage = () => {
                     const file = values.updateBidsExcelFile?.[0]?.originFileObj;
                     if (!file) { message.error('请上传修改出价Excel文件'); setCreating(false); return; }
                     doUploadRequestWithParams(TASK_API.START_UPDATE_BIDS, file,
-                        {accountId: values.accountId}, {
+                        {accountId: values.accountId, interval: values.updateBidsInterval || 300}, {
                             onSuccess: (res: any) => {
                                 if (!res.success) {
                                     message.error(res.errorMsg || '修改出价任务创建失败');
@@ -563,7 +563,7 @@ const TaskPage = () => {
                 let unit = unitMap[record.taskType] || '轮';
                 if (record.taskType === 'purchase' && record.params) {
                     try {
-                        if (['create_bids', 'update_bids'].includes(JSON.parse(record.params).operation)) unit = '批';
+                        if (JSON.parse(record.params).operation === 'create_bids') unit = '批';
                     } catch { /* 保留默认单位 */ }
                 }
                 return `第${record.round}${unit}`;
@@ -904,15 +904,20 @@ const TaskPage = () => {
                                    rules={[{required: true, message: '请上传修改出价Excel'}]}
                                    extra={<ExcelFieldHint
                                        requirement="填写「出价ID」「价格」两列"
-                                       note="出价ID必须是当前有效出价的ID，不是货号或variantId；价格为整数美元。"
+                                       note="价格是最高可接受价；仅在被超过且市场最高价+1不超过该价格时追价。"
                                    />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
                         </Form.Item>
+                        <Form.Item name="updateBidsInterval" label="轮询间隔" initialValue={300}
+                                   rules={[{required: true, message: '请输入轮询间隔'}]}
+                                   extra="每轮重新读取当前出价和市场最高出价；建议5分钟，最短60秒。">
+                            <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
+                        </Form.Item>
                         <Form.Item wrapperCol={{offset: 5, span: 18}}>
                             <Alert type="warning" showIcon
-                                   message="创建任务后会修改StockX上的真实有效出价，并将有效期重置为365天，请确认价格无误。"/>
+                                   message="任务会持续检查并自动修改StockX真实出价；请确认最高价格和轮询间隔无误。"/>
                         </Form.Item>
                     </> : null}
                 </Form.Item>

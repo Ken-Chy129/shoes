@@ -8,7 +8,7 @@
 2. `orders`（获取订单）：获取进行中的购买订单。
 3. `history`（获取历史记录）：获取历史购买记录。
 4. `create_bids`（创建出价）：上传包含「货号、尺码、价格」的 Excel，创建有效期 365 天的 USD 出价。
-5. `update_bids`（修改出价）：上传包含「出价ID、价格」的 Excel，修改当前有效出价。
+5. `update_bids`（修改出价）：上传包含「出价ID、价格」的 Excel，其中价格是最高可接受价，循环检查并按需追价。
 
 任务按 StockX 账号创建，一次任务只执行一个操作。操作保存在任务参数 `operation` 中。创建和修改出价任务都会保存 Excel 输入快照；历史重跑时，创建出价会跳过已有相同 variant，修改出价会重新确认 ID 仍是有效出价。
 
@@ -22,7 +22,9 @@
 
 创建出价使用 `BulkCreateBids` mutation，每批最多 100 条。每条请求包含 `variantId`、`amount`、`currency=USD`、`expiresIn=365`、`deliveryOptionType=HOME_DELIVERY`、`context=BID` 和对应的 `localizedSizeType`。协议来自 2026-08-22 的 StockX Pro 实际页面代码和真实 $1 创建/删除验证。
 
-修改出价使用 `BulkUpdateBids` mutation，每批最多 50 条。每条请求包含当前有效出价节点的 `id`（不是货号或 variantId）、新的绝对价格 `amount`、原币种和配送方式，以及当前 UTC 时间后 365 天的 `expires`。任务提交前会重新拉取全部有效出价；找不到的 ID 会记为失败，不会提交。配送方式优先保留有效出价数据，旧数据缺失时回退为 `HOME_DELIVERY`。协议来自 2026-08-22 的 StockX Pro 页面代码。
+修改出价是持续运行的轮询任务，默认每 300 秒检查一次，创建时可在 60～86400 秒内配置。每轮使用节点 `amount` 作为“你的出价”，使用 `productVariant.market.state.bidInventoryTypes.standard.highest.amount` 作为市场最高价。若两者相等则不操作；若市场价 `y` 更高，且 `y + 1` 不超过 Excel 最高价格 `x`，则提交 `y + 1`；否则保持当前出价并记录达到上限。
+
+实际修改使用 `BulkUpdateBids` mutation，每批最多 50 条。每条请求包含当前有效出价节点的 `id`（不是货号或 variantId）、新的绝对价格 `amount`、原币种和配送方式，以及当前 UTC 时间后 365 天的 `expires`。每轮会重新拉取全部有效出价；找不到的 ID 会记为失败，不会提交。配送方式优先保留有效出价数据，旧数据缺失时回退为 `HOME_DELIVERY`。字段和追价规则来自 2026-08-22 的 StockX Pro 页面代码。
 
 请求结构与 persisted-query hash 来自 2026-08-22 的 StockX Pro 实际页面请求。第三方响应必须在任务边界检查 `edges` 和 `pageInfo`；分页声明还有下一页但未返回新游标时，任务应失败，避免无限循环。
 

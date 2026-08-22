@@ -311,12 +311,23 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: 'US码', dataIndex: 'size', key: 'size', width: 75},
         {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 75},
         {
-            title: '出价金额', dataIndex: 'currentPrice', key: 'currentPrice', width: 105,
+            title: purchaseOperation === 'update_bids' ? '你的出价' : '出价金额',
+            dataIndex: 'currentPrice', key: 'currentPrice', width: 105,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
+        ...(purchaseOperation === 'update_bids' ? [
+            {
+                title: '市场最高价', dataIndex: 'lowestPrice', key: 'highestBid', width: 115,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+            {
+                title: '最高价格', dataIndex: 'targetPrice', key: 'maximumPrice', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+        ] : []),
         {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
         {title: '操作结果', dataIndex: 'operateResult', key: 'operateResult', width: 180, ellipsis: true},
-        {title: '创建时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+        {title: purchaseOperation === 'update_bids' ? '检查时间' : '创建时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
     ];
 
     const purchaseOrderColumns = [
