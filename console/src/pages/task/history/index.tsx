@@ -893,10 +893,6 @@ const TaskPage = () => {
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
                         </Form.Item>
-                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
-                            <Alert type="warning" showIcon
-                                   message="创建任务后会向StockX提交真实出价，请确认Excel中的价格无误。"/>
-                        </Form.Item>
                     </> : getFieldValue('purchaseOperation') === 'update_bids' ? <>
                         <Form.Item name="updateBidsExcelFile" label="修改出价Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList}
