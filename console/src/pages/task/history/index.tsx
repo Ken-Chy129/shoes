@@ -9,7 +9,12 @@ import {TASK_API, TASK_TYPE} from "@/services/task";
 import {SETTING_API} from "@/services/shoes";
 import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
-import {STOCKX_ORDER_TYPE_OPTIONS, STOCKX_TASK_OPTIONS, TASK_TYPE_LABELS} from "./taskOptions";
+import {
+    STOCKX_ORDER_TYPE_OPTIONS,
+    STOCKX_PURCHASE_OPERATION_OPTIONS,
+    STOCKX_TASK_OPTIONS,
+    TASK_TYPE_LABELS,
+} from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
 import ExcelFieldHint, {ExcelFieldHintProps} from "@/components/ExcelFieldHint";
 
@@ -364,6 +369,14 @@ const TaskPage = () => {
                     onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'purchase') {
+                doPostRequest(TASK_API.START_PURCHASE, {
+                    accountId: values.accountId,
+                    operation: values.purchaseOperation || 'bids',
+                }, {
+                    onSuccess: () => { message.success('购买任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'extend_shipping') {
                 doPostRequest(TASK_API.START_SHIPPING_EXTENSION, {
                     accountId: values.accountId,
@@ -506,6 +519,7 @@ const TaskPage = () => {
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
                     excel_delist: '批',
+                    purchase: '页',
                 };
                 const unit = unitMap[record.taskType] || '轮';
                 return `第${record.round}${unit}`;
@@ -812,6 +826,20 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'purchase') {
+            return <>
+                <Form.Item name="purchaseOperation" label="操作" initialValue="bids"
+                           rules={[{required: true, message: '请选择购买操作'}]}
+                           extra="只读取 StockX Pro 数据，不会创建、修改或取消出价和订单">
+                    <Radio.Group>
+                        {STOCKX_PURCHASE_OPERATION_OPTIONS.map(option => (
+                            <Radio.Button key={option.value} value={option.value}>{option.label}</Radio.Button>
+                        ))}
+                    </Radio.Group>
+                </Form.Item>
+            </>;
+        }
+
         if (createPlatform === 'stockx' && createTaskType === 'replenishment') {
             return <>
                 <Form.Item name="soldTimeRange" label="售出时间" initialValue={[moment().subtract(12, 'hours'), moment()]}
@@ -851,6 +879,9 @@ const TaskPage = () => {
                 fetch_price: '获取最低价',
                 create_listing: '按指定价格上架',
                 create_listing_by_model: '按货号尺码上架',
+                bids: '获取出价',
+                orders: '获取订单',
+                history: '获取历史记录',
             };
             return labels[v] || String(v);
         }
@@ -988,6 +1019,7 @@ const TaskPage = () => {
             visible={taskItemModalVisible} taskId={selectedTaskId}
             onClose={() => { setTaskItemModalVisible(false); setSelectedTaskId(null); setSelectedTaskRecord(null); }}
             taskType={selectedTaskRecord?.taskType}
+            params={selectedTaskRecord?.params}
             attributes={selectedTaskRecord?.attributes}
             round={selectedTaskRecord?.round}
             defaultAutoRefresh={selectedTaskRecord?.status === 'running' || selectedTaskRecord?.status === '运行中'}

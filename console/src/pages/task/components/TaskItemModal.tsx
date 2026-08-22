@@ -40,11 +40,12 @@ interface TaskItemModalProps {
     onClose: () => void;
     defaultAutoRefresh?: boolean;
     taskType?: string;
+    params?: string;
     attributes?: string;
     round?: number;
 }
 
-const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false, taskType, attributes, round}) => {
+const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, defaultAutoRefresh = false, taskType, params, attributes, round}) => {
     const [taskItems, setTaskItems] = useState<TaskItemRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(20);
@@ -151,6 +152,15 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         const prefix = currencyCode === 'USD' ? '$' : (currencyCode ? `${currencyCode} ` : '');
         return `${prefix}${value}`;
     };
+
+    const purchaseOperation = useMemo(() => {
+        if (taskType !== 'purchase' || !params) return undefined;
+        try {
+            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | undefined;
+        } catch {
+            return undefined;
+        }
+    }, [taskType, params]);
 
     const productColumns = [
         {
@@ -290,6 +300,37 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         },
     ];
 
+    const purchaseBidColumns = [
+        {title: '出价 ID', dataIndex: 'listingId', key: 'listingId', width: 180, ellipsis: true},
+        {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 240, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: 'US码', dataIndex: 'size', key: 'size', width: 75},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 75},
+        {
+            title: '出价金额', dataIndex: 'currentPrice', key: 'currentPrice', width: 105,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
+        {title: '创建时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+    ];
+
+    const purchaseOrderColumns = [
+        {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 155},
+        {title: 'chainId', dataIndex: 'listingId', key: 'listingId', width: 180, ellipsis: true},
+        {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 180, ellipsis: true},
+        {title: '产品名称', dataIndex: 'title', key: 'title', width: 240, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: 'US码', dataIndex: 'size', key: 'size', width: 75},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 75},
+        {
+            title: '购买价格', dataIndex: 'salePrice', key: 'salePrice', width: 105,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+        },
+        {title: '订单状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 120},
+        {title: '购买时间', dataIndex: 'soldOn', key: 'soldOn', width: 165},
+    ];
+
     const modelSearchColumns = [
         {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 190, ellipsis: true},
         {title: '品牌', dataIndex: 'brand', key: 'brand', width: 90, ellipsis: true},
@@ -357,7 +398,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 170, ellipsis: true},
     ];
 
-    const columns = taskType === 'fetch_orders'
+    const columns = taskType === 'purchase'
+        ? (purchaseOperation === 'bids' ? purchaseBidColumns : purchaseOrderColumns)
+        : taskType === 'fetch_orders'
         ? orderColumns
         : taskType === 'extend_shipping'
             ? shippingExtensionColumns
@@ -379,11 +422,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
 
     return (
         <Modal
-            title={taskType === 'extend_shipping' ? '订单延期明细' : taskType === 'replenishment' ? '补单明细' : '任务明细'}
+            title={taskType === 'extend_shipping' ? '订单延期明细'
+                : taskType === 'replenishment' ? '补单明细'
+                    : taskType === 'purchase' ? '购买明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
             footer={null}
-            width={taskType === 'fetch_orders' ? 1400 : 1200}
+            width={taskType === 'fetch_orders' || taskType === 'purchase' ? 1400 : 1200}
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
@@ -457,6 +502,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 dataSource={taskItems}
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1700
+                    : taskType === 'purchase' ? 1500
                     : taskType === 'model_search' ? 1450
                         : taskType === 'replenishment' ? 1550 : 1130}}
                 pagination={{

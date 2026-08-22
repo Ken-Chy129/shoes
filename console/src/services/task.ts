@@ -5,6 +5,7 @@ const TASK_TYPE = {
     FETCH_LISTINGS: 'fetch_listings',
     EXCEL_DELIST: 'excel_delist',
     MODEL_SEARCH: 'model_search',
+    PURCHASE: 'purchase',
     EXTEND_SHIPPING: 'extend_shipping',
     REPLENISHMENT: 'replenishment',
 };
@@ -40,6 +41,8 @@ enum TASK_API {
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
     // StockX 获取订单（待处理/已完成/已取消/待付款）
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
+    // StockX 购买（出价/进行中订单/历史记录）
+    START_PURCHASE = '/api/task/stockx/startPurchase',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）
