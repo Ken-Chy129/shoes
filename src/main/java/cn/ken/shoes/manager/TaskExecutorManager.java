@@ -10,6 +10,7 @@ import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -357,6 +358,10 @@ public class TaskExecutorManager {
             case FETCH_ORDERS -> {
                 List<StockXOrderCategory> categories = parseOrderCategories(params);
                 yield categories.isEmpty() ? null : startFetchOrders(account, categories);
+            }
+            case PURCHASE -> {
+                StockXPurchaseOperation operation = StockXPurchaseOperation.fromCode(params.getString("operation"));
+                yield operation != null ? startPurchase(account, operation) : null;
             }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
@@ -1041,6 +1046,42 @@ public class TaskExecutorManager {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
             }
             TaskSwitch.clearFetchOrdersState(accountId);
+            throw e;
+        }
+    }
+
+    // ==================== StockX 购买 ====================
+
+    public Long startPurchase(String accountId, StockXPurchaseOperation operation) {
+        if (operation == null) {
+            return null;
+        }
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        if (!TaskSwitch.tryStartPurchase(accountId)) {
+            log.info("购买任务已在运行: {}", accountId);
+            return null;
+        }
+        String params = new JSONObject(true)
+                .fluentPut("operation", operation.getCode())
+                .toJSONString();
+        Long taskId = null;
+        try {
+            taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
+            TaskSwitch.resetPurchaseCancel(accountId);
+            StockXPurchaseTaskRunner runner = new StockXPurchaseTaskRunner(
+                    account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
+            new Thread(runner, "StockX-Purchase-" + operation.getCode() + "-" + account.getName()).start();
+            log.info("购买任务已启动: [{}], operation:{}", account.getName(), operation.getCode());
+            return taskId;
+        } catch (RuntimeException e) {
+            if (taskId != null) {
+                taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+            }
+            TaskSwitch.clearPurchaseState(accountId);
             throw e;
         }
     }

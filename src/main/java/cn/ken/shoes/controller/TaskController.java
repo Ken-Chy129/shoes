@@ -10,6 +10,7 @@ import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.manager.ConfigManager;
 import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.manager.StockXPriceRateStateManager;
@@ -464,6 +465,25 @@ public class TaskController {
             categories.add(category);
         }
         Long taskId = taskExecutorManager.startFetchOrders(accountId, new ArrayList<>(categories));
+        if (taskId == null) {
+            return Result.buildError("任务已在运行或账号不存在");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    // ==================== StockX 购买 ====================
+
+    @PostMapping("stockx/startPurchase")
+    public Result<String> startPurchase(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        StockXPurchaseOperation operation = StockXPurchaseOperation.fromCode(body.getString("operation"));
+        if (operation == null) {
+            return Result.buildError("无效的购买操作: " + body.getString("operation"));
+        }
+        Long taskId = taskExecutorManager.startPurchase(accountId, operation);
         if (taskId == null) {
             return Result.buildError("任务已在运行或账号不存在");
         }

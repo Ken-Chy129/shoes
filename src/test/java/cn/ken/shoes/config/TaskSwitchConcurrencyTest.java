@@ -38,4 +38,17 @@ class TaskSwitchConcurrencyTest {
             TaskSwitch.clearExcelState(account, inventoryType, ListingFetchMode.EXCEL_SEARCH);
         }
     }
+
+    @Test
+    void onlyOnePurchaseTaskCanRunPerAccount() {
+        String account = "purchase-account";
+        TaskSwitch.clearPurchaseState(account);
+
+        try {
+            assertThat(TaskSwitch.tryStartPurchase(account)).isTrue();
+            assertThat(TaskSwitch.tryStartPurchase(account)).isFalse();
+        } finally {
+            TaskSwitch.clearPurchaseState(account);
+        }
+    }
 }

@@ -210,6 +210,26 @@ class TaskServiceLifecycleTest {
         }
     }
 
+    @Test
+    void cancellingPurchaseTaskSignalsOnlyTheSelectedAccount() {
+        TaskDO running = task(31L, "running");
+        running.setTaskType("purchase");
+        TaskService taskService = new TaskService(
+                mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
+        TaskSwitch.resetPurchaseCancel("account-a");
+        TaskSwitch.resetPurchaseCancel("account-b");
+
+        try {
+            taskService.cancelTaskById(31L);
+
+            assertThat(TaskSwitch.isPurchaseCancelled("account-a")).isTrue();
+            assertThat(TaskSwitch.isPurchaseCancelled("account-b")).isFalse();
+        } finally {
+            TaskSwitch.clearPurchaseState("account-a");
+            TaskSwitch.clearPurchaseState("account-b");
+        }
+    }
+
     private static TaskMapper mapperReturning(TaskDO task) {
         return proxy(TaskMapper.class, (method, args) -> "selectById".equals(method) ? task : null);
     }

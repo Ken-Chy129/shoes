@@ -438,6 +438,35 @@ public class TaskSwitch {
         FETCH_ORDERS_RUNNING_MAP.remove(accountId);
     }
 
+    // ==================== StockX 购买任务 ====================
+    private static final ConcurrentHashMap<String, Boolean> PURCHASE_CANCELLED_MAP = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, Boolean> PURCHASE_RUNNING_MAP = new ConcurrentHashMap<>();
+
+    public static boolean isPurchaseCancelled(String accountId) {
+        return Boolean.TRUE.equals(PURCHASE_CANCELLED_MAP.get(accountId));
+    }
+
+    public static void cancelPurchase(String accountId) {
+        PURCHASE_CANCELLED_MAP.put(accountId, true);
+    }
+
+    public static void resetPurchaseCancel(String accountId) {
+        PURCHASE_CANCELLED_MAP.remove(accountId);
+    }
+
+    public static boolean tryStartPurchase(String accountId) {
+        return tryStart(PURCHASE_RUNNING_MAP, accountId);
+    }
+
+    public static void setPurchaseRunning(String accountId, boolean running) {
+        PURCHASE_RUNNING_MAP.put(accountId, running);
+    }
+
+    public static void clearPurchaseState(String accountId) {
+        PURCHASE_CANCELLED_MAP.remove(accountId);
+        PURCHASE_RUNNING_MAP.remove(accountId);
+    }
+
     private static boolean tryStart(ConcurrentHashMap<String, Boolean> runningMap, String key) {
         AtomicBoolean acquired = new AtomicBoolean(false);
         runningMap.compute(key, (ignored, running) -> {
