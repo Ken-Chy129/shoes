@@ -6,6 +6,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
+import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,7 @@ public class TaskInputSnapshotStore {
     private static final String MODEL_SEARCH_LISTING_FILE = "model-search-listing.json";
     private static final String MODEL_SEARCH_LISTING_BY_MODEL_FILE = "model-search-listing-by-model.json";
     private static final String SEARCH_MODEL_NO_FILE = "search-model-no.json";
+    private static final String CREATE_BIDS_FILE = "create-bids.json";
 
     private final Path root;
 
@@ -116,6 +118,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<ModelNoSearchExcel>> loadSearchModelNoInput(Long taskId) {
         return loadList(taskId, SEARCH_MODEL_NO_FILE, ModelNoSearchExcel.class, "货号搜索上架");
+    }
+
+    public void saveCreateBidsInput(Long taskId, List<StockXBidInputExcel> input) {
+        write(taskPath(taskId, CREATE_BIDS_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<StockXBidInputExcel>> loadCreateBidsInput(Long taskId) {
+        return loadList(taskId, CREATE_BIDS_FILE, StockXBidInputExcel.class, "创建出价");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {

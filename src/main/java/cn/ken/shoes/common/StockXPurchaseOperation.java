@@ -15,6 +15,7 @@ public enum StockXPurchaseOperation {
     BIDS("bids", "获取出价", "Bids", "CURRENT"),
     ORDERS("orders", "获取订单", "Buying", "PENDING"),
     HISTORY("history", "获取历史记录", "Buying", "HISTORICAL"),
+    CREATE_BIDS("create_bids", "创建出价", null, null),
     ;
 
     private final String code;

@@ -18,6 +18,7 @@ import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXListingCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidCreateItem;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
@@ -246,6 +247,9 @@ public class StockXClient {
 
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
         Objects.requireNonNull(operation, "operation");
+        if (operation == StockXPurchaseOperation.CREATE_BIDS) {
+            throw new IllegalArgumentException("创建出价使用BulkCreateBids写接口");
+        }
         String market = StrUtil.isNotBlank(country) ? country : "US";
         JSONObject request = new JSONObject(true);
         request.put("operationName", operation.getOperationName());
@@ -267,6 +271,38 @@ public class StockXClient {
         request.put("extensions", persistedQuery(operation == StockXPurchaseOperation.BIDS
                 ? "da212069375e2bfd5e9aca755cf773d65b836c94e98f0a6a49347f89c0fc56a2"
                 : "e6da13338345ed277de50220547d8dd5de59e78a8b4cbf3d73ee6d6f25b3d76a"));
+        return request;
+    }
+
+    static JSONObject buildCreateBidsRequest(List<StockXBidCreateItem> items) {
+        if (items == null || items.isEmpty() || items.size() > 100) {
+            throw new IllegalArgumentException("每批出价数量必须在1到100之间");
+        }
+        JSONArray input = new JSONArray();
+        for (StockXBidCreateItem item : items) {
+            if (item == null || StrUtil.isBlank(item.variantId()) || item.amount() == null
+                    || item.amount().compareTo(BigDecimal.ZERO) <= 0
+                    || StrUtil.isBlank(item.localizedSizeType())) {
+                throw new IllegalArgumentException("出价variantId、金额和尺码类型不能为空");
+            }
+            input.add(new JSONObject(true)
+                    .fluentPut("amount", item.amount())
+                    .fluentPut("deliveryOptionType", "HOME_DELIVERY")
+                    .fluentPut("context", "BID")
+                    .fluentPut("currency", "USD")
+                    .fluentPut("expiresIn", 365)
+                    .fluentPut("variantId", item.variantId().trim())
+                    .fluentPut("localizedSizeType", item.localizedSizeType().trim().toLowerCase(Locale.ROOT)));
+        }
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", "BulkCreateBids");
+        request.put("query", "mutation BulkCreateBids($input: [CreateBidInput!]) {\n"
+                + "  createBids(input: $input) {\n"
+                + "    id\n"
+                + "    status\n"
+                + "  }\n"
+                + "}");
+        request.put("variables", new JSONObject(true).fluentPut("input", input));
         return request;
     }
 

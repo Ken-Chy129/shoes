@@ -6,6 +6,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
+import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -90,6 +91,25 @@ class TaskInputSnapshotStoreTest {
 
         assertThat(store.loadPriceDown(99L)).isEmpty();
         assertThat(store.loadDelist(99L)).isEmpty();
+        assertThat(store.loadCreateBidsInput(99L)).isEmpty();
+    }
+
+    @Test
+    void roundTripsCreateBidsInput() {
+        TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
+        StockXBidInputExcel row = new StockXBidInputExcel();
+        row.setStyleId("100289469");
+        row.setSize("US M 4.5");
+        row.setPrice(new BigDecimal("1"));
+
+        store.saveCreateBidsInput(15L, List.of(row));
+
+        assertThat(store.loadCreateBidsInput(15L)).hasValueSatisfying(rows ->
+                assertThat(rows).singleElement().satisfies(saved -> {
+                    assertThat(saved.getStyleId()).isEqualTo("100289469");
+                    assertThat(saved.getSize()).isEqualTo("US M 4.5");
+                    assertThat(saved.getPrice()).isEqualByComparingTo("1");
+                }));
     }
 
     @Test
