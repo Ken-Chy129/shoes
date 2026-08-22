@@ -5,6 +5,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.hutool.core.util.URLUtil;
 import cn.ken.shoes.common.SearchTypeEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.exception.StockXNoResponseException;
 import cn.ken.shoes.exception.StockXRateLimitException;
@@ -212,6 +213,61 @@ public class StockXClient {
                     account.getName(), extractGraphqlError(response));
         }
         return asks;
+    }
+
+    /**
+     * 查询 StockX Pro「购买」模块中的出价、进行中订单或历史记录。
+     * 返回对应的 viewer.bids / viewer.buying 游标分页对象。
+     */
+    public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
+                                        StockXAccount account) {
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        JSONObject response = queryPro(
+                buildPurchaseRequest(operation, after, country).toJSONString(),
+                buildViperHeaders(account),
+                account.getName());
+        if (response == null) {
+            return null;
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            return new JSONObject(true).fluentPut("_unauthorized", true);
+        }
+        JSONObject data = response.getJSONObject("data");
+        JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
+        JSONObject result = viewer != null
+                ? viewer.getJSONObject(operation == StockXPurchaseOperation.BIDS ? "bids" : "buying")
+                : null;
+        if (result == null) {
+            log.error("queryPurchasePage[{}] 响应缺少购买数据, operation:{}, reason:{}",
+                    account.getName(), operation.getCode(), extractGraphqlError(response));
+        }
+        return result;
+    }
+
+    static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
+        Objects.requireNonNull(operation, "operation");
+        String market = StrUtil.isNotBlank(country) ? country : "US";
+        JSONObject request = new JSONObject(true);
+        request.put("operationName", operation.getOperationName());
+
+        JSONObject variables = new JSONObject(true);
+        variables.put("first", 50);
+        variables.put("sort", operation == StockXPurchaseOperation.BIDS ? "UPDATED_AT" : "MATCHED_AT");
+        variables.put("order", "DESC");
+        variables.put("currencyCode", "USD");
+        variables.put("after", StrUtil.blankToDefault(after, ""));
+        variables.put("state", operation.getState());
+        if (operation == StockXPurchaseOperation.BIDS) {
+            variables.put("country", market);
+            variables.put("market", market);
+            variables.put("filters", new JSONObject(true).fluentPut(
+                    "listingType", Map.of("in", List.of("STANDARD", "NORMAL"))));
+        }
+        request.put("variables", variables);
+        request.put("extensions", persistedQuery(operation == StockXPurchaseOperation.BIDS
+                ? "da212069375e2bfd5e9aca755cf773d65b836c94e98f0a6a49347f89c0fc56a2"
+                : "e6da13338345ed277de50220547d8dd5de59e78a8b4cbf3d73ee6d6f25b3d76a"));
+        return request;
     }
 
     /** 请求单个订单延期。chainId 必须使用 ViewerAsks.node.id（即 askId）。 */
