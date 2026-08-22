@@ -89,6 +89,33 @@ class StockXPurchaseTaskRunnerTest {
         assertThat(failureReason.get()).contains("分页游标无效");
     }
 
+    @Test
+    void failsWhenStockXPaginationReturnsToAnEarlierCursor() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.pages.add(page(true, "cursor-1", bid("bid-1", "STYLE-1")));
+        client.pages.add(page(true, "cursor-2", bid("bid-2", "STYLE-2")));
+        client.pages.add(page(true, "cursor-1", bid("bid-3", "STYLE-3")));
+        AtomicReference<String> failureReason = new AtomicReference<>();
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> {
+            if (method.equals("updateTaskFailed")) failureReason.set((String) args[1]);
+            return null;
+        });
+
+        StockXPurchaseTaskRunner runner = new StockXPurchaseTaskRunner(
+                account(), 101L, StockXPurchaseOperation.BIDS, client, taskMapper,
+                proxy(TaskItemMapper.class, (method, args) -> method.equals("insert") ? 1 : null)) {
+            @Override
+            protected void waitBeforeRetry(long delayMs) {
+                // 测试不真实等待。
+            }
+        };
+
+        runner.run();
+
+        assertThat(client.cursors).containsExactly(null, "cursor-1", "cursor-2");
+        assertThat(failureReason.get()).contains("分页游标无效");
+    }
+
     private static JSONObject page(boolean hasNextPage, String endCursor, JSONObject... nodes) {
         JSONArray edges = new JSONArray();
         for (JSONObject node : nodes) {

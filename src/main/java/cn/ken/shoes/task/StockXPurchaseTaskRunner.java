@@ -16,7 +16,9 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Supplier;
 
 @Slf4j
@@ -50,6 +52,7 @@ public class StockXPurchaseTaskRunner implements Runnable {
         int pages = 0;
         int total = 0;
         String after = null;
+        Set<String> seenCursors = new HashSet<>();
         try {
             while (true) {
                 ensureNotCancelled();
@@ -83,7 +86,7 @@ public class StockXPurchaseTaskRunner implements Runnable {
                     break;
                 }
                 String nextCursor = pageInfo.getString("endCursor");
-                if (StrUtil.isBlank(nextCursor) || nextCursor.equals(after)) {
+                if (StrUtil.isBlank(nextCursor) || !seenCursors.add(nextCursor)) {
                     throw new IllegalStateException(operation.getLabel() + "分页游标无效");
                 }
                 after = nextCursor;
