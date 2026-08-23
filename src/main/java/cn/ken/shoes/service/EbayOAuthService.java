@@ -57,10 +57,13 @@ public class EbayOAuthService {
         refreshTokenExpiresAt = parseLong(stored.getProperty("refresh.token.expires.at"));
     }
 
-    public JSONObject createAuthorizationRequest() {
+    public synchronized JSONObject createAuthorizationRequest() {
         requireConfigured();
         long now = clock.getAsLong();
         pendingStates.entrySet().removeIf(entry -> entry.getValue() <= now);
+        if (pendingStates.size() >= properties.getMaxPendingStates()) {
+            throw new IllegalStateException("Too many pending eBay authorization requests");
+        }
         String state = newState();
         long stateExpiresAt = now + properties.getStateTtlSeconds() * 1000L;
         pendingStates.put(state, stateExpiresAt);
@@ -152,7 +155,9 @@ public class EbayOAuthService {
         if (refreshExpiresIn != null) {
             refreshTokenExpiresAt = now + refreshExpiresIn * 1000L;
         }
-        grantedScopes = properties.getScopes();
+        if (requireRefreshToken || grantedScopes == null || grantedScopes.isBlank()) {
+            grantedScopes = properties.getScopes();
+        }
 
         Properties stored = new Properties();
         stored.setProperty("access.token", Objects.toString(accessToken, ""));
@@ -160,7 +165,7 @@ public class EbayOAuthService {
         stored.setProperty("scopes", Objects.toString(grantedScopes, ""));
         stored.setProperty("access.token.expires.at", String.valueOf(accessTokenExpiresAt));
         stored.setProperty("refresh.token.expires.at", String.valueOf(refreshTokenExpiresAt));
-        configService.saveConfig(tokenConfigFile(), stored);
+        configService.saveSecretConfig(tokenConfigFile(), stored);
     }
 
     private void requireConfigured() {

@@ -72,6 +72,17 @@ class EbayOAuthServiceTest {
     }
 
     @Test
+    void boundsPendingAuthorizationStates() {
+        properties.setMaxPendingStates(2);
+        service.createAuthorizationRequest();
+        service.createAuthorizationRequest();
+
+        assertThatThrownBy(service::createAuthorizationRequest)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Too many pending");
+    }
+
+    @Test
     void exchangesCodeAndPersistsTokensWithoutReturningSecrets() {
         JSONObject authorization = service.createAuthorizationRequest();
         String state = queryParameters(authorization.getString("authorizeUrl")).get("state");
@@ -89,16 +100,18 @@ class EbayOAuthServiceTest {
         assertThat(status.getBooleanValue("hasRefreshToken")).isTrue();
         assertThat(status.toJSONString()).doesNotContain("access-token", "refresh-token", "sandbox-client-secret");
         ArgumentCaptor<Properties> persisted = ArgumentCaptor.forClass(Properties.class);
-        verify(configService).saveConfig(any(), persisted.capture());
+        verify(configService).saveSecretConfig(any(), persisted.capture());
         assertThat(persisted.getValue().getProperty("access.token")).isEqualTo("access-token");
         assertThat(persisted.getValue().getProperty("refresh.token")).isEqualTo("refresh-token");
     }
 
     @Test
     void refreshesExpiredAccessTokenAndKeepsExistingRefreshToken() {
+        String originallyGrantedScopes = "https://api.ebay.com/oauth/api_scope/sell.inventory";
         Properties stored = new Properties();
         stored.setProperty("access.token", "expired-access-token");
         stored.setProperty("refresh.token", "long-lived-refresh-token");
+        stored.setProperty("scopes", originallyGrantedScopes);
         stored.setProperty("access.token.expires.at", String.valueOf(NOW - 1));
         stored.setProperty("refresh.token.expires.at", String.valueOf(NOW + 86_400_000L));
         when(configService.loadConfig(any())).thenReturn(stored);
@@ -106,14 +119,15 @@ class EbayOAuthServiceTest {
         JSONObject refreshResponse = new JSONObject();
         refreshResponse.put("access_token", "fresh-access-token");
         refreshResponse.put("expires_in", 7200L);
-        when(tokenClient.refreshAccessToken("long-lived-refresh-token", properties.getScopes()))
+        when(tokenClient.refreshAccessToken("long-lived-refresh-token", originallyGrantedScopes))
                 .thenReturn(refreshResponse);
 
         assertThat(service.getValidAccessToken()).isEqualTo("fresh-access-token");
 
         ArgumentCaptor<Properties> persisted = ArgumentCaptor.forClass(Properties.class);
-        verify(configService).saveConfig(any(), persisted.capture());
+        verify(configService).saveSecretConfig(any(), persisted.capture());
         assertThat(persisted.getValue().getProperty("refresh.token")).isEqualTo("long-lived-refresh-token");
+        assertThat(persisted.getValue().getProperty("scopes")).isEqualTo(originallyGrantedScopes);
     }
 
     private Map<String, String> queryParameters(String url) {

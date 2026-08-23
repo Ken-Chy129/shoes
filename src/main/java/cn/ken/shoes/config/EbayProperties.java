@@ -16,6 +16,7 @@ public class EbayProperties {
     private String scopes = "https://api.ebay.com/oauth/api_scope/sell.inventory "
             + "https://api.ebay.com/oauth/api_scope/sell.account";
     private long stateTtlSeconds = 600L;
+    private int maxPendingStates = 100;
 
     public boolean isSandbox() {
         return !"production".equalsIgnoreCase(environment);

@@ -46,6 +46,17 @@ stockx:
   redirectUri: your_redirect_uri
   authorization: your_authorization
 
+ebay:
+  # sandbox 或 production；两套环境的密钥、RuName 和 token 不能混用
+  environment: sandbox
+  clientId: your_ebay_client_id
+  clientSecret: your_ebay_client_secret
+  # eBay Developer 后台生成的 Redirect URL name，不是普通 HTTPS 回调地址
+  ruName: your_ebay_runame
+  scopes: https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account
+  stateTtlSeconds: 600
+  maxPendingStates: 100
+
 proxy:
   host: your_proxy_host
   port: 15818

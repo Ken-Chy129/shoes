@@ -7,6 +7,7 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Properties;
 
 @Service
@@ -54,6 +55,17 @@ public class ConfigService {
             }
         } catch (IOException e) {
             System.err.println("Failed to save config file: " + configFileName + ", error: " + e.getMessage());
+        }
+    }
+
+    public void saveSecretConfig(String configFileName, Properties properties) {
+        saveConfig(configFileName, properties);
+        try {
+            Files.setPosixFilePermissions(getConfigPath(configFileName),
+                    PosixFilePermissions.fromString("rw-------"));
+        } catch (IOException | UnsupportedOperationException e) {
+            System.err.println("Failed to restrict secret config permissions: " + configFileName
+                    + ", error: " + e.getMessage());
         }
     }
 
