@@ -34,11 +34,23 @@ public class EbayProperties {
                 : "https://api.ebay.com/identity/v1/oauth2/token";
     }
 
+    public String getInventoryApiEndpoint() {
+        return apiRoot() + "/sell/inventory/v1/";
+    }
+
+    public String getAccountApiEndpoint() {
+        return apiRoot() + "/sell/account/v1/";
+    }
+
     public boolean isConfigured() {
         return isPresent(clientId) && isPresent(clientSecret) && isPresent(ruName);
     }
 
     private boolean isPresent(String value) {
         return value != null && !value.isBlank();
+    }
+
+    private String apiRoot() {
+        return isSandbox() ? "https://api.sandbox.ebay.com" : "https://api.ebay.com";
     }
 }
