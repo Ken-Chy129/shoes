@@ -1,0 +1,158 @@
+package cn.ken.shoes.service;
+
+import cn.ken.shoes.client.EbaySellApiClient;
+import cn.ken.shoes.config.EbayProperties;
+import cn.ken.shoes.model.ebay.EbayInventoryLocationRequest;
+import cn.ken.shoes.model.ebay.EbayListingRequest;
+import cn.ken.shoes.model.ebay.EbayListingResult;
+import com.alibaba.fastjson.JSONObject;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+class EbayListingServiceTest {
+
+    private EbaySellApiClient apiClient;
+    private EbayListingService service;
+
+    @BeforeEach
+    void setUp() {
+        apiClient = mock(EbaySellApiClient.class);
+        EbayProperties properties = new EbayProperties();
+        properties.setEnvironment("sandbox");
+        service = new EbayListingService(apiClient, properties);
+    }
+
+    @Test
+    void publishesSingleSkuThroughInventoryOfferAndPublishSteps() {
+        EbayListingRequest request = listingRequest();
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-123");
+        when(apiClient.publishOffer("offer-123")).thenReturn("listing-456");
+
+        EbayListingResult result = service.publish(request);
+
+        InOrder order = inOrder(apiClient);
+        ArgumentCaptor<JSONObject> inventoryPayload = ArgumentCaptor.forClass(JSONObject.class);
+        order.verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-1"), inventoryPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        ArgumentCaptor<JSONObject> offerPayload = ArgumentCaptor.forClass(JSONObject.class);
+        order.verify(apiClient).createOffer(offerPayload.capture(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).publishOffer("offer-123");
+
+        JSONObject inventory = inventoryPayload.getValue();
+        assertThat(inventory.getString("condition")).isEqualTo("NEW");
+        assertThat(inventory.getJSONObject("availability")
+                .getJSONObject("shipToLocationAvailability").getIntValue("quantity")).isEqualTo(2);
+        JSONObject product = inventory.getJSONObject("product");
+        assertThat(product.getString("title")).isEqualTo("Test Sneaker");
+        assertThat(product.getJSONArray("imageUrls")).containsExactly("https://example.com/shoe.jpg");
+        assertThat(product.getJSONObject("aspects").getJSONArray("US Shoe Size")).containsExactly("9");
+
+        JSONObject offer = offerPayload.getValue();
+        assertThat(offer.getString("format")).isEqualTo("FIXED_PRICE");
+        assertThat(offer.getString("listingDuration")).isEqualTo("GTC");
+        assertThat(offer.getJSONObject("pricingSummary").getJSONObject("price"))
+                .containsEntry("currency", "USD")
+                .containsEntry("value", "129.99");
+        assertThat(offer.getJSONObject("listingPolicies"))
+                .containsEntry("fulfillmentPolicyId", "fulfillment-1")
+                .containsEntry("paymentPolicyId", "payment-1")
+                .containsEntry("returnPolicyId", "return-1");
+        assertThat(result.getSku()).isEqualTo("shoe-sku-1");
+        assertThat(result.getOfferId()).isEqualTo("offer-123");
+        assertThat(result.getListingId()).isEqualTo("listing-456");
+        assertThat(result.getEnvironment()).isEqualTo("sandbox");
+    }
+
+    @Test
+    void rejectsNonHttpImageUrlBeforeCallingEbay() {
+        EbayListingRequest request = listingRequest();
+        request.setImageUrls(List.of("file:///etc/passwd"));
+
+        assertThatThrownBy(() -> service.publish(request))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("image URL");
+        verify(apiClient, never()).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void aggregatesLocationsAndPoliciesWithoutSecrets() {
+        when(apiClient.getInventoryLocations()).thenReturn(new JSONObject().fluentPut("locations", List.of()));
+        when(apiClient.getFulfillmentPolicies("EBAY_US"))
+                .thenReturn(new JSONObject().fluentPut("fulfillmentPolicies", List.of(Map.of("id", "f-1"))));
+        when(apiClient.getPaymentPolicies("EBAY_US"))
+                .thenReturn(new JSONObject().fluentPut("paymentPolicies", List.of(Map.of("id", "p-1"))));
+        when(apiClient.getReturnPolicies("EBAY_US"))
+                .thenReturn(new JSONObject().fluentPut("returnPolicies", List.of(Map.of("id", "r-1"))));
+
+        JSONObject result = service.getPrerequisites("EBAY_US");
+
+        assertThat(result.getString("environment")).isEqualTo("sandbox");
+        assertThat(result.getJSONObject("locations")).isNotNull();
+        assertThat(result.getJSONObject("fulfillmentPolicies")).isNotNull();
+        assertThat(result.toJSONString()).doesNotContain("access_token", "refresh_token", "clientSecret");
+    }
+
+    @Test
+    void createsEnabledWarehouseLocationFromValidatedAddress() {
+        EbayInventoryLocationRequest request = new EbayInventoryLocationRequest();
+        request.setMerchantLocationKey("shenzhen-main");
+        request.setName("Shenzhen Warehouse");
+        request.setAddressLine1("南山街道");
+        request.setAddressLine2("1栋101室");
+        request.setCity("深圳");
+        request.setStateOrProvince("广东");
+        request.setPostalCode("518000");
+        request.setCountry("CN");
+
+        service.createInventoryLocation(request);
+
+        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createInventoryLocation(
+                org.mockito.ArgumentMatchers.eq("shenzhen-main"), payload.capture());
+        JSONObject body = payload.getValue();
+        assertThat(body.getString("merchantLocationStatus")).isEqualTo("ENABLED");
+        assertThat(body.getJSONArray("locationTypes")).containsExactly("WAREHOUSE");
+        assertThat(body.getJSONObject("location").getJSONObject("address"))
+                .containsEntry("country", "CN")
+                .containsEntry("postalCode", "518000");
+    }
+
+    private EbayListingRequest listingRequest() {
+        EbayListingRequest request = new EbayListingRequest();
+        request.setSku("shoe-sku-1");
+        request.setTitle("Test Sneaker");
+        request.setDescription("Brand new test sneaker");
+        request.setImageUrls(List.of("https://example.com/shoe.jpg"));
+        request.setQuantity(2);
+        request.setCondition("NEW");
+        request.setCategoryId("15709");
+        request.setMarketplaceId("EBAY_US");
+        request.setCurrency("USD");
+        request.setPrice(new BigDecimal("129.99"));
+        request.setMerchantLocationKey("shenzhen-main");
+        request.setFulfillmentPolicyId("fulfillment-1");
+        request.setPaymentPolicyId("payment-1");
+        request.setReturnPolicyId("return-1");
+        request.setBrand("Test Brand");
+        request.setMpn("TEST-1");
+        request.setAspects(Map.of("US Shoe Size", List.of("9")));
+        return request;
+    }
+}

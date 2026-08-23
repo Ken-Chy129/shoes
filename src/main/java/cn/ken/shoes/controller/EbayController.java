@@ -1,25 +1,38 @@
 package cn.ken.shoes.controller;
 
+import cn.ken.shoes.annotation.CheckApiToken;
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.ebay.EbayInventoryLocationRequest;
+import cn.ken.shoes.model.ebay.EbayListingRequest;
+import cn.ken.shoes.model.ebay.EbayListingResult;
+import cn.ken.shoes.service.EbayListingService;
 import cn.ken.shoes.service.EbayOAuthService;
 import com.alibaba.fastjson.JSONObject;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
 
 @Slf4j
+@Validated
 @RestController
 @RequestMapping("ebay")
 public class EbayController {
 
     private final EbayOAuthService oauthService;
+    private final EbayListingService listingService;
 
-    public EbayController(EbayOAuthService oauthService) {
+    public EbayController(EbayOAuthService oauthService, EbayListingService listingService) {
         this.oauthService = oauthService;
+        this.listingService = listingService;
     }
 
     @GetMapping("oauth/authorize-url")
@@ -51,6 +64,43 @@ public class EbayController {
     @GetMapping("oauth/declined")
     public Result<Void> oauthDeclined() {
         return Result.buildError("你已取消 eBay 授权，未保存任何令牌");
+    }
+
+    @CheckApiToken
+    @GetMapping("listing-prerequisites")
+    public Result<JSONObject> listingPrerequisites(
+            @RequestParam(defaultValue = "EBAY_US")
+            @Pattern(regexp = "EBAY_[A-Z0-9_]+") String marketplaceId) {
+        try {
+            return Result.buildSuccess(listingService.getPrerequisites(marketplaceId));
+        } catch (Exception e) {
+            log.warn("Unable to query eBay listing prerequisites, type:{}", e.getClass().getSimpleName());
+            return Result.buildError("eBay 上架前置资源查询失败，请确认卖家授权有效");
+        }
+    }
+
+    @CheckApiToken
+    @PostMapping("locations")
+    public Result<Void> createInventoryLocation(
+            @Valid @RequestBody EbayInventoryLocationRequest request) {
+        try {
+            listingService.createInventoryLocation(request);
+            return Result.buildSuccess();
+        } catch (Exception e) {
+            log.warn("Unable to create eBay inventory location, type:{}", e.getClass().getSimpleName());
+            return Result.buildError("eBay 库存地点创建失败，请检查地址或地点标识");
+        }
+    }
+
+    @CheckApiToken
+    @PostMapping("listings")
+    public Result<EbayListingResult> publishListing(@Valid @RequestBody EbayListingRequest request) {
+        try {
+            return Result.buildSuccess(listingService.publish(request));
+        } catch (Exception e) {
+            log.warn("Unable to publish eBay listing, type:{}", e.getClass().getSimpleName());
+            return Result.buildError("eBay 上架失败，请检查地点、业务政策和商品资料");
+        }
     }
 
     @GetMapping(value = "privacy", produces = MediaType.TEXT_HTML_VALUE)
