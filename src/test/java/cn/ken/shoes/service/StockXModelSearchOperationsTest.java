@@ -195,6 +195,37 @@ class StockXModelSearchOperationsTest {
     }
 
     @Test
+    void splitsSpecifiedListingsBeforeTotalQuantityWouldExceedOneHundred() throws Exception {
+        Long taskId = 113L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        doAnswer(invocation -> {
+            TaskItemDO item = invocation.getArgument(0);
+            item.setId((long) item.getProductId().hashCode() & 0xffffffffL);
+            return 1;
+        }).when(itemMapper).insert(any(TaskItemDO.class));
+        when(client.verifyListingsByVariantIds(anyList(), any(StockXAccount.class))).thenReturn(Map.of());
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch");
+
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.createModelSearchListings(account(), taskId, List.of(
+                    listing("variant-1", 40),
+                    listing("variant-2", 40),
+                    listing("variant-3", 30)));
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        ArgumentCaptor<List<StockXListingCreateItem>> batches = ArgumentCaptor.forClass(List.class);
+        verify(client, times(2)).createListingsWithQuantity(batches.capture(), any(StockXAccount.class));
+        assertThat(batches.getAllValues())
+                .extracting(batch -> batch.stream().mapToInt(StockXListingCreateItem::quantity).sum())
+                .containsExactly(80, 30);
+    }
+
+    @Test
     void skipsAlreadyActiveVariantBeforeRerunSubmission() throws Exception {
         Long taskId = 112L;
         StockXClient client = mock(StockXClient.class);
@@ -345,6 +376,37 @@ class StockXModelSearchOperationsTest {
         verify(client).createListingsWithQuantity(listings.capture(), any(StockXAccount.class));
         assertThat(listings.getValue()).extracting(StockXListingCreateItem::variantId)
                 .containsExactly("variant-6", "variant-7");
+    }
+
+    @Test
+    void splitsModelAndSizeListingsAtOneHundredTotalQuantity() throws Exception {
+        Long taskId = 141L;
+        StockXClient client = mock(StockXClient.class);
+        TaskItemMapper itemMapper = mock(TaskItemMapper.class);
+        StockXService service = service(client, itemMapper, mock(TaskMapper.class), mock(PriceManager.class));
+        when(client.searchExactItemWithPrice(anyString(), eq("shoes"), eq("US"), any(StockXAccount.class)))
+                .thenAnswer(invocation -> {
+                    String modelNo = invocation.getArgument(0);
+                    return List.of(price(modelNo, "9", "42.5", "variant-" + modelNo));
+                });
+        when(client.verifyListingsByVariantIds(anyList(), any(StockXAccount.class))).thenReturn(Map.of());
+        when(client.createListingsWithQuantity(anyList(), any(StockXAccount.class))).thenReturn("batch");
+
+        TaskSwitch.cancelSearchVerification(taskId);
+        try {
+            service.createModelSearchListingsByModel(account(), taskId, List.of(
+                    listingByModel("STYLE-1", "9", "500", 60),
+                    listingByModel("STYLE-2", "9", "500", 40),
+                    listingByModel("STYLE-3", "9", "500", 1)));
+        } finally {
+            TaskSwitch.resetSearchVerification(taskId);
+        }
+
+        ArgumentCaptor<List<StockXListingCreateItem>> batches = ArgumentCaptor.forClass(List.class);
+        verify(client, times(2)).createListingsWithQuantity(batches.capture(), any(StockXAccount.class));
+        assertThat(batches.getAllValues())
+                .extracting(batch -> batch.stream().mapToInt(StockXListingCreateItem::quantity).sum())
+                .containsExactly(100, 1);
     }
 
     @Test
@@ -539,10 +601,14 @@ class StockXModelSearchOperationsTest {
     }
 
     private static ModelSearchListingExcel listing(String variantId) {
+        return listing(variantId, 1);
+    }
+
+    private static ModelSearchListingExcel listing(String variantId, int quantity) {
         ModelSearchListingExcel input = new ModelSearchListingExcel();
         input.setVariantId(variantId);
         input.setTargetPrice(new BigDecimal("500"));
-        input.setQuantity(1);
+        input.setQuantity(quantity);
         return input;
     }
 

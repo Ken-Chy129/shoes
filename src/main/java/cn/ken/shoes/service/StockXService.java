@@ -47,8 +47,9 @@ import java.util.stream.Collectors;
 @Service
 public class StockXService {
 
-    /** StockX asks 子图在 50 条批量创建时持续失败；25 条在同一生产链路上稳定入队。 */
+    /** StockX asks 批量创建同时限制规格数和上架总数。 */
     private static final int MODEL_SEARCH_LISTING_BATCH_SIZE = 25;
+    private static final int MODEL_SEARCH_LISTING_BATCH_QUANTITY_LIMIT = 100;
 
     @Resource
     private StockXClient stockXClient;
@@ -857,15 +858,16 @@ public class StockXService {
             seenVariants.add(variantId);
             taskItem.setOperateResult("待上架");
             taskItemMapper.insert(taskItem);
-            pending.add(new StockXListingCreateItem(variantId, input.getTargetPrice(), input.getQuantity()));
-            variantToTaskItemId.put(variantId, taskItem.getId());
-            processed++;
-
-            if (pending.size() >= MODEL_SEARCH_LISTING_BATCH_SIZE) {
+            StockXListingCreateItem createItem =
+                    new StockXListingCreateItem(variantId, input.getTargetPrice(), input.getQuantity());
+            if (wouldExceedModelSearchListingBatch(pending, createItem)) {
                 batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
                 pending.clear();
                 variantToTaskItemId.clear();
             }
+            pending.add(createItem);
+            variantToTaskItemId.put(variantId, taskItem.getId());
+            processed++;
             updateModelSearchProgress(taskId, processed, inputRows.size(), variantId);
         }
         if (!pending.isEmpty()) {
@@ -988,14 +990,15 @@ public class StockXService {
             } else {
                 taskItemMapper.insert(taskItem);
             }
-            pending.add(new StockXListingCreateItem(variantId, group.targetPrice(), mergedQuantity));
-            variantToTaskItemId.put(variantId, taskItem.getId());
-
-            if (pending.size() >= MODEL_SEARCH_LISTING_BATCH_SIZE) {
+            StockXListingCreateItem createItem =
+                    new StockXListingCreateItem(variantId, group.targetPrice(), mergedQuantity);
+            if (wouldExceedModelSearchListingBatch(pending, createItem)) {
                 batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
                 pending.clear();
                 variantToTaskItemId.clear();
             }
+            pending.add(createItem);
+            variantToTaskItemId.put(variantId, taskItem.getId());
         }
         if (!pending.isEmpty()) {
             batchCreateSpecifiedListings(taskId, pending, variantToTaskItemId, account);
@@ -1108,6 +1111,18 @@ public class StockXService {
             return "上架数量必须为正整数";
         }
         return null;
+    }
+
+    private boolean wouldExceedModelSearchListingBatch(List<StockXListingCreateItem> pending,
+                                                       StockXListingCreateItem next) {
+        if (pending.isEmpty()) {
+            return false;
+        }
+        long pendingQuantity = pending.stream()
+                .mapToLong(StockXListingCreateItem::quantity)
+                .sum();
+        return pending.size() >= MODEL_SEARCH_LISTING_BATCH_SIZE
+                || pendingQuantity + next.quantity() > MODEL_SEARCH_LISTING_BATCH_QUANTITY_LIMIT;
     }
 
     private void batchCreateSpecifiedListings(Long taskId, List<StockXListingCreateItem> items,
