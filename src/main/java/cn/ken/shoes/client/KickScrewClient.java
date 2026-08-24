@@ -35,7 +35,7 @@ public class KickScrewClient {
     @Value("${kc.apiKey}")
     private String apiKey;
 
-    @Value("${kc.storefrontToken:}")
+    @Value("${KC_STOREFRONT_TOKEN:${kc.storefrontToken:}}")
     private String storefrontToken;
 
     private static final Integer PAGE_SIZE = 30;
