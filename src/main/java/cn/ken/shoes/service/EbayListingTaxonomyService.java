@@ -14,8 +14,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 @Service
@@ -38,6 +36,11 @@ public class EbayListingTaxonomyService {
             throw new IllegalArgumentException("商品资料不能为空");
         }
         String department = department(sizeSystem, metadata.getGender());
+        if ((categoryOverride == null || categoryOverride.isBlank())
+                && "EU".equals(sizeSystem) && department == null) {
+            throw new IllegalArgumentException(
+                    "EU尺码无法自动判断男鞋或女鞋，请在商品资料库补充性别，或在Excel填写分类ID");
+        }
         CategoryChoice category = categoryOverride == null || categoryOverride.isBlank()
                 ? resolveCategory(metadata, department)
                 : new CategoryChoice(numericId(categoryOverride, "分类ID"), null);
@@ -58,7 +61,7 @@ public class EbayListingTaxonomyService {
                 if (suggestion != null) {
                     return suggestion;
                 }
-            } catch (EbayApiException ignoredError) {
+            } catch (EbayApiException | IllegalStateException ignoredError) {
                 // Taxonomy is advisory. Standard sneakers retain the existing safe fallback.
             }
             if (isStandardShoe(metadata.getProductType())) {
@@ -117,7 +120,7 @@ public class EbayListingTaxonomyService {
             try {
                 return parseAspectRules(client.getItemAspectsForCategory(
                         properties.getDefaultCategoryTreeId(), categoryId));
-            } catch (EbayApiException ignoredError) {
+            } catch (EbayApiException | IllegalStateException ignoredError) {
                 return List.of();
             }
         });
@@ -142,16 +145,28 @@ public class EbayListingTaxonomyService {
             String mode = constraint == null ? null : constraint.getString("aspectMode");
             int maxLength = constraint == null || constraint.getIntValue("aspectMaxLength") <= 0
                     ? 65 : Math.min(65, constraint.getIntValue("aspectMaxLength"));
-            List<String> allowedValues = Optional.ofNullable(aspect.getJSONArray("aspectValues"))
-                    .map(array -> array.toJavaList(JSONObject.class))
-                    .orElse(List.of()).stream()
-                    .filter(Objects::nonNull)
-                    .map(item -> item.getString("localizedValue"))
-                    .filter(item -> item != null && !item.isBlank() && item.length() <= 65)
-                    .toList();
+            List<String> allowedValues = parseAllowedValues(aspect.getJSONArray("aspectValues"));
             rules.add(new AspectRule(name.trim(), required, mode, maxLength, allowedValues));
         }
         return List.copyOf(rules);
+    }
+
+    private List<String> parseAllowedValues(JSONArray values) {
+        if (values == null) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>();
+        for (Object value : values) {
+            if (!(value instanceof JSONObject item)) {
+                continue;
+            }
+            String localizedValue = item.getString("localizedValue");
+            if (localizedValue != null && !localizedValue.isBlank()
+                    && localizedValue.length() <= 65) {
+                result.add(localizedValue);
+            }
+        }
+        return List.copyOf(result);
     }
 
     private Map<String, List<String>> buildAspects(List<AspectRule> rules,

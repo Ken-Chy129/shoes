@@ -101,6 +101,33 @@ class EbayListingTaxonomyServiceTest {
                 .hasMessageContaining("商品资料库");
     }
 
+    @Test
+    void requiresGenderForEuSizesInsteadOfSilentlySelectingMensShoes() {
+        EbayProductMetadata metadata = metadata();
+        metadata.setGender(null);
+
+        assertThatThrownBy(() -> service.resolve(null, "DD1391-100", metadata, "EU", "42"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("性别")
+                .hasMessageContaining("分类ID");
+    }
+
+    @Test
+    void keepsStandardShoeFallbackWhenApplicationTokenIsTemporarilyUnavailable() {
+        when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
+                .thenThrow(new IllegalStateException("application token unavailable"));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenThrow(new IllegalStateException("application token unavailable"));
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "DD1391-100", metadata(), "USM", "10");
+
+        assertThat(resolved.categoryId()).isEqualTo("15709");
+        assertThat(resolved.aspects())
+                .containsEntry("Brand", List.of("Nike"))
+                .containsEntry("US Shoe Size", List.of("10"));
+    }
+
     private JSONObject aspects(String... names) {
         return new JSONObject(true).fluentPut("aspects", java.util.Arrays.stream(names)
                 .map(name -> new JSONObject(true)
@@ -116,6 +143,7 @@ class EbayListingTaxonomyServiceTest {
         metadata.setTitle("Nike Dunk Low Retro White Black");
         metadata.setBrand("Nike");
         metadata.setProductType("Sneakers");
+        metadata.setGender("men");
         metadata.setColor("White");
         metadata.setUpperMaterial("Leather");
         metadata.setModelName("Dunk Low");
