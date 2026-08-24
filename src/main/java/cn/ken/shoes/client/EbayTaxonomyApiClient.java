@@ -1,7 +1,7 @@
 package cn.ken.shoes.client;
 
 import cn.ken.shoes.config.EbayProperties;
-import cn.ken.shoes.service.EbayOAuthService;
+import cn.ken.shoes.service.EbayApplicationTokenService;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
@@ -19,14 +19,15 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class EbayTaxonomyApiClient {
 
-    private final EbayOAuthService oauthService;
+    private final EbayApplicationTokenService tokenService;
     private final OkHttpClient httpClient;
     private final HttpUrl taxonomyBaseUrl;
     private final String locale;
 
     @Autowired
-    public EbayTaxonomyApiClient(EbayProperties properties, EbayOAuthService oauthService) {
-        this(properties, oauthService,
+    public EbayTaxonomyApiClient(EbayProperties properties,
+                                 EbayApplicationTokenService tokenService) {
+        this(properties, tokenService,
                 new OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
                         .readTimeout(30, TimeUnit.SECONDS)
@@ -35,9 +36,9 @@ public class EbayTaxonomyApiClient {
                 properties.getTaxonomyApiEndpoint());
     }
 
-    EbayTaxonomyApiClient(EbayProperties properties, EbayOAuthService oauthService,
+    EbayTaxonomyApiClient(EbayProperties properties, EbayApplicationTokenService tokenService,
                           OkHttpClient httpClient, String taxonomyBaseUrl) {
-        this.oauthService = oauthService;
+        this.tokenService = tokenService;
         this.httpClient = httpClient;
         this.taxonomyBaseUrl = requireHttpUrl(taxonomyBaseUrl);
         this.locale = properties.getDefaultContentLanguage();
@@ -64,7 +65,7 @@ public class EbayTaxonomyApiClient {
                 .url(url)
                 .header("Accept", "application/json")
                 .header("Accept-Language", locale)
-                .header("Authorization", "Bearer " + oauthService.getValidAccessToken())
+                .header("Authorization", "Bearer " + tokenService.getValidAccessToken())
                 .get()
                 .build();
         try (Response response = httpClient.newCall(request).execute()) {

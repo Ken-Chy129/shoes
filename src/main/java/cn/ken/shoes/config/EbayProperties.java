@@ -15,6 +15,7 @@ public class EbayProperties {
     private String ruName = "";
     private String scopes = "https://api.ebay.com/oauth/api_scope/sell.inventory "
             + "https://api.ebay.com/oauth/api_scope/sell.account";
+    private String applicationScope = "https://api.ebay.com/oauth/api_scope";
     private long stateTtlSeconds = 600L;
     private int maxPendingStates = 100;
     private String defaultMerchantLocationKey = "shantou_chenghai";

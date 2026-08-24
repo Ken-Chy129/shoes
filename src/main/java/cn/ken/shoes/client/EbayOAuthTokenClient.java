@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import okhttp3.Credentials;
 import okhttp3.FormBody;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,14 +24,24 @@ public class EbayOAuthTokenClient {
 
     private final EbayProperties properties;
     private final OkHttpClient httpClient;
+    private final HttpUrl tokenEndpoint;
 
     public EbayOAuthTokenClient(EbayProperties properties) {
-        this.properties = properties;
-        this.httpClient = new OkHttpClient.Builder()
+        this(properties, new OkHttpClient.Builder()
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
-                .build();
+                .build(), properties.getTokenEndpoint());
+    }
+
+    EbayOAuthTokenClient(EbayProperties properties, OkHttpClient httpClient, String tokenEndpoint) {
+        this.properties = properties;
+        this.httpClient = httpClient;
+        HttpUrl parsed = HttpUrl.parse(tokenEndpoint);
+        if (parsed == null || !("https".equals(parsed.scheme()) || isLoopbackHttp(parsed))) {
+            throw new IllegalArgumentException("eBay token endpoint must use HTTPS");
+        }
+        this.tokenEndpoint = parsed;
     }
 
     public JSONObject exchangeAuthorizationCode(String authorizationCode, String ruName) {
@@ -51,9 +62,17 @@ public class EbayOAuthTokenClient {
         return requestToken(form);
     }
 
+    public JSONObject requestApplicationToken(String scope) {
+        FormBody form = new FormBody.Builder()
+                .add("grant_type", "client_credentials")
+                .add("scope", scope)
+                .build();
+        return requestToken(form);
+    }
+
     private JSONObject requestToken(RequestBody form) {
         Request request = new Request.Builder()
-                .url(properties.getTokenEndpoint())
+                .url(tokenEndpoint)
                 .header("Accept", JSON_MEDIA_TYPE.toString())
                 .header("Authorization", Credentials.basic(properties.getClientId(), properties.getClientSecret()))
                 .post(form)
@@ -82,5 +101,10 @@ public class EbayOAuthTokenClient {
             return error;
         }
         return "unexpected response";
+    }
+
+    private boolean isLoopbackHttp(HttpUrl url) {
+        return "http".equals(url.scheme())
+                && ("localhost".equals(url.host()) || "127.0.0.1".equals(url.host()));
     }
 }

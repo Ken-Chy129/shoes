@@ -1,7 +1,7 @@
 package cn.ken.shoes.client;
 
 import cn.ken.shoes.config.EbayProperties;
-import cn.ken.shoes.service.EbayOAuthService;
+import cn.ken.shoes.service.EbayApplicationTokenService;
 import com.alibaba.fastjson.JSONObject;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
@@ -28,11 +28,11 @@ class EbayTaxonomyApiClientTest {
         server = new MockWebServer();
         server.start();
         EbayProperties properties = new EbayProperties();
-        EbayOAuthService oauthService = mock(EbayOAuthService.class);
-        when(oauthService.getValidAccessToken()).thenReturn("access-token");
+        EbayApplicationTokenService tokenService = mock(EbayApplicationTokenService.class);
+        when(tokenService.getValidAccessToken()).thenReturn("access-token");
         client = new EbayTaxonomyApiClient(
                 properties,
-                oauthService,
+                tokenService,
                 new OkHttpClient.Builder().readTimeout(2, TimeUnit.SECONDS).build(),
                 server.url("/commerce/taxonomy/v1/").toString());
     }
