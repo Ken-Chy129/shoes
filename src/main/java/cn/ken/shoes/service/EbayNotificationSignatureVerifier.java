@@ -3,6 +3,7 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.EbayNotificationPublicKeyClient;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -22,6 +23,7 @@ import java.util.function.LongSupplier;
 public class EbayNotificationSignatureVerifier {
 
     private static final long PUBLIC_KEY_TTL_MS = 60 * 60 * 1000L;
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Map<String, String> SIGNATURE_ALGORITHMS = Map.of(
             "SHA256:ECDSA", "SHA256withECDSA",
             "SHA384:ECDSA", "SHA384withECDSA",
@@ -71,7 +73,9 @@ public class EbayNotificationSignatureVerifier {
                     .generatePublic(new X509EncodedKeySpec(publicKeyBytes));
             Signature verifier = Signature.getInstance(signatureAlgorithm);
             verifier.initVerify(publicKey);
-            verifier.update(payload);
+            byte[] canonicalPayload = OBJECT_MAPPER.writeValueAsBytes(
+                    OBJECT_MAPPER.readTree(payload));
+            verifier.update(canonicalPayload);
             return verifier.verify(Base64.getDecoder().decode(encodedSignature));
         } catch (Exception e) {
             log.warn("eBay notification signature validation failed, type:{}",

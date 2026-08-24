@@ -54,6 +54,37 @@ class EbayNotificationSignatureVerifierTest {
         assertThat(verifier.verify(null, payload)).isFalse();
     }
 
+    @Test
+    void verifiesSignatureAgainstCanonicalJsonLikeTheOfficialEbaySdk()
+            throws Exception {
+        KeyPair keyPair = keyPair();
+        byte[] canonicalPayload = ("{\"metadata\":{\"topic\":"
+                + "\"MARKETPLACE_ACCOUNT_DELETION\",\"schemaVersion\":\"1.0\","
+                + "\"deprecated\":false},\"notification\":{\"notificationId\":"
+                + "\"notification-123\"}}")
+                .getBytes(StandardCharsets.UTF_8);
+        byte[] formattedHttpPayload = ("{\n"
+                + "  \"metadata\": {\n"
+                + "    \"topic\": \"MARKETPLACE_ACCOUNT_DELETION\",\n"
+                + "    \"schemaVersion\": \"1.0\",\n"
+                + "    \"deprecated\": false\n"
+                + "  },\n"
+                + "  \"notification\": {\n"
+                + "    \"notificationId\": \"notification-123\"\n"
+                + "  }\n"
+                + "}").getBytes(StandardCharsets.UTF_8);
+        EbayNotificationPublicKeyClient keyClient = mock(EbayNotificationPublicKeyClient.class);
+        when(keyClient.getPublicKey("key-123")).thenReturn(
+                new EbayNotificationPublicKeyClient.PublicKeyData(
+                        pem(keyPair), "ECDSA", "SHA256"));
+        EbayNotificationSignatureVerifier verifier =
+                new EbayNotificationSignatureVerifier(keyClient, () -> 1_000L);
+
+        assertThat(verifier.verify(
+                signatureHeader("key-123", keyPair, canonicalPayload),
+                formattedHttpPayload)).isTrue();
+    }
+
     private KeyPair keyPair() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
         generator.initialize(new ECGenParameterSpec("secp256r1"));
