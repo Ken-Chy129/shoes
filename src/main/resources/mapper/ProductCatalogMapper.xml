@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.ken.shoes.mapper.ProductCatalogMapper">
+
+    <sql id="filters">
+        <where>
+            <if test="modelNo != null and modelNo != ''">
+                AND model_no LIKE CONCAT('%', #{modelNo}, '%')
+            </if>
+            <if test="brand != null and brand != ''">
+                AND brand LIKE CONCAT('%', #{brand}, '%')
+            </if>
+            <if test="source != null and source != ''">
+                AND source = #{source}
+            </if>
+        </where>
+    </sql>
+
+    <select id="count" resultType="long">
+        SELECT COUNT(*) FROM product_catalog
+        <include refid="filters"/>
+    </select>
+
+    <select id="selectPage" resultType="cn.ken.shoes.model.entity.ProductCatalogDO">
+        SELECT model_no, title, brand, description, product_type, gender, color, colorway,
+               upper_material, image_urls, source, source_updated_at, manual_override,
+               gmt_create, gmt_modified
+        FROM product_catalog
+        <include refid="filters"/>
+        ORDER BY gmt_modified DESC, model_no ASC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <insert id="upsertFromSource">
+        INSERT INTO product_catalog
+            (model_no, title, brand, description, product_type, gender, color, colorway,
+             upper_material, image_urls, source, source_updated_at, manual_override)
+        VALUES
+            (#{modelNo}, #{title}, #{brand}, #{description}, #{productType}, #{gender}, #{color},
+             #{colorway}, #{upperMaterial}, #{imageUrls}, #{source}, #{sourceUpdatedAt}, 0)
+        ON DUPLICATE KEY UPDATE
+            title = IF(manual_override = 0, VALUES(title), title),
+            brand = IF(manual_override = 0, VALUES(brand), brand),
+            description = IF(manual_override = 0, VALUES(description), description),
+            product_type = IF(manual_override = 0, VALUES(product_type), product_type),
+            gender = IF(manual_override = 0, VALUES(gender), gender),
+            color = IF(manual_override = 0, VALUES(color), color),
+            colorway = IF(manual_override = 0, VALUES(colorway), colorway),
+            upper_material = IF(manual_override = 0, VALUES(upper_material), upper_material),
+            image_urls = IF(manual_override = 0, VALUES(image_urls), image_urls),
+            source = IF(manual_override = 0, VALUES(source), source),
+            source_updated_at = IF(manual_override = 0, VALUES(source_updated_at), source_updated_at)
+    </insert>
+
+    <update id="updateManual">
+        UPDATE product_catalog
+        SET title = #{title},
+            brand = #{brand},
+            description = #{description},
+            product_type = #{productType},
+            gender = #{gender},
+            color = #{color},
+            colorway = #{colorway},
+            upper_material = #{upperMaterial},
+            image_urls = #{imageUrls},
+            manual_override = 1
+        WHERE model_no = #{modelNo}
+    </update>
+
+</mapper>

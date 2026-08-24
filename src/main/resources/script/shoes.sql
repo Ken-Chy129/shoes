@@ -45,9 +45,9 @@ CREATE TABLE kick_screw_item
 CREATE INDEX kick_screw_item_brand_index ON kick_screw_item (brand);
 
 -- -------------------------------------------
--- eBay商品资料缓存：KC冷数据只请求一次，后续按货号复用
+-- 跨平台商品资料库：外部资料按货号复用，人工修改不被后续补全覆盖
 -- -------------------------------------------
-CREATE TABLE ebay_product_cache
+CREATE TABLE product_catalog
 (
     model_no          VARCHAR(64)  NOT NULL PRIMARY KEY COMMENT '商品货号',
     title             VARCHAR(255) NOT NULL COMMENT '商品标题',
@@ -61,9 +61,13 @@ CREATE TABLE ebay_product_cache
     image_urls        TEXT         NOT NULL COMMENT '图片URL JSON数组',
     source            VARCHAR(32)  NOT NULL COMMENT '资料来源',
     source_updated_at DATETIME     NOT NULL COMMENT '来源更新时间',
+    manual_override   TINYINT(1) DEFAULT 0 NOT NULL COMMENT '人工资料保护标记',
     gmt_create        DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    gmt_modified      DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP
-) COMMENT 'eBay商品资料缓存';
+    gmt_modified      DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_product_catalog_brand (brand),
+    INDEX idx_product_catalog_source (source),
+    INDEX idx_product_catalog_modified (gmt_modified)
+) COMMENT '跨平台商品资料库';
 
 -- -------------------------------------------
 -- KickScrew价格表：存储KickScrew平台的商品价格

@@ -1,10 +1,10 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.mapper.EbayProductCacheMapper;
+import cn.ken.shoes.mapper.ProductCatalogMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
-import cn.ken.shoes.model.entity.EbayProductCacheDO;
+import cn.ken.shoes.model.entity.ProductCatalogDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import com.alibaba.fastjson.JSON;
 import org.springframework.stereotype.Service;
@@ -17,21 +17,21 @@ import java.util.Locale;
 @Service
 public class EbayProductMetadataService {
 
-    private final EbayProductCacheMapper cacheMapper;
+    private final ProductCatalogMapper catalogMapper;
     private final KickScrewItemMapper kickScrewItemMapper;
     private final KickScrewClient kickScrewClient;
 
-    public EbayProductMetadataService(EbayProductCacheMapper cacheMapper,
+    public EbayProductMetadataService(ProductCatalogMapper catalogMapper,
                                       KickScrewItemMapper kickScrewItemMapper,
                                       KickScrewClient kickScrewClient) {
-        this.cacheMapper = cacheMapper;
+        this.catalogMapper = catalogMapper;
         this.kickScrewItemMapper = kickScrewItemMapper;
         this.kickScrewClient = kickScrewClient;
     }
 
     public EbayProductMetadata resolve(String rawModelNo) {
         String modelNo = required(rawModelNo, "货号").toUpperCase(Locale.ROOT);
-        EbayProductCacheDO cached = cacheMapper.selectById(modelNo);
+        ProductCatalogDO cached = catalogMapper.selectById(modelNo);
         if (cached != null) {
             return fromCache(cached);
         }
@@ -41,7 +41,7 @@ public class EbayProductMetadataService {
         }
         EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
         validate(fetched);
-        cacheMapper.upsert(toCache(modelNo, fetched));
+        catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
         return fetched;
     }
 
@@ -68,7 +68,7 @@ public class EbayProductMetadataService {
         return metadata;
     }
 
-    private EbayProductMetadata fromCache(EbayProductCacheDO cache) {
+    private EbayProductMetadata fromCache(ProductCatalogDO cache) {
         EbayProductMetadata metadata = new EbayProductMetadata();
         metadata.setTitle(cache.getTitle());
         metadata.setBrand(cache.getBrand());
@@ -84,8 +84,8 @@ public class EbayProductMetadataService {
         return metadata;
     }
 
-    private EbayProductCacheDO toCache(String modelNo, EbayProductMetadata metadata) {
-        EbayProductCacheDO cache = new EbayProductCacheDO();
+    private ProductCatalogDO toCatalog(String modelNo, EbayProductMetadata metadata) {
+        ProductCatalogDO cache = new ProductCatalogDO();
         cache.setModelNo(modelNo);
         cache.setTitle(metadata.getTitle());
         cache.setBrand(metadata.getBrand());
@@ -98,6 +98,7 @@ public class EbayProductMetadataService {
         cache.setImageUrls(JSON.toJSONString(metadata.getImageUrls()));
         cache.setSource("kickscrew");
         cache.setSourceUpdatedAt(new Date());
+        cache.setManualOverride(false);
         return cache;
     }
 

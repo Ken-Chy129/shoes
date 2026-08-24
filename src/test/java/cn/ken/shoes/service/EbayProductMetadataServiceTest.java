@@ -1,10 +1,10 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
-import cn.ken.shoes.mapper.EbayProductCacheMapper;
+import cn.ken.shoes.mapper.ProductCatalogMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
-import cn.ken.shoes.model.entity.EbayProductCacheDO;
+import cn.ken.shoes.model.entity.ProductCatalogDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -22,10 +22,10 @@ class EbayProductMetadataServiceTest {
 
     @Test
     void returnsLocalCacheWithoutCallingKickScrew() {
-        EbayProductCacheMapper cacheMapper = mock(EbayProductCacheMapper.class);
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
         KickScrewClient kickScrewClient = mock(KickScrewClient.class);
-        EbayProductCacheDO cached = new EbayProductCacheDO();
+        ProductCatalogDO cached = new ProductCatalogDO();
         cached.setModelNo("DD1391-100");
         cached.setTitle("Cached title");
         cached.setDescription("Cached description");
@@ -43,7 +43,7 @@ class EbayProductMetadataServiceTest {
 
     @Test
     void loadsColdProductWithOneKickScrewRequestThenCachesIt() {
-        EbayProductCacheMapper cacheMapper = mock(EbayProductCacheMapper.class);
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
         KickScrewClient kickScrewClient = mock(KickScrewClient.class);
         when(cacheMapper.selectById("DD1391-100")).thenReturn(null);
@@ -62,15 +62,15 @@ class EbayProductMetadataServiceTest {
 
         assertThat(result.getBrand()).isEqualTo("Nike");
         verify(kickScrewClient).queryProductMetadata("nike-dunk-low-retro-white-black");
-        ArgumentCaptor<EbayProductCacheDO> cache = ArgumentCaptor.forClass(EbayProductCacheDO.class);
-        verify(cacheMapper).upsert(cache.capture());
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
         assertThat(cache.getValue().getModelNo()).isEqualTo("DD1391-100");
         assertThat(cache.getValue().getImageUrls()).contains("cdn.example.com/1.jpg");
     }
 
     @Test
     void refusesMissingKcHandleWithoutMakingAnExternalRequest() {
-        EbayProductCacheMapper cacheMapper = mock(EbayProductCacheMapper.class);
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
         KickScrewClient kickScrewClient = mock(KickScrewClient.class);
         when(cacheMapper.selectById("UNKNOWN-1")).thenReturn(null);
@@ -86,7 +86,7 @@ class EbayProductMetadataServiceTest {
 
     @Test
     void completeExcelOverridesAvoidCacheAndExternalLookup() {
-        EbayProductCacheMapper cacheMapper = mock(EbayProductCacheMapper.class);
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
         KickScrewClient kickScrewClient = mock(KickScrewClient.class);
         EbayProductMetadataService service = new EbayProductMetadataService(
