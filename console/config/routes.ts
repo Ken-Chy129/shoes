@@ -81,6 +81,11 @@ export default [
     ]
   },
   {
+    path: '/catalog',
+    layout: true,
+    component: './catalog'
+  },
+  {
     path: '/task',
     layout: true,
     component: './task/history'

@@ -162,6 +162,10 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           ]
         },
         {
+          name: "商品资料库",
+          path: "/catalog"
+        },
+        {
           name: "任务",
           path: "/task"
         },
@@ -226,4 +230,3 @@ export const request = {
 //     history.push('/');
 //   }
 // }
-
