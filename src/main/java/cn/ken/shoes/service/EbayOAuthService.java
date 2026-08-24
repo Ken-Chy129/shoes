@@ -124,6 +124,22 @@ public class EbayOAuthService {
         return status;
     }
 
+    public synchronized void clearAuthorization() {
+        accessToken = "";
+        refreshToken = "";
+        grantedScopes = properties.getScopes();
+        accessTokenExpiresAt = 0L;
+        refreshTokenExpiresAt = 0L;
+
+        Properties stored = new Properties();
+        stored.setProperty("access.token", "");
+        stored.setProperty("refresh.token", "");
+        stored.setProperty("scopes", Objects.toString(grantedScopes, ""));
+        stored.setProperty("access.token.expires.at", "0");
+        stored.setProperty("refresh.token.expires.at", "0");
+        configService.saveSecretConfig(tokenConfigFile(), stored);
+    }
+
     private void validateAndConsumeState(String state) {
         if (state == null || state.isBlank()) {
             throw new IllegalArgumentException("OAuth state is blank");

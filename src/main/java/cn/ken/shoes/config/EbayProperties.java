@@ -59,6 +59,10 @@ public class EbayProperties {
         return apiRoot() + "/commerce/taxonomy/v1/";
     }
 
+    public String getNotificationApiEndpoint() {
+        return apiRoot() + "/commerce/notification/v1/";
+    }
+
     public boolean isConfigured() {
         return isPresent(clientId) && isPresent(clientSecret) && isPresent(ruName);
     }

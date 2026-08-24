@@ -130,6 +130,31 @@ class EbayOAuthServiceTest {
         assertThat(persisted.getValue().getProperty("scopes")).isEqualTo(originallyGrantedScopes);
     }
 
+    @Test
+    void clearsPersistedAuthorizationForAccountDeletionCompliance() {
+        JSONObject tokenResponse = new JSONObject();
+        tokenResponse.put("access_token", "access-token");
+        tokenResponse.put("refresh_token", "refresh-token");
+        tokenResponse.put("expires_in", 7200L);
+        tokenResponse.put("refresh_token_expires_in", 47_304_000L);
+        JSONObject authorization = service.createAuthorizationRequest();
+        String state = queryParameters(authorization.getString("authorizeUrl")).get("state");
+        when(tokenClient.exchangeAuthorizationCode("authorization-code", "sandbox-runame"))
+                .thenReturn(tokenResponse);
+        service.exchangeAuthorizationCode("authorization-code", state);
+
+        service.clearAuthorization();
+
+        assertThat(service.getStatus().getBooleanValue("hasAccessToken")).isFalse();
+        assertThat(service.getStatus().getBooleanValue("hasRefreshToken")).isFalse();
+        ArgumentCaptor<Properties> persisted = ArgumentCaptor.forClass(Properties.class);
+        verify(configService, org.mockito.Mockito.times(2))
+                .saveSecretConfig(any(), persisted.capture());
+        Properties cleared = persisted.getAllValues().get(1);
+        assertThat(cleared.getProperty("access.token")).isEmpty();
+        assertThat(cleared.getProperty("refresh.token")).isEmpty();
+    }
+
     private Map<String, String> queryParameters(String url) {
         return Arrays.stream(URI.create(url).getRawQuery().split("&"))
                 .map(part -> part.split("=", 2))
