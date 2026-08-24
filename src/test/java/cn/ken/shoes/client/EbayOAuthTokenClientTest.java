@@ -9,6 +9,7 @@ import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -37,6 +38,20 @@ class EbayOAuthTokenClientTest {
     @AfterEach
     void tearDown() throws IOException {
         server.shutdown();
+    }
+
+    @Test
+    void springUsesTheProductionConstructorWhenTheTestConstructorAlsoExists() {
+        EbayProperties properties = new EbayProperties();
+
+        try (AnnotationConfigApplicationContext context =
+                     new AnnotationConfigApplicationContext()) {
+            context.registerBean(EbayProperties.class, () -> properties);
+            context.register(EbayOAuthTokenClient.class);
+            context.refresh();
+
+            assertThat(context.getBean(EbayOAuthTokenClient.class)).isNotNull();
+        }
     }
 
     @Test
