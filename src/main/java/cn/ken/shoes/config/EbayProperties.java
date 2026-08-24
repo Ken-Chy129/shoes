@@ -23,6 +23,7 @@ public class EbayProperties {
     private String defaultReturnPolicyId = "6246169000";
     private String defaultMensCategoryId = "15709";
     private String defaultWomensCategoryId = "95672";
+    private String defaultCategoryTreeId = "0";
     private String defaultMarketplaceId = "EBAY_US";
     private String defaultCurrency = "USD";
     private String defaultContentLanguage = "en-US";
@@ -49,6 +50,10 @@ public class EbayProperties {
 
     public String getAccountApiEndpoint() {
         return apiRoot() + "/sell/account/v1/";
+    }
+
+    public String getTaxonomyApiEndpoint() {
+        return apiRoot() + "/commerce/taxonomy/v1/";
     }
 
     public boolean isConfigured() {

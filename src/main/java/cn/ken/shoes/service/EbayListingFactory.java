@@ -9,10 +9,8 @@ import org.springframework.stereotype.Component;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -22,9 +20,12 @@ public class EbayListingFactory {
     private static final Pattern SIZE_PATTERN = Pattern.compile("^(USM|USW|EU)([0-9]{1,2}(?:\\.5)?)$");
     private static final int MAX_SKU_LENGTH = 50;
     private final EbayProperties properties;
+    private final EbayListingTaxonomyService taxonomyService;
 
-    public EbayListingFactory(EbayProperties properties) {
+    public EbayListingFactory(EbayProperties properties,
+                              EbayListingTaxonomyService taxonomyService) {
         this.properties = properties;
+        this.taxonomyService = taxonomyService;
     }
 
     public EbayListingRequest create(EbayListingExcel row, EbayProductMetadata metadata) {
@@ -50,7 +51,9 @@ public class EbayListingFactory {
         request.setImageUrls(metadata.getImageUrls().stream().limit(12).toList());
         request.setQuantity(row.getQuantity());
         request.setCondition("NEW");
-        request.setCategoryId(categoryId(row, metadata, size));
+        EbayListingTaxonomyService.ResolvedTaxonomy taxonomy = taxonomyService.resolve(
+                row.getCategoryId(), styleId, metadata, size.system(), size.value());
+        request.setCategoryId(taxonomy.categoryId());
         request.setMarketplaceId(properties.getDefaultMarketplaceId());
         request.setCurrency(properties.getDefaultCurrency());
         request.setPrice(row.getPrice());
@@ -60,7 +63,7 @@ public class EbayListingFactory {
         request.setReturnPolicyId(required(properties.getDefaultReturnPolicyId(), "退货政策"));
         request.setBrand(metadata.getBrand());
         request.setMpn(styleId);
-        request.setAspects(aspects(metadata, size));
+        request.setAspects(taxonomy.aspects());
         request.setContentLanguage(properties.getDefaultContentLanguage());
         return request;
     }
@@ -82,44 +85,6 @@ public class EbayListingFactory {
         String hash = sha256(source).substring(0, 8).toUpperCase(Locale.ROOT);
         int readableLength = Math.min(readable.length(), MAX_SKU_LENGTH - hash.length());
         return readable.substring(0, readableLength) + hash;
-    }
-
-    private String categoryId(EbayListingExcel row, EbayProductMetadata metadata, ParsedSize size) {
-        if (row.getCategoryId() != null && !row.getCategoryId().isBlank()) {
-            if (!row.getCategoryId().trim().matches("[0-9]{1,20}")) {
-                throw new IllegalArgumentException("分类ID必须是数字");
-            }
-            return row.getCategoryId().trim();
-        }
-        boolean women = "USW".equals(size.system())
-                || (metadata.getGender() != null
-                && metadata.getGender().toLowerCase(Locale.ROOT).contains("women"));
-        return women ? properties.getDefaultWomensCategoryId() : properties.getDefaultMensCategoryId();
-    }
-
-    private Map<String, List<String>> aspects(EbayProductMetadata metadata, ParsedSize size) {
-        Map<String, List<String>> aspects = new LinkedHashMap<>();
-        switch (size.system()) {
-            case "USM" -> {
-                aspects.put("US Shoe Size", List.of(size.value()));
-                aspects.put("Department", List.of("Men"));
-            }
-            case "USW" -> {
-                aspects.put("US Shoe Size", List.of(size.value()));
-                aspects.put("Department", List.of("Women"));
-            }
-            case "EU" -> aspects.put("EU Shoe Size", List.of(size.value()));
-            default -> throw new IllegalStateException("unsupported size system");
-        }
-        putAspect(aspects, "Color", metadata.getColor());
-        putAspect(aspects, "Upper Material", metadata.getUpperMaterial());
-        return aspects;
-    }
-
-    private void putAspect(Map<String, List<String>> aspects, String name, String value) {
-        if (value != null && !value.isBlank()) {
-            aspects.put(name, List.of(limit(value.trim(), 65)));
-        }
     }
 
     private String required(String value, String label) {

@@ -45,7 +45,16 @@ class EbayBulkListingServiceTest {
         properties.setDefaultFulfillmentPolicyId("6246174000");
         properties.setDefaultPaymentPolicyId("6246171000");
         properties.setDefaultReturnPolicyId("6246169000");
-        EbayListingFactory factory = new EbayListingFactory(properties);
+        EbayListingTaxonomyService taxonomyService = mock(EbayListingTaxonomyService.class);
+        when(taxonomyService.resolve(any(), any(), any(), any(), any()))
+                .thenReturn(new EbayListingTaxonomyService.ResolvedTaxonomy(
+                        "15709", "Men's Athletic Shoes",
+                        java.util.Map.of(
+                                "Brand", List.of("Nike"),
+                                "Department", List.of("Men"),
+                                "US Shoe Size", List.of("10"),
+                                "Style Code", List.of("DD1391-100"))));
+        EbayListingFactory factory = new EbayListingFactory(properties, taxonomyService);
         doAnswer(invocation -> {
             TaskDO task = invocation.getArgument(0);
             task.setId(88L);

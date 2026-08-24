@@ -12,10 +12,15 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class EbayListingFactoryTest {
 
     private EbayListingFactory factory;
+    private EbayListingTaxonomyService taxonomyService;
 
     @BeforeEach
     void setUp() {
@@ -24,7 +29,27 @@ class EbayListingFactoryTest {
         properties.setDefaultFulfillmentPolicyId("6246174000");
         properties.setDefaultPaymentPolicyId("6246171000");
         properties.setDefaultReturnPolicyId("6246169000");
-        factory = new EbayListingFactory(properties);
+        taxonomyService = mock(EbayListingTaxonomyService.class);
+        when(taxonomyService.resolve(any(), any(), any(), any(), any()))
+                .thenAnswer(invocation -> {
+                    String categoryOverride = invocation.getArgument(0);
+                    String styleCode = invocation.getArgument(1);
+                    String sizeSystem = invocation.getArgument(3);
+                    String sizeValue = invocation.getArgument(4);
+                    boolean women = "USW".equals(sizeSystem);
+                    String categoryId = categoryOverride != null
+                            ? categoryOverride : women ? "95672" : "15709";
+                    java.util.LinkedHashMap<String, List<String>> aspects = new java.util.LinkedHashMap<>();
+                    aspects.put("Brand", List.of("Nike"));
+                    aspects.put("Department", List.of(women ? "Women" : "Men"));
+                    aspects.put("US".equals(sizeSystem) || sizeSystem.toString().startsWith("US")
+                            ? "US Shoe Size" : "EU Shoe Size", List.of(sizeValue));
+                    aspects.put("Style Code", List.of(styleCode));
+                    aspects.put("Type", List.of("Sneakers"));
+                    return new EbayListingTaxonomyService.ResolvedTaxonomy(
+                            categoryId, "Athletic Shoes", aspects);
+                });
+        factory = new EbayListingFactory(properties, taxonomyService);
     }
 
     @Test
@@ -41,10 +66,25 @@ class EbayListingFactoryTest {
         assertThat(request.getCategoryId()).isEqualTo("15709");
         assertThat(request.getAspects())
                 .containsEntry("US Shoe Size", List.of("10"))
-                .containsEntry("Department", List.of("Men"));
+                .containsEntry("Department", List.of("Men"))
+                .containsEntry("Style Code", List.of("DD1391-100"))
+                .containsEntry("Type", List.of("Sneakers"));
         assertThat(request.getMerchantLocationKey()).isEqualTo("shantou_chenghai");
         assertThat(request.getFulfillmentPolicyId()).isEqualTo("6246174000");
         assertThat(request.getCondition()).isEqualTo("NEW");
+    }
+
+    @Test
+    void delegatesCategoryAndItemSpecificsToTheTaxonomyService() {
+        EbayListingExcel row = row("STYLE-1", "USM9", "99");
+        row.setCategoryId("12345");
+
+        EbayListingRequest request = factory.create(row, metadata());
+
+        assertThat(request.getCategoryId()).isEqualTo("12345");
+        assertThat(request.getAspects()).containsEntry("Style Code", List.of("STYLE-1"));
+        org.mockito.Mockito.verify(taxonomyService).resolve(
+                eq("12345"), eq("STYLE-1"), any(), eq("USM"), eq("9"));
     }
 
     @Test
