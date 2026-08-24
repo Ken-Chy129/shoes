@@ -40,3 +40,5 @@ build/
 /src/main/resources/config/
 .claude/
 docker-compose.yml
+.env
+.env.local
