@@ -85,6 +85,22 @@ class EbayNotificationSignatureVerifierTest {
                 formattedHttpPayload)).isTrue();
     }
 
+    @Test
+    void verifiesSha1EcdsaAdvertisedByTheEbayPublicKeyApi() throws Exception {
+        KeyPair keyPair = keyPair();
+        byte[] payload = "{\"value\":1}".getBytes(StandardCharsets.UTF_8);
+        EbayNotificationPublicKeyClient keyClient = mock(EbayNotificationPublicKeyClient.class);
+        when(keyClient.getPublicKey("key-123")).thenReturn(
+                new EbayNotificationPublicKeyClient.PublicKeyData(
+                        pem(keyPair), "ECDSA", "SHA1"));
+        EbayNotificationSignatureVerifier verifier =
+                new EbayNotificationSignatureVerifier(keyClient, () -> 1_000L);
+
+        assertThat(verifier.verify(
+                signatureHeader("key-123", keyPair, payload, "SHA1withECDSA"),
+                payload)).isTrue();
+    }
+
     private KeyPair keyPair() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
         generator.initialize(new ECGenParameterSpec("secp256r1"));
@@ -93,7 +109,12 @@ class EbayNotificationSignatureVerifierTest {
 
     private String signatureHeader(String keyId, KeyPair keyPair, byte[] payload)
             throws Exception {
-        Signature signature = Signature.getInstance("SHA256withECDSA");
+        return signatureHeader(keyId, keyPair, payload, "SHA256withECDSA");
+    }
+
+    private String signatureHeader(String keyId, KeyPair keyPair, byte[] payload,
+                                   String algorithm) throws Exception {
+        Signature signature = Signature.getInstance(algorithm);
         signature.initSign(keyPair.getPrivate());
         signature.update(payload);
         JSONObject header = new JSONObject(true);

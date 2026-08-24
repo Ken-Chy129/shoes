@@ -25,9 +25,11 @@ public class EbayNotificationSignatureVerifier {
     private static final long PUBLIC_KEY_TTL_MS = 60 * 60 * 1000L;
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final Map<String, String> SIGNATURE_ALGORITHMS = Map.of(
+            "SHA1:ECDSA", "SHA1withECDSA",
             "SHA256:ECDSA", "SHA256withECDSA",
             "SHA384:ECDSA", "SHA384withECDSA",
             "SHA512:ECDSA", "SHA512withECDSA",
+            "SHA1:EC", "SHA1withECDSA",
             "SHA256:EC", "SHA256withECDSA",
             "SHA384:EC", "SHA384withECDSA",
             "SHA512:EC", "SHA512withECDSA");
