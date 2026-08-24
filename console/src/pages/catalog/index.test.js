@@ -13,6 +13,9 @@ describe('product catalog UI contract', () => {
     expect(app).toContain('商品资料库');
     expect(service).toContain("PAGE = '/api/productCatalog/page'");
     expect(service).toContain("DETAIL = '/api/productCatalog/'");
+    expect(drawer).toContain('name="modelName"');
+    expect(drawer).toContain('name="productLine"');
+    expect(drawer).toContain('name="countryOfOrigin"');
     expect(page).toContain('CatalogEditDrawer');
     expect(drawer).toContain('编辑商品资料');
     expect(page).toContain('图片数量');

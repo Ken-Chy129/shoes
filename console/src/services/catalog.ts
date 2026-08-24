@@ -9,6 +9,9 @@ interface ProductCatalogItem {
     brand?: string;
     description?: string;
     productType?: string;
+    modelName?: string;
+    productLine?: string;
+    countryOfOrigin?: string;
     gender?: string;
     color?: string;
     colorway?: string;

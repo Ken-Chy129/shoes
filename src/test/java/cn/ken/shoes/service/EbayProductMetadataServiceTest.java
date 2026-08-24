@@ -29,6 +29,9 @@ class EbayProductMetadataServiceTest {
         cached.setModelNo("DD1391-100");
         cached.setTitle("Cached title");
         cached.setDescription("Cached description");
+        cached.setModelName("Dunk Low");
+        cached.setProductLine("Nike Dunk");
+        cached.setCountryOfOrigin("Vietnam");
         cached.setImageUrls("[\"https://cdn.example.com/cached.jpg\"]");
         when(cacheMapper.selectById("DD1391-100")).thenReturn(cached);
         EbayProductMetadataService service = new EbayProductMetadataService(
@@ -38,6 +41,9 @@ class EbayProductMetadataServiceTest {
 
         assertThat(result.getTitle()).isEqualTo("Cached title");
         assertThat(result.getImageUrls()).containsExactly("https://cdn.example.com/cached.jpg");
+        assertThat(result.getModelName()).isEqualTo("Dunk Low");
+        assertThat(result.getProductLine()).isEqualTo("Nike Dunk");
+        assertThat(result.getCountryOfOrigin()).isEqualTo("Vietnam");
         verifyNoInteractions(itemMapper, kickScrewClient);
     }
 
@@ -52,6 +58,9 @@ class EbayProductMetadataServiceTest {
         fetched.setTitle("Nike Dunk Low Retro");
         fetched.setDescription("Product description");
         fetched.setBrand("Nike");
+        fetched.setModelName("Dunk Low");
+        fetched.setProductLine("Nike Dunk");
+        fetched.setCountryOfOrigin("Vietnam");
         fetched.setImageUrls(List.of("https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg"));
         when(kickScrewClient.queryProductMetadata("nike-dunk-low-retro-white-black"))
                 .thenReturn(fetched);
@@ -66,6 +75,9 @@ class EbayProductMetadataServiceTest {
         verify(cacheMapper).upsertFromSource(cache.capture());
         assertThat(cache.getValue().getModelNo()).isEqualTo("DD1391-100");
         assertThat(cache.getValue().getImageUrls()).contains("cdn.example.com/1.jpg");
+        assertThat(cache.getValue().getModelName()).isEqualTo("Dunk Low");
+        assertThat(cache.getValue().getProductLine()).isEqualTo("Nike Dunk");
+        assertThat(cache.getValue().getCountryOfOrigin()).isEqualTo("Vietnam");
     }
 
     @Test

@@ -74,6 +74,9 @@ public class EbayProductMetadataService {
         metadata.setBrand(cache.getBrand());
         metadata.setDescription(cache.getDescription());
         metadata.setProductType(cache.getProductType());
+        metadata.setModelName(cache.getModelName());
+        metadata.setProductLine(cache.getProductLine());
+        metadata.setCountryOfOrigin(cache.getCountryOfOrigin());
         metadata.setGender(cache.getGender());
         metadata.setColor(cache.getColor());
         metadata.setColorway(cache.getColorway());
@@ -91,6 +94,9 @@ public class EbayProductMetadataService {
         cache.setBrand(metadata.getBrand());
         cache.setDescription(metadata.getDescription());
         cache.setProductType(metadata.getProductType());
+        cache.setModelName(metadata.getModelName());
+        cache.setProductLine(metadata.getProductLine());
+        cache.setCountryOfOrigin(metadata.getCountryOfOrigin());
         cache.setGender(metadata.getGender());
         cache.setColor(metadata.getColor());
         cache.setColorway(metadata.getColorway());

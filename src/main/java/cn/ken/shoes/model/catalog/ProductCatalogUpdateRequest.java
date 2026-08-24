@@ -11,6 +11,9 @@ public class ProductCatalogUpdateRequest {
     private String brand;
     private String description;
     private String productType;
+    private String modelName;
+    private String productLine;
+    private String countryOfOrigin;
     private String gender;
     private String color;
     private String colorway;

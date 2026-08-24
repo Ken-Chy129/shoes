@@ -76,6 +76,10 @@ public class ProductCatalogService {
         product.setDescription(optionalText(request.getDescription(), product.getDescription(),
                 MAX_DESCRIPTION_LENGTH, "描述"));
         product.setProductType(optionalValue(request.getProductType(), product.getProductType(), 64, "商品类型"));
+        product.setModelName(optionalValue(request.getModelName(), product.getModelName(), 128, "型号"));
+        product.setProductLine(optionalValue(request.getProductLine(), product.getProductLine(), 128, "产品线"));
+        product.setCountryOfOrigin(optionalValue(request.getCountryOfOrigin(),
+                product.getCountryOfOrigin(), 64, "原产国"));
         product.setGender(optionalValue(request.getGender(), product.getGender(), 32, "性别"));
         product.setColor(optionalValue(request.getColor(), product.getColor(), 128, "颜色"));
         product.setColorway(optionalValue(request.getColorway(), product.getColorway(), 255, "配色"));
@@ -99,6 +103,9 @@ public class ProductCatalogService {
         item.setBrand(product.getBrand());
         item.setDescription(product.getDescription());
         item.setProductType(product.getProductType());
+        item.setModelName(product.getModelName());
+        item.setProductLine(product.getProductLine());
+        item.setCountryOfOrigin(product.getCountryOfOrigin());
         item.setGender(product.getGender());
         item.setColor(product.getColor());
         item.setColorway(product.getColorway());

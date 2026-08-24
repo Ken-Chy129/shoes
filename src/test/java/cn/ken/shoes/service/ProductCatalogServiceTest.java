@@ -41,6 +41,9 @@ class ProductCatalogServiceTest {
             assertThat(item.getImageUrls()).containsExactly(
                     "https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg");
             assertThat(item.getImageCount()).isEqualTo(2);
+            assertThat(item.getModelName()).isEqualTo("Dunk Low");
+            assertThat(item.getProductLine()).isEqualTo("Nike Dunk");
+            assertThat(item.getCountryOfOrigin()).isEqualTo("Vietnam");
         });
     }
 
@@ -51,6 +54,9 @@ class ProductCatalogServiceTest {
         ProductCatalogService service = new ProductCatalogService(mapper);
         ProductCatalogUpdateRequest request = new ProductCatalogUpdateRequest();
         request.setTitle("Edited title");
+        request.setModelName("Dunk Low Retro");
+        request.setProductLine("Nike Dunk");
+        request.setCountryOfOrigin("Vietnam");
         request.setImageUrls(List.of(" https://cdn.example.com/edited.jpg "));
 
         ProductCatalogItem result = service.update(" dd1391-100 ", request);
@@ -60,6 +66,9 @@ class ProductCatalogServiceTest {
         assertThat(saved.getValue().getTitle()).isEqualTo("Edited title");
         assertThat(saved.getValue().getBrand()).isEqualTo("Nike");
         assertThat(saved.getValue().getManualOverride()).isTrue();
+        assertThat(saved.getValue().getModelName()).isEqualTo("Dunk Low Retro");
+        assertThat(saved.getValue().getProductLine()).isEqualTo("Nike Dunk");
+        assertThat(saved.getValue().getCountryOfOrigin()).isEqualTo("Vietnam");
         assertThat(result.getImageUrls()).containsExactly("https://cdn.example.com/edited.jpg");
     }
 
@@ -108,6 +117,9 @@ class ProductCatalogServiceTest {
         product.setTitle("Nike Dunk Low Retro");
         product.setBrand("Nike");
         product.setDescription("Product description");
+        product.setModelName("Dunk Low");
+        product.setProductLine("Nike Dunk");
+        product.setCountryOfOrigin("Vietnam");
         product.setImageUrls("[\"https://cdn.example.com/1.jpg\",\"https://cdn.example.com/2.jpg\"]");
         product.setSource("kickscrew");
         product.setManualOverride(false);

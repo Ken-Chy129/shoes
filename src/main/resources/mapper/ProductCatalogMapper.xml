@@ -22,7 +22,8 @@
     </select>
 
     <select id="selectPage" resultType="cn.ken.shoes.model.entity.ProductCatalogDO">
-        SELECT model_no, title, brand, description, product_type, gender, color, colorway,
+        SELECT model_no, title, brand, description, product_type, model_name, product_line,
+               country_of_origin, gender, color, colorway,
                upper_material, image_urls, source, source_updated_at, manual_override,
                gmt_create, gmt_modified
         FROM product_catalog
@@ -33,16 +34,21 @@
 
     <insert id="upsertFromSource">
         INSERT INTO product_catalog
-            (model_no, title, brand, description, product_type, gender, color, colorway,
+            (model_no, title, brand, description, product_type, model_name, product_line,
+             country_of_origin, gender, color, colorway,
              upper_material, image_urls, source, source_updated_at, manual_override)
         VALUES
-            (#{modelNo}, #{title}, #{brand}, #{description}, #{productType}, #{gender}, #{color},
+            (#{modelNo}, #{title}, #{brand}, #{description}, #{productType}, #{modelName},
+             #{productLine}, #{countryOfOrigin}, #{gender}, #{color},
              #{colorway}, #{upperMaterial}, #{imageUrls}, #{source}, #{sourceUpdatedAt}, 0)
         ON DUPLICATE KEY UPDATE
             title = IF(manual_override = 0, VALUES(title), title),
             brand = IF(manual_override = 0, VALUES(brand), brand),
             description = IF(manual_override = 0, VALUES(description), description),
             product_type = IF(manual_override = 0, VALUES(product_type), product_type),
+            model_name = IF(manual_override = 0, VALUES(model_name), model_name),
+            product_line = IF(manual_override = 0, VALUES(product_line), product_line),
+            country_of_origin = IF(manual_override = 0, VALUES(country_of_origin), country_of_origin),
             gender = IF(manual_override = 0, VALUES(gender), gender),
             color = IF(manual_override = 0, VALUES(color), color),
             colorway = IF(manual_override = 0, VALUES(colorway), colorway),
@@ -58,6 +64,9 @@
             brand = #{brand},
             description = #{description},
             product_type = #{productType},
+            model_name = #{modelName},
+            product_line = #{productLine},
+            country_of_origin = #{countryOfOrigin},
             gender = #{gender},
             color = #{color},
             colorway = #{colorway},

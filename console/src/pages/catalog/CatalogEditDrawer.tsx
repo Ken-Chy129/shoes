@@ -64,9 +64,18 @@ const CatalogEditDrawer = ({open, product, onClose, onSaved}: CatalogEditDrawerP
                 <Form.Item name="description" label="描述"><Input.TextArea rows={5} maxLength={16000} showCount /></Form.Item>
                 <Space size="middle" wrap style={{display: 'flex'}}>
                     <Form.Item name="productType" label="商品类型"><Input maxLength={64} /></Form.Item>
+                    <Form.Item name="modelName" label="型号（Model）"><Input maxLength={128} /></Form.Item>
+                    <Form.Item name="productLine" label="产品线"><Input maxLength={128} /></Form.Item>
                     <Form.Item name="gender" label="性别"><Input maxLength={32} /></Form.Item>
                     <Form.Item name="color" label="颜色"><Input maxLength={128} /></Form.Item>
                 </Space>
+                <Form.Item
+                    name="countryOfOrigin"
+                    label="原产国"
+                    extra="仅填写可靠的商品产地，不能根据发货仓库所在国家推断。"
+                >
+                    <Input maxLength={64} />
+                </Form.Item>
                 <Form.Item name="colorway" label="配色"><Input maxLength={255} /></Form.Item>
                 <Form.Item name="upperMaterial" label="鞋面材质"><Input maxLength={128} /></Form.Item>
                 <Form.Item

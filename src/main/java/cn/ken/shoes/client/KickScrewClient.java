@@ -348,6 +348,9 @@ public class KickScrewClient {
                       { namespace: "product", key: "colorway" }
                       { namespace: "product", key: "upper_material" }
                       { namespace: "product", key: "upper" }
+                      { namespace: "product", key: "style" }
+                      { namespace: "product", key: "series" }
+                      { namespace: "product", key: "country_of_origin" }
                     ]) { key value }
                   }
                 }
@@ -380,6 +383,9 @@ public class KickScrewClient {
         metadata.setColorway(metafields.get("colorway"));
         metadata.setUpperMaterial(Optional.ofNullable(metafields.get("upper_material"))
                 .filter(StrUtil::isNotBlank).orElse(metafields.get("upper")));
+        metadata.setModelName(metafields.get("style"));
+        metadata.setProductLine(metafields.get("series"));
+        metadata.setCountryOfOrigin(metafields.get("country_of_origin"));
 
         LinkedHashSet<String> images = new LinkedHashSet<>();
         Optional.ofNullable(product.getJSONObject("featuredImage"))
