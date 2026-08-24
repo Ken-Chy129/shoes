@@ -62,6 +62,7 @@ class EbayListingServiceTest {
         assertThat(product.getString("title")).isEqualTo("Test Sneaker");
         assertThat(product.getJSONArray("imageUrls")).containsExactly("https://example.com/shoe.jpg");
         assertThat(product.getJSONObject("aspects").getJSONArray("US Shoe Size")).containsExactly("9");
+        assertThat(product.getJSONObject("aspects").getJSONArray("Brand")).containsExactly("Test Brand");
 
         JSONObject offer = offerPayload.getValue();
         assertThat(offer.getString("format")).isEqualTo("FIXED_PRICE");

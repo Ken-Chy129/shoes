@@ -71,7 +71,11 @@ public class EbayListingService {
         product.put("title", request.getTitle());
         product.put("description", request.getDescription());
         product.put("imageUrls", JSON.parseArray(JSON.toJSONString(request.getImageUrls())));
-        product.put("aspects", JSON.parseObject(JSON.toJSONString(request.getAspects())));
+        JSONObject aspects = JSON.parseObject(JSON.toJSONString(request.getAspects()));
+        if (request.getBrand() != null && !request.getBrand().isBlank()) {
+            aspects.put("Brand", new JSONArray().fluentAdd(request.getBrand().trim()));
+        }
+        product.put("aspects", aspects);
         putIfPresent(product, "brand", request.getBrand());
         putIfPresent(product, "mpn", request.getMpn());
 
