@@ -17,6 +17,15 @@ public class EbayProperties {
             + "https://api.ebay.com/oauth/api_scope/sell.account";
     private long stateTtlSeconds = 600L;
     private int maxPendingStates = 100;
+    private String defaultMerchantLocationKey = "shantou_chenghai";
+    private String defaultFulfillmentPolicyId = "6246174000";
+    private String defaultPaymentPolicyId = "6246171000";
+    private String defaultReturnPolicyId = "6246169000";
+    private String defaultMensCategoryId = "15709";
+    private String defaultWomensCategoryId = "95672";
+    private String defaultMarketplaceId = "EBAY_US";
+    private String defaultCurrency = "USD";
+    private String defaultContentLanguage = "en-US";
 
     public boolean isSandbox() {
         return !"production".equalsIgnoreCase(environment);

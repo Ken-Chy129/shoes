@@ -37,6 +37,7 @@ poison:
 
 kc:
   apiKey: your_api_key
+  storefrontToken: your_storefront_token
 
 stockx:
   state: your_state

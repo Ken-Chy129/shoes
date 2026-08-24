@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.ken.shoes.mapper.EbayProductCacheMapper">
+
+    <insert id="upsert">
+        INSERT INTO ebay_product_cache
+            (model_no, title, brand, description, product_type, gender, color, colorway,
+             upper_material, image_urls, source, source_updated_at)
+        VALUES
+            (#{modelNo}, #{title}, #{brand}, #{description}, #{productType}, #{gender}, #{color},
+             #{colorway}, #{upperMaterial}, #{imageUrls}, #{source}, #{sourceUpdatedAt})
+        ON DUPLICATE KEY UPDATE
+            title = VALUES(title), brand = VALUES(brand), description = VALUES(description),
+            product_type = VALUES(product_type), gender = VALUES(gender), color = VALUES(color),
+            colorway = VALUES(colorway), upper_material = VALUES(upper_material),
+            image_urls = VALUES(image_urls), source = VALUES(source),
+            source_updated_at = VALUES(source_updated_at)
+    </insert>
+
+</mapper>

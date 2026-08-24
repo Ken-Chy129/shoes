@@ -6,6 +6,7 @@ import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.config.CommonConfig;
 import cn.ken.shoes.config.KickScrewConfig;
 import cn.ken.shoes.model.entity.KickScrewPriceDO;
+import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
@@ -31,9 +32,11 @@ import java.util.*;
 public class KickScrewClient {
 
     private static final String AGENT = "Algolia for JavaScript (4.24.0); Browser; instantsearch.js (4.74.0); react (18.3.1); react-instantsearch (7.13.0); react-instantsearch-core (7.13.0); next.js (14.2.10); JS Helper (3.22.4)";
-
     @Value("${kc.apiKey}")
     private String apiKey;
+
+    @Value("${kc.storefrontToken:}")
+    private String storefrontToken;
 
     private static final Integer PAGE_SIZE = 30;
 
@@ -309,7 +312,7 @@ public class KickScrewClient {
                                 "country", "US"
                         )
                 )),
-                Headers.of("x-shopify-storefront-access-token", "43a507be1a455a4018117e16f8969b7e")
+                getStorefrontHeaders()
         );
         return Optional.ofNullable(result)
                 .map(JSON::parseObject)
@@ -322,6 +325,101 @@ public class KickScrewClient {
                 .stream()
                 .map(json -> json.getObject("node", KickScrewSizePrice.class))
                 .toList();
+    }
+
+    /**
+     * 冷数据补全专用：一次 Shopify GraphQL 请求返回 eBay 上架需要的商品资料。
+     */
+    public EbayProductMetadata queryProductMetadata(String handle) {
+        if (StrUtil.isBlank(handle)) {
+            throw new IllegalArgumentException("KC handle不能为空");
+        }
+        String query = """
+                query EbayProduct($handle: String!, $country: CountryCode!) @inContext(country: $country) {
+                  product(handle: $handle) {
+                    title
+                    vendor
+                    description
+                    productType
+                    featuredImage { url }
+                    images(first: 12) { edges { node { url } } }
+                    metafields(identifiers: [
+                      { namespace: "product", key: "color" }
+                      { namespace: "product", key: "colorway" }
+                      { namespace: "product", key: "upper_material" }
+                      { namespace: "product", key: "upper" }
+                    ]) { key value }
+                  }
+                }
+                """;
+        String raw = HttpUtil.doPost(KickScrewApiConstant.SEARCH_ITEM_SIZE_PRICE,
+                JSON.toJSONString(Map.of(
+                        "query", query,
+                        "variables", Map.of("handle", handle.trim(), "country", "US")
+                )), getStorefrontHeaders());
+        JSONObject product = Optional.ofNullable(raw)
+                .filter(StrUtil::isNotBlank)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONObject("data"))
+                .map(json -> json.getJSONObject("product"))
+                .orElseThrow(() -> new IllegalArgumentException("KC未返回可用商品资料"));
+
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle(product.getString("title"));
+        metadata.setBrand(product.getString("vendor"));
+        metadata.setDescription(product.getString("description"));
+        metadata.setProductType(product.getString("productType"));
+        Map<String, String> metafields = new HashMap<>();
+        Optional.ofNullable(product.getJSONArray("metafields"))
+                .map(array -> array.toJavaList(JSONObject.class))
+                .orElse(List.of())
+                .stream()
+                .filter(Objects::nonNull)
+                .forEach(field -> metafields.put(field.getString("key"), cleanMetafield(field.getString("value"))));
+        metadata.setColor(metafields.get("color"));
+        metadata.setColorway(metafields.get("colorway"));
+        metadata.setUpperMaterial(Optional.ofNullable(metafields.get("upper_material"))
+                .filter(StrUtil::isNotBlank).orElse(metafields.get("upper")));
+
+        LinkedHashSet<String> images = new LinkedHashSet<>();
+        Optional.ofNullable(product.getJSONObject("featuredImage"))
+                .map(image -> image.getString("url"))
+                .filter(StrUtil::isNotBlank)
+                .ifPresent(images::add);
+        Optional.ofNullable(product.getJSONObject("images"))
+                .map(imagesObject -> imagesObject.getJSONArray("edges"))
+                .map(array -> array.toJavaList(JSONObject.class))
+                .orElse(List.of())
+                .stream()
+                .map(edge -> edge.getJSONObject("node"))
+                .filter(Objects::nonNull)
+                .map(node -> node.getString("url"))
+                .filter(StrUtil::isNotBlank)
+                .forEach(images::add);
+        metadata.setImageUrls(List.copyOf(images));
+        return metadata;
+    }
+
+    private String cleanMetafield(String value) {
+        if (value == null) {
+            return null;
+        }
+        String cleaned = value.trim();
+        if (cleaned.length() >= 2 && cleaned.startsWith("\"") && cleaned.endsWith("\"")) {
+            try {
+                return JSON.parseObject("{\"value\":" + cleaned + "}").getString("value");
+            } catch (Exception ignored) {
+                return cleaned.substring(1, cleaned.length() - 1);
+            }
+        }
+        return cleaned;
+    }
+
+    private Headers getStorefrontHeaders() {
+        if (StrUtil.isBlank(storefrontToken)) {
+            throw new IllegalStateException("KC Storefront API尚未配置");
+        }
+        return Headers.of("x-shopify-storefront-access-token", storefrontToken);
     }
 
     public List<Map<String, String>> queryItemSizeChart(String brand, String modelNo) {
