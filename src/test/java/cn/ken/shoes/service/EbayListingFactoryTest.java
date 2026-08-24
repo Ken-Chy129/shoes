@@ -28,12 +28,16 @@ class EbayListingFactoryTest {
     }
 
     @Test
-    void createsStableSkuAndMensListingFromCompactSize() {
+    void createsStableAlphanumericSkuAndMensListingFromCompactSize() {
         EbayListingExcel row = row("DD1391-100", "USM10", "129.99");
 
         EbayListingRequest request = factory.create(row, metadata());
 
-        assertThat(request.getSku()).isEqualTo("EBAY-DD1391-100-USM10-NEW");
+        assertThat(request.getSku())
+                .startsWith("EBAYDD1391100USM10NEW")
+                .matches("[A-Z0-9]{1,50}");
+        assertThat(factory.sku("STYLE-1", "USM10"))
+                .isNotEqualTo(factory.sku("STYLE1", "USM10"));
         assertThat(request.getCategoryId()).isEqualTo("15709");
         assertThat(request.getAspects())
                 .containsEntry("US Shoe Size", List.of("10"))

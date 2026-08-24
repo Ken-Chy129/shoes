@@ -76,13 +76,12 @@ public class EbayListingFactory {
     }
 
     String sku(String styleId, String normalizedSize) {
-        String source = "EBAY-" + styleId + "-" + normalizedSize + "-NEW";
-        String safe = source.replaceAll("[^A-Z0-9._-]", "-").replaceAll("-+", "-");
-        if (safe.length() <= MAX_SKU_LENGTH) {
-            return safe;
-        }
-        String hash = sha256(safe).substring(0, 8);
-        return safe.substring(0, MAX_SKU_LENGTH - hash.length() - 1) + "-" + hash;
+        String source = String.join("|", "EBAY", styleId, normalizedSize, "NEW")
+                .toUpperCase(Locale.ROOT);
+        String readable = source.replaceAll("[^A-Z0-9]", "");
+        String hash = sha256(source).substring(0, 8).toUpperCase(Locale.ROOT);
+        int readableLength = Math.min(readable.length(), MAX_SKU_LENGTH - hash.length());
+        return readable.substring(0, readableLength) + hash;
     }
 
     private String categoryId(EbayListingExcel row, EbayProductMetadata metadata, ParsedSize size) {
