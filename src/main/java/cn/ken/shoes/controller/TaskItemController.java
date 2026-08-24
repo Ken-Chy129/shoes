@@ -11,6 +11,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
+import cn.ken.shoes.model.excel.EbayListingTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -75,6 +76,31 @@ public class TaskItemController {
         response.setCharacterEncoding("utf-8");
         String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
+
+        if (task != null && "ebay_bulk_listing".equals(task.getTaskType())) {
+            SimpleDateFormat ebayDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            List<EbayListingTaskExcel> ebayRows = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                EbayListingTaskExcel excel = new EbayListingTaskExcel();
+                excel.setSku(item.getSku());
+                excel.setOfferId(item.getOfferId());
+                excel.setListingId(item.getListingId());
+                excel.setBrand(item.getBrand());
+                excel.setTitle(item.getTitle());
+                excel.setStyleId(item.getStyleId());
+                excel.setSize(item.getSize());
+                excel.setQuantity(item.getListingQuantity());
+                excel.setPrice(item.getCurrentPrice());
+                excel.setOperateResult(item.getOperateResult());
+                excel.setOperateTime(item.getOperateTime() != null
+                        ? ebayDateFormat.format(item.getOperateTime()) : "-");
+                ebayRows.add(excel);
+            }
+            EasyExcel.write(response.getOutputStream(), EbayListingTaskExcel.class)
+                    .sheet("eBay批量上架明细")
+                    .doWrite(ebayRows);
+            return;
+        }
 
         if (task != null && TaskTypeEnum.FETCH_ORDERS.getCode().equals(task.getTaskType())) {
             List<StockXOrderTaskExcel> orderExcelList = new ArrayList<>();
@@ -185,6 +211,8 @@ public class TaskItemController {
             sb.append("StockX");
         } else if ("kickscrew".equals(platform)) {
             sb.append("KC");
+        } else if ("ebay".equals(platform)) {
+            sb.append("eBay");
         } else if (StrUtil.isNotBlank(platform)) {
             sb.append(platform);
         }

@@ -8,6 +8,7 @@ const TASK_TYPE = {
     PURCHASE: 'purchase',
     EXTEND_SHIPPING: 'extend_shipping',
     REPLENISHMENT: 'replenishment',
+    EBAY_BULK_LISTING: 'ebay_bulk_listing',
 };
 
 enum TASK_API {
@@ -51,6 +52,9 @@ enum TASK_API {
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）
     START_REPLENISHMENT = '/api/task/stockx/startReplenishment',
+    // eBay Excel 批量上架
+    EBAY_START_BULK_LISTING = '/api/task/ebay/startBulkListing',
+    EBAY_BULK_LISTING_TEMPLATE = '/api/task/ebay/bulkListingTemplate',
 }
 
 export {TASK_API, TASK_TYPE}

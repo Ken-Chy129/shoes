@@ -2,7 +2,7 @@ import {
     Alert, Button, Card, DatePicker, Form, Input, InputNumber, message, Modal, Popconfirm,
     Radio, Select, Space, Table, Tooltip, Upload, Switch, Tag, Badge, Divider, Typography,
 } from "antd";
-import {PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
+import {DownloadOutlined, PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useRef, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {TASK_API, TASK_TYPE} from "@/services/task";
@@ -13,6 +13,8 @@ import {
     STOCKX_ORDER_TYPE_OPTIONS,
     STOCKX_PURCHASE_OPERATION_OPTIONS,
     STOCKX_TASK_OPTIONS,
+    EBAY_TASK_OPTIONS,
+    ALL_TASK_OPTIONS,
     TASK_TYPE_LABELS,
 } from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
@@ -257,7 +259,24 @@ const TaskPage = () => {
     const handleCreateTask = () => {
         createForm.validateFields().then((values: any) => {
             setCreating(true);
-            if (createPlatform === 'stockx' && createTaskType === 'listing') {
+            if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
+                const file = values.ebayListingExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传eBay批量上架Excel'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.EBAY_START_BULK_LISTING, file, {}, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay批量上架任务创建失败');
+                            setCreating(false);
+                            return;
+                        }
+                        message.success(`eBay批量上架任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                        setCreating(false);
+                    },
+                    onError: () => { message.error('eBay批量上架Excel上传失败'); setCreating(false); },
+                });
+            } else if (createPlatform === 'stockx' && createTaskType === 'listing') {
                 const modelNoSearch = values.searchMode === 'model_no';
                 if (modelNoSearch) {
                     const modelNoFile = values.searchModelNoExcel?.[0]?.originFileObj;
@@ -448,7 +467,7 @@ const TaskPage = () => {
     const columns = [
         {
             title: '平台', dataIndex: 'platform', key: 'platform', width: 80,
-            render: (platform: string) => ({ stockx: 'StockX', kickscrew: 'KC' }[platform] || platform),
+            render: (platform: string) => ({ stockx: 'StockX', kickscrew: 'KC', ebay: 'eBay' }[platform] || platform),
         },
         {
             title: '任务类型', dataIndex: 'taskType', key: 'type', width: 120,
@@ -525,6 +544,14 @@ const TaskPage = () => {
                                 {attrs.keywordTotal != null && <><br/>词 {attrs.keywordIdx ?? 0}/{attrs.keywordTotal}</>}
                             </span>
                         </Tooltip>;
+                    } catch { return '-'; }
+                }
+                if (record.taskType === 'ebay_bulk_listing' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        return <span style={{lineHeight: 1.3, display: 'inline-block'}}>
+                            成功 {attrs.succeeded ?? 0}<br/>失败 {attrs.failed ?? 0}
+                        </span>;
                     } catch { return '-'; }
                 }
                 if (record.taskType === 'extend_shipping' && record.attributes) {
@@ -625,7 +652,8 @@ const TaskPage = () => {
                         }}>Excel</Button>
                     )}
                     {(record.status === 'running' || record.status === '运行中')
-                        && record.taskType !== 'extend_shipping' && record.taskType !== 'replenishment' && (
+                        && record.taskType !== 'extend_shipping' && record.taskType !== 'replenishment'
+                        && record.taskType !== 'ebay_bulk_listing' && (
                         <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>
@@ -661,6 +689,32 @@ const TaskPage = () => {
     // ==================== 新建任务表单 ====================
 
     const renderCreateForm = () => {
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
+            return <>
+                <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                    <Alert type="info" showIcon
+                           message="每行上架一个货号尺码；SKU由系统生成，商品状态统一为全新NEW。"/>
+                </Form.Item>
+                <Form.Item name="ebayListingExcel" label="上架Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           rules={[{required: true, message: '请上传eBay批量上架Excel'}]}
+                           extra={<ExcelFieldHint
+                               requiredFields={['货号', '尺码', '数量', '上架价格(USD)']}
+                               optionalFields={['标题', '品牌', '描述', '图片链接', '颜色', '配色', '鞋面材质', '性别', '分类ID']}
+                               note="尺码格式：USM10、USW8.5、EU42.5。不填商品资料时优先复用本地缓存，冷数据只查询KC一次。"
+                           />}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                    </Upload>
+                </Form.Item>
+                <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                    <Button href={TASK_API.EBAY_BULK_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
+                        下载eBay模板
+                    </Button>
+                </Form.Item>
+            </>;
+        }
+
         if (createPlatform === 'stockx' && createTaskType === 'listing') {
             return <>
                 <Form.Item name="searchMode" label="搜索方式" initialValue="keyword">
@@ -1001,11 +1055,11 @@ const TaskPage = () => {
             <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>
                 <Form.Item name="platform" label="平台">
                     <Select style={{width: 120}} placeholder="全部" allowClear
-                        options={[{label: 'KickScrew', value: 'kickscrew'}, {label: 'StockX', value: 'stockx'}]}/>
+                        options={[{label: 'KickScrew', value: 'kickscrew'}, {label: 'StockX', value: 'stockx'}, {label: 'eBay', value: 'ebay'}]}/>
                 </Form.Item>
                 <Form.Item name="taskType" label="类型">
                     <Select style={{width: 130}} placeholder="全部" allowClear
-                        options={STOCKX_TASK_OPTIONS}/>
+                        options={ALL_TASK_OPTIONS}/>
                 </Form.Item>
                 <Form.Item name="status" label="状态">
                     <Select style={{width: 110}} placeholder="全部" allowClear
@@ -1045,9 +1099,14 @@ const TaskPage = () => {
             <Form form={createForm} layout="horizontal" labelCol={{span: 5}} wrapperCol={{span: 18}}
                   style={{marginTop: 24}}>
                 <Form.Item label="平台">
-                    <Select value={createPlatform} onChange={(v) => { setCreatePlatform(v); createForm.resetFields(); }}>
+                    <Select value={createPlatform} onChange={(v) => {
+                        setCreatePlatform(v);
+                        setCreateTaskType(v === 'ebay' ? 'ebay_bulk_listing' : 'price_down');
+                        createForm.resetFields();
+                    }}>
                         <Select.Option value="stockx">StockX</Select.Option>
                         <Select.Option value="kickscrew">KickScrew</Select.Option>
+                        <Select.Option value="ebay">eBay</Select.Option>
                     </Select>
                 </Form.Item>
                 {createPlatform === 'stockx' && (
@@ -1056,7 +1115,7 @@ const TaskPage = () => {
                     </Form.Item>
                 )}
                 <Form.Item label="任务类型">
-                    <Select value={createTaskType} options={STOCKX_TASK_OPTIONS}
+                    <Select value={createTaskType} options={createPlatform === 'ebay' ? EBAY_TASK_OPTIONS : STOCKX_TASK_OPTIONS}
                             onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}/>
                 </Form.Item>
                 <Divider style={{margin: '8px 0 20px'}}/>

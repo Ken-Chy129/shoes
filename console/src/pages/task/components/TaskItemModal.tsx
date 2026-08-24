@@ -11,6 +11,8 @@ interface TaskItemRecord {
     brand: string;
     title: string;
     listingId: string;
+    sku: string;
+    offerId: string;
     productId: string;
     styleId: string;
     size: string;
@@ -370,6 +372,23 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '操作时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
     ];
 
+    const ebayListingColumns = [
+        {title: 'SKU', dataIndex: 'sku', key: 'sku', width: 230, ellipsis: true},
+        {title: 'Offer ID', dataIndex: 'offerId', key: 'offerId', width: 150, ellipsis: true},
+        {title: 'Listing ID', dataIndex: 'listingId', key: 'listingId', width: 150, ellipsis: true},
+        {title: '品牌', dataIndex: 'brand', key: 'brand', width: 100, ellipsis: true},
+        {title: '标题', dataIndex: 'title', key: 'title', width: 240, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: '尺码', dataIndex: 'size', key: 'size', width: 80},
+        {title: '数量', dataIndex: 'listingQuantity', key: 'listingQuantity', width: 70},
+        {
+            title: '上架价格', dataIndex: 'currentPrice', key: 'currentPrice', width: 100,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode || 'USD'),
+        },
+        {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 240, ellipsis: true},
+        {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+    ];
+
     const shippingExtensionColumns = [
         {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 160},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
@@ -422,7 +441,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             ? shippingExtensionColumns
             : taskType === 'replenishment'
                 ? replenishmentColumns
-                : taskType === 'model_search' ? modelSearchColumns : productColumns;
+                    : taskType === 'model_search' ? modelSearchColumns
+                        : taskType === 'ebay_bulk_listing' ? ebayListingColumns : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -440,7 +460,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         <Modal
             title={taskType === 'extend_shipping' ? '订单延期明细'
                 : taskType === 'replenishment' ? '补单明细'
-                    : taskType === 'purchase' ? '购买明细' : '任务明细'}
+                        : taskType === 'purchase' ? '购买明细'
+                            : taskType === 'ebay_bulk_listing' ? 'eBay批量上架明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
             footer={null}
@@ -501,14 +522,22 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                     })()}
-                    {taskType === 'replenishment' && attributes && (() => {
+                        {taskType === 'replenishment' && attributes && (() => {
                         try {
                             const attrs = JSON.parse(attributes);
                             return <span style={{color: '#1677ff', fontWeight: 500}}>
                                 售出 {attrs.scanned ?? 0} | 符合利润 {attrs.profitable ?? 0}笔 | 提交补单 {attrs.listingQuantity ?? 0}件
                             </span>;
                         } catch { return null; }
-                    })()}
+                        })()}
+                        {taskType === 'ebay_bulk_listing' && attributes && (() => {
+                            try {
+                                const attrs = JSON.parse(attributes);
+                                return <span style={{color: '#1677ff', fontWeight: 500}}>
+                                    总数 {attrs.total ?? 0} | 成功 {attrs.succeeded ?? 0} | 失败 {attrs.failed ?? 0}
+                                </span>;
+                            } catch { return null; }
+                        })()}
                     <span>自动刷新</span>
                     <Switch checked={autoRefresh} onChange={setAutoRefresh}/>
                 </Space>
@@ -519,8 +548,9 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1700
                     : taskType === 'purchase' ? 1500
-                    : taskType === 'model_search' ? 1450
-                        : taskType === 'replenishment' ? 1550 : 1130}}
+                        : taskType === 'model_search' ? 1450
+                            : taskType === 'replenishment' ? 1550
+                                : taskType === 'ebay_bulk_listing' ? 1700 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,
