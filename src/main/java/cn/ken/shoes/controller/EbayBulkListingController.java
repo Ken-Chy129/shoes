@@ -3,6 +3,9 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
+import com.alibaba.excel.context.AnalysisContext;
+import com.alibaba.excel.event.AnalysisEventListener;
+import com.alibaba.excel.exception.ExcelAnalysisStopException;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
@@ -15,16 +18,20 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("task/ebay")
 public class EbayBulkListingController {
 
     private static final long MAX_EXCEL_SIZE = 10 * 1024 * 1024L;
+    private static final int MAX_EXCEL_ROWS = 1_000;
     private final EbayBulkListingService bulkListingService;
 
     public EbayBulkListingController(EbayBulkListingService bulkListingService) {
@@ -35,8 +42,7 @@ public class EbayBulkListingController {
     public Result<String> startBulkListing(@RequestParam("file") MultipartFile file) {
         try {
             validateFile(file);
-            List<EbayListingExcel> rows = EasyExcel.read(file.getInputStream())
-                    .head(EbayListingExcel.class).sheet().doReadSync();
+            List<EbayListingExcel> rows = readRows(file);
             return Result.buildSuccess(String.valueOf(bulkListingService.start(rows)));
         } catch (IllegalArgumentException e) {
             return Result.buildError(e.getMessage());
@@ -72,7 +78,7 @@ public class EbayBulkListingController {
         }
     }
 
-    private void validateFile(MultipartFile file) {
+    private void validateFile(MultipartFile file) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("请上传Excel文件");
         }
@@ -84,5 +90,52 @@ public class EbayBulkListingController {
         if (!(lowerName.endsWith(".xlsx") || lowerName.endsWith(".xls"))) {
             throw new IllegalArgumentException("仅支持.xlsx或.xls格式的Excel文件");
         }
+        byte[] signature;
+        try (InputStream input = file.getInputStream()) {
+            signature = input.readNBytes(8);
+        }
+        boolean validXlsx = lowerName.endsWith(".xlsx") && isZip(signature);
+        boolean validXls = lowerName.endsWith(".xls") && isOle2(signature);
+        if (!validXlsx && !validXls) {
+            throw new IllegalArgumentException("文件内容不是有效的Excel格式");
+        }
+    }
+
+    private List<EbayListingExcel> readRows(MultipartFile file) throws IOException {
+        List<EbayListingExcel> rows = new ArrayList<>(MAX_EXCEL_ROWS);
+        AtomicBoolean tooManyRows = new AtomicBoolean(false);
+        try (InputStream input = file.getInputStream()) {
+            EasyExcel.read(input, EbayListingExcel.class, new AnalysisEventListener<EbayListingExcel>() {
+                @Override
+                public void invoke(EbayListingExcel row, AnalysisContext context) {
+                    if (rows.size() >= MAX_EXCEL_ROWS) {
+                        tooManyRows.set(true);
+                        throw new ExcelAnalysisStopException("row limit exceeded");
+                    }
+                    rows.add(row);
+                }
+
+                @Override
+                public void doAfterAllAnalysed(AnalysisContext context) {
+                    // No-op: rows are validated by the service after the streaming read completes.
+                }
+            }).sheet().doRead();
+        }
+        if (tooManyRows.get()) {
+            throw new IllegalArgumentException("单次最多上架1000行商品");
+        }
+        return rows;
+    }
+
+    private boolean isZip(byte[] signature) {
+        return signature.length >= 4
+                && signature[0] == 0x50 && signature[1] == 0x4B
+                && signature[2] == 0x03 && signature[3] == 0x04;
+    }
+
+    private boolean isOle2(byte[] signature) {
+        byte[] expected = {(byte) 0xD0, (byte) 0xCF, 0x11, (byte) 0xE0,
+                (byte) 0xA1, (byte) 0xB1, 0x1A, (byte) 0xE1};
+        return java.util.Arrays.equals(signature, expected);
     }
 }

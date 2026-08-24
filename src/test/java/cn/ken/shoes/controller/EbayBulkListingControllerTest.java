@@ -49,6 +49,40 @@ class EbayBulkListingControllerTest {
         verifyNoInteractions(service);
     }
 
+    @Test
+    void rejectsSpoofedExcelExtensionsBeforeParsing() {
+        EbayBulkListingService service = mock(EbayBulkListingService.class);
+        EbayBulkListingController controller = new EbayBulkListingController(service);
+        MockMultipartFile file = new MockMultipartFile(
+                "file", "input.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "not really an Excel workbook".getBytes());
+
+        Result<String> result = controller.startBulkListing(file);
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("Excel");
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void stopsReadingAfterTheMaximumRowCount() {
+        EbayBulkListingService service = mock(EbayBulkListingService.class);
+        EbayBulkListingController controller = new EbayBulkListingController(service);
+        List<EbayListingExcel> rows = java.util.stream.IntStream.rangeClosed(1, 1_001)
+                .mapToObj(index -> {
+                    EbayListingExcel row = row();
+                    row.setStyleId("STYLE-" + index);
+                    return row;
+                }).toList();
+
+        Result<String> result = controller.startBulkListing(excelFile(rows));
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("1000");
+        verifyNoInteractions(service);
+    }
+
     private MockMultipartFile excelFile(List<EbayListingExcel> rows) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         EasyExcel.write(output, EbayListingExcel.class).sheet("批量上架").doWrite(rows);
