@@ -66,6 +66,9 @@ ebay:
   defaultMarketplaceId: EBAY_US
   defaultCurrency: USD
   defaultContentLanguage: en-US
+  # Production keyset compliance callback. Keep the verification token in private config only.
+  notificationEndpoint: https://your-domain.example/api/ebay/notifications/account-deletion
+  notificationVerificationToken: your_32_to_80_character_verification_token
 
 proxy:
   host: your_proxy_host

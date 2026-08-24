@@ -28,6 +28,8 @@ public class EbayProperties {
     private String defaultMarketplaceId = "EBAY_US";
     private String defaultCurrency = "USD";
     private String defaultContentLanguage = "en-US";
+    private String notificationEndpoint = "";
+    private String notificationVerificationToken = "";
 
     public boolean isSandbox() {
         return !"production".equalsIgnoreCase(environment);
