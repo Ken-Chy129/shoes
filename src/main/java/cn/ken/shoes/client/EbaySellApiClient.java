@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 public class EbaySellApiClient {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
-    private static final RequestBody EMPTY_BODY = RequestBody.create(null, new byte[0]);
+    private static final RequestBody EMPTY_JSON_BODY = RequestBody.create(JSON_MEDIA_TYPE, new byte[0]);
 
     private final EbayOAuthService oauthService;
     private final OkHttpClient httpClient;
@@ -76,7 +76,7 @@ public class EbaySellApiClient {
                 .addPathSegment("publish")
                 .build();
         Request request = request(url, null)
-                .post(EMPTY_BODY)
+                .post(EMPTY_JSON_BODY)
                 .build();
         JSONObject response = execute(request, Set.of(200));
         return requiredResponseField(response, "listingId");

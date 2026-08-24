@@ -90,6 +90,7 @@ class EbaySellApiClientTest {
         assertThat(createRequest.getHeader("Content-Language")).isEqualTo("en-US");
         RecordedRequest publishRequest = server.takeRequest();
         assertThat(publishRequest.getPath()).isEqualTo("/sell/inventory/v1/offer/offer-123/publish");
+        assertThat(publishRequest.getHeader("Content-Type")).startsWith("application/json");
         assertThat(publishRequest.getBodySize()).isZero();
     }
 
