@@ -12,6 +12,7 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -23,6 +24,7 @@ import java.util.Set;
 import java.util.concurrent.Executor;
 
 @Service
+@Slf4j
 public class EbayBulkListingService {
 
     public static final String TASK_TYPE = "ebay_bulk_listing";
@@ -123,6 +125,8 @@ public class EbayBulkListingService {
                 item.setOperateResult("上架成功");
                 succeeded++;
             } catch (Exception e) {
+                log.warn("eBay bulk listing row failed, taskId:{}, styleId:{}, type:{}",
+                        taskId, trim(row.getStyleId()), e.getClass().getSimpleName(), e);
                 item.setOperateResult("上架失败(" + safeError(e) + ")");
                 failed++;
             }
