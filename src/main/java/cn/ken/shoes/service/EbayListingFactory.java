@@ -106,7 +106,7 @@ public class EbayListingFactory {
                 aspects.put("Department", List.of("Men"));
             }
             case "USW" -> {
-                aspects.put("US Shoe Size (Women's)", List.of(size.value()));
+                aspects.put("US Shoe Size", List.of(size.value()));
                 aspects.put("Department", List.of("Women"));
             }
             case "EU" -> aspects.put("EU Shoe Size", List.of(size.value()));

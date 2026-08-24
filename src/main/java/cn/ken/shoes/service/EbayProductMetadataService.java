@@ -5,10 +5,12 @@ import cn.ken.shoes.mapper.EbayProductCacheMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.entity.EbayProductCacheDO;
+import cn.ken.shoes.model.excel.EbayListingExcel;
 import com.alibaba.fastjson.JSON;
 import org.springframework.stereotype.Service;
 
 import java.util.Date;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 
@@ -41,6 +43,29 @@ public class EbayProductMetadataService {
         validate(fetched);
         cacheMapper.upsert(toCache(modelNo, fetched));
         return fetched;
+    }
+
+    public EbayProductMetadata resolve(EbayListingExcel row) {
+        if (row == null) {
+            throw new IllegalArgumentException("Excel行不能为空");
+        }
+        boolean manualComplete = present(row.getTitle()) && present(row.getImageUrls());
+        EbayProductMetadata metadata = manualComplete
+                ? new EbayProductMetadata()
+                : resolve(row.getStyleId());
+        setIfPresent(row.getTitle(), metadata::setTitle);
+        setIfPresent(row.getBrand(), metadata::setBrand);
+        setIfPresent(row.getDescription(), metadata::setDescription);
+        setIfPresent(row.getGender(), metadata::setGender);
+        setIfPresent(row.getColor(), metadata::setColor);
+        setIfPresent(row.getColorway(), metadata::setColorway);
+        setIfPresent(row.getUpperMaterial(), metadata::setUpperMaterial);
+        if (present(row.getImageUrls())) {
+            metadata.setImageUrls(Arrays.stream(row.getImageUrls().split("[\\r\\n;,]+"))
+                    .map(String::trim).filter(value -> !value.isBlank()).distinct().limit(12).toList());
+        }
+        validate(metadata);
+        return metadata;
     }
 
     private EbayProductMetadata fromCache(EbayProductCacheDO cache) {
@@ -93,5 +118,15 @@ public class EbayProductMetadataService {
             throw new IllegalArgumentException(label + "不能为空");
         }
         return value.trim();
+    }
+
+    private boolean present(String value) {
+        return value != null && !value.isBlank();
+    }
+
+    private void setIfPresent(String value, java.util.function.Consumer<String> setter) {
+        if (present(value)) {
+            setter.accept(value.trim());
+        }
     }
 }

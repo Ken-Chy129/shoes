@@ -8,6 +8,7 @@ import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
+import cn.ken.shoes.model.excel.EbayListingExcel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -126,6 +127,26 @@ class TaskInputSnapshotStoreTest {
                 assertThat(rows).singleElement().satisfies(saved -> {
                     assertThat(saved.getBidId()).isEqualTo("bid-1");
                     assertThat(saved.getPrice()).isEqualByComparingTo("88");
+                }));
+    }
+
+    @Test
+    void roundTripsEbayBulkListingInput() {
+        TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("DD1391-100");
+        row.setSize("USM10");
+        row.setQuantity(2);
+        row.setPrice(new BigDecimal("129.99"));
+
+        store.saveEbayBulkListingInput(17L, List.of(row));
+
+        assertThat(store.loadEbayBulkListingInput(17L)).hasValueSatisfying(rows ->
+                assertThat(rows).singleElement().satisfies(saved -> {
+                    assertThat(saved.getStyleId()).isEqualTo("DD1391-100");
+                    assertThat(saved.getSize()).isEqualTo("USM10");
+                    assertThat(saved.getQuantity()).isEqualTo(2);
+                    assertThat(saved.getPrice()).isEqualByComparingTo("129.99");
                 }));
     }
 

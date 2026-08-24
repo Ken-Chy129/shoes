@@ -8,6 +8,8 @@
         <result property="round" column="round"/>
         <result property="title" column="title"/>
         <result property="listingId" column="listing_id"/>
+        <result property="sku" column="sku"/>
+        <result property="offerId" column="offer_id"/>
         <result property="productId" column="product_id"/>
         <result property="styleId" column="style_id"/>
         <result property="size" column="size"/>

@@ -5,6 +5,7 @@ import cn.ken.shoes.mapper.EbayProductCacheMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.entity.EbayProductCacheDO;
+import cn.ken.shoes.model.excel.EbayListingExcel;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -81,5 +82,27 @@ class EbayProductMetadataServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("请在Excel补充");
         verify(kickScrewClient, never()).queryProductMetadata(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void completeExcelOverridesAvoidCacheAndExternalLookup() {
+        EbayProductCacheMapper cacheMapper = mock(EbayProductCacheMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient);
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("MANUAL-1");
+        row.setTitle("Manual product");
+        row.setDescription("Manual description");
+        row.setBrand("Manual brand");
+        row.setImageUrls("https://cdn.example.com/1.jpg\nhttps://cdn.example.com/2.jpg");
+
+        EbayProductMetadata result = service.resolve(row);
+
+        assertThat(result.getTitle()).isEqualTo("Manual product");
+        assertThat(result.getImageUrls()).containsExactly(
+                "https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg");
+        verifyNoInteractions(cacheMapper, itemMapper, kickScrewClient);
     }
 }

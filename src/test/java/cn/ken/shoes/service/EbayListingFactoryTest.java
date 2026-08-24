@@ -50,7 +50,7 @@ class EbayListingFactoryTest {
 
         assertThat(womens.getCategoryId()).isEqualTo("95672");
         assertThat(womens.getAspects())
-                .containsEntry("US Shoe Size (Women's)", List.of("8.5"))
+                .containsEntry("US Shoe Size", List.of("8.5"))
                 .containsEntry("Department", List.of("Women"));
         assertThat(eu.getAspects()).containsEntry("EU Shoe Size", List.of("42.5"));
     }

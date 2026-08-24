@@ -57,6 +57,15 @@ ebay:
   scopes: https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account
   stateTtlSeconds: 600
   maxPendingStates: 100
+  defaultMerchantLocationKey: shantou_chenghai
+  defaultFulfillmentPolicyId: your_fulfillment_policy_id
+  defaultPaymentPolicyId: your_payment_policy_id
+  defaultReturnPolicyId: your_return_policy_id
+  defaultMensCategoryId: "15709"
+  defaultWomensCategoryId: "95672"
+  defaultMarketplaceId: EBAY_US
+  defaultCurrency: USD
+  defaultContentLanguage: en-US
 
 proxy:
   host: your_proxy_host

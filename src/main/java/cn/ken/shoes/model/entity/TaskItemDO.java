@@ -46,6 +46,12 @@ public class TaskItemDO {
      */
     private String listingId;
 
+    /** eBay卖家自定义SKU。 */
+    private String sku;
+
+    /** eBay Inventory API Offer ID。 */
+    private String offerId;
+
     /**
      * 变体ID(variantId)：字段名沿用历史命名 productId，但实际存的是 StockX variantId（具体尺码维度）
      */
