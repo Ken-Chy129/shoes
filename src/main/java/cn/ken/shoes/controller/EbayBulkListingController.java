@@ -71,7 +71,10 @@ public class EbayBulkListingController {
                     List.of("选填商品资料", "标题、品牌、描述、图片等；不填时先查本地缓存，未命中仅请求KC一次"),
                     List.of("图片链接(选填)", "多个公开HTTP(S)图片链接用换行、分号或逗号分隔"),
                     List.of("商品状态", "无需填写；第一版统一按全新 NEW 上架"),
-                    List.of("SKU", "无需填写；系统按货号、尺码和NEW状态稳定生成")
+                    List.of("SKU", "无需填写；系统按货号、尺码和NEW状态稳定生成"),
+                    List.of("多尺码", "同一货号的多行尺码会合并成一条eBay商品；每个尺码保留独立价格、库存、SKU和Offer"),
+                    List.of("处理时间", "无需填写；统一使用物流政策：收到全部款项后6个工作日内发货"),
+                    List.of("退货", "无需填写；统一设置为不接受退货")
             );
             WriteSheet guideSheet = EasyExcel.writerSheet(1, "填写说明").build();
             writer.write(guide, guideSheet);
