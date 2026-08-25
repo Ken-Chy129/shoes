@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbaySellApiClient;
+import cn.ken.shoes.client.EbayPictureApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayInventoryLocationRequest;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
@@ -27,14 +28,21 @@ import static org.mockito.Mockito.when;
 class EbayListingServiceTest {
 
     private EbaySellApiClient apiClient;
+    private EbayPictureApiClient pictureApiClient;
     private EbayListingService service;
 
     @BeforeEach
     void setUp() {
         apiClient = mock(EbaySellApiClient.class);
+        pictureApiClient = mock(EbayPictureApiClient.class);
+        when(pictureApiClient.uploadExternalPicture(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("https://i.ebayimg.com/images/g/test/s-l1600.jpg");
         EbayProperties properties = new EbayProperties();
         properties.setEnvironment("sandbox");
-        service = new EbayListingService(apiClient, properties);
+        service = new EbayListingService(
+                apiClient, properties, new EbayPictureService(pictureApiClient));
     }
 
     @Test
@@ -61,7 +69,8 @@ class EbayListingServiceTest {
                 .getJSONObject("shipToLocationAvailability").getIntValue("quantity")).isEqualTo(2);
         JSONObject product = inventory.getJSONObject("product");
         assertThat(product.getString("title")).isEqualTo("Test Sneaker");
-        assertThat(product.getJSONArray("imageUrls")).containsExactly("https://example.com/shoe.jpg");
+        assertThat(product.getJSONArray("imageUrls")).containsExactly(
+                "https://i.ebayimg.com/images/g/test/s-l1600.jpg");
         assertThat(product.getJSONObject("aspects").getJSONArray("US Shoe Size")).containsExactly("9");
         assertThat(product.getJSONObject("aspects").getJSONArray("Brand")).containsExactly("Test Brand");
 
@@ -136,6 +145,8 @@ class EbayListingServiceTest {
         assertThat(results)
                 .extracting(EbayListingResult::getListingId)
                 .containsOnly("listing-group-456");
+        verify(pictureApiClient).uploadExternalPicture(
+                "https://example.com/shoe.jpg", "group-style-1-1");
     }
 
     @Test

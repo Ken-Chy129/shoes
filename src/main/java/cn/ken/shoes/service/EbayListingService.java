@@ -10,8 +10,6 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Service;
 
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -25,16 +23,21 @@ public class EbayListingService {
 
     private final EbaySellApiClient apiClient;
     private final EbayProperties properties;
+    private final EbayPictureService pictureService;
 
-    public EbayListingService(EbaySellApiClient apiClient, EbayProperties properties) {
+    public EbayListingService(EbaySellApiClient apiClient, EbayProperties properties,
+                              EbayPictureService pictureService) {
         this.apiClient = apiClient;
         this.properties = properties;
+        this.pictureService = pictureService;
     }
 
     public EbayListingResult publish(EbayListingRequest request) {
-        validateImageUrls(request);
+        List<String> hostedImageUrls = pictureService.hostImages(
+                request.getImageUrls(), request.getSku());
         apiClient.createOrReplaceInventoryItem(
-                request.getSku(), inventoryPayload(request), request.getContentLanguage());
+                request.getSku(), inventoryPayload(request, hostedImageUrls),
+                request.getContentLanguage());
         String offerId = apiClient.createOffer(offerPayload(request), request.getContentLanguage());
         String listingId = apiClient.publishOffer(offerId);
         return new EbayListingResult(request.getSku(), offerId, listingId, properties.getEnvironment());
@@ -46,17 +49,19 @@ public class EbayListingService {
             throw new IllegalArgumentException("多尺码商品至少需要两个尺码");
         }
         List<EbayListingRequest> variants = List.copyOf(requests);
-        variants.forEach(this::validateImageUrls);
         GroupAspects groupAspects = validateAndResolveGroupAspects(variants);
         EbayListingRequest first = variants.getFirst();
+        List<String> hostedImageUrls = pictureService.hostImages(
+                first.getImageUrls(), inventoryItemGroupKey);
 
         for (EbayListingRequest variant : variants) {
             apiClient.createOrReplaceInventoryItem(
-                    variant.getSku(), inventoryPayload(variant), variant.getContentLanguage());
+                    variant.getSku(), inventoryPayload(variant, hostedImageUrls),
+                    variant.getContentLanguage());
         }
         apiClient.createOrReplaceInventoryItemGroup(
                 inventoryItemGroupKey,
-                inventoryGroupPayload(variants, groupAspects),
+                inventoryGroupPayload(variants, groupAspects, hostedImageUrls),
                 first.getContentLanguage());
 
         List<String> offerIds = new ArrayList<>(variants.size());
@@ -102,7 +107,8 @@ public class EbayListingService {
         apiClient.createInventoryLocation(request.getMerchantLocationKey(), payload);
     }
 
-    private JSONObject inventoryPayload(EbayListingRequest request) {
+    private JSONObject inventoryPayload(EbayListingRequest request,
+                                        List<String> hostedImageUrls) {
         JSONObject shipAvailability = new JSONObject(true)
                 .fluentPut("quantity", request.getQuantity());
         JSONObject availability = new JSONObject(true)
@@ -111,7 +117,7 @@ public class EbayListingService {
         JSONObject product = new JSONObject(true);
         product.put("title", request.getTitle());
         product.put("description", request.getDescription());
-        product.put("imageUrls", JSON.parseArray(JSON.toJSONString(request.getImageUrls())));
+        product.put("imageUrls", JSON.parseArray(JSON.toJSONString(hostedImageUrls)));
         JSONObject aspects = JSON.parseObject(JSON.toJSONString(effectiveAspects(request)));
         product.put("aspects", aspects);
         putIfPresent(product, "brand", request.getBrand());
@@ -150,12 +156,13 @@ public class EbayListingService {
     }
 
     private JSONObject inventoryGroupPayload(List<EbayListingRequest> variants,
-                                             GroupAspects groupAspects) {
+                                             GroupAspects groupAspects,
+                                             List<String> hostedImageUrls) {
         EbayListingRequest first = variants.getFirst();
         JSONObject payload = new JSONObject(true);
         payload.put("title", first.getTitle());
         payload.put("description", first.getDescription());
-        payload.put("imageUrls", JSON.parseArray(JSON.toJSONString(first.getImageUrls())));
+        payload.put("imageUrls", JSON.parseArray(JSON.toJSONString(hostedImageUrls)));
         payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(variants.stream()
                 .map(EbayListingRequest::getSku).toList())));
         payload.put("aspects", JSON.parseObject(JSON.toJSONString(groupAspects.common())));
@@ -230,24 +237,6 @@ public class EbayListingService {
     private void requireSame(Object expected, Object actual, String label) {
         if (!Objects.equals(expected, actual)) {
             throw new IllegalArgumentException("同一货号的" + label + "必须一致");
-        }
-    }
-
-    private void validateImageUrls(EbayListingRequest request) {
-        if (request == null || request.getImageUrls() == null) {
-            throw new IllegalArgumentException("at least one image URL is required");
-        }
-        for (String imageUrl : request.getImageUrls()) {
-            try {
-                URI uri = new URI(imageUrl);
-                String scheme = uri.getScheme();
-                if (!("http".equalsIgnoreCase(scheme) || "https".equalsIgnoreCase(scheme))
-                        || uri.getHost() == null || uri.getUserInfo() != null) {
-                    throw new IllegalArgumentException("image URL must be a public HTTP(S) URL");
-                }
-            } catch (URISyntaxException e) {
-                throw new IllegalArgumentException("image URL is invalid", e);
-            }
         }
     }
 

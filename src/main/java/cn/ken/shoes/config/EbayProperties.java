@@ -4,11 +4,17 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.stream.Collectors;
+
 @Data
 @Component
 @ConfigurationProperties(prefix = "ebay")
 public class EbayProperties {
 
+    public static final String TRADING_API_SCOPE =
+            "https://api.ebay.com/oauth/api_scope";
     public static final String IDENTITY_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly";
 
@@ -66,16 +72,22 @@ public class EbayProperties {
         return apiRoot() + "/commerce/notification/v1/";
     }
 
+    public String getTradingApiEndpoint() {
+        return apiRoot() + "/ws/api.dll";
+    }
+
     public String getIdentityApiEndpoint() {
         return apiRoot() + "/commerce/identity/v1/user/";
     }
 
     public String getScopes() {
         String configured = scopes == null ? "" : scopes.trim();
-        if (configured.contains(IDENTITY_READ_SCOPE)) {
-            return configured;
-        }
-        return configured.isEmpty() ? IDENTITY_READ_SCOPE : configured + " " + IDENTITY_READ_SCOPE;
+        LinkedHashSet<String> effective = Arrays.stream(configured.split("\\s+"))
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        effective.add(TRADING_API_SCOPE);
+        effective.add(IDENTITY_READ_SCOPE);
+        return String.join(" ", effective);
     }
 
     public boolean isConfigured() {
