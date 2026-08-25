@@ -4,6 +4,7 @@ import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.excel.EbayListingExcel;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -21,11 +22,20 @@ public class EbayListingFactory {
     private static final int MAX_SKU_LENGTH = 50;
     private final EbayProperties properties;
     private final EbayListingTaxonomyService taxonomyService;
+    private final EbayTitleService titleService;
 
     public EbayListingFactory(EbayProperties properties,
                               EbayListingTaxonomyService taxonomyService) {
+        this(properties, taxonomyService, new EbayTitleService());
+    }
+
+    @Autowired
+    public EbayListingFactory(EbayProperties properties,
+                              EbayListingTaxonomyService taxonomyService,
+                              EbayTitleService titleService) {
         this.properties = properties;
         this.taxonomyService = taxonomyService;
+        this.titleService = titleService;
     }
 
     public EbayListingRequest create(EbayListingExcel row, EbayProductMetadata metadata) {
@@ -46,7 +56,7 @@ public class EbayListingFactory {
 
         EbayListingRequest request = new EbayListingRequest();
         request.setSku(sku(styleId, size.normalized()));
-        request.setTitle(limit(required(metadata.getTitle(), "标题"), 80));
+        request.setTitle(titleService.generate(styleId, size.system(), metadata));
         request.setDescription(required(metadata.getDescription(), "描述"));
         request.setImageUrls(metadata.getImageUrls().stream().limit(12).toList());
         request.setQuantity(row.getQuantity());
@@ -102,10 +112,6 @@ public class EbayListingFactory {
             throw new IllegalArgumentException(label + "不能为空");
         }
         return value.trim();
-    }
-
-    private String limit(String value, int maxLength) {
-        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     private String sha256(String value) {

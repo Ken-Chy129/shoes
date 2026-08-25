@@ -54,6 +54,9 @@ public class EbayProductMetadataService {
                 ? new EbayProductMetadata()
                 : resolve(row.getStyleId());
         setIfPresent(row.getTitle(), metadata::setTitle);
+        if (present(row.getTitle())) {
+            metadata.setManualTitle(true);
+        }
         setIfPresent(row.getBrand(), metadata::setBrand);
         setIfPresent(row.getDescription(), metadata::setDescription);
         setIfPresent(row.getGender(), metadata::setGender);
@@ -81,6 +84,7 @@ public class EbayProductMetadataService {
         metadata.setColor(cache.getColor());
         metadata.setColorway(cache.getColorway());
         metadata.setUpperMaterial(cache.getUpperMaterial());
+        metadata.setManualTitle(Boolean.TRUE.equals(cache.getManualOverride()));
         List<String> images = JSON.parseArray(cache.getImageUrls(), String.class);
         metadata.setImageUrls(images != null ? images : List.of());
         validate(metadata);

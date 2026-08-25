@@ -72,6 +72,8 @@ class EbayListingFactoryTest {
         assertThat(request.getMerchantLocationKey()).isEqualTo("shantou_chenghai");
         assertThat(request.getFulfillmentPolicyId()).isEqualTo("6246174000");
         assertThat(request.getCondition()).isEqualTo("NEW");
+        assertThat(request.getTitle()).isEqualTo(
+                "Nike Dunk Low Retro White Black DD1391-100 Men's Sneakers New");
     }
 
     @Test

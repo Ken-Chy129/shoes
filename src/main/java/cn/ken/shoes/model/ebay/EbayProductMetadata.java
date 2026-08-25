@@ -19,5 +19,6 @@ public class EbayProductMetadata {
     private String color;
     private String colorway;
     private String upperMaterial;
+    private boolean manualTitle;
     private List<String> imageUrls = new ArrayList<>();
 }

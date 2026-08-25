@@ -115,6 +115,7 @@ class EbayProductMetadataServiceTest {
         assertThat(result.getTitle()).isEqualTo("Manual product");
         assertThat(result.getImageUrls()).containsExactly(
                 "https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg");
+        assertThat(result.isManualTitle()).isTrue();
         verifyNoInteractions(cacheMapper, itemMapper, kickScrewClient);
     }
 }
