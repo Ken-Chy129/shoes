@@ -553,9 +553,9 @@ const TaskPage = () => {
                             const tip = `已提交 ${attrs.submitted ?? 0} | 跳过 ${attrs.skipped ?? 0} | 失败 ${attrs.failed ?? 0} | 待提交 ${attrs.pending ?? 0}`;
                             return <Tooltip title={tip}>
                                 <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
-                                    {attrs.stage || '准备中'}<br/>
-                                    已处理 {attrs.processed ?? 0}/{attrs.total ?? 0}<br/>
-                                    货号 {attrs.modelsResolved ?? 0}/{attrs.modelTotal ?? 0}
+                                    {attrs.stage || (record.status === 'success' ? '已完成' : '准备中')}<br/>
+                                    已处理 {attrs.processed ?? (record.status === 'success' ? (attrs.total ?? 0) : 0)}/{attrs.total ?? 0}<br/>
+                                    {attrs.modelTotal == null ? '货号 -' : <>货号 {attrs.modelsResolved ?? 0}/{attrs.modelTotal ?? 0}</>}
                                 </span>
                             </Tooltip>;
                         }
