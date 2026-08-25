@@ -1086,8 +1086,10 @@ public class TaskExecutorManager {
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             TaskSwitch.resetPurchaseCancel(accountId);
-            StockXPurchaseTaskRunner runner = new StockXPurchaseTaskRunner(
-                    account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
+            Runnable runner = operation == StockXPurchaseOperation.DELETE_BIDS
+                    ? new StockXDeleteBidsTaskRunner(account, taskId, stockXClient, taskMapper, taskItemMapper)
+                    : new StockXPurchaseTaskRunner(
+                            account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-" + operation.getCode() + "-" + account.getName()).start();
             log.info("购买任务已启动: [{}], operation:{}", account.getName(), operation.getCode());
             return taskId;

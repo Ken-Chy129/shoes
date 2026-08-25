@@ -426,6 +426,30 @@ const TaskPage = () => {
                             },
                             onError: () => { message.error('修改出价Excel上传失败'); setCreating(false); },
                         });
+                } else if (operation === 'delete_bids') {
+                    setCreating(false);
+                    Modal.confirm({
+                        title: '确认撤销所有出价？',
+                        content: `将撤销账号 ${values.accountId} 当前的全部有效出价。任务启动后仍可在任务列表中取消。`,
+                        okText: '确认全部撤销',
+                        okButtonProps: {danger: true},
+                        cancelText: '取消',
+                        onOk: () => {
+                            setCreating(true);
+                            doPostRequest(TASK_API.START_PURCHASE, {
+                                accountId: values.accountId,
+                                operation,
+                            }, {
+                                onSuccess: () => {
+                                    message.success('撤销全部出价任务已创建');
+                                    setCreateModalVisible(false);
+                                    queryTaskList();
+                                },
+                                onFinally: () => setCreating(false),
+                            });
+                        },
+                    });
+                    return;
                 } else {
                     doPostRequest(TASK_API.START_PURCHASE, {
                         accountId: values.accountId,
@@ -533,6 +557,13 @@ const TaskPage = () => {
                                 {(attrs.pending ?? 0) > 0 && <Tag color="gold">待提交 {attrs.pending ?? 0}</Tag>}
                             </Space>;
                         }
+                        if (attrs.operation === 'delete_bids') {
+                            return <Space size={[0, 4]} wrap aria-label="撤销所有出价任务数量">
+                                <Tag color={attrs.deleted > 0 ? 'green' : undefined}>已撤销 {attrs.deleted ?? 0}</Tag>
+                                <Tag color={(attrs.remaining ?? 0) > 0 ? 'gold' : undefined}>剩余 {attrs.remaining ?? 0}</Tag>
+                                <Tag color={attrs.failed > 0 ? 'red' : undefined}>失败 {attrs.failed ?? 0}</Tag>
+                            </Space>;
+                        }
                     } catch { /* 回退到通用操作计数 */ }
                 }
                 return <TaskOperationCounts
@@ -557,6 +588,16 @@ const TaskPage = () => {
                                     {attrs.stage || (taskSucceeded ? '已完成' : '准备中')}<br/>
                                     已处理 {attrs.processed ?? (taskSucceeded ? (attrs.total ?? 0) : 0)}/{attrs.total ?? 0}<br/>
                                     {attrs.modelTotal == null ? '货号 -' : <>货号 {attrs.modelsResolved ?? 0}/{attrs.modelTotal ?? 0}</>}
+                                </span>
+                            </Tooltip>;
+                        }
+                        if (attrs.operation === 'delete_bids') {
+                            const tip = `总数 ${attrs.total ?? 0} | 已处理 ${attrs.processed ?? 0} | 已撤销 ${attrs.deleted ?? 0} | 失败 ${attrs.failed ?? 0}`;
+                            return <Tooltip title={tip}>
+                                <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                    {attrs.stage || '准备中'}<br/>
+                                    剩余 {attrs.remaining ?? 0}<br/>
+                                    已撤销 {attrs.deleted ?? 0} · 失败 {attrs.failed ?? 0}
                                 </span>
                             </Tooltip>;
                         }
@@ -619,7 +660,9 @@ const TaskPage = () => {
                 let unit = unitMap[record.taskType] || '轮';
                 if (record.taskType === 'purchase' && record.params) {
                     try {
-                        if (JSON.parse(record.params).operation === 'create_bids') unit = '批';
+                        const operation = JSON.parse(record.params).operation;
+                        if (operation === 'create_bids') unit = '批';
+                        if (operation === 'delete_bids') unit = '轮';
                     } catch { /* 保留默认单位 */ }
                 }
                 return `第${record.round}${unit}`;
@@ -992,7 +1035,12 @@ const TaskPage = () => {
                                    extra="每轮重新读取当前出价和市场最高出价；建议5分钟，最短60秒。">
                             <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
                         </Form.Item>
-                    </> : null}
+                    </> : getFieldValue('purchaseOperation') === 'delete_bids' ? (
+                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                            <Alert type="warning" showIcon
+                                   message="无需上传Excel，将撤销所选账号当前的全部有效出价。创建前会再次确认。"/>
+                        </Form.Item>
+                    ) : null}
                 </Form.Item>
             </>;
         }
@@ -1041,6 +1089,7 @@ const TaskPage = () => {
                 history: '获取历史记录',
                 create_bids: '创建出价',
                 update_bids: '修改出价',
+                delete_bids: '撤销所有出价',
             };
             return labels[v] || String(v);
         }

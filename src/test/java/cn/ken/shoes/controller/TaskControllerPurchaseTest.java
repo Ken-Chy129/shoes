@@ -41,6 +41,22 @@ class TaskControllerPurchaseTest {
     }
 
     @Test
+    void startsDeleteAllBidsOnTheJsonEndpoint() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startPurchase("account-a", StockXPurchaseOperation.DELETE_BIDS)).thenReturn(106L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startPurchase(new JSONObject(true)
+                .fluentPut("accountId", "account-a")
+                .fluentPut("operation", "delete_bids"));
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("106");
+        verify(manager).startPurchase("account-a", StockXPurchaseOperation.DELETE_BIDS);
+    }
+
+    @Test
     void rejectsUnknownOperationAtTheApiBoundary() throws Exception {
         TaskExecutorManager manager = mock(TaskExecutorManager.class);
         TaskController controller = new TaskController();

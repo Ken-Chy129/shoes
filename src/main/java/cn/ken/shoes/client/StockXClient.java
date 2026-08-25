@@ -21,6 +21,8 @@ import cn.ken.shoes.model.stockx.StockXListingCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
+import cn.ken.shoes.model.stockx.StockXBidDeleteItem;
+import cn.ken.shoes.model.stockx.StockXBidDeleteResult;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
@@ -252,7 +254,8 @@ public class StockXClient {
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
         Objects.requireNonNull(operation, "operation");
         if (operation == StockXPurchaseOperation.CREATE_BIDS
-                || operation == StockXPurchaseOperation.UPDATE_BIDS) {
+                || operation == StockXPurchaseOperation.UPDATE_BIDS
+                || operation == StockXPurchaseOperation.DELETE_BIDS) {
             throw new IllegalArgumentException(operation.getLabel() + "使用独立写接口");
         }
         String market = StrUtil.isNotBlank(country) ? country : "US";
@@ -399,6 +402,66 @@ public class StockXClient {
             throw new IllegalStateException("修改出价批次失败:" + status);
         }
         return new StockXBidBatch(batch.getString("id").trim(), status);
+    }
+
+    static JSONObject buildDeleteBidsRequest(List<StockXBidDeleteItem> items) {
+        if (items == null || items.isEmpty() || items.size() > 10) {
+            throw new IllegalArgumentException("每批撤销出价数量必须在1到10之间");
+        }
+        StringBuilder query = new StringBuilder("mutation DeleteBidBatch {\n");
+        for (int i = 0; i < items.size(); i++) {
+            StockXBidDeleteItem item = items.get(i);
+            String chainId = item != null ? StrUtil.trim(item.chainId()) : null;
+            String currency = item != null ? StrUtil.trim(item.currencyCode()) : null;
+            if (StrUtil.isBlank(chainId) || !chainId.matches("[A-Za-z0-9_-]+")) {
+                throw new IllegalArgumentException("撤销出价chainId格式无效");
+            }
+            if (StrUtil.isBlank(currency) || !currency.matches("[A-Za-z]{3}")) {
+                throw new IllegalArgumentException("撤销出价币种格式无效");
+            }
+            query.append("  d").append(i)
+                    .append(": deleteBid(input: {chainId: \"").append(chainId)
+                    .append("\", currencyCode: ").append(currency.toUpperCase(Locale.ROOT))
+                    .append("}) { status }\n");
+        }
+        query.append('}');
+        return new JSONObject(true)
+                .fluentPut("operationName", "DeleteBidBatch")
+                .fluentPut("query", query.toString())
+                .fluentPut("variables", new JSONObject(true));
+    }
+
+    public List<StockXBidDeleteResult> deleteBids(List<StockXBidDeleteItem> items,
+                                                   StockXAccount account) {
+        JSONObject response = queryPro(buildDeleteBidsRequest(items).toJSONString(),
+                buildViperHeaders(account), account.getName(), true);
+        if (response == null) {
+            throw new StockXNoResponseException("撤销出价失败:无响应(网络异常或被拦截)");
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("TOKEN_EXPIRED");
+        }
+        return parseDeleteBidsResponse(response, items);
+    }
+
+    static List<StockXBidDeleteResult> parseDeleteBidsResponse(
+            JSONObject response, List<StockXBidDeleteItem> items) {
+        JSONObject data = response != null ? response.getJSONObject("data") : null;
+        if (data == null) {
+            throw new IllegalStateException("撤销出价响应缺少data:"
+                    + extractGraphqlError(response));
+        }
+        List<StockXBidDeleteResult> results = new ArrayList<>(items.size());
+        for (int i = 0; i < items.size(); i++) {
+            JSONObject result = data.getJSONObject("d" + i);
+            String status = result != null ? StrUtil.trim(result.getString("status")) : null;
+            if (StrUtil.isBlank(status)) {
+                throw new IllegalStateException("撤销出价响应缺少d" + i + ".status");
+            }
+            boolean success = status.toLowerCase(Locale.ROOT).endsWith("deleted successfully");
+            results.add(new StockXBidDeleteResult(items.get(i).chainId(), status, success));
+        }
+        return results;
     }
 
     /** 请求单个订单延期。chainId 必须使用 ViewerAsks.node.id（即 askId）。 */
@@ -1891,7 +1954,10 @@ public class StockXClient {
     }
 
     /** 从 GraphQL 响应中提取简要错误信息(优先 errors[0].message)，用于写入明细 */
-    private String extractGraphqlError(JSONObject result) {
+    private static String extractGraphqlError(JSONObject result) {
+        if (result == null) {
+            return "无响应";
+        }
         String reason = null;
         try {
             JSONArray errors = result.getJSONArray("errors");

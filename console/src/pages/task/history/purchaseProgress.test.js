@@ -13,4 +13,16 @@ describe('StockX create-bids task progress', () => {
     expect(source).toContain('待提交 {attrs.pending ?? 0}');
     expect(source).toContain("taskSucceeded ? '已完成' : '准备中'");
   });
+
+  it('shows delete-all confirmation and task progress', () => {
+    const source = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+
+    expect(source).toContain("operation === 'delete_bids'");
+    expect(source).toContain('确认撤销所有出价？');
+    expect(source).toContain('确认全部撤销');
+    expect(source).toContain("attrs.operation === 'delete_bids'");
+    expect(source).toContain('剩余 {attrs.remaining ?? 0}');
+    expect(source).toContain('已撤销 {attrs.deleted ?? 0}');
+    expect(source).toContain('失败 {attrs.failed ?? 0}');
+  });
 });

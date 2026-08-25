@@ -15,6 +15,8 @@ class StockXPurchaseOperationTest {
                 .isEqualTo(StockXPurchaseOperation.CREATE_BIDS);
         assertThat(StockXPurchaseOperation.fromCode("update_bids"))
                 .isEqualTo(StockXPurchaseOperation.UPDATE_BIDS);
+        assertThat(StockXPurchaseOperation.fromCode("delete_bids"))
+                .isEqualTo(StockXPurchaseOperation.DELETE_BIDS);
     }
 
     @Test

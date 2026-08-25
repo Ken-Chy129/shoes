@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 class StockXClientPurchaseRequestTest {
 
@@ -45,6 +46,14 @@ class StockXClientPurchaseRequestTest {
                 StockXPurchaseOperation.HISTORY, null, "US");
 
         assertBuyingRequest(request, "HISTORICAL", "");
+    }
+
+    @Test
+    void rejectsDeleteBidsOnThePersistedReadRequestBuilder() {
+        assertThat(catchThrowable(() -> StockXClient.buildPurchaseRequest(
+                StockXPurchaseOperation.DELETE_BIDS, null, "US")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("独立写接口");
     }
 
     private static void assertBuyingRequest(JSONObject request, String state, String after) {
