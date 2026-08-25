@@ -10,7 +10,7 @@ class EbayTitleServiceTest {
     private final EbayTitleService service = new EbayTitleService();
 
     @Test
-    void buildsAProductionTitleWithStyleGenderConditionAndNoDuplicateBrandOrColorway() {
+    void appendsTheStyleIdToTheKcTitleWithoutAddingOtherSearchTerms() {
         EbayProductMetadata metadata = new EbayProductMetadata();
         metadata.setTitle("Nike Dunk Low Retro White Black");
         metadata.setBrand("Nike");
@@ -18,12 +18,11 @@ class EbayTitleServiceTest {
 
         String title = service.generate("DD1391-100", "USM", metadata);
 
-        assertThat(title).isEqualTo(
-                "Nike Dunk Low Retro White Black DD1391-100 Men's Sneakers New");
+        assertThat(title).isEqualTo("Nike Dunk Low Retro White Black DD1391-100");
     }
 
     @Test
-    void keepsMandatorySearchTermsWhenTheSourceTitleExceedsEbayLimit() {
+    void truncatesTheKcTitleButKeepsTheStyleIdWithinEbayLimit() {
         EbayProductMetadata metadata = new EbayProductMetadata();
         metadata.setTitle("adidas Yeezy Boost 350 V2 Extremely Long Limited Edition "
                 + "Authentic Lifestyle Running Sports Shoes With Collectible Packaging");
@@ -33,8 +32,18 @@ class EbayTitleServiceTest {
         String title = service.generate("HQ6316", "USW", metadata);
 
         assertThat(title).hasSizeLessThanOrEqualTo(80)
-                .contains("HQ6316", "Women's", "New")
+                .endsWith("HQ6316")
                 .startsWith("adidas Yeezy Boost 350 V2");
+    }
+
+    @Test
+    void doesNotRepeatAStyleIdAlreadyPresentInTheKcTitle() {
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle("Nike Dunk Low Retro White Black DD1391-100");
+
+        String title = service.generate("dd1391-100", "USM", metadata);
+
+        assertThat(title).isEqualTo("Nike Dunk Low Retro White Black DD1391-100");
     }
 
     @Test
