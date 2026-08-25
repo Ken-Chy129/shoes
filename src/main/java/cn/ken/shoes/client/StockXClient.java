@@ -295,7 +295,7 @@ public class StockXClient {
             }
             input.add(new JSONObject(true)
                     .fluentPut("amount", item.amount())
-                    .fluentPut("deliveryOptionType", "HOME_DELIVERY")
+                    .fluentPut("deliveryOptionType", "BUY_INTO_FLEX")
                     .fluentPut("context", "BID")
                     .fluentPut("currency", "USD")
                     .fluentPut("expiresIn", 365)

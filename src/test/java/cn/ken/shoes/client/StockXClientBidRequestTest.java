@@ -33,7 +33,7 @@ class StockXClientBidRequestTest {
                 .containsEntry("context", "BID")
                 .containsEntry("currency", "USD")
                 .containsEntry("expiresIn", 365)
-                .containsEntry("deliveryOptionType", "HOME_DELIVERY")
+                .containsEntry("deliveryOptionType", "BUY_INTO_FLEX")
                 .containsEntry("localizedSizeType", "us m");
         assertThat(input.getJSONObject(0).getBigDecimal("amount")).isEqualByComparingTo("1");
         assertThat(input.getJSONObject(1).getBigDecimal("amount")).isEqualByComparingTo("125");

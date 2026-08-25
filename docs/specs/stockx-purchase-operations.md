@@ -20,7 +20,7 @@
 | `orders` | `Buying` | `PENDING` | `MATCHED_AT DESC` | 游标，每页 50 条 |
 | `history` | `Buying` | `HISTORICAL` | `MATCHED_AT DESC` | 游标，每页 50 条 |
 
-创建出价使用 `BulkCreateBids` mutation，每批最多 100 条。每条请求包含 `variantId`、`amount`、`currency=USD`、`expiresIn=365`、`deliveryOptionType=HOME_DELIVERY`、`context=BID` 和对应的 `localizedSizeType`。协议来自 2026-08-22 的 StockX Pro 实际页面代码和真实 $1 创建/删除验证。
+创建出价使用 `BulkCreateBids` mutation，每批最多 100 条。每条请求包含 `variantId`、`amount`、`currency=USD`、`expiresIn=365`、`deliveryOptionType=BUY_INTO_FLEX`、`context=BID` 和对应的 `localizedSizeType`。协议来自 StockX Pro 实际页面代码和 2026-08-26 的真实 $1 创建验证；`BUY_INTO_FLEX` 会让出价按网页端行为显示为“储存的购买”。
 
 修改出价是持续运行的轮询任务，默认每 300 秒检查一次，创建时可在 60～86400 秒内配置。每轮使用节点 `amount` 作为“你的出价”，使用 `productVariant.market.state.bidInventoryTypes.standard.highest.amount` 作为市场最高价。若两者相等则不操作；若市场价 `y` 更高，且 `y + 1` 不超过 Excel 最高价格 `x`，则提交 `y + 1`；否则保持当前出价并记录达到上限。
 
