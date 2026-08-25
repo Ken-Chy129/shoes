@@ -93,6 +93,7 @@ class EbayOAuthServiceTest {
         tokenResponse.put("refresh_token_expires_in", 47_304_000L);
         when(tokenClient.exchangeAuthorizationCode("authorization-code", "sandbox-runame"))
                 .thenReturn(tokenResponse);
+        when(tokenClient.getUserId("access-token")).thenReturn("seller-user-123");
 
         JSONObject status = service.exchangeAuthorizationCode("authorization-code", state);
 
@@ -105,6 +106,8 @@ class EbayOAuthServiceTest {
         assertThat(persisted.getValue().getProperty("refresh.token")).isEqualTo("refresh-token");
         assertThat(persisted.getValue().getProperty("authorization.granted.at"))
                 .isEqualTo(String.valueOf(NOW));
+        assertThat(persisted.getValue().getProperty("authorized.user.id"))
+                .isEqualTo("seller-user-123");
     }
 
     @Test
@@ -143,6 +146,7 @@ class EbayOAuthServiceTest {
         String state = queryParameters(authorization.getString("authorizeUrl")).get("state");
         when(tokenClient.exchangeAuthorizationCode("authorization-code", "sandbox-runame"))
                 .thenReturn(tokenResponse);
+        when(tokenClient.getUserId("access-token")).thenReturn("seller-user-123");
         service.exchangeAuthorizationCode("authorization-code", state);
 
         service.clearAuthorization();
@@ -156,6 +160,7 @@ class EbayOAuthServiceTest {
         assertThat(cleared.getProperty("access.token")).isEmpty();
         assertThat(cleared.getProperty("refresh.token")).isEmpty();
         assertThat(cleared.getProperty("authorization.granted.at")).isEqualTo("0");
+        assertThat(cleared.getProperty("authorized.user.id")).isEmpty();
     }
 
     private Map<String, String> queryParameters(String url) {

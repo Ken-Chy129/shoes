@@ -26,6 +26,7 @@ public class EbayOAuthTokenClient {
     private final EbayProperties properties;
     private final OkHttpClient httpClient;
     private final HttpUrl tokenEndpoint;
+    private final HttpUrl identityEndpoint;
 
     @Autowired
     public EbayOAuthTokenClient(EbayProperties properties) {
@@ -33,17 +34,19 @@ public class EbayOAuthTokenClient {
                 .connectTimeout(30, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
                 .writeTimeout(30, TimeUnit.SECONDS)
-                .build(), properties.getTokenEndpoint());
+                .build(), properties.getTokenEndpoint(), properties.getIdentityApiEndpoint());
     }
 
     EbayOAuthTokenClient(EbayProperties properties, OkHttpClient httpClient, String tokenEndpoint) {
+        this(properties, httpClient, tokenEndpoint, properties.getIdentityApiEndpoint());
+    }
+
+    EbayOAuthTokenClient(EbayProperties properties, OkHttpClient httpClient,
+                         String tokenEndpoint, String identityEndpoint) {
         this.properties = properties;
         this.httpClient = httpClient;
-        HttpUrl parsed = HttpUrl.parse(tokenEndpoint);
-        if (parsed == null || !("https".equals(parsed.scheme()) || isLoopbackHttp(parsed))) {
-            throw new IllegalArgumentException("eBay token endpoint must use HTTPS");
-        }
-        this.tokenEndpoint = parsed;
+        this.tokenEndpoint = requireSecureEndpoint(tokenEndpoint, "token");
+        this.identityEndpoint = requireSecureEndpoint(identityEndpoint, "identity");
     }
 
     public JSONObject exchangeAuthorizationCode(String authorizationCode, String ruName) {
@@ -70,6 +73,31 @@ public class EbayOAuthTokenClient {
                 .add("scope", scope)
                 .build();
         return requestToken(form);
+    }
+
+    public String getUserId(String accessToken) {
+        if (accessToken == null || accessToken.isBlank()) {
+            throw new IllegalArgumentException("eBay access token is required");
+        }
+        Request request = new Request.Builder()
+                .url(identityEndpoint)
+                .header("Accept", JSON_MEDIA_TYPE.toString())
+                .header("Authorization", "Bearer " + accessToken)
+                .get()
+                .build();
+        try (Response response = httpClient.newCall(request).execute()) {
+            ResponseBody body = response.body();
+            String responseText = body == null ? "" : body.string();
+            JSONObject json = responseText.isBlank() ? new JSONObject() : JSON.parseObject(responseText);
+            String userId = json == null ? null : json.getString("userId");
+            if (!response.isSuccessful() || userId == null || userId.isBlank()) {
+                throw new IllegalStateException(
+                        "eBay identity request failed (HTTP " + response.code() + ")");
+            }
+            return userId.trim();
+        } catch (IOException e) {
+            throw new IllegalStateException("eBay identity request failed due to a network error", e);
+        }
     }
 
     private JSONObject requestToken(RequestBody form) {
@@ -108,5 +136,13 @@ public class EbayOAuthTokenClient {
     private boolean isLoopbackHttp(HttpUrl url) {
         return "http".equals(url.scheme())
                 && ("localhost".equals(url.host()) || "127.0.0.1".equals(url.host()));
+    }
+
+    private HttpUrl requireSecureEndpoint(String endpoint, String label) {
+        HttpUrl parsed = HttpUrl.parse(endpoint);
+        if (parsed == null || !("https".equals(parsed.scheme()) || isLoopbackHttp(parsed))) {
+            throw new IllegalArgumentException("eBay " + label + " endpoint must use HTTPS");
+        }
+        return parsed;
     }
 }

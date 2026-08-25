@@ -39,6 +39,7 @@ class EbayAccountDeletionNotificationServiceTest {
         service.verifyAndProcess("signature", payload);
 
         verify(oauthService).clearAuthorizationForDeletionEvent(
+                "user-123",
                 Instant.parse("2027-01-15T08:01:00Z").toEpochMilli());
     }
 
@@ -61,6 +62,7 @@ class EbayAccountDeletionNotificationServiceTest {
                 "signature", unexpectedPayload))
                 .isInstanceOf(IllegalArgumentException.class);
         verify(oauthService, never()).clearAuthorizationForDeletionEvent(
+                org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyLong());
     }
 
@@ -96,15 +98,35 @@ class EbayAccountDeletionNotificationServiceTest {
         assertThat(oauthService.getStatus().getBooleanValue("hasRefreshToken")).isFalse();
     }
 
+    @Test
+    void keepsAuthorizationWhenDeletionNotificationBelongsToAnotherSeller() {
+        EbayNotificationSignatureVerifier verifier =
+                mock(EbayNotificationSignatureVerifier.class);
+        EbayOAuthService oauthService = authorizedOAuthService();
+        byte[] payload = validPayload("other-user", "2027-01-15T08:01:00Z");
+        when(verifier.verify("signature", payload)).thenReturn(true);
+        EbayAccountDeletionNotificationService service =
+                new EbayAccountDeletionNotificationService(verifier, oauthService);
+
+        service.verifyAndProcess("signature", payload);
+
+        assertThat(oauthService.getStatus().getBooleanValue("hasAccessToken")).isTrue();
+        assertThat(oauthService.getStatus().getBooleanValue("hasRefreshToken")).isTrue();
+    }
+
     private byte[] validPayload() {
         return validPayload("2027-01-15T08:01:00Z");
     }
 
     private byte[] validPayload(String eventDate) {
+        return validPayload("user-123", eventDate);
+    }
+
+    private byte[] validPayload(String userId, String eventDate) {
         return ("{\"metadata\":{\"topic\":\"MARKETPLACE_ACCOUNT_DELETION\"},"
                 + "\"notification\":{\"notificationId\":\"notification-123\","
                 + "\"eventDate\":\"" + eventDate + "\","
-                + "\"data\":{\"userId\":\"user-123\"}}}")
+                + "\"data\":{\"userId\":\"" + userId + "\"}}}")
                 .getBytes(StandardCharsets.UTF_8);
     }
 
@@ -130,6 +152,7 @@ class EbayAccountDeletionNotificationServiceTest {
         tokenResponse.put("refresh_token_expires_in", 47_304_000L);
         when(tokenClient.exchangeAuthorizationCode("authorization-code", "sandbox-runame"))
                 .thenReturn(tokenResponse);
+        when(tokenClient.getUserId("access-token")).thenReturn("user-123");
         oauthService.exchangeAuthorizationCode("authorization-code", state);
         return oauthService;
     }

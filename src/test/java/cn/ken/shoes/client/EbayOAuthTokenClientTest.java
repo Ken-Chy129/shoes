@@ -32,7 +32,8 @@ class EbayOAuthTokenClientTest {
         properties.setClientSecret("client-secret");
         client = new EbayOAuthTokenClient(properties,
                 new OkHttpClient.Builder().readTimeout(2, TimeUnit.SECONDS).build(),
-                server.url("/identity/v1/oauth2/token").toString());
+                server.url("/identity/v1/oauth2/token").toString(),
+                server.url("/commerce/identity/v1/user/").toString());
     }
 
     @AfterEach
@@ -71,5 +72,21 @@ class EbayOAuthTokenClientTest {
         String expectedBasic = Base64.getEncoder().encodeToString(
                 "client-id:client-secret".getBytes(StandardCharsets.ISO_8859_1));
         assertThat(request.getHeader("Authorization")).isEqualTo("Basic " + expectedBasic);
+    }
+
+    @Test
+    void readsTheAuthorizedSellerUserId() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200)
+                .setHeader("Content-Type", "application/json")
+                .setBody("{\"userId\":\"seller-user-123\"}"));
+
+        String userId = client.getUserId("seller-access-token");
+
+        assertThat(userId).isEqualTo("seller-user-123");
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("GET");
+        assertThat(request.getPath()).isEqualTo("/commerce/identity/v1/user/");
+        assertThat(request.getHeader("Authorization"))
+                .isEqualTo("Bearer seller-access-token");
     }
 }

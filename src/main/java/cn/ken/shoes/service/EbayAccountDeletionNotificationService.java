@@ -42,9 +42,12 @@ public class EbayAccountDeletionNotificationService {
         String notificationId = notification == null
                 ? null : notification.getString("notificationId");
         String eventDate = notification == null ? null : notification.getString("eventDate");
+        JSONObject data = notification == null ? null : notification.getJSONObject("data");
+        String userId = data == null ? null : data.getString("userId");
         if (!ACCOUNT_DELETION_TOPIC.equals(topic)
                 || notificationId == null || notificationId.isBlank()
-                || eventDate == null || eventDate.isBlank()) {
+                || eventDate == null || eventDate.isBlank()
+                || userId == null || userId.isBlank()) {
             throw new IllegalArgumentException("unexpected eBay notification payload");
         }
         long eventOccurredAt;
@@ -53,7 +56,7 @@ public class EbayAccountDeletionNotificationService {
         } catch (DateTimeParseException e) {
             throw new IllegalArgumentException("invalid eBay notification event date", e);
         }
-        if (oauthService.clearAuthorizationForDeletionEvent(eventOccurredAt)) {
+        if (oauthService.clearAuthorizationForDeletionEvent(userId, eventOccurredAt)) {
             log.info("Processed verified eBay marketplace account deletion notification");
         } else {
             log.info("Acknowledged stale or already processed eBay marketplace account deletion notification");

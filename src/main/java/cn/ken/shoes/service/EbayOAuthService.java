@@ -33,6 +33,7 @@ public class EbayOAuthService {
     private long accessTokenExpiresAt;
     private long refreshTokenExpiresAt;
     private long authorizationGrantedAt;
+    private String authorizedUserId;
 
     @Autowired
     public EbayOAuthService(EbayProperties properties, ConfigService configService,
@@ -57,6 +58,7 @@ public class EbayOAuthService {
         accessTokenExpiresAt = parseLong(stored.getProperty("access.token.expires.at"));
         refreshTokenExpiresAt = parseLong(stored.getProperty("refresh.token.expires.at"));
         authorizationGrantedAt = parseLong(stored.getProperty("authorization.granted.at"));
+        authorizedUserId = stored.getProperty("authorized.user.id", "");
     }
 
     public synchronized JSONObject createAuthorizationRequest() {
@@ -92,6 +94,7 @@ public class EbayOAuthService {
         }
         validateAndConsumeState(state);
         JSONObject tokenResponse = tokenClient.exchangeAuthorizationCode(authorizationCode, properties.getRuName());
+        authorizedUserId = tokenClient.getUserId(tokenResponse.getString("access_token"));
         authorizationGrantedAt = clock.getAsLong();
         persistTokenResponse(tokenResponse, true);
         return getStatus();
@@ -134,6 +137,7 @@ public class EbayOAuthService {
         accessTokenExpiresAt = 0L;
         refreshTokenExpiresAt = 0L;
         authorizationGrantedAt = 0L;
+        authorizedUserId = "";
 
         Properties stored = new Properties();
         stored.setProperty("access.token", "");
@@ -142,12 +146,19 @@ public class EbayOAuthService {
         stored.setProperty("access.token.expires.at", "0");
         stored.setProperty("refresh.token.expires.at", "0");
         stored.setProperty("authorization.granted.at", "0");
+        stored.setProperty("authorized.user.id", "");
         configService.saveSecretConfig(tokenConfigFile(), stored);
     }
 
-    public synchronized boolean clearAuthorizationForDeletionEvent(long eventOccurredAt) {
+    public synchronized boolean clearAuthorizationForDeletionEvent(String eventUserId,
+                                                                    long eventOccurredAt) {
         if ((accessToken == null || accessToken.isBlank())
                 && (refreshToken == null || refreshToken.isBlank())) {
+            return false;
+        }
+        if (eventUserId == null || eventUserId.isBlank()
+                || authorizedUserId == null || authorizedUserId.isBlank()
+                || !authorizedUserId.equals(eventUserId.trim())) {
             return false;
         }
         if (authorizationGrantedAt > 0 && eventOccurredAt < authorizationGrantedAt) {
@@ -199,6 +210,7 @@ public class EbayOAuthService {
         stored.setProperty("access.token.expires.at", String.valueOf(accessTokenExpiresAt));
         stored.setProperty("refresh.token.expires.at", String.valueOf(refreshTokenExpiresAt));
         stored.setProperty("authorization.granted.at", String.valueOf(authorizationGrantedAt));
+        stored.setProperty("authorized.user.id", Objects.toString(authorizedUserId, ""));
         configService.saveSecretConfig(tokenConfigFile(), stored);
     }
 

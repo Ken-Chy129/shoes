@@ -54,7 +54,7 @@ ebay:
   clientSecret: your_ebay_client_secret
   # eBay Developer 后台生成的 Redirect URL name，不是普通 HTTPS 回调地址
   ruName: your_ebay_runame
-  scopes: https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account
+  scopes: https://api.ebay.com/oauth/api_scope/sell.inventory https://api.ebay.com/oauth/api_scope/sell.account https://api.ebay.com/oauth/api_scope/commerce.identity.readonly
   stateTtlSeconds: 600
   maxPendingStates: 100
   defaultMerchantLocationKey: shantou_chenghai

@@ -9,6 +9,9 @@ import org.springframework.stereotype.Component;
 @ConfigurationProperties(prefix = "ebay")
 public class EbayProperties {
 
+    public static final String IDENTITY_READ_SCOPE =
+            "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly";
+
     private String environment = "sandbox";
     private String clientId = "";
     private String clientSecret = "";
@@ -61,6 +64,18 @@ public class EbayProperties {
 
     public String getNotificationApiEndpoint() {
         return apiRoot() + "/commerce/notification/v1/";
+    }
+
+    public String getIdentityApiEndpoint() {
+        return apiRoot() + "/commerce/identity/v1/user/";
+    }
+
+    public String getScopes() {
+        String configured = scopes == null ? "" : scopes.trim();
+        if (configured.contains(IDENTITY_READ_SCOPE)) {
+            return configured;
+        }
+        return configured.isEmpty() ? IDENTITY_READ_SCOPE : configured + " " + IDENTITY_READ_SCOPE;
     }
 
     public boolean isConfigured() {
