@@ -6,6 +6,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 
 @Slf4j
 @Service
@@ -39,11 +41,22 @@ public class EbayAccountDeletionNotificationService {
         String topic = metadata == null ? null : metadata.getString("topic");
         String notificationId = notification == null
                 ? null : notification.getString("notificationId");
+        String eventDate = notification == null ? null : notification.getString("eventDate");
         if (!ACCOUNT_DELETION_TOPIC.equals(topic)
-                || notificationId == null || notificationId.isBlank()) {
+                || notificationId == null || notificationId.isBlank()
+                || eventDate == null || eventDate.isBlank()) {
             throw new IllegalArgumentException("unexpected eBay notification payload");
         }
-        oauthService.clearAuthorization();
-        log.info("Processed verified eBay marketplace account deletion notification");
+        long eventOccurredAt;
+        try {
+            eventOccurredAt = Instant.parse(eventDate).toEpochMilli();
+        } catch (DateTimeParseException e) {
+            throw new IllegalArgumentException("invalid eBay notification event date", e);
+        }
+        if (oauthService.clearAuthorizationForDeletionEvent(eventOccurredAt)) {
+            log.info("Processed verified eBay marketplace account deletion notification");
+        } else {
+            log.info("Acknowledged stale or already processed eBay marketplace account deletion notification");
+        }
     }
 }

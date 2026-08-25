@@ -103,6 +103,8 @@ class EbayOAuthServiceTest {
         verify(configService).saveSecretConfig(any(), persisted.capture());
         assertThat(persisted.getValue().getProperty("access.token")).isEqualTo("access-token");
         assertThat(persisted.getValue().getProperty("refresh.token")).isEqualTo("refresh-token");
+        assertThat(persisted.getValue().getProperty("authorization.granted.at"))
+                .isEqualTo(String.valueOf(NOW));
     }
 
     @Test
@@ -153,6 +155,7 @@ class EbayOAuthServiceTest {
         Properties cleared = persisted.getAllValues().get(1);
         assertThat(cleared.getProperty("access.token")).isEmpty();
         assertThat(cleared.getProperty("refresh.token")).isEmpty();
+        assertThat(cleared.getProperty("authorization.granted.at")).isEqualTo("0");
     }
 
     private Map<String, String> queryParameters(String url) {
