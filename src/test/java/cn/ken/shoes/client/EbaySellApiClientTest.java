@@ -95,6 +95,33 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void createsAndPublishesAnInventoryItemGroup() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(204));
+        server.enqueue(jsonResponse("{\"listingId\":\"listing-group-456\"}"));
+        JSONObject group = JSON.parseObject("""
+                {"title":"Test Sneaker","variantSKUs":["sku-9","sku-10"]}
+                """);
+
+        client.createOrReplaceInventoryItemGroup("style/1", group, "en-US");
+        String listingId = client.publishOfferByInventoryItemGroup("style/1", "EBAY_US");
+
+        assertThat(listingId).isEqualTo("listing-group-456");
+        RecordedRequest groupRequest = server.takeRequest();
+        assertThat(groupRequest.getMethod()).isEqualTo("PUT");
+        assertThat(groupRequest.getPath())
+                .isEqualTo("/sell/inventory/v1/inventory_item_group/style%2F1");
+        assertThat(groupRequest.getHeader("Content-Language")).isEqualTo("en-US");
+        assertThat(JSON.parseObject(groupRequest.getBody().readUtf8())).isEqualTo(group);
+        RecordedRequest publishRequest = server.takeRequest();
+        assertThat(publishRequest.getMethod()).isEqualTo("POST");
+        assertThat(publishRequest.getPath())
+                .isEqualTo("/sell/inventory/v1/offer/publish_by_inventory_item_group");
+        assertThat(JSON.parseObject(publishRequest.getBody().readUtf8()))
+                .containsEntry("inventoryItemGroupKey", "style/1")
+                .containsEntry("marketplaceId", "EBAY_US");
+    }
+
+    @Test
     void createsLocationAndReadsListingPrerequisites() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(204));
         server.enqueue(jsonResponse("{\"locations\":[{\"merchantLocationKey\":\"sz-main\"}]}"));

@@ -70,6 +70,18 @@ public class EbaySellApiClient {
         return requiredResponseField(response, "offerId");
     }
 
+    public void createOrReplaceInventoryItemGroup(String inventoryItemGroupKey,
+                                                   JSONObject payload,
+                                                   String contentLanguage) {
+        HttpUrl url = inventoryUrl("inventory_item_group").newBuilder()
+                .addPathSegment(requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"))
+                .build();
+        Request request = request(url, contentLanguage)
+                .put(jsonBody(payload))
+                .build();
+        execute(request, Set.of(200, 204));
+    }
+
     public String publishOffer(String offerId) {
         HttpUrl url = inventoryUrl("offer").newBuilder()
                 .addPathSegment(requireValue(offerId, "offerId"))
@@ -77,6 +89,21 @@ public class EbaySellApiClient {
                 .build();
         Request request = request(url, null)
                 .post(EMPTY_JSON_BODY)
+                .build();
+        JSONObject response = execute(request, Set.of(200));
+        return requiredResponseField(response, "listingId");
+    }
+
+    public String publishOfferByInventoryItemGroup(String inventoryItemGroupKey,
+                                                   String marketplaceId) {
+        JSONObject payload = new JSONObject(true);
+        payload.put("inventoryItemGroupKey",
+                requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"));
+        payload.put("marketplaceId", requireValue(marketplaceId, "marketplaceId"));
+        Request request = request(inventoryUrl("offer").newBuilder()
+                .addPathSegment("publish_by_inventory_item_group")
+                .build(), null)
+                .post(jsonBody(payload))
                 .build();
         JSONObject response = execute(request, Set.of(200));
         return requiredResponseField(response, "listingId");

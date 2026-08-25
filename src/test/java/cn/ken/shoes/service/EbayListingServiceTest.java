@@ -20,6 +20,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -81,6 +82,63 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void publishesMultipleSizesAsOneListingWithIndependentOffers() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new java.util.LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setQuantity(3);
+        size10.setPrice(new BigDecimal("139.99"));
+        size10.setAspects(new java.util.LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9", "offer-10");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        InOrder order = inOrder(apiClient);
+        order.verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-10"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        order.verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        ArgumentCaptor<JSONObject> offers = ArgumentCaptor.forClass(JSONObject.class);
+        order.verify(apiClient, times(2)).createOffer(
+                offers.capture(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+
+        JSONObject group = groupPayload.getValue();
+        assertThat(group.getJSONArray("variantSKUs"))
+                .containsExactly("shoe-sku-9", "shoe-sku-10");
+        assertThat(group.getJSONObject("aspects"))
+                .containsEntry("Brand", List.of("Test Brand"))
+                .doesNotContainKey("US Shoe Size");
+        JSONObject sizeSpecification = group.getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0);
+        assertThat(sizeSpecification.getString("name")).isEqualTo("US Shoe Size");
+        assertThat(sizeSpecification.getJSONArray("values")).containsExactly("9", "10");
+        assertThat(offers.getAllValues())
+                .extracting(offer -> offer.getString("sku"))
+                .containsExactly("shoe-sku-9", "shoe-sku-10");
+        assertThat(results)
+                .extracting(EbayListingResult::getOfferId)
+                .containsExactly("offer-9", "offer-10");
+        assertThat(results)
+                .extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
     void rejectsNonHttpImageUrlBeforeCallingEbay() {
         EbayListingRequest request = listingRequest();
         request.setImageUrls(List.of("file:///etc/passwd"));
@@ -133,6 +191,27 @@ class EbayListingServiceTest {
         assertThat(body.getJSONObject("location").getJSONObject("address"))
                 .containsEntry("country", "CN")
                 .containsEntry("postalCode", "518000");
+    }
+
+    @Test
+    void omitsPostalCodeForHongKongWarehouseLocation() {
+        EbayInventoryLocationRequest request = new EbayInventoryLocationRequest();
+        request.setMerchantLocationKey("hong_kong_mong_kok");
+        request.setName("Hong Kong Warehouse");
+        request.setAddressLine1("Room 2, 2/F, Dezan Centre, 80 Larch Street");
+        request.setAddressLine2("Tai Kok Tsui, Mong Kok");
+        request.setCity("Hong Kong");
+        request.setStateOrProvince("Hong Kong");
+        request.setCountry("HK");
+
+        service.createInventoryLocation(request);
+
+        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createInventoryLocation(
+                org.mockito.ArgumentMatchers.eq("hong_kong_mong_kok"), payload.capture());
+        assertThat(payload.getValue().getJSONObject("location").getJSONObject("address"))
+                .containsEntry("country", "HK")
+                .doesNotContainKey("postalCode");
     }
 
     private EbayListingRequest listingRequest() {

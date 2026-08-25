@@ -1,6 +1,7 @@
 package cn.ken.shoes.model.ebay;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
@@ -32,11 +33,15 @@ public class EbayInventoryLocationRequest {
     @Size(max = 100)
     private String stateOrProvince;
 
-    @NotBlank
     @Size(max = 20)
     private String postalCode;
 
     @NotBlank
     @Pattern(regexp = "[A-Z]{2}")
     private String country;
+
+    @AssertTrue(message = "非香港库存地点必须填写邮编")
+    public boolean isPostalCodeValid() {
+        return "HK".equals(country) || (postalCode != null && !postalCode.isBlank());
+    }
 }
