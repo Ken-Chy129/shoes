@@ -520,19 +520,47 @@ const TaskPage = () => {
             }
         },
         {
-            title: '成功数量', key: 'operationCounts', width: 190,
-            render: (_: any, record: TaskRecord) => (
-                <TaskOperationCounts
+            title: '操作统计', key: 'operationCounts', width: 190,
+            render: (_: any, record: TaskRecord) => {
+                if (record.taskType === 'purchase' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        if (attrs.operation === 'create_bids') {
+                            return <Space size={[0, 4]} wrap aria-label="创建出价任务数量">
+                                <Tag color={attrs.submitted > 0 ? 'green' : undefined}>已提交 {attrs.submitted ?? 0}</Tag>
+                                <Tag color={attrs.skipped > 0 ? 'blue' : undefined}>跳过 {attrs.skipped ?? 0}</Tag>
+                                <Tag color={attrs.failed > 0 ? 'red' : undefined}>失败 {attrs.failed ?? 0}</Tag>
+                                {(attrs.pending ?? 0) > 0 && <Tag color="gold">待提交 {attrs.pending ?? 0}</Tag>}
+                            </Space>;
+                        }
+                    } catch { /* 回退到通用操作计数 */ }
+                }
+                return <TaskOperationCounts
                     priceDownCount={record.priceDownCount}
                     listingCount={record.listingCount}
                     delistCount={record.delistCount}
                     pendingOperationCount={record.pendingOperationCount}
-                />
-            ),
+                />;
+            },
         },
         {
-            title: '进度', key: 'progress', width: 120,
+            title: '进度', key: 'progress', width: 190,
             render: (_: any, record: TaskRecord) => {
+                if (record.taskType === 'purchase' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        if (attrs.operation === 'create_bids') {
+                            const tip = `已提交 ${attrs.submitted ?? 0} | 跳过 ${attrs.skipped ?? 0} | 失败 ${attrs.failed ?? 0} | 待提交 ${attrs.pending ?? 0}`;
+                            return <Tooltip title={tip}>
+                                <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                    {attrs.stage || '准备中'}<br/>
+                                    已处理 {attrs.processed ?? 0}/{attrs.total ?? 0}<br/>
+                                    货号 {attrs.modelsResolved ?? 0}/{attrs.modelTotal ?? 0}
+                                </span>
+                            </Tooltip>;
+                        }
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'listing' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);

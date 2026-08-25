@@ -7,6 +7,7 @@ import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
+import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -61,8 +62,7 @@ class TaskExecutorManagerCreateBidsTest {
         TaskInputSnapshotStore snapshots = new TaskInputSnapshotStore(tempDir);
         TaskExecutorManager manager = new TaskExecutorManager();
         setField(manager, "taskMapper", taskMapper);
-        setField(manager, "taskItemMapper", proxy(TaskItemMapper.class,
-                (method, args) -> method.equals("insert") ? 1 : primitiveDefault(method)));
+        setField(manager, "taskItemMapper", taskItemMapper());
         setField(manager, "stockXClient", client);
         setField(manager, "taskInputSnapshotStore", snapshots);
 
@@ -135,8 +135,7 @@ class TaskExecutorManagerCreateBidsTest {
             }
             return primitiveDefault(method);
         }));
-        setField(manager, "taskItemMapper", proxy(TaskItemMapper.class,
-                (method, args) -> method.equals("insert") ? 1 : primitiveDefault(method)));
+        setField(manager, "taskItemMapper", taskItemMapper());
         TaskDO source = new TaskDO();
         source.setId(77L);
         source.setPlatform("stockx");
@@ -188,6 +187,18 @@ class TaskExecutorManagerCreateBidsTest {
         row.setSize(size);
         row.setPrice(new BigDecimal(price));
         return row;
+    }
+
+    private static TaskItemMapper taskItemMapper() {
+        AtomicLong ids = new AtomicLong(1_000L);
+        return proxy(TaskItemMapper.class, (method, args) -> {
+            if (method.equals("insert")) {
+                ((TaskItemDO) args[0]).setId(ids.incrementAndGet());
+                return 1;
+            }
+            if (method.equals("updateById")) return 1;
+            return primitiveDefault(method);
+        });
     }
 
     @SuppressWarnings("unchecked")
