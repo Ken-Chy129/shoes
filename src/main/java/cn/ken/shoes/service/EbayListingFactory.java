@@ -81,6 +81,16 @@ public class EbayListingFactory {
     String sku(String styleId, String normalizedSize) {
         String source = String.join("|", "EBAY", styleId, normalizedSize, "NEW")
                 .toUpperCase(Locale.ROOT);
+        return stableKey(source);
+    }
+
+    String groupKey(String styleId) {
+        String source = String.join("|", "EBAYGROUP", required(styleId, "货号"), "NEW")
+                .toUpperCase(Locale.ROOT);
+        return stableKey(source);
+    }
+
+    private String stableKey(String source) {
         String readable = source.replaceAll("[^A-Z0-9]", "");
         String hash = sha256(source).substring(0, 8).toUpperCase(Locale.ROOT);
         int readableLength = Math.min(readable.length(), MAX_SKU_LENGTH - hash.length());

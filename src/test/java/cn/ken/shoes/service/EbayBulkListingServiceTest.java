@@ -21,6 +21,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -90,6 +92,48 @@ class EbayBulkListingServiceTest {
         assertThat(updated.getValue().getOfferId()).isEqualTo("offer-1");
         assertThat(updated.getValue().getListingId()).isEqualTo("listing-1");
         assertThat(updated.getValue().getOperateResult()).isEqualTo("上架成功");
+        verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+    }
+
+    @Test
+    void combinesSizesOfTheSameStyleIntoOneListing() {
+        EbayListingExcel size9 = row();
+        size9.setSize("USM9");
+        EbayListingExcel size10 = row();
+        size10.setSize("USM10");
+        size10.setQuantity(2);
+        size10.setPrice(new BigDecimal("139.99"));
+        when(metadataService.resolve(size9)).thenReturn(metadata());
+        when(metadataService.resolve(size10)).thenReturn(metadata());
+        when(listingService.publishGroup(any(), any())).thenAnswer(invocation -> {
+            List<cn.ken.shoes.model.ebay.EbayListingRequest> requests = invocation.getArgument(1);
+            return List.of(
+                    new EbayListingResult(requests.get(0).getSku(), "offer-9", "listing-group-1", "production"),
+                    new EbayListingResult(requests.get(1).getSku(), "offer-10", "listing-group-1", "production"));
+        });
+
+        service.start(List.of(size9, size10));
+
+        ArgumentCaptor<String> groupKey = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<cn.ken.shoes.model.ebay.EbayListingRequest>> requests =
+                ArgumentCaptor.forClass(List.class);
+        verify(listingService).publishGroup(groupKey.capture(), requests.capture());
+        verify(listingService, never()).publish(any());
+        assertThat(groupKey.getValue()).matches("[A-Z0-9]{1,50}");
+        assertThat(requests.getValue()).hasSize(2);
+        assertThat(requests.getValue())
+                .extracting(cn.ken.shoes.model.ebay.EbayListingRequest::getSku)
+                .doesNotHaveDuplicates();
+
+        ArgumentCaptor<TaskItemDO> updated = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(2)).updateById(updated.capture());
+        assertThat(updated.getAllValues())
+                .extracting(TaskItemDO::getListingId)
+                .containsOnly("listing-group-1");
+        assertThat(updated.getAllValues())
+                .extracting(TaskItemDO::getOfferId)
+                .containsExactlyInAnyOrder("offer-9", "offer-10");
         verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
     }
 

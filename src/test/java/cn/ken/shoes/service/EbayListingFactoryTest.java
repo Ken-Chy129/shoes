@@ -75,6 +75,15 @@ class EbayListingFactoryTest {
     }
 
     @Test
+    void createsStableGroupKeyPerStyle() {
+        assertThat(factory.groupKey("DD1391-100"))
+                .isEqualTo(factory.groupKey("dd1391-100"))
+                .matches("[A-Z0-9]{1,50}");
+        assertThat(factory.groupKey("STYLE-1"))
+                .isNotEqualTo(factory.groupKey("STYLE1"));
+    }
+
+    @Test
     void delegatesCategoryAndItemSpecificsToTheTaxonomyService() {
         EbayListingExcel row = row("STYLE-1", "USM9", "99");
         row.setCategoryId("12345");

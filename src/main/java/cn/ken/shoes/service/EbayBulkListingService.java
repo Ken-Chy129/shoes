@@ -18,8 +18,11 @@ import org.springframework.stereotype.Service;
 
 import java.util.Date;
 import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.Executor;
 
@@ -110,28 +113,45 @@ public class EbayBulkListingService {
     void run(Long taskId, List<EbayListingExcel> rows) {
         int succeeded = 0;
         int failed = 0;
+        Map<String, List<RowContext>> groups = new LinkedHashMap<>();
         for (EbayListingExcel row : rows) {
             TaskItemDO item = initialTaskItem(taskId, row);
             taskItemMapper.insert(item);
+            String groupKey = trim(row.getStyleId()).toUpperCase(Locale.ROOT);
+            groups.computeIfAbsent(groupKey, ignored -> new ArrayList<>())
+                    .add(new RowContext(row, item));
+        }
+
+        for (Map.Entry<String, List<RowContext>> entry : groups.entrySet()) {
+            List<RowContext> group = entry.getValue();
             try {
-                EbayProductMetadata metadata = metadataService.resolve(row);
-                EbayListingRequest request = listingFactory.create(row, metadata);
-                EbayListingResult result = listingService.publish(request);
-                item.setTitle(request.getTitle());
-                item.setBrand(request.getBrand());
-                item.setSku(result.getSku());
-                item.setOfferId(result.getOfferId());
-                item.setListingId(result.getListingId());
-                item.setOperateResult("上架成功");
-                succeeded++;
+                List<EbayListingRequest> requests = new ArrayList<>(group.size());
+                for (RowContext context : group) {
+                    EbayProductMetadata metadata = metadataService.resolve(context.row());
+                    requests.add(listingFactory.create(context.row(), metadata));
+                }
+                List<EbayListingResult> results = requests.size() == 1
+                        ? List.of(listingService.publish(requests.getFirst()))
+                        : listingService.publishGroup(
+                                listingFactory.groupKey(entry.getKey()), requests);
+                if (results.size() != group.size()) {
+                    throw new IllegalStateException("eBay返回的尺码结果数量不一致");
+                }
+                for (int i = 0; i < group.size(); i++) {
+                    markSucceeded(group.get(i).item(), requests.get(i), results.get(i));
+                }
+                succeeded += group.size();
             } catch (Exception e) {
-                log.warn("eBay bulk listing row failed, taskId:{}, styleId:{}, type:{}",
-                        taskId, trim(row.getStyleId()), e.getClass().getSimpleName(), e);
-                item.setOperateResult("上架失败(" + safeError(e) + ")");
-                failed++;
+                log.warn("eBay bulk listing group failed, taskId:{}, styleId:{}, sizeCount:{}, type:{}",
+                        taskId, entry.getKey(), group.size(), e.getClass().getSimpleName(), e);
+                String error = "上架失败(" + safeError(e) + ")";
+                group.forEach(context -> context.item().setOperateResult(error));
+                failed += group.size();
             }
-            item.setOperateTime(new Date());
-            taskItemMapper.updateById(item);
+            for (RowContext context : group) {
+                context.item().setOperateTime(new Date());
+                taskItemMapper.updateById(context.item());
+            }
         }
         taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
                 .fluentPut("total", rows.size())
@@ -144,6 +164,16 @@ public class EbayBulkListingService {
             taskMapper.updateTaskFailed(taskId,
                     "批量上架完成：成功 " + succeeded + "，失败 " + failed + "，请查看任务明细");
         }
+    }
+
+    private void markSucceeded(TaskItemDO item, EbayListingRequest request,
+                               EbayListingResult result) {
+        item.setTitle(request.getTitle());
+        item.setBrand(request.getBrand());
+        item.setSku(result.getSku());
+        item.setOfferId(result.getOfferId());
+        item.setListingId(result.getListingId());
+        item.setOperateResult("上架成功");
     }
 
     private TaskItemDO initialTaskItem(Long taskId, EbayListingExcel row) {
@@ -203,5 +233,8 @@ public class EbayBulkListingService {
 
     private String trim(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private record RowContext(EbayListingExcel row, TaskItemDO item) {
     }
 }
