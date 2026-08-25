@@ -65,7 +65,7 @@ class EbayNotificationControllerTest {
         ResponseEntity<Void> response = controller.receiveNotification(
                 "signature", payload);
 
-        assertThat(response.getStatusCode().value()).isEqualTo(204);
+        assertThat(response.getStatusCode().value()).isEqualTo(200);
         assertThat(response.getBody()).isNull();
         verify(notificationService).verifyAndProcess("signature", payload);
     }

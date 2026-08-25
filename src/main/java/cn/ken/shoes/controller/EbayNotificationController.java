@@ -57,7 +57,7 @@ public class EbayNotificationController {
         }
         try {
             notificationService.verifyAndProcess(signature, payload);
-            return ResponseEntity.noContent().build();
+            return ResponseEntity.ok().build();
         } catch (SecurityException e) {
             return ResponseEntity.status(412).build();
         } catch (IllegalArgumentException e) {
