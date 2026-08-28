@@ -77,7 +77,9 @@ public class EbayProperties {
     }
 
     public String getIdentityApiEndpoint() {
-        return apiRoot() + "/commerce/identity/v1/user/";
+        return isSandbox()
+                ? "https://apiz.sandbox.ebay.com/commerce/identity/v1/user/"
+                : "https://apiz.ebay.com/commerce/identity/v1/user/";
     }
 
     public String getScopes() {
