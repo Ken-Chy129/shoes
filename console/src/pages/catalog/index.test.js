@@ -20,5 +20,8 @@ describe('product catalog UI contract', () => {
     expect(drawer).toContain('编辑商品资料');
     expect(page).toContain('图片数量');
     expect(page).toContain('manualOverride');
+    expect(drawer).toContain('ImageUrlPreview');
+    expect(drawer).toContain('点击图片可放大');
+    expect(drawer).toContain('加载失败');
   });
 });

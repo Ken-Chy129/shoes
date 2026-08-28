@@ -49,10 +49,17 @@ public class EbayProductMetadataService {
         if (row == null) {
             throw new IllegalArgumentException("Excel行不能为空");
         }
+        String modelNo = required(row.getStyleId(), "货号").toUpperCase(Locale.ROOT);
+        ProductCatalogDO cached = catalogMapper.selectById(modelNo);
         boolean manualComplete = present(row.getTitle()) && present(row.getImageUrls());
-        EbayProductMetadata metadata = manualComplete
-                ? new EbayProductMetadata()
-                : resolve(row.getStyleId());
+        EbayProductMetadata metadata;
+        if (cached != null) {
+            metadata = fromCache(cached);
+        } else if (manualComplete) {
+            metadata = new EbayProductMetadata();
+        } else {
+            metadata = resolve(modelNo);
+        }
         setIfPresent(row.getTitle(), metadata::setTitle);
         if (present(row.getTitle())) {
             metadata.setManualTitle(true);
@@ -68,7 +75,20 @@ public class EbayProductMetadataService {
                     .map(String::trim).filter(value -> !value.isBlank()).distinct().limit(12).toList());
         }
         validate(metadata);
+        ProductCatalogDO catalog = toCatalog(modelNo, metadata);
+        boolean manual = hasManualFields(row);
+        catalog.setManualOverride(manual);
+        if (manual) {
+            catalog.setSource("manual");
+        }
+        catalogMapper.upsertFromListing(catalog);
         return metadata;
+    }
+
+    private boolean hasManualFields(EbayListingExcel row) {
+        return present(row.getTitle()) || present(row.getBrand()) || present(row.getDescription())
+                || present(row.getImageUrls()) || present(row.getGender()) || present(row.getColor())
+                || present(row.getColorway()) || present(row.getUpperMaterial());
     }
 
     private EbayProductMetadata fromCache(ProductCatalogDO cache) {

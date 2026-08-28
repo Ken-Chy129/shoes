@@ -1,8 +1,51 @@
-import {Button, Drawer, Form, Input, Space, message} from 'antd';
+import {Button, Drawer, Form, Image, Input, Space, Tag, Typography, message} from 'antd';
+import {PictureOutlined} from '@ant-design/icons';
 import React, {useEffect, useState} from 'react';
 import type {ProductCatalogItem} from '@/services/catalog';
 import {productCatalogDetailApi} from '@/services/catalog';
 import {doPatchRequest} from '@/util/http';
+
+const {Text} = Typography;
+
+const splitImageUrls = (value?: string) => (value || '')
+    .split(/[\r\n,;]+/)
+    .map(url => url.trim())
+    .filter(Boolean)
+    .filter((url, index, urls) => urls.indexOf(url) === index)
+    .slice(0, 20);
+
+const ImagePreviewItem = ({url, index}: {url: string; index: number}) => {
+    const [failed, setFailed] = useState(false);
+    useEffect(() => setFailed(false), [url]);
+    if (failed) {
+        return (
+            <div style={{width: 88, textAlign: 'center'}} title={url}>
+                <div style={{width: 88, height: 88, display: 'grid', placeItems: 'center', border: '1px dashed #d9d9d9', borderRadius: 6, color: '#999'}}>
+                    <PictureOutlined style={{fontSize: 24}} />
+                </div>
+                <Text type="danger" style={{fontSize: 12}}>第{index + 1}张加载失败</Text>
+            </div>
+        );
+    }
+    return <Image width={88} height={88} src={url} alt={`商品图片 ${index + 1}`} style={{objectFit: 'cover', borderRadius: 6}} onError={() => setFailed(true)} />;
+};
+
+const ImageUrlPreview = ({value}: {value?: string}) => {
+    const urls = splitImageUrls(value);
+    if (urls.length === 0) {
+        return <Text type="secondary">输入链接后将在这里显示图片预览</Text>;
+    }
+    return (
+        <div style={{marginTop: 8}}>
+            <Image.PreviewGroup>
+                <Space size={[8, 8]} wrap>
+                    {urls.map((url, index) => <ImagePreviewItem key={`${url}-${index}`} url={url} index={index} />)}
+                </Space>
+            </Image.PreviewGroup>
+            <div style={{marginTop: 8}}><Tag>{urls.length} 张预览</Tag><Text type="secondary">点击图片可放大；加载失败时请检查链接是否公开可访问</Text></div>
+        </div>
+    );
+};
 
 interface CatalogEditDrawerProps {
     open: boolean;
@@ -14,6 +57,7 @@ interface CatalogEditDrawerProps {
 const CatalogEditDrawer = ({open, product, onClose, onSaved}: CatalogEditDrawerProps) => {
     const [form] = Form.useForm();
     const [saving, setSaving] = useState(false);
+    const imageUrlsValue = Form.useWatch('imageUrls', form);
 
     useEffect(() => {
         if (!open || !product) return;
@@ -86,6 +130,7 @@ const CatalogEditDrawer = ({open, product, onClose, onSaved}: CatalogEditDrawerP
                 >
                     <Input.TextArea rows={8} placeholder="https://example.com/image-1.jpg" />
                 </Form.Item>
+                <ImageUrlPreview value={imageUrlsValue} />
             </Form>
         </Drawer>
     );

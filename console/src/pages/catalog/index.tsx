@@ -13,6 +13,7 @@ const SOURCE_LABELS: Record<string, string> = {
     kickscrew: 'KicksCrew',
     stockx: 'StockX',
     poison: '得物',
+    manual: '人工填写',
 };
 
 const CatalogThumbnail = ({url, title}: {url?: string; title: string}) => {

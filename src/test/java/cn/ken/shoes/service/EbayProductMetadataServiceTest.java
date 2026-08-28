@@ -116,6 +116,30 @@ class EbayProductMetadataServiceTest {
         assertThat(result.getImageUrls()).containsExactly(
                 "https://cdn.example.com/1.jpg", "https://cdn.example.com/2.jpg");
         assertThat(result.isManualTitle()).isTrue();
-        verifyNoInteractions(cacheMapper, itemMapper, kickScrewClient);
+        verify(cacheMapper).selectById("MANUAL-1");
+        verify(cacheMapper).upsertFromListing(org.mockito.ArgumentMatchers.any(ProductCatalogDO.class));
+        verifyNoInteractions(itemMapper, kickScrewClient);
+    }
+
+    @Test
+    void manualExcelFieldsArePersistedAndMarkedAsManualOverride() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        when(cacheMapper.selectById("MANUAL-2")).thenReturn(null);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient);
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("manual-2");
+        row.setTitle("Manual product");
+        row.setImageUrls("https://cdn.example.com/1.jpg");
+
+        service.resolve(row);
+
+        ArgumentCaptor<ProductCatalogDO> catalog = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromListing(catalog.capture());
+        assertThat(catalog.getValue().getModelNo()).isEqualTo("MANUAL-2");
+        assertThat(catalog.getValue().getManualOverride()).isTrue();
+        assertThat(catalog.getValue().getSource()).isEqualTo("manual");
     }
 }

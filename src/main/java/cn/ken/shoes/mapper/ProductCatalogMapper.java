@@ -22,5 +22,7 @@ public interface ProductCatalogMapper extends BaseMapper<ProductCatalogDO> {
 
     int upsertFromSource(ProductCatalogDO product);
 
+    int upsertFromListing(ProductCatalogDO product);
+
     int updateManual(ProductCatalogDO product);
 }
