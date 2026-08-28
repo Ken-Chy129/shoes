@@ -4,6 +4,7 @@ import cn.ken.shoes.client.EbayOAuthTokenClient;
 import cn.ken.shoes.config.EbayProperties;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -16,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.LongSupplier;
 
 @Service
+@Slf4j
 public class EbayOAuthService {
 
     private static final long ACCESS_TOKEN_REFRESH_BUFFER_MS = 2 * 60 * 1000L;
@@ -92,9 +94,28 @@ public class EbayOAuthService {
         if (authorizationCode == null || authorizationCode.isBlank()) {
             throw new IllegalArgumentException("authorization code is blank");
         }
-        validateAndConsumeState(state);
-        JSONObject tokenResponse = tokenClient.exchangeAuthorizationCode(authorizationCode, properties.getRuName());
-        authorizedUserId = tokenClient.getUserId(tokenResponse.getString("access_token"));
+        try {
+            validateAndConsumeState(state);
+        } catch (RuntimeException e) {
+            log.warn("eBay OAuth state validation failed, type:{}, detail:{}",
+                    e.getClass().getSimpleName(), safeError(e));
+            throw e;
+        }
+        JSONObject tokenResponse;
+        try {
+            tokenResponse = tokenClient.exchangeAuthorizationCode(authorizationCode, properties.getRuName());
+        } catch (RuntimeException e) {
+            log.warn("eBay OAuth token exchange failed, type:{}, detail:{}",
+                    e.getClass().getSimpleName(), safeError(e));
+            throw e;
+        }
+        try {
+            authorizedUserId = tokenClient.getUserId(tokenResponse.getString("access_token"));
+        } catch (RuntimeException e) {
+            log.warn("eBay OAuth identity lookup failed, type:{}, detail:{}",
+                    e.getClass().getSimpleName(), safeError(e));
+            throw e;
+        }
         authorizationGrantedAt = clock.getAsLong();
         persistTokenResponse(tokenResponse, true);
         return getStatus();
@@ -239,5 +260,16 @@ public class EbayOAuthService {
         } catch (NumberFormatException ignored) {
             return 0L;
         }
+    }
+
+    private String safeError(Throwable error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return "no detail";
+        }
+        String sanitized = message.replaceAll(
+                "(?i)(access[_-]?token|refresh[_-]?token|authorization[_-]?code|client[_-]?secret|secret)\\s*[=:]\\s*[^,\\s]+",
+                "$1=[redacted]");
+        return sanitized.length() <= 240 ? sanitized : sanitized.substring(0, 240);
     }
 }
