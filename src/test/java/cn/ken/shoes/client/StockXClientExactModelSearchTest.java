@@ -2,6 +2,7 @@ package cn.ken.shoes.client;
 
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -15,6 +16,72 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StockXClientExactModelSearchTest {
+
+    @Test
+    void loadsExactProductMetadataAndOfficialImagesWithoutMarketRequest() {
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                JSONObject request = JSON.parseObject(body);
+                String operation = request.getString("operationName");
+                if ("getDiscoveryData".equals(operation)) {
+                    return JSON.parseObject("""
+                            {"data":{"browse":{"results":{"edges":[
+                              {"node":{"urlKey":"exact-product","product":{"urlKey":"exact-product","title":"Exact title"}}}
+                            ]}}}}
+                            """);
+                }
+                if ("GetProduct".equals(operation)) {
+                    return JSON.parseObject("""
+                            {"data":{"product":{"styleId":"STYLE-1","title":"Exact title","brand":"Nike",
+                              "description":"Description","model":"Dunk Low","media":[
+                                {"thumbUrl":"https://images.stockx.com/thumb.jpg","smallImageUrl":"https://images.stockx.com/small.jpg"},
+                                {"thumbUrl":"https://images.stockx.com/thumb-2.jpg","smallImageUrl":"https://images.stockx.com/small-2.jpg"}
+                              ]}}}
+                            """);
+                }
+                throw new AssertionError("Unexpected market request: " + operation);
+            }
+        };
+
+        EbayProductMetadata result = client.queryProductMetadataByModelNo("STYLE-1");
+
+        assertThat(result.getTitle()).isEqualTo("Exact title");
+        assertThat(result.getBrand()).isEqualTo("Nike");
+        assertThat(result.getImageUrls()).containsExactly(
+                "https://images.stockx.com/small.jpg", "https://images.stockx.com/small-2.jpg");
+    }
+
+    @Test
+    void expandsStockXRotationImageIntoRepresentativeFrames() {
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                String operation = JSON.parseObject(body).getString("operationName");
+                if ("getDiscoveryData".equals(operation)) {
+                    return JSON.parseObject("""
+                            {"data":{"browse":{"results":{"edges":[
+                              {"node":{"urlKey":"rotation-product"}}
+                            ]}}}}
+                            """);
+                }
+                return JSON.parseObject("""
+                        {"data":{"product":{"styleId":"STYLE-2","title":"Rotation title","brand":"Nike",
+                          "media":{"smallImageUrl":"https://images.stockx.com/360/rotation/Lv2/img01.jpg?w=576"}}}}
+                        """);
+            }
+        };
+
+        EbayProductMetadata result = client.queryProductMetadataByModelNo("STYLE-2");
+
+        assertThat(result.getImageUrls()).containsExactly(
+                "https://images.stockx.com/360/rotation/Lv2/img01.jpg?w=576",
+                "https://images.stockx.com/360/rotation/Lv2/img07.jpg?w=576",
+                "https://images.stockx.com/360/rotation/Lv2/img13.jpg?w=576",
+                "https://images.stockx.com/360/rotation/Lv2/img19.jpg?w=576",
+                "https://images.stockx.com/360/rotation/Lv2/img25.jpg?w=576",
+                "https://images.stockx.com/360/rotation/Lv2/img31.jpg?w=576");
+    }
 
     @Test
     void stopsAfterExactModelAndOnlyLoadsItsMarketPrice() {

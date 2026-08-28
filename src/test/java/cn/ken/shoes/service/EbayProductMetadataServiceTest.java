@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.mapper.ProductCatalogMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
@@ -94,6 +95,34 @@ class EbayProductMetadataServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("请在Excel补充");
         verify(kickScrewClient, never()).queryProductMetadata(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void fallsBackToStockXWhenKickScrewMetadataFails() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(cacheMapper.selectById("FALLBACK-1")).thenReturn(null);
+        when(itemMapper.selectHandleByModelNo("FALLBACK-1")).thenReturn("fallback-handle");
+        when(kickScrewClient.queryProductMetadata("fallback-handle"))
+                .thenThrow(new IllegalStateException("KC暂时不可用"));
+        EbayProductMetadata stockx = new EbayProductMetadata();
+        stockx.setTitle("StockX title");
+        stockx.setBrand("Nike");
+        stockx.setImageUrls(List.of("https://images.stockx.com/1.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("FALLBACK-1")).thenReturn(stockx);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+
+        EbayProductMetadata result = service.resolve("FALLBACK-1");
+
+        assertThat(result.getTitle()).isEqualTo("StockX title");
+        verify(stockXClient).queryProductMetadataByModelNo("FALLBACK-1");
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
+        assertThat(cache.getValue().getSource()).isEqualTo("stockx");
+        assertThat(cache.getValue().getImageUrls()).contains("images.stockx.com/1.jpg");
     }
 
     @Test

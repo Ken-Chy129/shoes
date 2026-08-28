@@ -1,13 +1,16 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.KickScrewClient;
+import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.mapper.ProductCatalogMapper;
 import cn.ken.shoes.mapper.KickScrewItemMapper;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.entity.ProductCatalogDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import com.alibaba.fastjson.JSON;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Date;
 import java.util.Arrays;
@@ -15,18 +18,29 @@ import java.util.List;
 import java.util.Locale;
 
 @Service
+@Slf4j
 public class EbayProductMetadataService {
 
     private final ProductCatalogMapper catalogMapper;
     private final KickScrewItemMapper kickScrewItemMapper;
     private final KickScrewClient kickScrewClient;
+    private final StockXClient stockXClient;
 
     public EbayProductMetadataService(ProductCatalogMapper catalogMapper,
                                       KickScrewItemMapper kickScrewItemMapper,
                                       KickScrewClient kickScrewClient) {
+        this(catalogMapper, kickScrewItemMapper, kickScrewClient, null);
+    }
+
+    @Autowired
+    public EbayProductMetadataService(ProductCatalogMapper catalogMapper,
+                                      KickScrewItemMapper kickScrewItemMapper,
+                                      KickScrewClient kickScrewClient,
+                                      StockXClient stockXClient) {
         this.catalogMapper = catalogMapper;
         this.kickScrewItemMapper = kickScrewItemMapper;
         this.kickScrewClient = kickScrewClient;
+        this.stockXClient = stockXClient;
     }
 
     public EbayProductMetadata resolve(String rawModelNo) {
@@ -35,14 +49,35 @@ public class EbayProductMetadataService {
         if (cached != null) {
             return fromCache(cached);
         }
-        String handle = kickScrewItemMapper.selectHandleByModelNo(modelNo);
-        if (handle == null || handle.isBlank()) {
-            throw new IllegalArgumentException("本地没有该货号的KC资料，请在Excel补充标题、描述和图片链接");
+        RuntimeException kcFailure;
+        try {
+            String handle = kickScrewItemMapper.selectHandleByModelNo(modelNo);
+            if (handle == null || handle.isBlank()) {
+                throw new IllegalArgumentException("本地没有该货号的KC资料");
+            }
+            EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
+            validate(fetched);
+            catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
+            return fetched;
+        } catch (RuntimeException e) {
+            kcFailure = e;
+            log.warn("KC商品资料不可用，尝试StockX兜底，modelNo:{}, reason:{}", modelNo, e.getMessage());
         }
-        EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
-        validate(fetched);
-        catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
-        return fetched;
+
+        try {
+            if (stockXClient == null) {
+                throw new IllegalStateException("StockX兜底未配置");
+            }
+            EbayProductMetadata fallback = stockXClient.queryProductMetadataByModelNo(modelNo);
+            validate(fallback);
+            ProductCatalogDO catalog = toCatalog(modelNo, fallback);
+            catalog.setSource("stockx");
+            catalogMapper.upsertFromSource(catalog);
+            return fallback;
+        } catch (RuntimeException stockxFailure) {
+            log.warn("StockX商品资料兜底失败，modelNo:{}, reason:{}", modelNo, stockxFailure.getMessage());
+            throw new IllegalArgumentException("KC和StockX均未获取到可用商品资料，请在Excel补充标题和图片链接", kcFailure);
+        }
     }
 
     public EbayProductMetadata resolve(EbayListingExcel row) {

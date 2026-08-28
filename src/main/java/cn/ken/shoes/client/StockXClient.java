@@ -17,6 +17,7 @@ import cn.ken.shoes.model.entity.StockXItemDO;
 import cn.ken.shoes.model.entity.StockXPriceDO;
 import cn.ken.shoes.model.excel.StockXOrderExcel;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
+import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.stockx.StockXListingCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
 import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
@@ -55,6 +56,8 @@ import static java.lang.StringTemplate.STR;
 @Component
 public class StockXClient {
 
+    private static final List<String> REPRESENTATIVE_ROTATION_FRAMES =
+            List.of("01", "07", "13", "19", "25", "31");
     private final StockXReadAccountPool readAccountPool = new StockXReadAccountPool();
 
     @Value("${stockx.clientId}")
@@ -935,6 +938,92 @@ public class StockXClient {
             }
         }
         return Collections.emptyList();
+    }
+
+    /**
+     * 按货号精确查询 StockX 商品资料和官方图库图片，供 eBay 商品资料补全兜底使用。
+     * 这里只读取商品详情，不查询市场价格，避免兜底时额外消耗价格查询请求。
+     */
+    public EbayProductMetadata queryProductMetadataByModelNo(String modelNo) {
+        if (StrUtil.isBlank(modelNo)) {
+            return null;
+        }
+        String requestedModelNo = modelNo.trim();
+        List<String> aliases = splitModelAliases(requestedModelNo);
+        Set<String> checkedUrlKeys = new HashSet<>();
+        for (String alias : aliases) {
+            JSONObject searchResponse = queryReadPro(
+                    buildItemSearchRequest(alias, 1, "featured", "US"), "US", null);
+            JSONObject data = searchResponse != null ? searchResponse.getJSONObject("data") : null;
+            JSONObject browse = data != null ? data.getJSONObject("browse") : null;
+            JSONObject results = browse != null ? browse.getJSONObject("results") : null;
+            JSONArray edges = results != null ? results.getJSONArray("edges") : null;
+            if (CollectionUtils.isEmpty(edges)) {
+                continue;
+            }
+            for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
+                JSONObject node = edge.getJSONObject("node");
+                JSONObject summary = node != null && node.getJSONObject("product") != null
+                        ? node.getJSONObject("product") : node;
+                String urlKey = summary != null ? summary.getString("urlKey") : null;
+                if (StrUtil.isBlank(urlKey) || !checkedUrlKeys.add(urlKey)) {
+                    continue;
+                }
+                JSONObject productResponse = queryReadPro(buildGetProductRequest(urlKey), "US", null);
+                JSONObject productData = productResponse != null ? productResponse.getJSONObject("data") : null;
+                JSONObject product = productData != null ? productData.getJSONObject("product") : null;
+                if (product == null || !matchesAnyModelAlias(aliases, product.getString("styleId"))) {
+                    continue;
+                }
+
+                EbayProductMetadata metadata = new EbayProductMetadata();
+                metadata.setTitle(firstNonBlank(product.getString("title"),
+                        summary != null ? summary.getString("title") : null));
+                metadata.setBrand(product.getString("brand"));
+                metadata.setDescription(product.getString("description"));
+                metadata.setModelName(product.getString("model"));
+                metadata.setGender(product.getString("gender"));
+                LinkedHashSet<String> images = new LinkedHashSet<>();
+                appendMediaUrls(product.get("media"), images);
+                if (summary != null) {
+                    appendMediaUrls(summary.get("media"), images);
+                }
+                metadata.setImageUrls(images.stream().limit(6).toList());
+                if (StrUtil.isNotBlank(metadata.getTitle()) && !metadata.getImageUrls().isEmpty()) {
+                    return metadata;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        return StrUtil.isNotBlank(first) ? first : second;
+    }
+
+    private static void appendMediaUrls(Object rawMedia, Set<String> images) {
+        if (rawMedia instanceof JSONArray mediaArray) {
+            for (Object value : mediaArray) {
+                appendMediaUrls(value, images);
+            }
+            return;
+        }
+        if (!(rawMedia instanceof JSONObject media)) {
+            return;
+        }
+        String smallImageUrl = media.getString("smallImageUrl");
+        String thumbUrl = media.getString("thumbUrl");
+        String imageUrl = StrUtil.isNotBlank(smallImageUrl) ? smallImageUrl : thumbUrl;
+        if (StrUtil.isBlank(imageUrl)) {
+            return;
+        }
+        if (imageUrl.contains("/360/") && imageUrl.matches(".*img\\d{2}\\.[A-Za-z0-9]+(?:\\?.*)?")) {
+            for (String frame : REPRESENTATIVE_ROTATION_FRAMES) {
+                images.add(imageUrl.replaceFirst("img\\d{2}(?=\\.)", "img" + frame));
+            }
+        } else {
+            images.add(imageUrl);
+        }
     }
 
     private static boolean matchesAnyModelAlias(List<String> aliases, String actualModelNo) {
