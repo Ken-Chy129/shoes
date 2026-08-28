@@ -3,6 +3,8 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.EbayTaxonomyApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
+import cn.ken.shoes.model.entity.SizeChartDO;
+import cn.ken.shoes.util.SizeConvertUtil;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -28,6 +30,12 @@ class EbayListingTaxonomyServiceTest {
         EbayProperties properties = new EbayProperties();
         properties.setDefaultCategoryTreeId("0");
         service = new EbayListingTaxonomyService(properties, client);
+        SizeConvertUtil.initCache(List.of());
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        SizeConvertUtil.initCache(List.of());
     }
 
     @Test
@@ -110,6 +118,27 @@ class EbayListingTaxonomyServiceTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("性别")
                 .hasMessageContaining("分类ID");
+    }
+
+    @Test
+    void convertsEuSizeToMensUsSizeWhenCategoryRequiresUsShoeSize() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Onitsuka Tiger");
+        chart.setGender("MENS");
+        chart.setEuSize("42.5");
+        chart.setMenUSSize("9");
+        SizeConvertUtil.initCache(List.of(chart));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(aspects("US Shoe Size"));
+
+        EbayProductMetadata metadata = metadata();
+        metadata.setBrand("Onitsuka Tiger");
+        metadata.setGender("mens");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "1183C102-751", metadata, "EU", "42.5");
+
+        assertThat(resolved.aspects()).containsEntry("US Shoe Size", List.of("9"));
     }
 
     @Test

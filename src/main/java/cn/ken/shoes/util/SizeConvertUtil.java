@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -131,6 +132,75 @@ public class SizeConvertUtil {
         String finalCmSize = cmSize.replace("cm", "").trim();
         String key = buildKey(dunkBrand, gender.name(), finalCmSize);
         return DUNK_SIZE_CACHE.get(key);
+    }
+
+    /**
+     * 根据 KC 品牌尺码表把欧码转换为指定性别的美国码。
+     *
+     * @param brand   KC 品牌名
+     * @param gender  商品性别，支持 men/mens/women/womens 等写法
+     * @param euSize  欧码
+     * @return 美国码，找不到时返回 null
+     */
+    public static String getKcUsSize(String brand, String gender, String euSize) {
+        if (brand == null || brand.isBlank() || euSize == null || euSize.isBlank()) {
+            return null;
+        }
+        String normalizedGender = normalizeGender(gender);
+        if (normalizedGender == null) {
+            return null;
+        }
+        Map<String, List<SizeChartDO>> brandCharts = KC_SIZE_CACHE.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(brand.trim()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+        if (brandCharts == null) {
+            return null;
+        }
+        List<SizeChartDO> charts = brandCharts.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(normalizedGender))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(List.of());
+        String normalizedEuSize = normalizeSize(euSize);
+        for (SizeChartDO chart : charts) {
+            if (!normalizedEuSize.equals(normalizeSize(chart.getEuSize()))) {
+                continue;
+            }
+            String usSize = Gender.MENS.name().equals(normalizedGender)
+                    ? chart.getMenUSSize() : chart.getWomenUSSize();
+            if (usSize == null || usSize.isBlank()) {
+                usSize = chart.getUsSize();
+            }
+            return usSize == null || usSize.isBlank() ? null : usSize.trim();
+        }
+        return null;
+    }
+
+    private static String normalizeGender(String gender) {
+        if (gender == null || gender.isBlank()) {
+            return null;
+        }
+        String normalized = gender.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("women") || normalized.contains("female")) {
+            return Gender.WOMENS.name();
+        }
+        if (normalized.contains("men") || normalized.contains("male")) {
+            return Gender.MENS.name();
+        }
+        return null;
+    }
+
+    private static String normalizeSize(String size) {
+        if (size == null) {
+            return "";
+        }
+        String normalized = size.trim();
+        if (normalized.endsWith(".0")) {
+            normalized = normalized.substring(0, normalized.length() - 2);
+        }
+        return normalized;
     }
 
     /**

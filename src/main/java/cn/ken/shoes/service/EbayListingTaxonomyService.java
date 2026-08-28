@@ -4,6 +4,7 @@ import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbayTaxonomyApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
+import cn.ken.shoes.util.SizeConvertUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Service;
@@ -204,7 +205,9 @@ public class EbayListingTaxonomyService {
         return switch (name) {
             case "brand", "marke" -> metadata.getBrand();
             case "department", "gender", "abteilung" -> department;
-            case "usshoesize" -> sizeSystem.startsWith("US") ? sizeValue : null;
+            case "usshoesize" -> sizeSystem.startsWith("US")
+                    ? sizeValue
+                    : SizeConvertUtil.getKcUsSize(metadata.getBrand(), metadata.getGender(), sizeValue);
             case "eushoesize" -> "EU".equals(sizeSystem) ? sizeValue : null;
             case "color", "colour", "farbe" -> firstPresent(metadata.getColor(), metadata.getColorway());
             case "uppermaterial", "obermaterial" -> metadata.getUpperMaterial();
