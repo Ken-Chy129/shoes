@@ -150,6 +150,35 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void usesUsSizeAsTheSingleVariationWhenEuAndUsAspectsAreBothPresent() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-eu-9");
+        size9.setAspects(new java.util.LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        size9.getAspects().put("EU Shoe Size", List.of("42.5"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-eu-10");
+        size10.setAspects(new java.util.LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        size10.getAspects().put("EU Shoe Size", List.of("44"));
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-eu-9", "offer-eu-10");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-eu", "EBAY_US"))
+                .thenReturn("listing-group-eu");
+
+        service.publishGroup("group-style-eu", List.of(size9, size10));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-eu"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        JSONObject specification = groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0);
+        assertThat(specification.getString("name")).isEqualTo("US Shoe Size");
+        assertThat(groupPayload.getValue().getJSONObject("aspects")).doesNotContainKey("EU Shoe Size");
+    }
+
+    @Test
     void rejectsNonHttpImageUrlBeforeCallingEbay() {
         EbayListingRequest request = listingRequest();
         request.setImageUrls(List.of("file:///etc/passwd"));

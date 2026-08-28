@@ -231,6 +231,13 @@ public class EbayListingService {
         if (request.getBrand() != null && !request.getBrand().isBlank()) {
             aspects.put("Brand", List.of(request.getBrand().trim()));
         }
+        // Excel continues to accept EU sizes, but taxonomy resolution adds the
+        // converted US size required by eBay. Only one size aspect may vary in
+        // an inventory item group, so keep the eBay-facing US size and omit the
+        // source EU size from the group payload.
+        if (aspects.containsKey("US Shoe Size") && aspects.containsKey("EU Shoe Size")) {
+            aspects.remove("EU Shoe Size");
+        }
         return aspects;
     }
 
