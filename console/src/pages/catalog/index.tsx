@@ -1,5 +1,5 @@
 import {Button, Card, Empty, Form, Image, Input, Select, Space, Table, Tag, Typography, message} from 'antd';
-import {EditOutlined, PictureOutlined} from '@ant-design/icons';
+import {PictureOutlined} from '@ant-design/icons';
 import React, {useEffect, useState} from 'react';
 import moment from 'moment';
 import type {ProductCatalogItem} from '@/services/catalog';
@@ -66,6 +66,8 @@ const ProductCatalogPage = () => {
             title: '主图', key: 'image', width: 88,
             render: (_: unknown, record: ProductCatalogItem) => <CatalogThumbnail url={record.imageUrls?.[0]} title={record.title} />,
         },
+        {title: '货号', dataIndex: 'modelNo', key: 'modelNo', width: 160},
+        {title: '品牌', dataIndex: 'brand', key: 'brand', width: 110, render: (value?: string) => value || '-'},
         {
             title: '商品', key: 'product', width: 340,
             render: (_: unknown, record: ProductCatalogItem) => (
@@ -85,10 +87,6 @@ const ProductCatalogPage = () => {
         {
             title: '更新时间', dataIndex: 'gmtModified', key: 'gmtModified', width: 180,
             render: (value?: string) => value ? moment(value).format('YYYY-MM-DD HH:mm') : '-',
-        },
-        {
-            title: '操作', key: 'action', width: 100, fixed: 'right' as const,
-            render: (_: unknown, record: ProductCatalogItem) => <Button type="link" icon={<EditOutlined />} onClick={() => openEditor(record)}>查看/编辑</Button>,
         },
     ];
 
@@ -118,7 +116,8 @@ const ProductCatalogPage = () => {
                 columns={columns}
                 dataSource={products}
                 loading={loading}
-                scroll={{x: 980}}
+                onRow={record => ({onClick: () => openEditor(record), style: {cursor: 'pointer'}})}
+                scroll={{x: 1100}}
                 locale={{emptyText: <Empty description="暂无商品资料；eBay 上架补全成功后会自动进入资料库" />}}
                 pagination={{
                     current: pageIndex, pageSize, total, showSizeChanger: true,

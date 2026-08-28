@@ -20,6 +20,10 @@ describe('product catalog UI contract', () => {
     expect(drawer).toContain('编辑商品资料');
     expect(page).toContain('图片数量');
     expect(page).toContain('manualOverride');
+    expect(page).toContain("dataIndex: 'modelNo'");
+    expect(page).toContain("dataIndex: 'brand'");
+    expect(page).toContain('onRow={record =>');
+    expect(page).not.toContain("title: '操作'");
     expect(drawer).toContain('ImageUrlPreview');
     expect(drawer).toContain('点击图片可放大');
     expect(drawer).toContain('加载失败');
