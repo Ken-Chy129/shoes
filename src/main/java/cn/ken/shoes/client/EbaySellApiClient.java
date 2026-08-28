@@ -168,7 +168,8 @@ public class EbaySellApiClient {
         try (Response response = httpClient.newCall(request).execute()) {
             String responseText = responseText(response.body());
             if (!expectedStatusCodes.contains(response.code())) {
-                throw new EbayApiException("eBay API request failed (HTTP " + response.code() + ")");
+                throw new EbayApiException("eBay API request failed (HTTP " + response.code()
+                        + "): " + summarizeError(responseText));
             }
             if (responseText.isBlank()) {
                 return new JSONObject();
@@ -189,6 +190,14 @@ public class EbaySellApiClient {
 
     private String responseText(ResponseBody body) throws IOException {
         return body == null ? "" : body.string();
+    }
+
+    private String summarizeError(String responseText) {
+        if (responseText == null || responseText.isBlank()) {
+            return "empty response";
+        }
+        String compact = responseText.replaceAll("\\s+", " ").trim();
+        return compact.length() <= 500 ? compact : compact.substring(0, 500);
     }
 
     private String requiredResponseField(JSONObject response, String field) {
