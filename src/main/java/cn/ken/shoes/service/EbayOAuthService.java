@@ -117,7 +117,13 @@ public class EbayOAuthService {
             throw e;
         }
         authorizationGrantedAt = clock.getAsLong();
-        persistTokenResponse(tokenResponse, true);
+        try {
+            persistTokenResponse(tokenResponse, true);
+        } catch (RuntimeException e) {
+            log.warn("eBay OAuth token persistence failed, type:{}, detail:{}",
+                    e.getClass().getSimpleName(), safeError(e));
+            throw e;
+        }
         return getStatus();
     }
 
