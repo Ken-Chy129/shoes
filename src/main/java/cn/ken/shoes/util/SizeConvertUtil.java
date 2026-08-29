@@ -178,6 +178,60 @@ public class SizeConvertUtil {
         return null;
     }
 
+    /**
+     * 根据 KC 尺码表生成 eBay 兼容的男女合并尺码展示值。
+     * 当同一欧码同时存在男码和女码时，返回例如 "9 Men/10.5 Women"；
+     * 只有单边尺码时返回原始单一美国码，避免改变单性别商品的既有行为。
+     */
+    public static String getKcUsSizeDisplay(String brand, String gender, String euSize) {
+        if (brand == null || brand.isBlank() || euSize == null || euSize.isBlank()) {
+            return null;
+        }
+        Map<String, List<SizeChartDO>> brandCharts = findBrandCharts(brand);
+        if (brandCharts == null) {
+            return getKcUsSize(brand, gender, euSize);
+        }
+
+        String normalizedEuSize = normalizeSize(euSize);
+        String menSize = null;
+        String womenSize = null;
+        for (List<SizeChartDO> charts : brandCharts.values()) {
+            for (SizeChartDO chart : charts) {
+                if (!normalizedEuSize.equals(normalizeSize(chart.getEuSize()))) {
+                    continue;
+                }
+                String chartGender = normalizeGender(chart.getGender());
+                menSize = firstNonBlank(menSize, chart.getMenUSSize());
+                womenSize = firstNonBlank(womenSize, chart.getWomenUSSize());
+                if (Gender.MENS.name().equals(chartGender)) {
+                    menSize = firstNonBlank(menSize, chart.getUsSize());
+                } else if (Gender.WOMENS.name().equals(chartGender)) {
+                    womenSize = firstNonBlank(womenSize, chart.getUsSize());
+                }
+            }
+        }
+        if (isPresent(menSize) && isPresent(womenSize)) {
+            return menSize.trim() + " Men/" + womenSize.trim() + " Women";
+        }
+        return getKcUsSize(brand, gender, euSize);
+    }
+
+    private static Map<String, List<SizeChartDO>> findBrandCharts(String brand) {
+        return KC_SIZE_CACHE.entrySet().stream()
+                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(brand.trim()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        return isPresent(first) ? first : second;
+    }
+
+    private static boolean isPresent(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private static String normalizeGender(String gender) {
         if (gender == null || gender.isBlank()) {
             return null;

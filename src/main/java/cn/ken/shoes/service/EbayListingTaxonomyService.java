@@ -207,7 +207,7 @@ public class EbayListingTaxonomyService {
             case "department", "gender", "abteilung" -> department;
             case "usshoesize" -> sizeSystem.startsWith("US")
                     ? sizeValue
-                    : SizeConvertUtil.getKcUsSize(metadata.getBrand(), metadata.getGender(), sizeValue);
+                    : SizeConvertUtil.getKcUsSizeDisplay(metadata.getBrand(), metadata.getGender(), sizeValue);
             case "eushoesize" -> "EU".equals(sizeSystem) ? sizeValue : null;
             case "color", "colour", "farbe" -> firstPresent(metadata.getColor(), metadata.getColorway());
             case "uppermaterial", "obermaterial" -> metadata.getUpperMaterial();

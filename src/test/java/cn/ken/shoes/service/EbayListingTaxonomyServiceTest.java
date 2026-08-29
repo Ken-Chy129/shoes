@@ -142,6 +142,59 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
+    void displaysMensAndWomensUsSizesTogetherWhenEuSizeChartHasBoth() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Onitsuka Tiger");
+        chart.setGender("MENS");
+        chart.setEuSize("42.5");
+        chart.setMenUSSize("9");
+        chart.setWomenUSSize("10.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(aspects("US Shoe Size"));
+
+        EbayProductMetadata metadata = metadata();
+        metadata.setBrand("Onitsuka Tiger");
+        metadata.setGender("mens");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "1183C102-751", metadata, "EU", "42.5");
+
+        assertThat(resolved.aspects()).containsEntry(
+                "US Shoe Size", List.of("9 Men/10.5 Women"));
+    }
+
+    @Test
+    void keepsCombinedSizeWhenEbayCategoryAllowsIt() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Onitsuka Tiger");
+        chart.setGender("MENS");
+        chart.setEuSize("42.5");
+        chart.setMenUSSize("9");
+        chart.setWomenUSSize("10.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        JSONObject sizeAspect = new JSONObject(true)
+                .fluentPut("localizedAspectName", "US Shoe Size")
+                .fluentPut("aspectConstraint", new JSONObject(true)
+                        .fluentPut("aspectRequired", true)
+                        .fluentPut("aspectMode", "SELECTION_ONLY"))
+                .fluentPut("aspectValues", List.of(new JSONObject(true)
+                        .fluentPut("localizedValue", "9 Men/10.5 Women")));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(sizeAspect)));
+
+        EbayProductMetadata metadata = metadata();
+        metadata.setBrand("Onitsuka Tiger");
+        metadata.setGender("mens");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "1183C102-751", metadata, "EU", "42.5");
+
+        assertThat(resolved.aspects()).containsEntry(
+                "US Shoe Size", List.of("9 Men/10.5 Women"));
+    }
+
+    @Test
     void keepsStandardShoeFallbackWhenApplicationTokenIsTemporarilyUnavailable() {
         when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
                 .thenThrow(new IllegalStateException("application token unavailable"));
