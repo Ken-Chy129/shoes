@@ -213,20 +213,6 @@ docs/specs/           业务操作规格说明
 - [得物价格 API 说明](poison-price-api.md)
 - [StockX API 示例](stockx-api.json)
 
-## 常见问题
-
-### 编译时报 Java 21 与 preview 相关错误
-
-不要直接使用系统默认 JDK，改用 `./build.sh <maven-args>`。脚本会自动选择本机安装的 JDK 21；如果找不到，请先安装 JDK 21。
-
-### 前端页面请求 API 失败
-
-确认后端运行在 `8080` 端口，并检查 `console/config/proxy.ts` 的 `dev.target`。生产构建不会使用该开发代理，需要由 Nginx 或网关完成反向代理。
-
-### StockX token 过期或刷新失败
-
-先阅读 [`stockx-token-minter/README.md`](stockx-token-minter/README.md)，首次使用需执行一次有头浏览器登录；日常可用 `node index.js --once` 验证单轮刷新。
-
 ## 开发约定
 
 提交前建议至少执行：
