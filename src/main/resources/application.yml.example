@@ -11,6 +11,10 @@ spring:
 mybatis-plus:
   mapper-locations: classpath*:mapper/**/*.xml
 
+api:
+  # 用于受保护接口的 api-token 请求头，请替换为随机长字符串
+  token: replace-with-a-random-secret
+
 poison:
   # POP 平台应用 appKey / appSecret
   appKey: your_pop_app_key
