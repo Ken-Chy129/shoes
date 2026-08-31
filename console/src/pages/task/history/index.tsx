@@ -807,46 +807,26 @@ const TaskPage = () => {
             return <>
                 <Form.Item wrapperCol={{offset: 5, span: 18}}>
                     <Alert type="info" showIcon
-                           message="启动后立即执行一轮，之后按间隔重复"
-                           description="仅处理系统已记录映射的 eBay 商品；接口异常时会跳过本轮，不会误清库存。"
-                           style={{marginBottom: 18}}/>
+                           message="启动后立即执行一轮，之后按间隔重复。只处理系统已记录映射的 eBay 商品。"/>
                 </Form.Item>
-                <div style={{
-                    margin: '0 4px 4px',
-                    padding: '16px 18px 2px',
-                    background: '#f7f9fc',
-                    border: '1px solid #e6ebf2',
-                    borderRadius: 8,
-                }}>
-                    <Form.Item name="intervalHours" label="执行间隔"
-                               labelCol={{flex: '122px'}} wrapperCol={{flex: 1}}
-                               initialValue={6}
-                               rules={[
-                                   {required: true, message: '请输入执行间隔'},
-                                   {type: 'number', min: 1, max: 168, message: '请输入1到168之间的整数小时'},
-                               ]}
-                               extra={<span style={{color: '#8a94a6'}}>
-                                   每 1～168 小时执行一轮；同一 eBay 账号同时只能运行一个改价任务
-                               </span>}
-                               style={{marginBottom: 18}}>
-                        <InputNumber min={1} max={168} precision={0} addonAfter="小时"
-                                     style={{width: 220}}/>
-                    </Form.Item>
-                    <Form.Item name="priceMultiplier" label="得物价格系数"
-                               labelCol={{flex: '122px'}} wrapperCol={{flex: 1}}
-                               initialValue={1.1}
-                               rules={[
-                                   {required: true, message: '请输入得物价格系数'},
-                                   {type: 'number', min: 0.01, max: 100, message: '请输入0.01到100之间的数字'},
-                               ]}
-                               extra={<span style={{color: '#8a94a6'}}>
-                                   eBay 美元价 = 得物人民币价 × 系数 ÷ 汇率；例如 ¥100 × 1.1 ÷ 7.3 ≈ $15.07
-                               </span>}
-                               style={{marginBottom: 14}}>
-                        <InputNumber min={0.01} max={100} step={0.01} precision={2}
-                                     addonAfter="倍" style={{width: 220}}/>
-                    </Form.Item>
-                </div>
+                <Form.Item name="intervalHours" label="执行间隔（小时）"
+                           initialValue={6}
+                           rules={[
+                               {required: true, message: '请输入执行间隔'},
+                               {type: 'number', min: 1, max: 168, message: '请输入1到168之间的整数小时'},
+                           ]}
+                           extra="范围1~168小时；同一eBay账号同时只能运行一个改价任务">
+                    <InputNumber min={1} max={168} precision={0} style={{width: 160}}/>
+                </Form.Item>
+                <Form.Item name="priceMultiplier" label="得物价格系数"
+                           initialValue={1.1}
+                           rules={[
+                               {required: true, message: '请输入得物价格系数'},
+                               {type: 'number', min: 0.01, max: 100, message: '请输入0.01到100之间的数字'},
+                           ]}
+                           extra="eBay美元价 = 得物人民币价 × 系数 ÷ 汇率；例如 ¥100 × 1.1 ÷ 7.3 ≈ $15.07">
+                    <InputNumber min={0.01} max={100} step={0.01} precision={2} style={{width: 160}}/>
+                </Form.Item>
             </>;
         }
 
@@ -1232,8 +1212,7 @@ const TaskPage = () => {
 
         {/* 新建任务 Modal */}
         <Modal
-            title="新建任务" open={createModalVisible}
-            width={createPlatform === 'ebay' && createTaskType === 'ebay_price_sync' ? 560 : 500}
+            title="新建任务" open={createModalVisible} width={500}
             onCancel={() => setCreateModalVisible(false)}
             onOk={handleCreateTask} confirmLoading={creating}
             okText="创建任务" cancelText="取消"
