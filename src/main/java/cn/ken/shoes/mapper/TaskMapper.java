@@ -13,6 +13,10 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
 
     TaskDO selectTask(Integer type, String platform, String status);
 
+    TaskDO selectRunningTask(@Param("platform") String platform,
+                             @Param("taskType") String taskType,
+                             @Param("status") String status);
+
     void updateTaskStatus(Long id, String status);
 
     void updateTaskFailed(Long id, String failReason);

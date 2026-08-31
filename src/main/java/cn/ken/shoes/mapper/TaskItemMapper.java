@@ -67,4 +67,10 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
     Long countSubmittedListingsByTaskId(@Param("taskId") Long taskId);
 
     Long countSuccessfulDelistsByTaskId(@Param("taskId") Long taskId);
+
+    /**
+     * eBay 已上架商品与本地货号/尺码的映射。只读取系统批量上架成功的明细，
+     * 避免把没有本地商品资料的手工商品纳入自动改价。
+     */
+    List<TaskItemDO> selectEbayListingMappings();
 }

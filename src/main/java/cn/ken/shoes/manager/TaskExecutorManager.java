@@ -27,6 +27,7 @@ import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.service.StockXService;
 import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
+import cn.ken.shoes.service.EbayPriceSyncService;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -78,6 +79,9 @@ public class TaskExecutorManager {
 
     @Resource
     private StockXReplenishmentService replenishmentService;
+
+    @Resource
+    private EbayPriceSyncService ebayPriceSyncService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -234,6 +238,10 @@ public class TaskExecutorManager {
                 default -> false;
             };
         }
+        if ("ebay".equals(platform) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
+            return startEbayPriceSync(params.getLongValue("intervalHours"),
+                    params.getBigDecimal("priceMultiplier")) != null;
+        }
         log.warn("重启恢复：不支持的平台: {}", platform);
         return false;
     }
@@ -275,8 +283,9 @@ public class TaskExecutorManager {
         if ("stockx".equals(task.getPlatform())) {
             return true;
         }
-        return "kickscrew".equals(task.getPlatform())
-                && (taskType == TaskTypeEnum.LISTING || taskType == TaskTypeEnum.PRICE_DOWN);
+        return ("kickscrew".equals(task.getPlatform())
+                && (taskType == TaskTypeEnum.LISTING || taskType == TaskTypeEnum.PRICE_DOWN))
+                || ("ebay".equals(task.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC);
     }
 
     public Long rerunTask(TaskDO source) {
@@ -290,6 +299,10 @@ public class TaskExecutorManager {
         JSONObject params = source.getParams() == null ? new JSONObject() : JSONObject.parseObject(source.getParams());
         if ("kickscrew".equals(source.getPlatform())) {
             return startTask(taskType);
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
+            return startEbayPriceSync(
+                    params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
         }
         if (!"stockx".equals(source.getPlatform())) {
             return null;
@@ -378,7 +391,17 @@ public class TaskExecutorManager {
             }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
+            case EBAY_PRICE_SYNC -> startEbayPriceSync(
+                    params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
         };
+    }
+
+    public Long startEbayPriceSync(long intervalHours, java.math.BigDecimal priceMultiplier) {
+        return ebayPriceSyncService.start(intervalHours, priceMultiplier);
+    }
+
+    public void cancelEbayPriceSync(Long taskId) {
+        ebayPriceSyncService.cancel(taskId);
     }
 
     private Long startReplenishmentFromParams(String account, JSONObject params) {

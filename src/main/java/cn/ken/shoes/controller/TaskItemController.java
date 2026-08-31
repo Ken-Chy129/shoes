@@ -77,7 +77,8 @@ public class TaskItemController {
         String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
 
-        if (task != null && "ebay_bulk_listing".equals(task.getTaskType())) {
+        if (task != null && ("ebay_bulk_listing".equals(task.getTaskType())
+                || "ebay_price_sync".equals(task.getTaskType()))) {
             SimpleDateFormat ebayDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             List<EbayListingTaskExcel> ebayRows = new ArrayList<>();
             for (TaskItemDO item : items) {
@@ -97,7 +98,7 @@ public class TaskItemController {
                 ebayRows.add(excel);
             }
             EasyExcel.write(response.getOutputStream(), EbayListingTaskExcel.class)
-                    .sheet("eBay批量上架明细")
+                    .sheet("eBay商品明细")
                     .doWrite(ebayRows);
             return;
         }

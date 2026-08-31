@@ -442,7 +442,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             : taskType === 'replenishment'
                 ? replenishmentColumns
                     : taskType === 'model_search' ? modelSearchColumns
-                        : taskType === 'ebay_bulk_listing' ? ebayListingColumns : productColumns;
+                        : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
+                            ? ebayListingColumns : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -461,7 +462,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             title={taskType === 'extend_shipping' ? '订单延期明细'
                 : taskType === 'replenishment' ? '补单明细'
                         : taskType === 'purchase' ? '购买明细'
-                            : taskType === 'ebay_bulk_listing' ? 'eBay批量上架明细' : '任务明细'}
+                            : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
+                                ? 'eBay商品明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
             footer={null}
@@ -530,11 +532,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                         })()}
-                        {taskType === 'ebay_bulk_listing' && attributes && (() => {
+                        {(taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') && attributes && (() => {
                             try {
                                 const attrs = JSON.parse(attributes);
                                 return <span style={{color: '#1677ff', fontWeight: 500}}>
-                                    总数 {attrs.total ?? 0} | 成功 {attrs.succeeded ?? 0} | 失败 {attrs.failed ?? 0}
+                                    {(taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
+                                        ? `本轮 ${attrs.total ?? 0} | 改价 ${attrs.changed ?? 0} | 无价 ${attrs.noPrice ?? 0} | 跳过 ${attrs.skipped ?? 0}`
+                                        : `总数 ${attrs.total ?? 0} | 成功 ${attrs.succeeded ?? 0} | 失败 ${attrs.failed ?? 0}`}
                                 </span>;
                             } catch { return null; }
                         })()}
@@ -550,7 +554,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                     : taskType === 'purchase' ? 1500
                         : taskType === 'model_search' ? 1450
                             : taskType === 'replenishment' ? 1550
-                                : taskType === 'ebay_bulk_listing' ? 1700 : 1130}}
+                                : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') ? 1700 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,

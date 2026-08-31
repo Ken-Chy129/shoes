@@ -193,6 +193,11 @@ public class TaskService {
             case "excel_delist" -> { if (clearState) TaskSwitch.clearExcelDelistState(key); else TaskSwitch.cancelExcelDelist(key); }
             case "fetch_orders" -> { if (clearState) TaskSwitch.clearFetchOrdersState(accountName); else TaskSwitch.cancelFetchOrders(accountName); }
             case "purchase" -> { if (clearState) TaskSwitch.clearPurchaseState(accountName); else TaskSwitch.cancelPurchase(accountName); }
+            case "ebay_price_sync" -> {
+                if (!clearState) {
+                    taskExecutorManager.cancelEbayPriceSync(task.getId());
+                }
+            }
             default -> log.info("任务类型无需处理TaskSwitch: taskType={}", taskType);
         }
     }

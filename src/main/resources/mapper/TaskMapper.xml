@@ -22,6 +22,13 @@
         where platform = #{platform} and task_type = #{type} and status = #{status}
     </select>
 
+    <select id="selectRunningTask" resultMap="taskResultMap">
+        select * from task
+        where platform = #{platform} and task_type = #{taskType} and status = #{status}
+        order by id desc
+        limit 1
+    </select>
+
     <select id="selectByCondition" resultMap="taskResultMap">
         select * from task
         <where>

@@ -16,6 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -123,6 +126,62 @@ public class EbaySellApiClient {
         return get(inventoryUrl("location"));
     }
 
+    /**
+     * Returns all active offers for the configured marketplace. The Inventory API
+     * is paginated, so callers do not need to know the eBay page size.
+     */
+    public List<JSONObject> getActiveOffers(String marketplaceId) {
+        List<JSONObject> offers = new ArrayList<>();
+        int offset = 0;
+        int limit = 200;
+        while (true) {
+            HttpUrl url = inventoryUrl("offer").newBuilder()
+                    .addQueryParameter("marketplace_id", requireValue(marketplaceId, "marketplaceId"))
+                    .addQueryParameter("listing_status", "ACTIVE")
+                    .addQueryParameter("limit", String.valueOf(limit))
+                    .addQueryParameter("offset", String.valueOf(offset))
+                    .build();
+            JSONObject page = get(url);
+            var pageOffers = page.getJSONArray("offers");
+            if (pageOffers == null || pageOffers.isEmpty()) {
+                break;
+            }
+            for (int i = 0; i < pageOffers.size(); i++) {
+                JSONObject offer = pageOffers.getJSONObject(i);
+                if (offer != null) {
+                    offers.add(offer);
+                }
+            }
+            Integer total = page.getInteger("total");
+            if (total != null ? offers.size() >= total : pageOffers.size() < limit) {
+                break;
+            }
+            offset += pageOffers.size();
+        }
+        return List.copyOf(offers);
+    }
+
+    /**
+     * Fetches an offer in its editable representation. This is useful because
+     * updateOffer is a replacement request and must preserve the existing policies.
+     */
+    public JSONObject getOffer(String offerId) {
+        HttpUrl url = inventoryUrl("offer").newBuilder()
+                .addPathSegment(requireValue(offerId, "offerId"))
+                .build();
+        return get(url);
+    }
+
+    public void updateOffer(String offerId, JSONObject payload, String contentLanguage) {
+        HttpUrl url = inventoryUrl("offer").newBuilder()
+                .addPathSegment(requireValue(offerId, "offerId"))
+                .build();
+        Request request = request(url, contentLanguage)
+                .put(jsonBody(payload))
+                .build();
+        execute(request, Set.of(200, 204));
+    }
+
     public JSONObject getFulfillmentPolicies(String marketplaceId) {
         return get(policyUrl("fulfillment_policy", marketplaceId));
     }
@@ -196,7 +255,13 @@ public class EbaySellApiClient {
         if (responseText == null || responseText.isBlank()) {
             return "empty response";
         }
+        // Provider error bodies can echo credentials or other sensitive request
+        // fragments. Keep the public exception useful without returning them.
+        if (responseText.trim().startsWith("{") || responseText.trim().startsWith("[")) {
+            return "provider error";
+        }
         String compact = responseText.replaceAll("\\s+", " ").trim();
+        compact = compact.replaceAll("(?i)(bearer\\s+|access-token[=:]\\s*)[^\\s,;]+", "$1[redacted]");
         return compact.length() <= 500 ? compact : compact.substring(0, 500);
     }
 

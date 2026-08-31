@@ -150,6 +150,29 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void readsActiveOffersWithPaginationAndUpdatesAnOffer() throws Exception {
+        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-1\",\"sku\":\"SKU-1\"}],\"total\":2}"));
+        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-2\",\"sku\":\"SKU-2\"}],\"total\":2}"));
+        server.enqueue(new MockResponse().setResponseCode(204));
+
+        assertThat(client.getActiveOffers("EBAY_US")).extracting(o -> o.getString("offerId"))
+                .containsExactly("offer-1", "offer-2");
+        JSONObject payload = JSON.parseObject("""
+                {"sku":"SKU-1","availableQuantity":0,"pricingSummary":{"price":{"currency":"USD","value":"10.00"}}}
+                """);
+        client.updateOffer("offer-1", payload, "en-US");
+
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/offer?marketplace_id=EBAY_US&listing_status=ACTIVE&limit=200&offset=0");
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/offer?marketplace_id=EBAY_US&listing_status=ACTIVE&limit=200&offset=1");
+        RecordedRequest update = server.takeRequest();
+        assertThat(update.getMethod()).isEqualTo("PUT");
+        assertThat(update.getPath()).isEqualTo("/sell/inventory/v1/offer/offer-1");
+        assertThat(JSON.parseObject(update.getBody().readUtf8())).isEqualTo(payload);
+    }
+
+    @Test
     void rejectsUnsuccessfulOrMalformedProviderResponsesWithoutLeakingSecrets() {
         server.enqueue(new MockResponse().setResponseCode(400)
                 .setHeader("Content-Type", "application/json")

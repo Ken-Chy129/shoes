@@ -276,6 +276,22 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('eBay批量上架Excel上传失败'); setCreating(false); },
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
+                doPostRequest(TASK_API.EBAY_START_PRICE_SYNC, {
+                    intervalHours: values.intervalHours,
+                    priceMultiplier: values.priceMultiplier,
+                }, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay定时改价任务创建失败');
+                            return;
+                        }
+                        message.success(`eBay定时改价任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    },
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'listing') {
                 const modelNoSearch = values.searchMode === 'model_no';
                 if (modelNoSearch) {
@@ -787,6 +803,33 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
+            return <>
+                <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                    <Alert type="info" showIcon
+                           message="启动后立即执行一轮，之后按间隔重复。只处理系统已记录映射的 eBay 商品。"/>
+                </Form.Item>
+                <Form.Item name="intervalHours" label="执行间隔（小时）"
+                           initialValue={6}
+                           rules={[
+                               {required: true, message: '请输入执行间隔'},
+                               {type: 'number', min: 1, max: 168, message: '请输入1到168之间的整数小时'},
+                           ]}
+                           extra="范围1~168小时；同一eBay账号同时只能运行一个改价任务">
+                    <InputNumber min={1} max={168} precision={0} style={{width: 160}}/>
+                </Form.Item>
+                <Form.Item name="priceMultiplier" label="得物价格系数"
+                           initialValue={1.1}
+                           rules={[
+                               {required: true, message: '请输入得物价格系数'},
+                               {type: 'number', min: 0.01, max: 100, message: '请输入0.01到100之间的数字'},
+                           ]}
+                           extra="eBay美元价 = 得物人民币价 × 系数 ÷ 汇率；例如 ¥100 × 1.1 ÷ 7.3 ≈ $15.07">
+                    <InputNumber min={0.01} max={100} step={0.01} precision={2} style={{width: 160}}/>
+                </Form.Item>
+            </>;
+        }
+
         if (createPlatform === 'stockx' && createTaskType === 'listing') {
             return <>
                 <Form.Item name="searchMode" label="搜索方式" initialValue="keyword">
@@ -1074,7 +1117,7 @@ const TaskPage = () => {
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
-        trigger: '触发方式', intervalHours: '自动间隔',
+        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数',
     };
 
     const formatParamValue = (k: string, v: any): string => {

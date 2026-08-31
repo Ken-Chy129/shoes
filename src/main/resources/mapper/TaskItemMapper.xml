@@ -159,5 +159,21 @@
           AND operate_result LIKE '下架成功%'
     </select>
 
+    <select id="selectEbayListingMappings" resultMap="taskItemResultMap">
+        SELECT ti.*
+        FROM task_item ti
+        INNER JOIN task t ON t.id = ti.task_id
+        WHERE t.platform = 'ebay'
+          AND t.task_type = 'ebay_bulk_listing'
+          AND ti.offer_id IS NOT NULL
+          AND ti.offer_id != ''
+          AND ti.sku IS NOT NULL
+          AND ti.sku != ''
+          AND ti.style_id IS NOT NULL
+          AND ti.style_id != ''
+          AND ti.operate_result LIKE '上架成功%'
+        ORDER BY ti.operate_time DESC, ti.id DESC
+    </select>
+
 
 </mapper>

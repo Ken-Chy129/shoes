@@ -11,6 +11,8 @@ import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
+import cn.ken.shoes.util.SizeConvertUtil;
+import cn.ken.shoes.util.ShoesUtil;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -173,6 +175,7 @@ public class EbayBulkListingService {
         item.setSku(result.getSku());
         item.setOfferId(result.getOfferId());
         item.setListingId(result.getListingId());
+        item.setEuSize(resolveEuSize(request, item.getSize()));
         item.setOperateResult("上架成功");
     }
 
@@ -182,12 +185,33 @@ public class EbayBulkListingService {
         item.setRound(0);
         item.setStyleId(trim(row.getStyleId()));
         item.setSize(trim(row.getSize()));
+        item.setEuSize(resolveEuSize(null, row.getSize()));
         item.setCurrentPrice(row.getPrice());
         item.setCurrencyCode(properties.getDefaultCurrency());
         item.setListingQuantity(row.getQuantity());
         item.setOperateResult("待上架");
         item.setOperateTime(new Date());
         return item;
+    }
+
+    private String resolveEuSize(EbayListingRequest request, String rawSize) {
+        if (rawSize == null || rawSize.isBlank()) {
+            return null;
+        }
+        String normalized = ShoesUtil.normalizeUnicodeFraction(rawSize).toUpperCase(Locale.ROOT);
+        if (normalized.startsWith("EU")) {
+            return ShoesUtil.getShoesSizeFrom(normalized);
+        }
+        if (request != null && request.getBrand() != null) {
+            String us = request.getAspects() == null ? null
+                    : request.getAspects().getOrDefault("US Shoe Size", List.of()).stream()
+                    .findFirst().orElse(null);
+            String eu = SizeConvertUtil.getStockXEuSize(request.getBrand(), us);
+            if (eu != null) {
+                return eu;
+            }
+        }
+        return ShoesUtil.getShoesSizeFrom(normalized);
     }
 
     private void validateInput(List<EbayListingExcel> rows) {

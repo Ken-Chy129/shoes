@@ -19,6 +19,7 @@ public enum TaskTypeEnum {
     PURCHASE("purchase", "购买", false),
     EXTEND_SHIPPING("extend_shipping", "订单延期", false),
     REPLENISHMENT("replenishment", "补单", false),
+    EBAY_PRICE_SYNC("ebay_price_sync", "eBay定时改价", true),
     ;
 
     private final String code;

@@ -115,8 +115,7 @@ public class TaskItemDO {
     private BigDecimal currentPrice;
 
     /**
-     * 压价目标价：本轮提交给 StockX 的新报价。用于校验/对账时比对 amount==目标价，
-     * 判断 StockX 是否真按预期价生效(而非被下限钳制成别的价)。
+     * 本轮目标价格：StockX 压价任务或 eBay 定时改价任务计算出的目标价。
      */
     @TableField("target_price")
     private BigDecimal targetPrice;

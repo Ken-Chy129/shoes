@@ -139,6 +139,21 @@ public class TaskController {
         return Result.buildSuccess();
     }
 
+    @PostMapping("ebay/startPriceSync")
+    public Result<String> startEbayPriceSync(@RequestBody JSONObject body) {
+        long intervalHours = body.getLongValue("intervalHours");
+        BigDecimal priceMultiplier = body.getBigDecimal("priceMultiplier");
+        try {
+            Long taskId = taskExecutorManager.startEbayPriceSync(intervalHours, priceMultiplier);
+            if (taskId == null) {
+                return Result.buildError("eBay定时改价任务已在运行，或参数/账号配置无效");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
     // ==================== StockX Excel 压价 ====================
 
     @PostMapping("stockx/uploadPriceDownExcel")
