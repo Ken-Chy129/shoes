@@ -98,6 +98,8 @@ const SORT_OPTIONS = [
     {label: 'Last Sale: High to Low', value: 'last_sale'},
 ];
 
+const CREATE_FORM_LABEL_WIDTH = 120;
+
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
@@ -779,10 +781,7 @@ const TaskPage = () => {
     const renderCreateForm = () => {
         if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
             return <>
-                <Form.Item wrapperCol={{offset: 5, span: 18}}>
-                    <Alert type="info" showIcon
-                           message="每行上架一个货号尺码；SKU由系统生成，商品状态统一为全新NEW。"/>
-                </Form.Item>
+                {/* 已按产品要求移除独立说明行，避免配置区出现右侧悬空文本块。 */}
                 <Form.Item name="ebayListingExcel" label="上架Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList}
                            rules={[{required: true, message: '请上传eBay批量上架Excel'}]}
@@ -795,20 +794,17 @@ const TaskPage = () => {
                         <Button icon={<UploadOutlined/>}>选择 Excel</Button>
                     </Upload>
                 </Form.Item>
-                <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
                     <Button href={TASK_API.EBAY_BULK_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
                         下载eBay模板
                     </Button>
-                </Form.Item>
+                </div>
             </>;
         }
 
         if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
             return <>
-                <Form.Item wrapperCol={{offset: 5, span: 18}}>
-                    <Alert type="info" showIcon
-                           message="启动后立即执行一轮，之后按间隔重复。只处理系统已记录映射的 eBay 商品。"/>
-                </Form.Item>
+                {/* 定时改价说明改为字段级提示，不再渲染独立说明行。 */}
                 <Form.Item name="intervalHours" label="执行间隔"
                            initialValue={6}
                            rules={[
@@ -945,12 +941,7 @@ const TaskPage = () => {
                         <Button icon={<UploadOutlined/>}>选择文件</Button>
                     </Upload>
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.excelFile !== cur.excelFile}>
-                    {({getFieldValue}) => getFieldValue('excelFile')?.length > 0 && (
-                        <Alert type="info" showIcon style={{marginBottom: 16}}
-                               message="默认：保持现有最低价逻辑；得物：按特殊货号费率；得物3.5：按3.5价格和对应费率。得物无价会下架。"/>
-                    )}
-                </Form.Item>
+                {/* 已按产品要求移除默认/得物费率说明块，相关信息保留在字段提示中。 */}
                 <Form.Item name="interval" label="轮询间隔" initialValue={1800}>
                     <InputNumber min={10} style={{width: 120}} addonAfter="秒"/>
                 </Form.Item>
@@ -1022,7 +1013,7 @@ const TaskPage = () => {
                             </Upload>
                         </Form.Item>
                     ) : (
-                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                        <Form.Item wrapperCol={{offset: 6, span: 18}}>
                             <Alert type="warning" showIcon message="无需上传Excel，将下架所选库存类型下的全部挂单。创建前会再次确认。"/>
                         </Form.Item>
                     )}
@@ -1080,7 +1071,7 @@ const TaskPage = () => {
                             <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
                         </Form.Item>
                     </> : getFieldValue('purchaseOperation') === 'delete_bids' ? (
-                        <Form.Item wrapperCol={{offset: 5, span: 18}}>
+                        <Form.Item wrapperCol={{offset: 6, span: 18}}>
                             <Alert type="warning" showIcon
                                    message="无需上传Excel，将撤销所选账号当前的全部有效出价。创建前会再次确认。"/>
                         </Form.Item>
@@ -1213,20 +1204,20 @@ const TaskPage = () => {
 
         {/* 新建任务 Modal */}
         <Modal
-            title="新建任务" open={createModalVisible} width={500}
+            title="新建任务" open={createModalVisible} width={560}
             onCancel={() => setCreateModalVisible(false)}
             onOk={handleCreateTask} confirmLoading={creating}
             okText="创建任务" cancelText="取消"
         >
             <Form form={createForm} layout="horizontal" labelAlign="right" labelWrap
-                  labelCol={{flex: '130px'}} wrapperCol={{flex: 1}}
-                  style={{marginTop: 24}}>
+                  labelCol={{span: 6}} wrapperCol={{span: 18}}
+                  style={{width: '100%', maxWidth: 440, margin: '20px auto 0'}}>
                 <Form.Item label="平台">
                     <Select value={createPlatform} onChange={(v) => {
                         setCreatePlatform(v);
                         setCreateTaskType(v === 'ebay' ? 'ebay_bulk_listing' : 'price_down');
                         createForm.resetFields();
-                    }}>
+                    }} style={{width: 320}}>
                         <Select.Option value="stockx">StockX</Select.Option>
                         <Select.Option value="kickscrew">KickScrew</Select.Option>
                         <Select.Option value="ebay">eBay</Select.Option>
@@ -1234,12 +1225,14 @@ const TaskPage = () => {
                 </Form.Item>
                 {createPlatform === 'stockx' && (
                     <Form.Item name="accountId" label="账号" rules={[{required: true, message: '请选择账号'}]}>
-                        <Select placeholder="选择账号" options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}/>
+                        <Select placeholder="选择账号" style={{width: 320}}
+                                options={stockxAccounts.map((a: any) => ({label: a.name, value: a.name}))}/>
                     </Form.Item>
                 )}
                 <Form.Item label="任务类型">
                     <Select value={createTaskType} options={createPlatform === 'ebay' ? EBAY_TASK_OPTIONS : STOCKX_TASK_OPTIONS}
-                            onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}/>
+                            onChange={(v) => { setCreateTaskType(v); const acc = createForm.getFieldValue('accountId'); createForm.resetFields(); if (acc) createForm.setFieldValue('accountId', acc); }}
+                            style={{width: 320}}/>
                 </Form.Item>
                 <Divider style={{margin: '8px 0 20px'}}/>
                 {renderCreateForm()}
