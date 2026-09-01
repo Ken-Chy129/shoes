@@ -8,7 +8,10 @@ import cn.ken.shoes.model.ebay.EbayListingResult;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
+import cn.ken.shoes.model.entity.SizeChartDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
+import cn.ken.shoes.util.SizeConvertUtil;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -33,6 +36,7 @@ class EbayBulkListingServiceTest {
     private TaskInputSnapshotStore snapshotStore;
     private EbayProductMetadataService metadataService;
     private EbayListingService listingService;
+    private EbayListingTaxonomyService taxonomyService;
     private EbayBulkListingService service;
 
     @BeforeEach
@@ -47,7 +51,7 @@ class EbayBulkListingServiceTest {
         properties.setDefaultFulfillmentPolicyId("6246174000");
         properties.setDefaultPaymentPolicyId("6246171000");
         properties.setDefaultReturnPolicyId("6246169000");
-        EbayListingTaxonomyService taxonomyService = mock(EbayListingTaxonomyService.class);
+        taxonomyService = mock(EbayListingTaxonomyService.class);
         when(taxonomyService.resolve(any(), any(), any(), any(), any()))
                 .thenReturn(new EbayListingTaxonomyService.ResolvedTaxonomy(
                         "15709", "Men's Athletic Shoes",
@@ -69,6 +73,11 @@ class EbayBulkListingServiceTest {
         }).when(taskItemMapper).insert(any(TaskItemDO.class));
         service = new EbayBulkListingService(taskMapper, taskItemMapper, snapshotStore,
                 metadataService, factory, listingService, Runnable::run);
+    }
+
+    @AfterEach
+    void tearDown() {
+        SizeConvertUtil.initCache(List.of());
     }
 
     @Test
@@ -135,6 +144,41 @@ class EbayBulkListingServiceTest {
                 .extracting(TaskItemDO::getOfferId)
                 .containsExactlyInAnyOrder("offer-9", "offer-10");
         verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+    }
+
+    @Test
+    void recordsTheEuSizeBehindACombinedEbayUsSize() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Air Jordan");
+        chart.setStockxBrand("Jordan");
+        chart.setGender("WOMENS");
+        chart.setEuSize("42.5");
+        chart.setUsSize("10.5");
+        chart.setMenUSSize("9");
+        chart.setWomenUSSize("10.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        EbayListingExcel row = row();
+        row.setStyleId("AH7860-139");
+        row.setSize("USM9");
+        EbayProductMetadata metadata = metadata();
+        metadata.setBrand("Jordan");
+        metadata.setGender("women");
+        when(metadataService.resolve(row)).thenReturn(metadata);
+        when(taxonomyService.resolve(any(), eq("AH7860-139"), eq(metadata), eq("USM"), eq("9")))
+                .thenReturn(new EbayListingTaxonomyService.ResolvedTaxonomy(
+                        "95672", "Women's Athletic Shoes",
+                        java.util.Map.of(
+                                "Department", List.of("Women"),
+                                "US Shoe Size", List.of("9 Men/10.5 Women"))));
+        when(listingService.publish(any())).thenReturn(
+                new EbayListingResult("EBAY-AH7860-139-USM9-NEW",
+                        "offer-women-1", "listing-women-1", "production"));
+
+        service.start(List.of(row));
+
+        ArgumentCaptor<TaskItemDO> updated = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).updateById(updated.capture());
+        assertThat(updated.getValue().getEuSize()).isEqualTo("42.5");
     }
 
     @Test

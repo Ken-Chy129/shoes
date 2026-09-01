@@ -205,9 +205,7 @@ public class EbayListingTaxonomyService {
         return switch (name) {
             case "brand", "marke" -> metadata.getBrand();
             case "department", "gender", "abteilung" -> department;
-            case "usshoesize" -> sizeSystem.startsWith("US")
-                    ? sizeValue
-                    : SizeConvertUtil.getKcUsSizeDisplay(metadata.getBrand(), metadata.getGender(), sizeValue);
+            case "usshoesize" -> usShoeSize(metadata, sizeSystem, sizeValue);
             case "eushoesize" -> "EU".equals(sizeSystem) ? sizeValue : null;
             case "color", "colour", "farbe" -> firstPresent(metadata.getColor(), metadata.getColorway());
             case "uppermaterial", "obermaterial" -> metadata.getUpperMaterial();
@@ -263,6 +261,16 @@ public class EbayListingTaxonomyService {
         return "color".equals(name) || "colour".equals(name) || "farbe".equals(name);
     }
 
+    private String usShoeSize(EbayProductMetadata metadata, String sizeSystem, String sizeValue) {
+        if ("EU".equals(sizeSystem)) {
+            return SizeConvertUtil.getKcUsSizeDisplay(
+                    metadata.getBrand(), metadata.getGender(), sizeValue);
+        }
+        String display = SizeConvertUtil.getKcUsSizeDisplayFromUs(
+                metadata.getBrand(), sizeSystem, sizeValue);
+        return display == null || display.isBlank() ? sizeValue : display;
+    }
+
     private Map<String, List<String>> fallbackAspects(EbayProductMetadata metadata,
                                                        String styleCode, String sizeSystem,
                                                        String sizeValue, String department) {
@@ -286,17 +294,20 @@ public class EbayListingTaxonomyService {
     }
 
     private String department(String sizeSystem, String metadataGender) {
-        if ("USW".equals(sizeSystem)) {
-            return "Women";
-        }
-        if ("USM".equals(sizeSystem)) {
-            return "Men";
-        }
         String normalized = metadataGender == null ? "" : metadataGender.toLowerCase(Locale.ROOT);
         if (normalized.contains("women") || normalized.contains("female")) {
             return "Women";
         }
         if (normalized.contains("men") || normalized.contains("male")) {
+            return "Men";
+        }
+        if (normalized.contains("unisex")) {
+            return "Unisex Adults";
+        }
+        if ("USW".equals(sizeSystem)) {
+            return "Women";
+        }
+        if ("USM".equals(sizeSystem)) {
             return "Men";
         }
         return null;

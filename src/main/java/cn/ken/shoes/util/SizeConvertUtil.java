@@ -216,9 +216,66 @@ public class SizeConvertUtil {
         return getKcUsSize(brand, gender, euSize);
     }
 
+    /**
+     * 根据 KC 尺码表把男码或女码输入转换为 eBay 男女合并尺码展示值。
+     * USM/USW 仅表示输入尺码使用哪一列，不用于判断商品本身的性别。
+     */
+    public static String getKcUsSizeDisplayFromUs(String brand, String sizeSystem, String usSize) {
+        String euSize = getKcEuSizeFromUs(brand, sizeSystem, usSize);
+        if (euSize == null) {
+            return null;
+        }
+        String normalizedSystem = sizeSystem.trim().toUpperCase(Locale.ROOT);
+        String display = getKcUsSizeDisplay(brand,
+                "USM".equals(normalizedSystem) ? "men" : "women", euSize);
+        return isPresent(display) ? display : usSize.trim();
+    }
+
+    /**
+     * 根据 KC 尺码表把男码或女码输入反查为对应欧码。
+     */
+    public static String getKcEuSizeFromUs(String brand, String sizeSystem, String usSize) {
+        if (brand == null || brand.isBlank() || sizeSystem == null
+                || usSize == null || usSize.isBlank()) {
+            return null;
+        }
+        String normalizedSystem = sizeSystem.trim().toUpperCase(Locale.ROOT);
+        if (!"USM".equals(normalizedSystem) && !"USW".equals(normalizedSystem)) {
+            return null;
+        }
+        Map<String, List<SizeChartDO>> brandCharts = findBrandCharts(brand);
+        if (brandCharts == null) {
+            return null;
+        }
+
+        String normalizedUsSize = normalizeSize(usSize);
+        for (List<SizeChartDO> charts : brandCharts.values()) {
+            for (SizeChartDO chart : charts) {
+                String chartGender = normalizeGender(chart.getGender());
+                String chartUsSize = "USM".equals(normalizedSystem)
+                        ? firstNonBlank(chart.getMenUSSize(),
+                        Gender.MENS.name().equals(chartGender) ? chart.getUsSize() : null)
+                        : firstNonBlank(chart.getWomenUSSize(),
+                        Gender.WOMENS.name().equals(chartGender) ? chart.getUsSize() : null);
+                if (!normalizedUsSize.equals(normalizeSize(chartUsSize))) {
+                    continue;
+                }
+                return isPresent(chart.getEuSize()) ? chart.getEuSize().trim() : null;
+            }
+        }
+        return null;
+    }
+
     private static Map<String, List<SizeChartDO>> findBrandCharts(String brand) {
+        String normalizedBrand = brand.trim();
         return KC_SIZE_CACHE.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(brand.trim()))
+                .filter(entry -> (entry.getKey() != null
+                        && entry.getKey().equalsIgnoreCase(normalizedBrand))
+                        || entry.getValue().values().stream()
+                        .flatMap(List::stream)
+                        .map(SizeChartDO::getStockxBrand)
+                        .anyMatch(stockxBrand -> stockxBrand != null
+                                && stockxBrand.equalsIgnoreCase(normalizedBrand)))
                 .map(Map.Entry::getValue)
                 .findFirst()
                 .orElse(null);

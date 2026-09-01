@@ -203,6 +203,14 @@ public class EbayBulkListingService {
             return ShoesUtil.getShoesSizeFrom(normalized);
         }
         if (request != null && request.getBrand() != null) {
+            String sizeSystem = normalized.startsWith("USW") ? "USW"
+                    : normalized.startsWith("USM") ? "USM" : null;
+            String sizeValue = ShoesUtil.getShoesSizeFrom(normalized);
+            String kcEuSize = SizeConvertUtil.getKcEuSizeFromUs(
+                    request.getBrand(), sizeSystem, sizeValue);
+            if (kcEuSize != null) {
+                return kcEuSize;
+            }
             String us = request.getAspects() == null ? null
                     : request.getAspects().getOrDefault("US Shoe Size", List.of()).stream()
                     .findFirst().orElse(null);

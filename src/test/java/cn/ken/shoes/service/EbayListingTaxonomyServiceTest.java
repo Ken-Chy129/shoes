@@ -195,6 +195,39 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
+    void treatsUsPrefixAsSizeInputAndUsesKcGenderForDepartment() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Air Jordan");
+        chart.setStockxBrand("Jordan");
+        chart.setGender("WOMENS");
+        chart.setEuSize("42.5");
+        chart.setUsSize("10.5");
+        chart.setMenUSSize("9");
+        chart.setWomenUSSize("10.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(aspects("Department", "US Shoe Size"));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Jordan 11 Retro Low Citrus (2021) (Women's)");
+        metadata.setBrand("Jordan");
+        metadata.setGender("women");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "AH7860-139", metadata, "USM", "9");
+
+        assertThat(resolved.aspects())
+                .containsEntry("Department", List.of("Women"))
+                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolvedFromWomenSize = service.resolve(
+                "15709", "AH7860-139", metadata, "USW", "10.5");
+
+        assertThat(resolvedFromWomenSize.aspects())
+                .containsEntry("Department", List.of("Women"))
+                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+    }
+
+    @Test
     void mapsACombinedCatalogColorToTheFirstAllowedEbayColor() {
         JSONObject colorAspect = new JSONObject(true)
                 .fluentPut("localizedAspectName", "Color")
