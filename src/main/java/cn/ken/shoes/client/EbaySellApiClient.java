@@ -19,8 +19,10 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 @Component
 public class EbaySellApiClient {
@@ -85,6 +87,14 @@ public class EbaySellApiClient {
         execute(request, Set.of(200, 204));
     }
 
+    public Optional<JSONObject> getInventoryItemGroup(String inventoryItemGroupKey) {
+        HttpUrl url = inventoryUrl("inventory_item_group").newBuilder()
+                .addPathSegment(requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"))
+                .build();
+        Request request = request(url, null).get().build();
+        return Optional.ofNullable(execute(request, Set.of(200), true));
+    }
+
     public String publishOffer(String offerId) {
         HttpUrl url = inventoryUrl("offer").newBuilder()
                 .addPathSegment(requireValue(offerId, "offerId"))
@@ -131,13 +141,28 @@ public class EbaySellApiClient {
      * is paginated, so callers do not need to know the eBay page size.
      */
     public List<JSONObject> getActiveOffers(String marketplaceId) {
+        return getOffers(builder -> builder
+                .addQueryParameter("marketplace_id", requireValue(marketplaceId, "marketplaceId"))
+                .addQueryParameter("listing_status", "ACTIVE"));
+    }
+
+    /**
+     * Returns every offer associated with an inventory SKU, including
+     * unpublished offers that can be safely reused instead of recreated.
+     */
+    public List<JSONObject> getOffersBySku(String sku) {
+        return getOffers(builder -> builder
+                .addQueryParameter("sku", requireValue(sku, "sku")));
+    }
+
+    private List<JSONObject> getOffers(Consumer<HttpUrl.Builder> filters) {
         List<JSONObject> offers = new ArrayList<>();
         int offset = 0;
         int limit = 200;
         while (true) {
-            HttpUrl url = inventoryUrl("offer").newBuilder()
-                    .addQueryParameter("marketplace_id", requireValue(marketplaceId, "marketplaceId"))
-                    .addQueryParameter("listing_status", "ACTIVE")
+            HttpUrl.Builder builder = inventoryUrl("offer").newBuilder();
+            filters.accept(builder);
+            HttpUrl url = builder
                     .addQueryParameter("limit", String.valueOf(limit))
                     .addQueryParameter("offset", String.valueOf(offset))
                     .build();
@@ -224,8 +249,16 @@ public class EbaySellApiClient {
     }
 
     private JSONObject execute(Request request, Set<Integer> expectedStatusCodes) {
+        return execute(request, expectedStatusCodes, false);
+    }
+
+    private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
+                               boolean nullOnNotFound) {
         try (Response response = httpClient.newCall(request).execute()) {
             String responseText = responseText(response.body());
+            if (nullOnNotFound && response.code() == 404) {
+                return null;
+            }
             if (!expectedStatusCodes.contains(response.code())) {
                 throw new EbayApiException("eBay API request failed (HTTP " + response.code()
                         + "): " + summarizeError(responseText));

@@ -173,6 +173,40 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void readsAllOffersForOneSkuWithPagination() throws Exception {
+        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-1\",\"sku\":\"SKU/1\"}],\"total\":2}"));
+        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-2\",\"sku\":\"SKU/1\"}],\"total\":2}"));
+
+        assertThat(client.getOffersBySku("SKU/1"))
+                .extracting(offer -> offer.getString("offerId"))
+                .containsExactly("offer-1", "offer-2");
+
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/offer?sku=SKU%2F1&limit=200&offset=0");
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/offer?sku=SKU%2F1&limit=200&offset=1");
+    }
+
+    @Test
+    void readsInventoryItemGroupAndTreatsNotFoundAsMissing() throws Exception {
+        server.enqueue(jsonResponse("""
+                {"title":"Test Sneaker","variantSKUs":["sku-9","sku-10"]}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(404));
+
+        assertThat(client.getInventoryItemGroup("style/1"))
+                .get()
+                .extracting(group -> group.getString("title"))
+                .isEqualTo("Test Sneaker");
+        assertThat(client.getInventoryItemGroup("missing/style")).isEmpty();
+
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/inventory_item_group/style%2F1");
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/inventory_item_group/missing%2Fstyle");
+    }
+
+    @Test
     void rejectsUnsuccessfulOrMalformedProviderResponsesWithoutLeakingSecrets() {
         server.enqueue(new MockResponse().setResponseCode(400)
                 .setHeader("Content-Type", "application/json")
