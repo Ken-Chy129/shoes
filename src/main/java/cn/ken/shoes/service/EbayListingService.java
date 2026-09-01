@@ -38,21 +38,65 @@ public class EbayListingService {
         apiClient.createOrReplaceInventoryItem(
                 request.getSku(), inventoryPayload(request, hostedImageUrls),
                 request.getContentLanguage());
-        String offerId = apiClient.createOffer(offerPayload(request), request.getContentLanguage());
-        String listingId = apiClient.publishOffer(offerId);
+        JSONObject payload = offerPayload(request);
+        OfferSnapshot existing = findOffer(request.getSku(), request.getMarketplaceId());
+        String offerId;
+        String listingId;
+        if (existing == null) {
+            offerId = apiClient.createOffer(payload, request.getContentLanguage());
+            listingId = apiClient.publishOffer(offerId);
+        } else {
+            offerId = existing.offerId();
+            apiClient.updateOffer(offerId, payload, request.getContentLanguage());
+            listingId = existing.published()
+                    ? existing.listingId()
+                    : apiClient.publishOffer(offerId);
+        }
         return new EbayListingResult(request.getSku(), offerId, listingId, properties.getEnvironment());
     }
 
     public List<EbayListingResult> publishGroup(String inventoryItemGroupKey,
                                                 List<EbayListingRequest> requests) {
-        if (requests == null || requests.size() < 2) {
-            throw new IllegalArgumentException("多尺码商品至少需要两个尺码");
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("多尺码商品至少需要一个尺码");
         }
         List<EbayListingRequest> variants = List.copyOf(requests);
-        GroupAspects groupAspects = validateAndResolveGroupAspects(variants);
+        JSONObject existingGroup = apiClient.getInventoryItemGroup(inventoryItemGroupKey)
+                .orElse(null);
+        if (variants.size() == 1 && existingGroup == null) {
+            return List.of(publish(variants.getFirst()));
+        }
+        GroupAspects groupAspects = validateAndResolveGroupAspects(variants, existingGroup);
         EbayListingRequest first = variants.getFirst();
         List<String> hostedImageUrls = pictureService.hostImages(
                 first.getImageUrls(), inventoryItemGroupKey);
+        Set<String> allGroupSkus = mergedGroupSkus(existingGroup, variants);
+        Set<String> incomingSkus = new LinkedHashSet<>(variants.stream()
+                .map(EbayListingRequest::getSku)
+                .toList());
+        Map<String, OfferSnapshot> existingOffers = new LinkedHashMap<>();
+        for (String sku : incomingSkus) {
+            OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
+            if (offer != null) {
+                existingOffers.put(sku, offer);
+            }
+        }
+        OfferSnapshot publishedGroupOffer = existingOffers.values().stream()
+                .filter(OfferSnapshot::published)
+                .findFirst()
+                .orElse(null);
+        if (publishedGroupOffer == null) {
+            for (String sku : allGroupSkus) {
+                if (incomingSkus.contains(sku)) {
+                    continue;
+                }
+                OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
+                if (offer != null && offer.published()) {
+                    publishedGroupOffer = offer;
+                    break;
+                }
+            }
+        }
 
         for (EbayListingRequest variant : variants) {
             apiClient.createOrReplaceInventoryItem(
@@ -61,20 +105,56 @@ public class EbayListingService {
         }
         apiClient.createOrReplaceInventoryItemGroup(
                 inventoryItemGroupKey,
-                inventoryGroupPayload(variants, groupAspects, hostedImageUrls),
+                inventoryGroupPayload(
+                        variants, groupAspects, hostedImageUrls, existingGroup),
                 first.getContentLanguage());
 
-        List<String> offerIds = new ArrayList<>(variants.size());
+        boolean listingAlreadyPublished = publishedGroupOffer != null;
+        String existingListingId = publishedGroupOffer == null
+                ? null : publishedGroupOffer.listingId();
+        Map<String, String> offerIds = new LinkedHashMap<>();
+        Map<String, String> listingIds = new LinkedHashMap<>();
+        List<PendingOffer> pendingOffers = new ArrayList<>();
         for (EbayListingRequest variant : variants) {
-            offerIds.add(apiClient.createOffer(
-                    offerPayload(variant), variant.getContentLanguage()));
+            OfferSnapshot existing = existingOffers.get(variant.getSku());
+            String offerId;
+            if (existing == null) {
+                offerId = apiClient.createOffer(
+                        offerPayload(variant), variant.getContentLanguage());
+                pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
+            } else {
+                offerId = existing.offerId();
+                apiClient.updateOffer(
+                        offerId, offerPayload(variant), variant.getContentLanguage());
+                if (existing.published()) {
+                    listingIds.put(variant.getSku(), existing.listingId());
+                } else {
+                    pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
+                }
+            }
+            offerIds.put(variant.getSku(), offerId);
         }
-        String listingId = apiClient.publishOfferByInventoryItemGroup(
-                inventoryItemGroupKey, first.getMarketplaceId());
+
+        if (listingAlreadyPublished) {
+            for (PendingOffer pending : pendingOffers) {
+                String listingId = apiClient.publishOffer(pending.offerId());
+                listingIds.put(pending.sku(), listingId);
+                if (existingListingId == null) {
+                    existingListingId = listingId;
+                }
+            }
+        } else {
+            existingListingId = apiClient.publishOfferByInventoryItemGroup(
+                    inventoryItemGroupKey, first.getMarketplaceId());
+        }
+
         List<EbayListingResult> results = new ArrayList<>(variants.size());
-        for (int i = 0; i < variants.size(); i++) {
+        for (EbayListingRequest variant : variants) {
             results.add(new EbayListingResult(
-                    variants.get(i).getSku(), offerIds.get(i), listingId, properties.getEnvironment()));
+                    variant.getSku(),
+                    offerIds.get(variant.getSku()),
+                    firstNonBlank(listingIds.get(variant.getSku()), existingListingId),
+                    properties.getEnvironment()));
         }
         return List.copyOf(results);
     }
@@ -157,25 +237,28 @@ public class EbayListingService {
 
     private JSONObject inventoryGroupPayload(List<EbayListingRequest> variants,
                                              GroupAspects groupAspects,
-                                             List<String> hostedImageUrls) {
+                                             List<String> hostedImageUrls,
+                                             JSONObject existingGroup) {
         EbayListingRequest first = variants.getFirst();
         JSONObject payload = new JSONObject(true);
         payload.put("title", first.getTitle());
         payload.put("description", first.getDescription());
         payload.put("imageUrls", JSON.parseArray(JSON.toJSONString(hostedImageUrls)));
-        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(variants.stream()
-                .map(EbayListingRequest::getSku).toList())));
+        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(
+                mergedGroupSkus(existingGroup, variants))));
         payload.put("aspects", JSON.parseObject(JSON.toJSONString(groupAspects.common())));
         JSONObject specification = new JSONObject(true);
         specification.put("name", groupAspects.varyingName());
-        specification.put("values", JSON.parseArray(JSON.toJSONString(groupAspects.values())));
+        specification.put("values", JSON.parseArray(JSON.toJSONString(
+                mergedVariationValues(existingGroup, groupAspects))));
         JSONObject variesBy = new JSONObject(true);
         variesBy.put("specifications", new JSONArray().fluentAdd(specification));
         payload.put("variesBy", variesBy);
         return payload;
     }
 
-    private GroupAspects validateAndResolveGroupAspects(List<EbayListingRequest> variants) {
+    private GroupAspects validateAndResolveGroupAspects(List<EbayListingRequest> variants,
+                                                        JSONObject existingGroup) {
         EbayListingRequest first = variants.getFirst();
         for (EbayListingRequest variant : variants.subList(1, variants.size())) {
             requireSame(first.getTitle(), variant.getTitle(), "标题");
@@ -190,6 +273,19 @@ public class EbayListingService {
             requireSame(first.getPaymentPolicyId(), variant.getPaymentPolicyId(), "付款政策");
             requireSame(first.getReturnPolicyId(), variant.getReturnPolicyId(), "退货政策");
             requireSame(first.getContentLanguage(), variant.getContentLanguage(), "语言");
+        }
+
+        if (variants.size() == 1) {
+            ExistingVariation existingVariation = existingVariation(existingGroup);
+            List<String> value = effectiveAspects(first).get(existingVariation.name());
+            if (value == null || value.size() != 1 || value.getFirst().isBlank()) {
+                throw new IllegalArgumentException("新增尺码缺少商品组使用的"
+                        + existingVariation.name() + "属性");
+            }
+            Map<String, List<String>> common = new LinkedHashMap<>(effectiveAspects(first));
+            common.remove(existingVariation.name());
+            return new GroupAspects(
+                    existingVariation.name(), List.of(value.getFirst()), common);
         }
 
         Map<String, List<String>> firstAspects = effectiveAspects(first);
@@ -226,6 +322,108 @@ public class EbayListingService {
         return new GroupAspects(varyingName, values, common);
     }
 
+    private Set<String> mergedGroupSkus(JSONObject existingGroup,
+                                        List<EbayListingRequest> variants) {
+        Set<String> skus = new LinkedHashSet<>();
+        if (existingGroup != null) {
+            skus.addAll(stringValues(existingGroup.getJSONArray("variantSKUs")));
+        }
+        variants.stream().map(EbayListingRequest::getSku).forEach(skus::add);
+        return skus;
+    }
+
+    private List<String> mergedVariationValues(JSONObject existingGroup,
+                                               GroupAspects groupAspects) {
+        LinkedHashSet<String> values = new LinkedHashSet<>();
+        if (existingGroup != null) {
+            ExistingVariation existingVariation = existingVariation(existingGroup);
+            if (!groupAspects.varyingName().equals(existingVariation.name())) {
+                throw new IllegalArgumentException("已有商品组的变体属性为"
+                        + existingVariation.name() + "，不能改为" + groupAspects.varyingName());
+            }
+            values.addAll(existingVariation.values());
+        }
+        values.addAll(groupAspects.values());
+        return List.copyOf(values);
+    }
+
+    private ExistingVariation existingVariation(JSONObject existingGroup) {
+        JSONObject variesBy = existingGroup == null
+                ? null : existingGroup.getJSONObject("variesBy");
+        JSONArray specifications = variesBy == null
+                ? null : variesBy.getJSONArray("specifications");
+        JSONObject specification = specifications == null || specifications.isEmpty()
+                ? null : specifications.getJSONObject(0);
+        String name = specification == null ? null : specification.getString("name");
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("已有eBay商品组缺少变体属性");
+        }
+        return new ExistingVariation(
+                name, stringValues(specification.getJSONArray("values")));
+    }
+
+    private List<String> stringValues(JSONArray values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = new ArrayList<>(values.size());
+        for (Object value : values) {
+            if (value != null && !value.toString().isBlank()) {
+                result.add(value.toString());
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private OfferSnapshot findOffer(String sku, String marketplaceId) {
+        return apiClient.getOffersBySku(sku).stream()
+                .filter(Objects::nonNull)
+                .filter(offer -> {
+                    String offerMarketplace = offer.getString("marketplaceId");
+                    return offerMarketplace == null
+                            || marketplaceId.equalsIgnoreCase(offerMarketplace);
+                })
+                .map(this::offerSnapshot)
+                .filter(Objects::nonNull)
+                .sorted((left, right) -> Boolean.compare(
+                        right.published(), left.published()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private OfferSnapshot offerSnapshot(JSONObject offer) {
+        String offerId = offer.getString("offerId");
+        if (offerId == null || offerId.isBlank()) {
+            return null;
+        }
+        boolean published = "PUBLISHED".equalsIgnoreCase(offer.getString("status"))
+                || "ACTIVE".equalsIgnoreCase(offer.getString("listingStatus"))
+                || listingId(offer) != null;
+        String listingId = listingId(offer);
+        if (published && listingId == null) {
+            JSONObject detail = apiClient.getOffer(offerId);
+            listingId = listingId(detail);
+            published = published
+                    || "PUBLISHED".equalsIgnoreCase(detail.getString("status"))
+                    || "ACTIVE".equalsIgnoreCase(detail.getString("listingStatus"));
+        }
+        return new OfferSnapshot(offerId, published, listingId);
+    }
+
+    private String listingId(JSONObject offer) {
+        if (offer == null) {
+            return null;
+        }
+        JSONObject listing = offer.getJSONObject("listing");
+        return firstNonBlank(
+                offer.getString("listingId"),
+                listing == null ? null : listing.getString("listingId"));
+    }
+
+    private String firstNonBlank(String first, String second) {
+        return first != null && !first.isBlank() ? first : second;
+    }
+
     private Map<String, List<String>> effectiveAspects(EbayListingRequest request) {
         Map<String, List<String>> aspects = new LinkedHashMap<>(request.getAspects());
         if (request.getBrand() != null && !request.getBrand().isBlank()) {
@@ -255,5 +453,14 @@ public class EbayListingService {
 
     private record GroupAspects(String varyingName, List<String> values,
                                 Map<String, List<String>> common) {
+    }
+
+    private record ExistingVariation(String name, List<String> values) {
+    }
+
+    private record OfferSnapshot(String offerId, boolean published, String listingId) {
+    }
+
+    private record PendingOffer(String sku, String offerId) {
     }
 }

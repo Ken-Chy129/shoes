@@ -13,11 +13,14 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -43,6 +46,8 @@ class EbayListingServiceTest {
         properties.setEnvironment("sandbox");
         service = new EbayListingService(
                 apiClient, properties, new EbayPictureService(pictureApiClient));
+        when(apiClient.getOffersBySku(anyString())).thenReturn(List.of());
+        when(apiClient.getInventoryItemGroup(anyString())).thenReturn(Optional.empty());
     }
 
     @Test
@@ -88,6 +93,51 @@ class EbayListingServiceTest {
         assertThat(result.getOfferId()).isEqualTo("offer-123");
         assertThat(result.getListingId()).isEqualTo("listing-456");
         assertThat(result.getEnvironment()).isEqualTo("sandbox");
+    }
+
+    @Test
+    void updatesAnAlreadyPublishedSingleSkuWithoutCreatingOrPublishingAnotherOffer() {
+        EbayListingRequest request = listingRequest();
+        when(apiClient.getOffersBySku("shoe-sku-1"))
+                .thenReturn(List.of(
+                        unpublishedOffer("offer-stale", "shoe-sku-1"),
+                        publishedOffer(
+                                "offer-existing", "shoe-sku-1", "listing-existing")));
+
+        EbayListingResult result = service.publish(request);
+
+        verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-1"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-existing"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, never()).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient, never()).publishOffer(org.mockito.ArgumentMatchers.anyString());
+        assertThat(result.getOfferId()).isEqualTo("offer-existing");
+        assertThat(result.getListingId()).isEqualTo("listing-existing");
+    }
+
+    @Test
+    void reusesAndPublishesAnExistingUnpublishedOffer() {
+        EbayListingRequest request = listingRequest();
+        when(apiClient.getOffersBySku("shoe-sku-1"))
+                .thenReturn(List.of(unpublishedOffer(
+                        "offer-unpublished", "shoe-sku-1")));
+        when(apiClient.publishOffer("offer-unpublished"))
+                .thenReturn("listing-newly-published");
+
+        EbayListingResult result = service.publish(request);
+
+        verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-unpublished"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).publishOffer("offer-unpublished");
+        verify(apiClient, never()).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        assertThat(result.getOfferId()).isEqualTo("offer-unpublished");
+        assertThat(result.getListingId()).isEqualTo("listing-newly-published");
     }
 
     @Test
@@ -147,6 +197,85 @@ class EbayListingServiceTest {
                 .containsOnly("listing-group-456");
         verify(pictureApiClient).uploadExternalPicture(
                 "https://example.com/shoe.jpg", "group-style-1-1");
+    }
+
+    @Test
+    void addsOneNewSizeToAnExistingPublishedGroupWithoutReplacingExistingVariants() {
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-9"), List.of("9"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-10");
+        when(apiClient.publishOffer("offer-10")).thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size10));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
+                .containsExactly("shoe-sku-9", "shoe-sku-10");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("9", "10");
+        verify(apiClient).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).publishOffer("offer-10");
+        verify(apiClient, never()).publishOfferByInventoryItemGroup(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.getOfferId()).isEqualTo("offer-10");
+            assertThat(result.getListingId()).isEqualTo("listing-group-456");
+        });
+    }
+
+    @Test
+    void updatesPublishedGroupOffersWithoutCreatingOrPublishingDuplicates() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-9", "shoe-sku-10"), List.of("9", "10"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-10"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-10", "shoe-sku-10", "listing-group-456")));
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        verify(apiClient, times(2)).updateOffer(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, never()).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient, never()).publishOffer(org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient, never()).publishOfferByInventoryItemGroup(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyString());
+        assertThat(results)
+                .extracting(EbayListingResult::getOfferId)
+                .containsExactly("offer-9", "offer-10");
+        assertThat(results)
+                .extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
     }
 
     @Test
@@ -274,5 +403,35 @@ class EbayListingServiceTest {
         request.setMpn("TEST-1");
         request.setAspects(Map.of("US Shoe Size", List.of("9")));
         return request;
+    }
+
+    private JSONObject publishedOffer(String offerId, String sku, String listingId) {
+        return new JSONObject(true)
+                .fluentPut("offerId", offerId)
+                .fluentPut("sku", sku)
+                .fluentPut("marketplaceId", "EBAY_US")
+                .fluentPut("status", "PUBLISHED")
+                .fluentPut("listing", new JSONObject(true).fluentPut("listingId", listingId));
+    }
+
+    private JSONObject unpublishedOffer(String offerId, String sku) {
+        return new JSONObject(true)
+                .fluentPut("offerId", offerId)
+                .fluentPut("sku", sku)
+                .fluentPut("marketplaceId", "EBAY_US")
+                .fluentPut("status", "UNPUBLISHED");
+    }
+
+    private JSONObject inventoryGroup(List<String> skus, List<String> sizes) {
+        JSONObject specification = new JSONObject(true)
+                .fluentPut("name", "US Shoe Size")
+                .fluentPut("values", sizes);
+        return new JSONObject(true)
+                .fluentPut("title", "Test Sneaker")
+                .fluentPut("variantSKUs", skus)
+                .fluentPut("aspects", new JSONObject(true)
+                        .fluentPut("Brand", List.of("Test Brand")))
+                .fluentPut("variesBy", new JSONObject(true)
+                        .fluentPut("specifications", List.of(specification)));
     }
 }

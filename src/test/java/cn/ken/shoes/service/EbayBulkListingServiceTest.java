@@ -84,8 +84,9 @@ class EbayBulkListingServiceTest {
     void publishesEachRowAndRecordsEbayIdentifiers() {
         EbayListingExcel row = row();
         when(metadataService.resolve(row)).thenReturn(metadata());
-        when(listingService.publish(any())).thenReturn(
-                new EbayListingResult("EBAY-DD1391-100-USM10-NEW", "offer-1", "listing-1", "sandbox"));
+        when(listingService.publishGroup(any(), any())).thenReturn(List.of(
+                new EbayListingResult(
+                        "EBAY-DD1391-100-USM10-NEW", "offer-1", "listing-1", "sandbox")));
 
         Long taskId = service.start(List.of(row));
 
@@ -101,6 +102,8 @@ class EbayBulkListingServiceTest {
         assertThat(updated.getValue().getOfferId()).isEqualTo("offer-1");
         assertThat(updated.getValue().getListingId()).isEqualTo("listing-1");
         assertThat(updated.getValue().getOperateResult()).isEqualTo("上架成功");
+        verify(listingService).publishGroup(any(), any());
+        verify(listingService, never()).publish(any());
         verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
     }
 
@@ -170,9 +173,9 @@ class EbayBulkListingServiceTest {
                         java.util.Map.of(
                                 "Department", List.of("Women"),
                                 "US Shoe Size", List.of("9 Men/10.5 Women"))));
-        when(listingService.publish(any())).thenReturn(
+        when(listingService.publishGroup(any(), any())).thenReturn(List.of(
                 new EbayListingResult("EBAY-AH7860-139-USM9-NEW",
-                        "offer-women-1", "listing-women-1", "production"));
+                        "offer-women-1", "listing-women-1", "production")));
 
         service.start(List.of(row));
 

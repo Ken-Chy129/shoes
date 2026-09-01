@@ -132,10 +132,8 @@ public class EbayBulkListingService {
                     EbayProductMetadata metadata = metadataService.resolve(context.row());
                     requests.add(listingFactory.create(context.row(), metadata));
                 }
-                List<EbayListingResult> results = requests.size() == 1
-                        ? List.of(listingService.publish(requests.getFirst()))
-                        : listingService.publishGroup(
-                                listingFactory.groupKey(entry.getKey()), requests);
+                List<EbayListingResult> results = listingService.publishGroup(
+                        listingFactory.groupKey(entry.getKey()), requests);
                 if (results.size() != group.size()) {
                     throw new IllegalStateException("eBay返回的尺码结果数量不一致");
                 }
