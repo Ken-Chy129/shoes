@@ -82,6 +82,75 @@ class EbayProductMetadataServiceTest {
     }
 
     @Test
+    void defaultsMissingKickScrewColorToWhite() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        when(cacheMapper.selectById("398846-01")).thenReturn(null);
+        when(itemMapper.selectHandleByModelNo("398846-01")).thenReturn("puma-speedcat-og-black-white");
+        EbayProductMetadata fetched = new EbayProductMetadata();
+        fetched.setTitle("Puma Speedcat OG Black White");
+        fetched.setBrand("Puma");
+        fetched.setImageUrls(List.of("https://cdn.example.com/puma.jpg"));
+        when(kickScrewClient.queryProductMetadata("puma-speedcat-og-black-white"))
+                .thenReturn(fetched);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient);
+
+        EbayProductMetadata result = service.resolve("398846-01");
+
+        assertThat(result.getColor()).isEqualTo("White");
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
+        assertThat(cache.getValue().getColor()).isEqualTo("White");
+    }
+
+    @Test
+    void defaultsMissingColorFromAnExistingKickScrewCacheToWhite() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        ProductCatalogDO cached = new ProductCatalogDO();
+        cached.setModelNo("HQ7978-100");
+        cached.setTitle("Jordan 5 Retro Grape (2025)");
+        cached.setSource("kickscrew");
+        cached.setImageUrls("[\"https://cdn.example.com/grape.jpg\"]");
+        when(cacheMapper.selectById("HQ7978-100")).thenReturn(cached);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient);
+
+        EbayProductMetadata result = service.resolve("HQ7978-100");
+
+        assertThat(result.getColor()).isEqualTo("White");
+        verifyNoInteractions(itemMapper, kickScrewClient);
+    }
+
+    @Test
+    void keepsStructuredKickScrewColorInsteadOfReplacingItFromTheTitle() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        when(cacheMapper.selectById("MFCXLL4")).thenReturn(null);
+        when(itemMapper.selectHandleByModelNo("MFCXLL4"))
+                .thenReturn("new-balance-fuelcell-rebel-v4-mfcxll4");
+        EbayProductMetadata fetched = new EbayProductMetadata();
+        fetched.setTitle("New Balance FuelCell Rebel V4 Green");
+        fetched.setBrand("New Balance");
+        fetched.setColor("lime");
+        fetched.setColorway("Lime/White");
+        fetched.setImageUrls(List.of("https://cdn.example.com/rebel.jpg"));
+        when(kickScrewClient.queryProductMetadata(
+                "new-balance-fuelcell-rebel-v4-mfcxll4")).thenReturn(fetched);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient);
+
+        EbayProductMetadata result = service.resolve("MFCXLL4");
+
+        assertThat(result.getColor()).isEqualTo("lime");
+        assertThat(result.getColorway()).isEqualTo("Lime/White");
+    }
+
+    @Test
     void refusesMissingKcHandleWithoutMakingAnExternalRequest() {
         ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
