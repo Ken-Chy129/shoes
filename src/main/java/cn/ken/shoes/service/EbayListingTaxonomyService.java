@@ -228,10 +228,26 @@ public class EbayListingTaxonomyService {
         return rule.allowedValues().stream()
                 .filter(value -> value.equalsIgnoreCase(candidate.trim()))
                 .findFirst()
-                .orElseGet(() -> synonym(rule.allowedValues(), candidate));
+                .orElseGet(() -> synonym(rule, candidate));
     }
 
-    private String synonym(List<String> allowedValues, String candidate) {
+    private String synonym(AspectRule rule, String candidate) {
+        List<String> allowedValues = rule.allowedValues();
+        if (isColorAspect(rule.name())) {
+            String extracted = EbayTitleColorExtractor.extract(candidate);
+            if (extracted != null) {
+                for (String color : extracted.split("/")) {
+                    String match = allowedValues.stream()
+                            .filter(value -> value.equalsIgnoreCase(color)
+                                    || color.equalsIgnoreCase(EbayTitleColorExtractor.extract(value)))
+                            .findFirst()
+                            .orElse(null);
+                    if (match != null) {
+                        return match;
+                    }
+                }
+            }
+        }
         String normalized = candidate.toLowerCase(Locale.ROOT);
         if (normalized.contains("sneaker")) {
             return allowedValues.stream()
@@ -240,6 +256,11 @@ public class EbayListingTaxonomyService {
                     .findFirst().orElse(null);
         }
         return null;
+    }
+
+    private boolean isColorAspect(String rawName) {
+        String name = rawName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        return "color".equals(name) || "colour".equals(name) || "farbe".equals(name);
     }
 
     private Map<String, List<String>> fallbackAspects(EbayProductMetadata metadata,

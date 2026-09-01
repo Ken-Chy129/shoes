@@ -195,6 +195,27 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
+    void mapsACombinedCatalogColorToTheFirstAllowedEbayColor() {
+        JSONObject colorAspect = new JSONObject(true)
+                .fluentPut("localizedAspectName", "Color")
+                .fluentPut("aspectConstraint", new JSONObject(true)
+                        .fluentPut("aspectRequired", true)
+                        .fluentPut("aspectMode", "SELECTION_ONLY"))
+                .fluentPut("aspectValues", List.of(
+                        new JSONObject(true).fluentPut("localizedValue", "Black"),
+                        new JSONObject(true).fluentPut("localizedValue", "White")));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(colorAspect)));
+        EbayProductMetadata metadata = metadata();
+        metadata.setColor("Black/White");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "398846-01", metadata, "USM", "9");
+
+        assertThat(resolved.aspects()).containsEntry("Color", List.of("Black"));
+    }
+
+    @Test
     void keepsStandardShoeFallbackWhenApplicationTokenIsTemporarilyUnavailable() {
         when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
                 .thenThrow(new IllegalStateException("application token unavailable"));

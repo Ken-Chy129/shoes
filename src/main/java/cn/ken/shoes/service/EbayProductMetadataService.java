@@ -56,7 +56,7 @@ public class EbayProductMetadataService {
                 throw new IllegalArgumentException("本地没有该货号的KC资料");
             }
             EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
-            defaultMissingKickScrewColor(fetched);
+            fillMissingKickScrewColor(fetched);
             validate(fetched);
             catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
             return fetched;
@@ -142,7 +142,7 @@ public class EbayProductMetadataService {
         metadata.setUpperMaterial(cache.getUpperMaterial());
         metadata.setManualTitle(Boolean.TRUE.equals(cache.getManualOverride()));
         if ("kickscrew".equalsIgnoreCase(cache.getSource())) {
-            defaultMissingKickScrewColor(metadata);
+            fillMissingKickScrewColor(metadata);
         }
         List<String> images = JSON.parseArray(cache.getImageUrls(), String.class);
         metadata.setImageUrls(images != null ? images : List.of());
@@ -150,10 +150,15 @@ public class EbayProductMetadataService {
         return metadata;
     }
 
-    private void defaultMissingKickScrewColor(EbayProductMetadata metadata) {
-        if (metadata != null && !present(metadata.getColor())) {
-            metadata.setColor("White");
+    private void fillMissingKickScrewColor(EbayProductMetadata metadata) {
+        if (metadata == null || present(metadata.getColor())) {
+            return;
         }
+        String resolved = EbayTitleColorExtractor.extract(metadata.getColorway());
+        if (!present(resolved)) {
+            resolved = EbayTitleColorExtractor.extract(metadata.getTitle());
+        }
+        metadata.setColor(present(resolved) ? resolved : "White");
     }
 
     private ProductCatalogDO toCatalog(String modelNo, EbayProductMetadata metadata) {
