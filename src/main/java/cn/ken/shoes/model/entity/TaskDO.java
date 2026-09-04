@@ -75,6 +75,7 @@ public class TaskDO {
         CLEAR_NO_BENEFIT_ITEMS("下架非盈利商品", "clearNoBenefitItems"),
         FETCH_LISTINGS("获取上架商品", "fetch_listings"),
         EXCEL_DELIST("下架", "excel_delist"),
+        EBAY_BULK_LISTING("eBay批量上架", "ebay_bulk_listing"),
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
         ;
 

@@ -28,6 +28,7 @@ import cn.ken.shoes.service.StockXService;
 import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
 import cn.ken.shoes.service.EbayPriceSyncService;
+import cn.ken.shoes.service.EbayBulkListingService;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -82,6 +83,9 @@ public class TaskExecutorManager {
 
     @Resource
     private EbayPriceSyncService ebayPriceSyncService;
+
+    @Resource
+    private EbayBulkListingService ebayBulkListingService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -285,7 +289,9 @@ public class TaskExecutorManager {
         }
         return ("kickscrew".equals(task.getPlatform())
                 && (taskType == TaskTypeEnum.LISTING || taskType == TaskTypeEnum.PRICE_DOWN))
-                || ("ebay".equals(task.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC);
+                || ("ebay".equals(task.getPlatform())
+                && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
+                || taskType == TaskTypeEnum.EBAY_BULK_LISTING));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -303,6 +309,11 @@ public class TaskExecutorManager {
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
             return startEbayPriceSync(
                     params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
+            var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
+            return snapshot.isEmpty() || snapshot.get().isEmpty()
+                    ? null : ebayBulkListingService.start(snapshot.get());
         }
         if (!"stockx".equals(source.getPlatform())) {
             return null;
@@ -391,6 +402,7 @@ public class TaskExecutorManager {
             }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
+            case EBAY_BULK_LISTING -> null;
             case EBAY_PRICE_SYNC -> startEbayPriceSync(
                     params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
         };
