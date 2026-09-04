@@ -224,6 +224,22 @@ class EbaySellApiClientTest {
                 .hasMessageContaining("missing listingId");
     }
 
+    @Test
+    void includesSafeEbayErrorDetailsInFailures() {
+        server.enqueue(new MockResponse().setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"errors":[{"errorId":25710,"message":"Inventory item not found",
+                        "longMessage":"No inventory item exists for the supplied SKU."}]}
+                        """));
+
+        assertThatThrownBy(() -> client.createOffer(new JSONObject(), "en-US"))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("HTTP 404")
+                .hasMessageContaining("25710")
+                .hasMessageContaining("No inventory item exists for the supplied SKU");
+    }
+
     private MockResponse jsonResponse(String body) {
         return new MockResponse()
                 .setResponseCode(200)

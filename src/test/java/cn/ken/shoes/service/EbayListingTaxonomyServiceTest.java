@@ -73,6 +73,21 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
+    void mapsSoccerCleatUsSizeAspectToTheRequestedSize() {
+        when(client.getItemAspectsForCategory("0", "109133"))
+                .thenReturn(aspects("Brand", "US Size", "Color"));
+
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Nike Phantom 6 Low Elite FG SE Travis Scott");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "109133", "IQ8140-900", metadata, "USM", "8.5");
+
+        assertThat(resolved.aspects())
+                .containsEntry("US Size", List.of("8.5"));
+    }
+
+    @Test
     void preservesTheOptionalExcelCategoryOverride() {
         when(client.getItemAspectsForCategory("0", "12345"))
                 .thenReturn(aspects("Brand", "EU Shoe Size"));

@@ -297,7 +297,11 @@ public class EbayListingService {
                         .distinct().count() > 1)
                 .toList();
         if (varyingNames.size() != 1) {
-            throw new IllegalArgumentException("同一货号的尺码变体必须且只能有一个不同属性");
+            String detected = varyingNames.isEmpty()
+                    ? "未识别到尺码属性"
+                    : "检测到多个变化属性：" + String.join("、", varyingNames);
+            throw new IllegalArgumentException(
+                    "同一货号必须且只能按尺码生成变体（" + detected + "）");
         }
         String varyingName = varyingNames.getFirst();
         List<String> values = variants.stream()
@@ -429,14 +433,31 @@ public class EbayListingService {
         if (request.getBrand() != null && !request.getBrand().isBlank()) {
             aspects.put("Brand", List.of(request.getBrand().trim()));
         }
-        // Excel continues to accept EU sizes, but taxonomy resolution adds the
-        // converted US size required by eBay. Only one size aspect may vary in
-        // an inventory item group, so keep the eBay-facing US size and omit the
-        // source EU size from the group payload.
-        if (aspects.containsKey("US Shoe Size") && aspects.containsKey("EU Shoe Size")) {
-            aspects.remove("EU Shoe Size");
+        // Excel continues to accept EU sizes, but taxonomy resolution may add
+        // the converted US size required by eBay. Aspect names differ by
+        // category (for example "US Shoe Size" vs "US Size"). Only one size
+        // aspect may vary in an inventory item group, so keep the eBay-facing
+        // US dimension and omit a duplicate EU dimension.
+        boolean hasUsSize = aspects.keySet().stream().anyMatch(this::isUsSizeAspect);
+        if (hasUsSize) {
+            aspects.keySet().removeIf(this::isEuSizeAspect);
         }
         return aspects;
+    }
+
+    private boolean isUsSizeAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "usshoesize".equals(name) || "ussize".equals(name);
+    }
+
+    private boolean isEuSizeAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "eushoesize".equals(name) || "eusize".equals(name);
+    }
+
+    private String normalizedAspectName(String rawName) {
+        return rawName == null ? ""
+                : rawName.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
     private void requireSame(Object expected, Object actual, String label) {

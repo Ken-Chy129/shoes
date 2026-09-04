@@ -308,6 +308,53 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void publishesSoccerCleatSizesUsingTheShortUsSizeAspectName() {
+        EbayListingRequest size8 = listingRequest();
+        size8.setSku("cleat-sku-8");
+        size8.setCategoryId("109133");
+        size8.setAspects(new LinkedHashMap<>(Map.of(
+                "Brand", List.of("Nike"),
+                "US Size", List.of("8"))));
+        EbayListingRequest size85 = listingRequest();
+        size85.setSku("cleat-sku-8-5");
+        size85.setCategoryId("109133");
+        size85.setAspects(new LinkedHashMap<>(Map.of(
+                "Brand", List.of("Nike"),
+                "US Size", List.of("8.5"))));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-8", "offer-8-5");
+        when(apiClient.publishOfferByInventoryItemGroup("group-cleat", "EBAY_US"))
+                .thenReturn("listing-cleat");
+
+        service.publishGroup("group-cleat", List.of(size8, size85));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-cleat"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        JSONObject specification = groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0);
+        assertThat(specification.getString("name")).isEqualTo("US Size");
+        assertThat(specification.getJSONArray("values")).containsExactly("8", "8.5");
+    }
+
+    @Test
+    void explainsWhenNoSupportedSizeAspectWasResolved() {
+        EbayListingRequest first = listingRequest();
+        first.setSku("cleat-sku-8");
+        first.setAspects(Map.of("Brand", List.of("Nike")));
+        EbayListingRequest second = listingRequest();
+        second.setSku("cleat-sku-8-5");
+        second.setAspects(Map.of("Brand", List.of("Nike")));
+
+        assertThatThrownBy(() -> service.publishGroup(
+                "group-cleat", List.of(first, second)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("未识别到尺码属性");
+    }
+
+    @Test
     void rejectsNonHttpImageUrlBeforeCallingEbay() {
         EbayListingRequest request = listingRequest();
         request.setImageUrls(List.of("file:///etc/passwd"));

@@ -205,8 +205,12 @@ public class EbayListingTaxonomyService {
         return switch (name) {
             case "brand", "marke" -> metadata.getBrand();
             case "department", "gender", "abteilung" -> department;
-            case "usshoesize" -> usShoeSize(metadata, sizeSystem, sizeValue);
-            case "eushoesize" -> "EU".equals(sizeSystem) ? sizeValue : null;
+            // eBay uses different localized names for the same shoe-size
+            // dimension across categories. Athletic shoes expose "US Shoe
+            // Size", while soccer cleats (for example category 109133) use
+            // the shorter "US Size".
+            case "usshoesize", "ussize" -> usShoeSize(metadata, sizeSystem, sizeValue);
+            case "eushoesize", "eusize" -> "EU".equals(sizeSystem) ? sizeValue : null;
             case "color", "colour", "farbe" -> firstPresent(metadata.getColor(), metadata.getColorway());
             case "uppermaterial", "obermaterial" -> metadata.getUpperMaterial();
             case "type", "producttype", "style", "stil", "produktart" -> metadata.getProductType();
