@@ -188,6 +188,33 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void treatsEbayOfferUnavailableAsNoOfferForSkuLookup() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"errors":[{"errorId":25713,"message":"This Offer is not available."}]}
+                        """));
+
+        assertThat(client.getOffersBySku("NEW-SKU")).isEmpty();
+
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/offer?sku=NEW-SKU&limit=200&offset=0");
+    }
+
+    @Test
+    void doesNotHideOtherNotFoundErrorsDuringSkuLookup() {
+        server.enqueue(new MockResponse().setResponseCode(404)
+                .setHeader("Content-Type", "application/json")
+                .setBody("""
+                        {"errors":[{"errorId":25710,"message":"Inventory item not found"}]}
+                        """));
+
+        assertThatThrownBy(() -> client.getOffersBySku("BROKEN-SKU"))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("25710");
+    }
+
+    @Test
     void readsInventoryItemGroupAndTreatsNotFoundAsMissing() throws Exception {
         server.enqueue(jsonResponse("""
                 {"title":"Test Sneaker","variantSKUs":["sku-9","sku-10"]}

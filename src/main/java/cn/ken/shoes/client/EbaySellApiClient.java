@@ -143,7 +143,7 @@ public class EbaySellApiClient {
     public List<JSONObject> getActiveOffers(String marketplaceId) {
         return getOffers(builder -> builder
                 .addQueryParameter("marketplace_id", requireValue(marketplaceId, "marketplaceId"))
-                .addQueryParameter("listing_status", "ACTIVE"));
+                .addQueryParameter("listing_status", "ACTIVE"), false);
     }
 
     /**
@@ -152,10 +152,11 @@ public class EbaySellApiClient {
      */
     public List<JSONObject> getOffersBySku(String sku) {
         return getOffers(builder -> builder
-                .addQueryParameter("sku", requireValue(sku, "sku")));
+                .addQueryParameter("sku", requireValue(sku, "sku")), true);
     }
 
-    private List<JSONObject> getOffers(Consumer<HttpUrl.Builder> filters) {
+    private List<JSONObject> getOffers(Consumer<HttpUrl.Builder> filters,
+                                       boolean unavailableOfferMeansEmpty) {
         List<JSONObject> offers = new ArrayList<>();
         int offset = 0;
         int limit = 200;
@@ -166,7 +167,12 @@ public class EbaySellApiClient {
                     .addQueryParameter("limit", String.valueOf(limit))
                     .addQueryParameter("offset", String.valueOf(offset))
                     .build();
-            JSONObject page = get(url);
+            JSONObject page = unavailableOfferMeansEmpty
+                    ? execute(request(url, null).get().build(), Set.of(200), false, Set.of("25713"))
+                    : get(url);
+            if (page == null) {
+                break;
+            }
             var pageOffers = page.getJSONArray("offers");
             if (pageOffers == null || pageOffers.isEmpty()) {
                 break;
@@ -254,9 +260,15 @@ public class EbaySellApiClient {
 
     private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
                                boolean nullOnNotFound) {
+        return execute(request, expectedStatusCodes, nullOnNotFound, Set.of());
+    }
+
+    private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
+                               boolean nullOnNotFound, Set<String> nullOnErrorIds) {
         try (Response response = httpClient.newCall(request).execute()) {
             String responseText = responseText(response.body());
-            if (nullOnNotFound && response.code() == 404) {
+            if (response.code() == 404 && (nullOnNotFound
+                    || nullOnErrorIds.contains(firstErrorId(responseText)))) {
                 return null;
             }
             if (!expectedStatusCodes.contains(response.code())) {
@@ -319,6 +331,21 @@ public class EbaySellApiClient {
         String compact = responseText.replaceAll("\\s+", " ").trim();
         compact = compact.replaceAll("(?i)(bearer\\s+|access-token[=:]\\s*)[^\\s,;]+", "$1[redacted]");
         return compact.length() <= 500 ? compact : compact.substring(0, 500);
+    }
+
+    private String firstErrorId(String responseText) {
+        if (responseText == null || responseText.isBlank()) {
+            return null;
+        }
+        try {
+            JSONObject response = JSON.parseObject(responseText);
+            var errors = response == null ? null : response.getJSONArray("errors");
+            JSONObject error = errors == null || errors.isEmpty()
+                    ? null : errors.getJSONObject(0);
+            return error == null ? null : error.getString("errorId");
+        } catch (JSONException ignored) {
+            return null;
+        }
     }
 
     private String firstNonBlank(String first, String second) {
