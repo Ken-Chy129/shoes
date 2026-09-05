@@ -21,6 +21,10 @@ interface TaskItemRecord {
     targetPrice: number;
     lowestPrice: number;
     flexLowestPrice: number;
+    highestBidPrice: number;
+    highestBidCount: number;
+    secondHighestBidPrice: number;
+    secondHighestBidCount: number;
     listingQuantity: number;
     poisonPrice: number;
     poison35Price: number;
@@ -317,6 +321,26 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             dataIndex: 'currentPrice', key: 'currentPrice', width: 105,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
+        ...(purchaseOperation === 'bids' ? [
+            {
+                title: '现货价格', dataIndex: 'lowestPrice', key: 'standardLowest', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+            {
+                title: 'Flex价格', dataIndex: 'flexLowestPrice', key: 'flexLowest', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+            {
+                title: '求购第一', dataIndex: 'highestBidPrice', key: 'highestBidPrice', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+            {title: '第一数量', dataIndex: 'highestBidCount', key: 'highestBidCount', width: 85},
+            {
+                title: '求购第二', dataIndex: 'secondHighestBidPrice', key: 'secondHighestBidPrice', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+            {title: '第二数量', dataIndex: 'secondHighestBidCount', key: 'secondHighestBidCount', width: 85},
+        ] : []),
         ...(purchaseOperation === 'update_bids' ? [
             {
                 title: '市场最高价', dataIndex: 'lowestPrice', key: 'highestBid', width: 115,

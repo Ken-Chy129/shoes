@@ -17,6 +17,11 @@ public final class StockXPurchaseItemConverter {
     }
 
     public static TaskItemDO convert(Long taskId, JSONObject node, StockXPurchaseOperation operation) {
+        return convert(taskId, node, operation, null);
+    }
+
+    public static TaskItemDO convert(Long taskId, JSONObject node, StockXPurchaseOperation operation,
+                                     JSONObject market) {
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(1);
@@ -44,6 +49,7 @@ public final class StockXPurchaseItemConverter {
             item.setOrderStatus("有效出价");
             item.setOperateResult("有效出价");
             item.setOperateTime(parseDate(node.getString("creationDate")));
+            applyBidMarketData(item, market);
         } else {
             item.setListingId(node.getString("chainId"));
             item.setOrderNumber(node.getString("orderNumber"));
@@ -60,6 +66,42 @@ public final class StockXPurchaseItemConverter {
             item.setOperateTime(purchaseDate);
         }
         return item;
+    }
+
+    private static void applyBidMarketData(TaskItemDO item, JSONObject market) {
+        if (market == null) {
+            return;
+        }
+        JSONObject state = market.getJSONObject("state");
+        JSONObject levels = state != null ? state.getJSONObject("askServiceLevels") : null;
+        item.setLowestPrice(lowestAmount(levels, "standard"));
+        item.setFlexLowestPrice(lowestAmount(levels, "expressStandard"));
+
+        JSONObject priceLevels = market.getJSONObject("priceLevels");
+        JSONArray edges = priceLevels != null ? priceLevels.getJSONArray("edges") : null;
+        if (edges == null) {
+            return;
+        }
+        if (!edges.isEmpty()) {
+            JSONObject first = edges.getJSONObject(0).getJSONObject("node");
+            if (first != null) {
+                item.setHighestBidPrice(parseDecimal(first.getString("amount")));
+                item.setHighestBidCount(first.getInteger("count"));
+            }
+        }
+        if (edges.size() > 1) {
+            JSONObject second = edges.getJSONObject(1).getJSONObject("node");
+            if (second != null) {
+                item.setSecondHighestBidPrice(parseDecimal(second.getString("amount")));
+                item.setSecondHighestBidCount(second.getInteger("count"));
+            }
+        }
+    }
+
+    private static BigDecimal lowestAmount(JSONObject levels, String serviceLevel) {
+        JSONObject level = levels != null ? levels.getJSONObject(serviceLevel) : null;
+        JSONObject lowest = level != null ? level.getJSONObject("lowest") : null;
+        return lowest != null ? parseDecimal(lowest.getString("amount")) : null;
     }
 
     private static String extractBrand(JSONObject product) {

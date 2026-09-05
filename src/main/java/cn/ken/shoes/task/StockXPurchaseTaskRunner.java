@@ -17,7 +17,9 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
@@ -61,12 +63,26 @@ public class StockXPurchaseTaskRunner implements Runnable {
                 JSONObject result = queryPageWithRetry(currentPage,
                         () -> stockXClient.queryPurchasePage(operation, currentCursor, account));
                 JSONArray edges = result.getJSONArray("edges");
-                List<TaskItemDO> items = new ArrayList<>();
+                List<JSONObject> nodes = new ArrayList<>();
+                Set<String> variantIds = new LinkedHashSet<>();
                 for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
                     JSONObject node = edge.getJSONObject("node");
                     if (node != null) {
-                        items.add(StockXPurchaseItemConverter.convert(taskId, node, operation));
+                        nodes.add(node);
+                        JSONObject variant = node.getJSONObject("productVariant");
+                        if (operation == StockXPurchaseOperation.BIDS && variant != null
+                                && StrUtil.isNotBlank(variant.getString("id"))) {
+                            variantIds.add(variant.getString("id"));
+                        }
                     }
+                }
+                Map<String, JSONObject> marketByVariant = operation == StockXPurchaseOperation.BIDS
+                        ? queryMarketDataWithRetry(currentPage, new ArrayList<>(variantIds)) : Map.of();
+                List<TaskItemDO> items = new ArrayList<>();
+                for (JSONObject node : nodes) {
+                    JSONObject variant = node.getJSONObject("productVariant");
+                    JSONObject market = variant != null ? marketByVariant.get(variant.getString("id")) : null;
+                    items.add(StockXPurchaseItemConverter.convert(taskId, node, operation, market));
                 }
                 for (TaskItemDO item : items) {
                     ensureNotCancelled();
@@ -149,6 +165,35 @@ public class StockXPurchaseTaskRunner implements Runnable {
         throw new IllegalStateException(operation.getLabel() + "第" + pageNumber
                 + "页查询失败（已重试" + (MAX_PAGE_ATTEMPTS - 1) + "次：" + lastFailure + "）",
                 lastException);
+    }
+
+    private Map<String, JSONObject> queryMarketDataWithRetry(int pageNumber, List<String> variantIds) {
+        if (variantIds.isEmpty()) {
+            return Map.of();
+        }
+        for (int attempt = 1; attempt <= MAX_PAGE_ATTEMPTS; attempt++) {
+            ensureNotCancelled();
+            long delayMs = retryDelayMs(attempt);
+            try {
+                Map<String, JSONObject> result = stockXClient.queryBidMarketData(variantIds, account);
+                if (result != null && result.size() == variantIds.size()) {
+                    return result;
+                }
+            } catch (StockXRateLimitException e) {
+                if (attempt == MAX_PAGE_ATTEMPTS) {
+                    throw e;
+                }
+                delayMs = Math.max(delayMs, Math.min(e.getCooldownMs(), MAX_RETRY_DELAY_MS));
+            }
+            if (attempt < MAX_PAGE_ATTEMPTS) {
+                taskMapper.updateTaskFailReason(taskId, "获取出价第" + pageNumber
+                        + "页行情异常，" + (delayMs / 1000) + "秒后重试（" + attempt + "/"
+                        + (MAX_PAGE_ATTEMPTS - 1) + "）");
+                waitBeforeRetry(delayMs);
+            }
+        }
+        throw new IllegalStateException("获取出价第" + pageNumber + "页行情查询失败（已重试"
+                + (MAX_PAGE_ATTEMPTS - 1) + "次）");
     }
 
     protected void waitBeforeRetry(long delayMs) {

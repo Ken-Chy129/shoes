@@ -33,7 +33,7 @@
 五个操作复用 `task_item`：
 
 - 通用商品字段：标题、货号、US 尺码、EU 尺码、商品/变体标识。
-- 出价：出价 ID、金额、币种、状态、创建时间。
+- 出价：出价 ID、金额、币种、状态、创建时间，以及对应 variant 的现货最低价、Flex 最低价、求购第一/第二档价格和数量。盘口使用 `variant.market.priceLevels(transactionType=BID, page=1, limit=2)` 按页批量查询。
 - 订单与历史：chain ID、订单号、购买价格、币种、订单状态、购买时间。
 
 前三个操作不会创建、修改或取消 StockX 出价和订单；`create_bids` 和 `update_bids` 会提交真实变更。Excel 价格必须为正整数美元，创建出价的尺码支持 US M、US W 和 EU 前缀。

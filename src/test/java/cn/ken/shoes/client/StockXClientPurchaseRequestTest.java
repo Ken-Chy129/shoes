@@ -4,7 +4,9 @@ import cn.ken.shoes.common.StockXPurchaseOperation;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
@@ -54,6 +56,49 @@ class StockXClientPurchaseRequestTest {
                 StockXPurchaseOperation.DELETE_BIDS, null, "US")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("独立写接口");
+    }
+
+    @Test
+    void buildsBatchBidMarketLevelsRequest() {
+        JSONObject request = StockXClient.buildBidMarketDataRequest(
+                List.of("variant-a", "variant-b"), "US");
+
+        assertThat(request.getString("operationName")).isEqualTo("BidMarketLevels");
+        assertThat(request.getJSONObject("variables"))
+                .containsEntry("market", "US")
+                .containsEntry("id0", "variant-a")
+                .containsEntry("id1", "variant-b");
+        assertThat(request.getString("query"))
+                .contains("v0:variant(id:$id0)")
+                .contains("v1:variant(id:$id1)")
+                .contains("priceLevels(transactionType:BID,page:1,limit:2,market:$market)")
+                .contains("standard{lowest{amount}}")
+                .contains("expressStandard{lowest{amount}}");
+    }
+
+    @Test
+    void buildsMaximumBidMarketBatchWithinRequestSizeBudget() {
+        List<String> variantIds = IntStream.range(0, 50)
+                .mapToObj(index -> String.format("01234567-89ab-cdef-0123-%012d", index))
+                .toList();
+
+        JSONObject request = StockXClient.buildBidMarketDataRequest(variantIds, "US");
+        int requestBytes = request.toJSONString().getBytes(StandardCharsets.UTF_8).length;
+
+        assertThat(request.getJSONObject("variables")).hasSize(51);
+        assertThat(request.getString("query")).contains("v49:variant(id:$id49)");
+        assertThat(requestBytes).isLessThan(32 * 1024);
+    }
+
+    @Test
+    void rejectsBidMarketBatchLargerThanFiftyVariants() {
+        List<String> variantIds = IntStream.range(0, 51)
+                .mapToObj(index -> "variant-" + index)
+                .toList();
+
+        assertThat(catchThrowable(() -> StockXClient.buildBidMarketDataRequest(variantIds, "US")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("1到50");
     }
 
     private static void assertBuyingRequest(JSONObject request, String state, String after) {

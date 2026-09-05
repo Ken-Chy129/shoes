@@ -254,6 +254,45 @@ public class StockXClient {
         return result;
     }
 
+    /**
+     * 批量查询 variant 的卖价与前两档求购盘口。使用 GraphQL alias 将一页出价合并为一次请求。
+     * 返回值以 variantId 为 key，value 为对应的 Market 对象。
+     */
+    public Map<String, JSONObject> queryBidMarketData(List<String> variantIds, StockXAccount account) {
+        if (CollectionUtils.isEmpty(variantIds)) {
+            return Map.of();
+        }
+        JSONObject response = queryPro(buildBidMarketDataRequest(variantIds,
+                        StrUtil.blankToDefault(account.getCountry(), "US")).toJSONString(),
+                buildViperHeaders(account), account.getName());
+        if (response == null) {
+            return null;
+        }
+        if ("Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("StockX Token已过期，请更新Token");
+        }
+        JSONArray errors = response.getJSONArray("errors");
+        if (errors != null && !errors.isEmpty()) {
+            log.error("queryBidMarketData[{}] 查询失败, reason:{}",
+                    account.getName(), extractGraphqlError(response));
+            return null;
+        }
+        JSONObject data = response.getJSONObject("data");
+        if (data == null) {
+            return null;
+        }
+        Map<String, JSONObject> result = new LinkedHashMap<>();
+        for (int i = 0; i < variantIds.size(); i++) {
+            JSONObject variant = data.getJSONObject("v" + i);
+            JSONObject market = variant != null ? variant.getJSONObject("market") : null;
+            if (market == null) {
+                return null;
+            }
+            result.put(variantIds.get(i), market);
+        }
+        return result;
+    }
+
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
         Objects.requireNonNull(operation, "operation");
         if (operation == StockXPurchaseOperation.CREATE_BIDS
@@ -283,6 +322,34 @@ public class StockXClient {
                 ? "da212069375e2bfd5e9aca755cf773d65b836c94e98f0a6a49347f89c0fc56a2"
                 : "e6da13338345ed277de50220547d8dd5de59e78a8b4cbf3d73ee6d6f25b3d76a"));
         return request;
+    }
+
+    static JSONObject buildBidMarketDataRequest(List<String> variantIds, String country) {
+        if (CollectionUtils.isEmpty(variantIds) || variantIds.size() > 50) {
+            throw new IllegalArgumentException("每批行情查询数量必须在1到50之间");
+        }
+        String market = StrUtil.blankToDefault(country, "US");
+        JSONObject variables = new JSONObject(true);
+        variables.put("market", market);
+        StringBuilder definitions = new StringBuilder("$market:String!");
+        StringBuilder selections = new StringBuilder();
+        for (int i = 0; i < variantIds.size(); i++) {
+            String variantId = StrUtil.trim(variantIds.get(i));
+            if (StrUtil.isBlank(variantId)) {
+                throw new IllegalArgumentException("variantId不能为空");
+            }
+            definitions.append(",$id").append(i).append(":String!");
+            variables.put("id" + i, variantId);
+            selections.append("v").append(i).append(":variant(id:$id").append(i).append("){id market(currencyCode:USD){")
+                    .append("state(country:$market,market:$market){askServiceLevels{")
+                    .append("standard{lowest{amount}} expressStandard{lowest{amount}}}} ")
+                    .append("priceLevels(transactionType:BID,page:1,limit:2,market:$market){")
+                    .append("edges{node{amount count}}}}}");
+        }
+        return new JSONObject(true)
+                .fluentPut("operationName", "BidMarketLevels")
+                .fluentPut("variables", variables)
+                .fluentPut("query", "query BidMarketLevels(" + definitions + "){" + selections + "}");
     }
 
     static JSONObject buildCreateBidsRequest(List<StockXBidCreateItem> items) {

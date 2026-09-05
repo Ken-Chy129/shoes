@@ -39,6 +39,18 @@ public class TaskItemExcel {
     @ExcelProperty("Flex最低价($)")
     private String flexLowestPrice;
 
+    @ExcelProperty("求购第一($)")
+    private String highestBidPrice;
+
+    @ExcelProperty("第一数量")
+    private Integer highestBidCount;
+
+    @ExcelProperty("求购第二($)")
+    private String secondHighestBidPrice;
+
+    @ExcelProperty("第二数量")
+    private Integer secondHighestBidCount;
+
     @ExcelProperty("上架数量")
     private Integer listingQuantity;
 

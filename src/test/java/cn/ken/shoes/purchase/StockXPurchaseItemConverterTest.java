@@ -27,7 +27,20 @@ class StockXPurchaseItemConverterTest {
                 }
                 """);
 
-        TaskItemDO item = StockXPurchaseItemConverter.convert(42L, bid, StockXPurchaseOperation.BIDS);
+        JSONObject market = JSON.parseObject("""
+                {
+                  "state":{"askServiceLevels":{
+                    "standard":{"lowest":{"amount":400}},
+                    "expressStandard":{"lowest":{"amount":443}}
+                  }},
+                  "priceLevels":{"edges":[
+                    {"node":{"amount":308,"count":2}},
+                    {"node":{"amount":307,"count":1}}
+                  ]}
+                }
+                """);
+        TaskItemDO item = StockXPurchaseItemConverter.convert(
+                42L, bid, StockXPurchaseOperation.BIDS, market);
 
         assertThat(item.getTaskId()).isEqualTo(42L);
         assertThat(item.getListingId()).isEqualTo("bid-1");
@@ -41,6 +54,12 @@ class StockXPurchaseItemConverterTest {
         assertThat(item.getOrderStatus()).isEqualTo("有效出价");
         assertThat(item.getOperateResult()).isEqualTo("有效出价");
         assertThat(item.getOperateTime()).isNotNull();
+        assertThat(item.getLowestPrice()).isEqualByComparingTo("400");
+        assertThat(item.getFlexLowestPrice()).isEqualByComparingTo("443");
+        assertThat(item.getHighestBidPrice()).isEqualByComparingTo("308");
+        assertThat(item.getHighestBidCount()).isEqualTo(2);
+        assertThat(item.getSecondHighestBidPrice()).isEqualByComparingTo("307");
+        assertThat(item.getSecondHighestBidCount()).isEqualTo(1);
     }
 
     @Test

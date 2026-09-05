@@ -176,6 +176,11 @@ public class TaskItemController {
             excel.setCurrentPrice(item.getCurrentPrice() != null ? "$" + item.getCurrentPrice() : "-");
             excel.setLowestPrice(item.getLowestPrice() != null ? "$" + item.getLowestPrice() : "-");
             excel.setFlexLowestPrice(item.getFlexLowestPrice() != null ? "$" + item.getFlexLowestPrice() : "-");
+            excel.setHighestBidPrice(item.getHighestBidPrice() != null ? "$" + item.getHighestBidPrice() : "-");
+            excel.setHighestBidCount(item.getHighestBidCount());
+            excel.setSecondHighestBidPrice(item.getSecondHighestBidPrice() != null
+                    ? "$" + item.getSecondHighestBidPrice() : "-");
+            excel.setSecondHighestBidCount(item.getSecondHighestBidCount());
             excel.setListingQuantity(item.getListingQuantity());
             excel.setPoisonPrice(item.getPoisonPrice() != null ? "¥" + item.getPoisonPrice() : "-");
             excel.setPoison35Price(item.getPoison35Price() != null ? "¥" + item.getPoison35Price() : "-");

@@ -24,6 +24,10 @@
         <result property="targetPrice" column="target_price"/>
         <result property="lowestPrice" column="lowest_price"/>
         <result property="flexLowestPrice" column="flex_lowest_price"/>
+        <result property="highestBidPrice" column="highest_bid_price"/>
+        <result property="highestBidCount" column="highest_bid_count"/>
+        <result property="secondHighestBidPrice" column="second_highest_bid_price"/>
+        <result property="secondHighestBidCount" column="second_highest_bid_count"/>
         <result property="listingQuantity" column="listing_quantity"/>
         <result property="poisonPrice" column="poison_price"/>
         <result property="poison35Price" column="poison_35_price"/>

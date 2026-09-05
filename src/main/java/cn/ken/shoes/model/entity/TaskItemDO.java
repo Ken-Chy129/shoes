@@ -131,6 +131,22 @@ public class TaskItemDO {
     @TableField("flex_lowest_price")
     private BigDecimal flexLowestPrice;
 
+    /** StockX 买家侧盘口第一档（最高求购价）。 */
+    @TableField("highest_bid_price")
+    private BigDecimal highestBidPrice;
+
+    /** StockX 买家侧盘口第一档的求购数量。 */
+    @TableField("highest_bid_count")
+    private Integer highestBidCount;
+
+    /** StockX 买家侧盘口第二档（次高求购价）。 */
+    @TableField("second_highest_bid_price")
+    private BigDecimal secondHighestBidPrice;
+
+    /** StockX 买家侧盘口第二档的求购数量。 */
+    @TableField("second_highest_bid_count")
+    private Integer secondHighestBidCount;
+
     /**
      * 本次请求的上架数量
      */
