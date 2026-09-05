@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.manager.TaskExecutorManager;
+import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import com.alibaba.excel.EasyExcel;
@@ -21,6 +22,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 
 class TaskControllerPurchaseTest {
 
@@ -97,6 +99,45 @@ class TaskControllerPurchaseTest {
 
         assertThat(result.getSuccess()).isFalse();
         assertThat(result.getErrorMsg()).contains("Excel上传接口");
+        verifyNoInteractions(manager);
+    }
+
+    @Test
+    void startsDeleteBidsForNormalizedUniqueStyleIdsFromExcel() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startDeleteBids(eq("account-a"), argThat(rows ->
+                rows.size() == 2
+                        && "STYLE-1".equals(rows.get(0).getStyleId())
+                        && "STYLE-2".equals(rows.get(1).getStyleId()))))
+                .thenReturn(108L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startDeleteBids(
+                deleteBidsExcelFile("styles.xlsx", List.of(
+                        deleteBid(" style-1 "),
+                        deleteBid("STYLE-1"),
+                        deleteBid(" "),
+                        deleteBid("style-2"))),
+                "account-a");
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("108");
+        verify(manager).startDeleteBids(eq("account-a"), argThat(rows -> rows.size() == 2));
+    }
+
+    @Test
+    void rejectsMissingOrEmptyDeleteBidsExcel() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+        MockMultipartFile empty = new MockMultipartFile("file", "styles.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", new byte[0]);
+
+        Result<String> result = controller.startDeleteBids(empty, "account-a");
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("请上传货号Excel");
         verifyNoInteractions(manager);
     }
 
@@ -208,6 +249,21 @@ class TaskControllerPurchaseTest {
                                                      List<StockXBidUpdateInputExcel> rows) {
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         EasyExcel.write(output, StockXBidUpdateInputExcel.class).sheet().doWrite(rows);
+        return new MockMultipartFile("file", fileName,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                output.toByteArray());
+    }
+
+    private static StockXBidDeleteInputExcel deleteBid(String styleId) {
+        StockXBidDeleteInputExcel row = new StockXBidDeleteInputExcel();
+        row.setStyleId(styleId);
+        return row;
+    }
+
+    private static MockMultipartFile deleteBidsExcelFile(
+            String fileName, List<StockXBidDeleteInputExcel> rows) {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        EasyExcel.write(output, StockXBidDeleteInputExcel.class).sheet().doWrite(rows);
         return new MockMultipartFile("file", fileName,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 output.toByteArray());

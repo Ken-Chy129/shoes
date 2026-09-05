@@ -445,15 +445,47 @@ const TaskPage = () => {
                             onError: () => { message.error('修改出价Excel上传失败'); setCreating(false); },
                         });
                 } else if (operation === 'delete_bids') {
+                    const deleteMode = values.deleteBidsMode || 'all';
+                    const file = values.deleteBidsExcelFile?.[0]?.originFileObj;
+                    if (deleteMode === 'style_ids' && !file) {
+                        message.error('请上传待撤销货号Excel');
+                        setCreating(false);
+                        return;
+                    }
                     setCreating(false);
                     Modal.confirm({
-                        title: '确认撤销所有出价？',
-                        content: `将撤销账号 ${values.accountId} 当前的全部有效出价。任务启动后仍可在任务列表中取消。`,
-                        okText: '确认全部撤销',
+                        title: deleteMode === 'style_ids'
+                            ? '确认撤销指定货号出价？'
+                            : '确认撤销所有出价？',
+                        content: deleteMode === 'style_ids'
+                            ? `将按Excel货号精确匹配账号 ${values.accountId} 的当前有效出价，同一货号下的全部尺码出价都会撤销。`
+                            : `将撤销账号 ${values.accountId} 当前的全部有效出价。任务启动后仍可在任务列表中取消。`,
+                        okText: deleteMode === 'style_ids' ? '确认按货号撤销' : '确认全部撤销',
                         okButtonProps: {danger: true},
                         cancelText: '取消',
                         onOk: () => {
                             setCreating(true);
+                            if (deleteMode === 'style_ids') {
+                                doUploadRequestWithParams(TASK_API.START_DELETE_BIDS, file,
+                                    {accountId: values.accountId}, {
+                                        onSuccess: (res: any) => {
+                                            if (!res.success) {
+                                                message.error(res.errorMsg || '按货号撤销出价任务创建失败');
+                                                setCreating(false);
+                                                return;
+                                            }
+                                            message.success('按货号撤销出价任务已创建');
+                                            setCreateModalVisible(false);
+                                            queryTaskList();
+                                            setCreating(false);
+                                        },
+                                        onError: () => {
+                                            message.error('待撤销货号Excel上传失败');
+                                            setCreating(false);
+                                        },
+                                    });
+                                return;
+                            }
                             doPostRequest(TASK_API.START_PURCHASE, {
                                 accountId: values.accountId,
                                 operation,
@@ -576,10 +608,14 @@ const TaskPage = () => {
                             </Space>;
                         }
                         if (attrs.operation === 'delete_bids') {
-                            return <Space size={[0, 4]} wrap aria-label="撤销所有出价任务数量">
+                            const targeted = attrs.deleteMode === 'style_ids';
+                            return <Space size={[0, 4]} wrap aria-label="撤销出价任务数量">
                                 <Tag color={attrs.deleted > 0 ? 'green' : undefined}>已撤销 {attrs.deleted ?? 0}</Tag>
                                 <Tag color={(attrs.remaining ?? 0) > 0 ? 'gold' : undefined}>剩余 {attrs.remaining ?? 0}</Tag>
                                 <Tag color={attrs.failed > 0 ? 'red' : undefined}>失败 {attrs.failed ?? 0}</Tag>
+                                {targeted && <Tag color={(attrs.unmatchedStyleCount ?? 0) > 0 ? 'orange' : undefined}>
+                                    未匹配货号 {attrs.unmatchedStyleCount ?? 0}
+                                </Tag>}
                             </Space>;
                         }
                     } catch { /* 回退到通用操作计数 */ }
@@ -610,10 +646,14 @@ const TaskPage = () => {
                             </Tooltip>;
                         }
                         if (attrs.operation === 'delete_bids') {
-                            const tip = `总数 ${attrs.total ?? 0} | 已处理 ${attrs.processed ?? 0} | 已撤销 ${attrs.deleted ?? 0} | 失败 ${attrs.failed ?? 0}`;
+                            const targeted = attrs.deleteMode === 'style_ids';
+                            const tip = targeted
+                                ? `指定货号 ${attrs.targetStyleCount ?? 0} | 已匹配 ${attrs.matchedStyleCount ?? 0} | 未匹配 ${attrs.unmatchedStyleCount ?? 0} | 已扫描出价 ${attrs.scanned ?? 0}`
+                                : `总数 ${attrs.total ?? 0} | 已处理 ${attrs.processed ?? 0} | 已撤销 ${attrs.deleted ?? 0} | 失败 ${attrs.failed ?? 0}`;
                             return <Tooltip title={tip}>
                                 <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
                                     {attrs.stage || '准备中'}<br/>
+                                    {targeted && <>货号 {attrs.matchedStyleCount ?? 0}/{attrs.targetStyleCount ?? 0}<br/></>}
                                     剩余 {attrs.remaining ?? 0}<br/>
                                     已撤销 {attrs.deleted ?? 0} · 失败 {attrs.failed ?? 0}
                                 </span>
@@ -1041,7 +1081,8 @@ const TaskPage = () => {
                         ))}
                     </Radio.Group>
                 </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.purchaseOperation !== cur.purchaseOperation}>
+                <Form.Item noStyle shouldUpdate={(prev, cur) =>
+                    prev.purchaseOperation !== cur.purchaseOperation || prev.deleteBidsMode !== cur.deleteBidsMode}>
                     {({getFieldValue}) => getFieldValue('purchaseOperation') === 'create_bids' ? <>
                         <Form.Item name="createBidsExcelFile" label="出价Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList}
@@ -1070,12 +1111,32 @@ const TaskPage = () => {
                                    extra="每轮重新读取当前出价和市场最高出价；建议5分钟，最短60秒。">
                             <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
                         </Form.Item>
-                    </> : getFieldValue('purchaseOperation') === 'delete_bids' ? (
-                        <Form.Item wrapperCol={{offset: 6, span: 18}}>
-                            <Alert type="warning" showIcon
-                                   message="无需上传Excel，将撤销所选账号当前的全部有效出价。创建前会再次确认。"/>
+                    </> : getFieldValue('purchaseOperation') === 'delete_bids' ? <>
+                        <Form.Item name="deleteBidsMode" label="撤销范围" initialValue="all">
+                            <Radio.Group>
+                                <Radio.Button value="all">全部撤销</Radio.Button>
+                                <Radio.Button value="style_ids">指定货号</Radio.Button>
+                            </Radio.Group>
                         </Form.Item>
-                    ) : null}
+                        {getFieldValue('deleteBidsMode') === 'style_ids' ? (
+                            <Form.Item name="deleteBidsExcelFile" label="货号Excel"
+                                       valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
+                                       rules={[{required: true, message: '请上传待撤销货号Excel'}]}
+                                       extra={<ExcelFieldHint
+                                           requiredFields={['货号']}
+                                           note="只按货号精确匹配；同一货号下所有尺码的当前有效出价都会撤销。"
+                                       />}>
+                                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                                    <Button icon={<UploadOutlined/>}>选择文件</Button>
+                                </Upload>
+                            </Form.Item>
+                        ) : (
+                            <Form.Item wrapperCol={{offset: 6, span: 18}}>
+                                <Alert type="warning" showIcon
+                                       message="无需上传Excel，将撤销所选账号当前的全部有效出价。创建前会再次确认。"/>
+                            </Form.Item>
+                        )}
+                    </> : null}
                 </Form.Item>
             </>;
         }
@@ -1107,7 +1168,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型',
+        maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数',
     };
@@ -1124,11 +1185,12 @@ const TaskPage = () => {
                 history: '获取历史记录',
                 create_bids: '创建出价',
                 update_bids: '修改出价',
-                delete_bids: '撤销所有出价',
+                delete_bids: '撤销出价',
             };
             return labels[v] || String(v);
         }
         if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
+        if (k === 'deleteMode') return v === 'style_ids' ? '指定货号' : '全部撤销';
         if (k === 'inputCount') return `${v}行`;
         if (k === 'modelNoCount') return `${v}个`;
         if (k === 'processOutsideExcel') return v ? '是' : '否';

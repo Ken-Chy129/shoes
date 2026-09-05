@@ -17,7 +17,7 @@ public enum StockXPurchaseOperation {
     HISTORY("history", "获取历史记录", "Buying", "HISTORICAL"),
     CREATE_BIDS("create_bids", "创建出价", null, null),
     UPDATE_BIDS("update_bids", "修改出价", null, null),
-    DELETE_BIDS("delete_bids", "撤销所有出价", null, null),
+    DELETE_BIDS("delete_bids", "撤销出价", null, null),
     ;
 
     private final String code;

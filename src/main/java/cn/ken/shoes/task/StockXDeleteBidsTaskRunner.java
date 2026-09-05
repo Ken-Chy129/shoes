@@ -22,10 +22,14 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
-/** 后台撤销账号全部当前有效出价。 */
+/** 后台撤销账号全部或指定货号的当前有效出价。 */
 @Slf4j
 public class StockXDeleteBidsTaskRunner implements Runnable {
 
@@ -40,15 +44,32 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     private final StockXClient stockXClient;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final Set<String> targetStyleIds;
+    private final boolean deleteAll;
 
     public StockXDeleteBidsTaskRunner(StockXAccount account, Long taskId,
                                       StockXClient stockXClient, TaskMapper taskMapper,
                                       TaskItemMapper taskItemMapper) {
+        this(account, taskId, Set.of(), stockXClient, taskMapper, taskItemMapper);
+    }
+
+    public StockXDeleteBidsTaskRunner(StockXAccount account, Long taskId,
+                                      Set<String> targetStyleIds, StockXClient stockXClient,
+                                      TaskMapper taskMapper, TaskItemMapper taskItemMapper) {
         this.account = account;
         this.taskId = taskId;
         this.stockXClient = stockXClient;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        LinkedHashSet<String> normalized = new LinkedHashSet<>();
+        if (targetStyleIds != null) {
+            targetStyleIds.stream()
+                    .map(StockXDeleteBidsTaskRunner::normalizeStyleId)
+                    .filter(StrUtil::isNotBlank)
+                    .forEach(normalized::add);
+        }
+        this.targetStyleIds = Set.copyOf(normalized);
+        this.deleteAll = this.targetStyleIds.isEmpty();
     }
 
     @Override
@@ -66,29 +87,35 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
         int zeroConfirmations = 0;
         int noProgressRounds = 0;
         int total = 0;
+        int scanned = 0;
         Set<String> observed = new HashSet<>();
+        Set<String> matchedStyleIds = new HashSet<>();
         try {
             while (true) {
                 ensureNotCancelled();
-                JSONObject page = loadFirstPageWithRetry();
-                List<JSONObject> bids = extractBids(page);
-                int remaining = page.containsKey("totalCount")
-                        ? Math.max(0, page.getIntValue("totalCount"))
-                        : bids.size();
+                BidScan scan = loadCurrentBids();
+                List<JSONObject> bids = scan.bids();
+                scanned = scan.scanned();
+                matchedStyleIds.addAll(scan.matchedStyleIds());
+                int remaining = deleteAll ? scan.totalCount() : bids.size();
                 total = Math.max(total, deleted + remaining);
 
                 if (bids.isEmpty()) {
                     zeroConfirmations++;
                     String stage = zeroConfirmations >= ZERO_CONFIRMATIONS
                             ? "已完成"
-                            : "确认清零 " + zeroConfirmations + "/" + ZERO_CONFIRMATIONS;
-                    updateProgress(stage, total, 0, observed.size(), deleted, failed, round);
+                            : (deleteAll ? "确认清零 " : "确认目标清零 ")
+                            + zeroConfirmations + "/" + ZERO_CONFIRMATIONS;
+                    updateProgress(stage, total, 0, observed.size(), deleted, failed, round,
+                            scanned, matchedStyleIds.size());
                     if (zeroConfirmations >= ZERO_CONFIRMATIONS) {
                         taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
                         taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
                         taskMapper.updateTaskFailReason(taskId, null);
-                        log.info("[{}] 撤销所有出价完成, taskId:{}, deleted:{}, failedAttempts:{}, rounds:{}",
-                                accountName, taskId, deleted, failed, round);
+                        log.info("[{}] 撤销出价完成, taskId:{}, deleteMode:{}, deleted:{}, "
+                                        + "failedAttempts:{}, matchedStyles:{}, rounds:{}",
+                                accountName, taskId, deleteAll ? "all" : "style_ids",
+                                deleted, failed, matchedStyleIds.size(), round);
                         return;
                     }
                     waitBeforeNextCheck(NEXT_CHECK_DELAY_MS);
@@ -143,8 +170,9 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
                             failed++;
                         }
                     }
-                    updateProgress("撤销中", total, Math.max(0, remaining - deletedThisRound),
-                            observed.size(), deleted, failed, round);
+                    updateProgress(deleteAll ? "撤销中" : "按货号撤销中", total,
+                            Math.max(0, remaining - deletedThisRound),
+                            observed.size(), deleted, failed, round, scanned, matchedStyleIds.size());
                     taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
                 }
 
@@ -160,7 +188,7 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
             }
         } catch (TaskCancelledException e) {
             updateProgress("已取消", total, Math.max(0, total - deleted),
-                    observed.size(), deleted, failed, round);
+                    observed.size(), deleted, failed, round, scanned, matchedStyleIds.size());
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
         } catch (StockXRateLimitException e) {
@@ -169,23 +197,72 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
         } catch (Exception e) {
             String reason = "TOKEN_EXPIRED".equals(e.getMessage())
                     ? "StockX Token已过期，请更新Token"
-                    : StrUtil.blankToDefault(e.getMessage(), "撤销所有出价任务异常");
+                    : StrUtil.blankToDefault(e.getMessage(), "撤销出价任务异常");
             taskMapper.updateTaskFailed(taskId, safeReason(reason));
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-            log.error("[{}] 撤销所有出价任务异常, taskId:{}", accountName, taskId, e);
+            log.error("[{}] 撤销出价任务异常, taskId:{}", accountName, taskId, e);
         } finally {
             StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearPurchaseState(accountName);
         }
     }
 
-    private JSONObject loadFirstPageWithRetry() {
+    private BidScan loadCurrentBids() {
+        if (deleteAll) {
+            JSONObject page = loadPageWithRetry(null, 1);
+            List<JSONObject> bids = extractBids(page);
+            int totalCount = page.containsKey("totalCount")
+                    ? Math.max(0, page.getIntValue("totalCount"))
+                    : bids.size();
+            return new BidScan(bids, totalCount, bids.size(), Set.of());
+        }
+
+        Map<String, JSONObject> matchingBids = new LinkedHashMap<>();
+        Set<String> matchedStyles = new HashSet<>();
+        Set<String> cursors = new HashSet<>();
+        String after = null;
+        int pageNumber = 1;
+        int scanned = 0;
+        int totalCount = 0;
+        while (true) {
+            JSONObject page = loadPageWithRetry(after, pageNumber);
+            List<JSONObject> bids = extractBids(page);
+            scanned += bids.size();
+            if (pageNumber == 1) {
+                totalCount = page.containsKey("totalCount")
+                        ? Math.max(0, page.getIntValue("totalCount"))
+                        : bids.size();
+            }
+            for (JSONObject bid : bids) {
+                String styleId = bidStyleId(bid);
+                if (!targetStyleIds.contains(styleId)) {
+                    continue;
+                }
+                matchedStyles.add(styleId);
+                matchingBids.putIfAbsent(bid.getString("id"), bid);
+            }
+
+            JSONObject pageInfo = page.getJSONObject("pageInfo");
+            if (!pageInfo.getBooleanValue("hasNextPage")) {
+                return new BidScan(new ArrayList<>(matchingBids.values()),
+                        totalCount, scanned, Set.copyOf(matchedStyles));
+            }
+            String nextCursor = StrUtil.trim(pageInfo.getString("endCursor"));
+            if (StrUtil.isBlank(nextCursor) || !cursors.add(nextCursor)) {
+                throw new IllegalStateException("当前有效出价分页缺少新游标，已停止撤销");
+            }
+            after = nextCursor;
+            pageNumber++;
+        }
+    }
+
+    private JSONObject loadPageWithRetry(String after, int pageNumber) {
         RuntimeException lastException = null;
         for (int attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
             ensureNotCancelled();
             try {
                 JSONObject page = stockXClient.queryPurchasePage(
-                        StockXPurchaseOperation.BIDS, null, account);
+                        StockXPurchaseOperation.BIDS, after, account);
                 if (page != null && page.getBooleanValue("_unauthorized")) {
                     throw new IllegalStateException("TOKEN_EXPIRED");
                 }
@@ -198,12 +275,14 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
                 lastException = e;
             }
             if (attempt < MAX_QUERY_ATTEMPTS) {
-                taskMapper.updateTaskFailReason(taskId, "读取当前有效出价失败，2秒后重试（"
+                taskMapper.updateTaskFailReason(taskId, "读取当前有效出价第" + pageNumber
+                        + "页失败，2秒后重试（"
                         + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）");
                 waitBeforeNextCheck(NEXT_CHECK_DELAY_MS);
             }
         }
-        throw new IllegalStateException("读取当前有效出价失败（已重试2次），已停止撤销", lastException);
+        throw new IllegalStateException("读取当前有效出价第" + pageNumber
+                + "页失败（已重试2次），已停止撤销", lastException);
     }
 
     private List<JSONObject> extractBids(JSONObject page) {
@@ -227,17 +306,34 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     }
 
     private void updateProgress(String stage, int total, int remaining, int processed,
-                                int deleted, int failed, int round) {
+                                int deleted, int failed, int round, int scanned,
+                                int matchedStyleCount) {
         taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
                 .fluentPut("operation", StockXPurchaseOperation.DELETE_BIDS.getCode())
+                .fluentPut("deleteMode", deleteAll ? "all" : "style_ids")
                 .fluentPut("stage", stage)
                 .fluentPut("total", total)
                 .fluentPut("remaining", remaining)
                 .fluentPut("processed", processed)
+                .fluentPut("scanned", scanned)
                 .fluentPut("deleted", deleted)
                 .fluentPut("failed", failed)
+                .fluentPut("targetStyleCount", targetStyleIds.size())
+                .fluentPut("matchedStyleCount", matchedStyleCount)
+                .fluentPut("unmatchedStyleCount", Math.max(0, targetStyleIds.size() - matchedStyleCount))
                 .fluentPut("round", round)
                 .toJSONString());
+    }
+
+    private String bidStyleId(JSONObject node) {
+        JSONObject variant = node.getJSONObject("productVariant");
+        JSONObject product = variant != null ? variant.getJSONObject("product") : null;
+        return normalizeStyleId(product != null ? product.getString("styleId") : null);
+    }
+
+    private static String normalizeStyleId(String styleId) {
+        String trimmed = StrUtil.trim(styleId);
+        return StrUtil.isBlank(trimmed) ? "" : trimmed.toUpperCase(Locale.ROOT);
     }
 
     private String safeReason(String reason) {
@@ -266,5 +362,9 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
         if (TaskSwitch.isPurchaseCancelled(account.getName()) || Thread.currentThread().isInterrupted()) {
             throw new TaskCancelledException();
         }
+    }
+
+    private record BidScan(List<JSONObject> bids, int totalCount, int scanned,
+                           Set<String> matchedStyleIds) {
     }
 }

@@ -1,5 +1,6 @@
 package cn.ken.shoes.manager;
 
+import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
@@ -20,6 +21,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
+import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
@@ -43,6 +45,7 @@ import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -397,6 +400,12 @@ public class TaskExecutorManager {
                     yield snapshot.isPresent() && !snapshot.get().isEmpty()
                             ? startUpdateBids(account, snapshot.get(),
                             params.getLongValue("interval") > 0 ? params.getLongValue("interval") : 300L) : null;
+                }
+                if (operation == StockXPurchaseOperation.DELETE_BIDS
+                        && "style_ids".equalsIgnoreCase(params.getString("deleteMode"))) {
+                    var snapshot = taskInputSnapshotStore.loadDeleteBidsInput(source.getId());
+                    yield snapshot.isPresent() && !snapshot.get().isEmpty()
+                            ? startDeleteBids(account, snapshot.get()) : null;
                 }
                 yield operation != null ? startPurchase(account, operation) : null;
             }
@@ -1105,6 +1114,9 @@ public class TaskExecutorManager {
                 || operation == StockXPurchaseOperation.UPDATE_BIDS) {
             return null;
         }
+        if (operation == StockXPurchaseOperation.DELETE_BIDS) {
+            return startDeleteBidsTask(accountId, List.of());
+        }
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             log.error("账号不存在: {}", accountId);
@@ -1121,16 +1133,74 @@ public class TaskExecutorManager {
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             TaskSwitch.resetPurchaseCancel(accountId);
-            Runnable runner = operation == StockXPurchaseOperation.DELETE_BIDS
-                    ? new StockXDeleteBidsTaskRunner(account, taskId, stockXClient, taskMapper, taskItemMapper)
-                    : new StockXPurchaseTaskRunner(
-                            account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
+            Runnable runner = new StockXPurchaseTaskRunner(
+                    account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-" + operation.getCode() + "-" + account.getName()).start();
             log.info("购买任务已启动: [{}], operation:{}", account.getName(), operation.getCode());
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+            }
+            TaskSwitch.clearPurchaseState(accountId);
+            throw e;
+        }
+    }
+
+    public Long startDeleteBids(String accountId, List<StockXBidDeleteInputExcel> inputRows) {
+        if (inputRows == null || inputRows.isEmpty()
+                || inputRows.stream().anyMatch(row -> row == null || StrUtil.isBlank(row.getStyleId()))) {
+            return null;
+        }
+        LinkedHashMap<String, StockXBidDeleteInputExcel> uniqueRows = new LinkedHashMap<>();
+        for (StockXBidDeleteInputExcel row : inputRows) {
+            String styleId = row.getStyleId().trim().toUpperCase(Locale.ROOT);
+            StockXBidDeleteInputExcel normalized = new StockXBidDeleteInputExcel();
+            normalized.setStyleId(styleId);
+            uniqueRows.putIfAbsent(styleId, normalized);
+        }
+        return startDeleteBidsTask(accountId, List.copyOf(uniqueRows.values()));
+    }
+
+    private Long startDeleteBidsTask(String accountId, List<StockXBidDeleteInputExcel> inputRows) {
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null) {
+            log.error("账号不存在: {}", accountId);
+            return null;
+        }
+        if (!TaskSwitch.tryStartPurchase(accountId)) {
+            log.info("购买任务已在运行: {}", accountId);
+            return null;
+        }
+        List<StockXBidDeleteInputExcel> snapshot = inputRows == null ? List.of() : List.copyOf(inputRows);
+        boolean targeted = !snapshot.isEmpty();
+        JSONObject taskParams = new JSONObject(true)
+                .fluentPut("operation", StockXPurchaseOperation.DELETE_BIDS.getCode())
+                .fluentPut("deleteMode", targeted ? "style_ids" : "all");
+        if (targeted) {
+            taskParams.put("inputCount", snapshot.size());
+        }
+        String params = taskParams.toJSONString();
+        Long taskId = null;
+        try {
+            taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
+            if (targeted) {
+                taskInputSnapshotStore.saveDeleteBidsInput(taskId, snapshot);
+            }
+            TaskSwitch.resetPurchaseCancel(accountId);
+            Set<String> targetStyleIds = snapshot.stream()
+                    .map(StockXBidDeleteInputExcel::getStyleId)
+                    .collect(Collectors.toCollection(LinkedHashSet::new));
+            StockXDeleteBidsTaskRunner runner = new StockXDeleteBidsTaskRunner(
+                    account, taskId, targetStyleIds, stockXClient, taskMapper, taskItemMapper);
+            new Thread(runner, "StockX-Purchase-delete-bids-"
+                    + (targeted ? "style-ids-" : "all-") + account.getName()).start();
+            log.info("撤销出价任务已启动: [{}], deleteMode:{}, inputCount:{}",
+                    account.getName(), targeted ? "style_ids" : "all", snapshot.size());
+            return taskId;
+        } catch (RuntimeException e) {
+            if (taskId != null) {
+                taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
             TaskSwitch.clearPurchaseState(accountId);
             throw e;

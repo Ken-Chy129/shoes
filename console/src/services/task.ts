@@ -49,6 +49,8 @@ enum TASK_API {
     START_CREATE_BIDS = '/api/task/stockx/startCreateBids',
     // StockX 修改出价（Excel：出价ID/价格）
     START_UPDATE_BIDS = '/api/task/stockx/startUpdateBids',
+    // StockX 按指定货号撤销出价（Excel：货号）
+    START_DELETE_BIDS = '/api/task/stockx/startDeleteBids',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）

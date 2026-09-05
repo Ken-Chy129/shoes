@@ -6,6 +6,7 @@ import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.ModelNoSearchExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
+import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.excel.EbayListingExcel;
@@ -94,6 +95,7 @@ class TaskInputSnapshotStoreTest {
         assertThat(store.loadPriceDown(99L)).isEmpty();
         assertThat(store.loadDelist(99L)).isEmpty();
         assertThat(store.loadCreateBidsInput(99L)).isEmpty();
+        assertThat(store.loadDeleteBidsInput(99L)).isEmpty();
     }
 
     @Test
@@ -128,6 +130,19 @@ class TaskInputSnapshotStoreTest {
                     assertThat(saved.getBidId()).isEqualTo("bid-1");
                     assertThat(saved.getPrice()).isEqualByComparingTo("88");
                 }));
+    }
+
+    @Test
+    void roundTripsDeleteBidsInput() {
+        TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
+        StockXBidDeleteInputExcel row = new StockXBidDeleteInputExcel();
+        row.setStyleId("STYLE-1");
+
+        store.saveDeleteBidsInput(18L, List.of(row));
+
+        assertThat(store.loadDeleteBidsInput(18L)).hasValueSatisfying(rows ->
+                assertThat(rows).singleElement().satisfies(saved ->
+                        assertThat(saved.getStyleId()).isEqualTo("STYLE-1")));
     }
 
     @Test

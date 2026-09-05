@@ -20,6 +20,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -137,6 +138,61 @@ class StockXDeleteBidsTaskRunnerTest {
         assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
     }
 
+    @Test
+    void deletesOnlyExactTargetStyleIdsAcrossAllPages() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.pages.add(page(List.of(
+                bid("keep-prefix", "STYLE-10"),
+                bid("keep-other", "OTHER")), true, "cursor-1", 4));
+        client.pages.add(page(List.of(
+                bid("delete-1", "style-1"),
+                bid("delete-2", "STYLE-1")), false, null, 4));
+        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
+        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
+        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
+        List<TaskItemDO> stored = new ArrayList<>();
+        AtomicReference<String> status = new AtomicReference<>();
+        AtomicReference<String> attributes = new AtomicReference<>();
+
+        targetedRunner(206L, Set.of("STYLE-1"), client,
+                taskMapper(status, attributes, new AtomicInteger()), itemMapper(stored)).run();
+
+        assertThat(client.queryCursors).containsExactly(null, "cursor-1", null, null, null);
+        assertThat(client.deletedBatches).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidDeleteItem::chainId)
+                        .containsExactly("delete-1", "delete-2"));
+        assertThat(stored).extracting(TaskItemDO::getStyleId)
+                .containsOnly("style-1", "STYLE-1");
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+        assertThat(attributes.get())
+                .contains("\"deleteMode\":\"style_ids\"")
+                .contains("\"targetStyleCount\":1")
+                .contains("\"matchedStyleCount\":1")
+                .contains("\"unmatchedStyleCount\":0")
+                .contains("\"deleted\":2");
+    }
+
+    @Test
+    void succeedsWithoutDeletingWhenNoExactTargetStyleIdExists() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
+        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
+        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
+        AtomicReference<String> status = new AtomicReference<>();
+        AtomicReference<String> attributes = new AtomicReference<>();
+
+        targetedRunner(207L, Set.of("STYLE-1"), client,
+                taskMapper(status, attributes, new AtomicInteger()),
+                itemMapper(new ArrayList<>())).run();
+
+        assertThat(client.deletedBatches).isEmpty();
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+        assertThat(attributes.get())
+                .contains("\"matchedStyleCount\":0")
+                .contains("\"unmatchedStyleCount\":1")
+                .contains("\"deleted\":0");
+    }
+
     private static List<StockXBidDeleteResult> failed(String id) {
         return List.of(new StockXBidDeleteResult(id, "FAILED", false));
     }
@@ -145,6 +201,19 @@ class StockXDeleteBidsTaskRunnerTest {
                                                       TaskMapper taskMapper,
                                                       TaskItemMapper itemMapper) {
         return new StockXDeleteBidsTaskRunner(account(), taskId, client, taskMapper, itemMapper) {
+            @Override
+            protected void waitBeforeNextCheck(long delayMs) {
+                // 测试不真实等待。
+            }
+        };
+    }
+
+    private static StockXDeleteBidsTaskRunner targetedRunner(Long taskId, Set<String> targetStyleIds,
+                                                              StockXClient client,
+                                                              TaskMapper taskMapper,
+                                                              TaskItemMapper itemMapper) {
+        return new StockXDeleteBidsTaskRunner(account(), taskId, targetStyleIds,
+                client, taskMapper, itemMapper) {
             @Override
             protected void waitBeforeNextCheck(long delayMs) {
                 // 测试不真实等待。
@@ -174,14 +243,19 @@ class StockXDeleteBidsTaskRunnerTest {
     }
 
     private static JSONObject page(List<JSONObject> bids) {
+        return page(bids, false, null, bids.size());
+    }
+
+    private static JSONObject page(List<JSONObject> bids, boolean hasNextPage,
+                                   String endCursor, int totalCount) {
         JSONArray edges = new JSONArray();
         bids.forEach(bid -> edges.add(new JSONObject(true).fluentPut("node", bid)));
         return new JSONObject(true)
                 .fluentPut("edges", edges)
-                .fluentPut("totalCount", bids.size())
+                .fluentPut("totalCount", totalCount)
                 .fluentPut("pageInfo", new JSONObject(true)
-                        .fluentPut("hasNextPage", false)
-                        .fluentPut("endCursor", null));
+                        .fluentPut("hasNextPage", hasNextPage)
+                        .fluentPut("endCursor", endCursor));
     }
 
     private static JSONObject emptyPage() {
@@ -189,6 +263,10 @@ class StockXDeleteBidsTaskRunnerTest {
     }
 
     private static JSONObject bid(String id) {
+        return bid(id, "STYLE-" + id);
+    }
+
+    private static JSONObject bid(String id, String styleId) {
         return new JSONObject(true)
                 .fluentPut("id", id)
                 .fluentPut("amount", 100)
@@ -199,7 +277,7 @@ class StockXDeleteBidsTaskRunnerTest {
                         .fluentPut("traits", new JSONObject(true).fluentPut("size", "9"))
                         .fluentPut("product", new JSONObject(true)
                                 .fluentPut("title", id)
-                                .fluentPut("styleId", "STYLE-" + id)));
+                                .fluentPut("styleId", styleId)));
     }
 
     private static StockXAccount account() {

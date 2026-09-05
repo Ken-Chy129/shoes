@@ -20,6 +20,7 @@ import cn.ken.shoes.model.excel.ModelSearchListingByModelExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXDelistInputExcel;
 import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
+import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.task.TaskRequest;
@@ -40,6 +41,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -517,6 +519,47 @@ public class TaskController {
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
+    @PostMapping("stockx/startDeleteBids")
+    public Result<String> startDeleteBids(@RequestParam("file") MultipartFile file,
+                                          @RequestParam("accountId") String accountId) throws IOException {
+        if (StrUtil.isBlank(accountId)) {
+            return Result.buildError("accountId不能为空");
+        }
+        String fileError = validateExcelFile(file, "货号Excel");
+        if (fileError != null) {
+            return Result.buildError(fileError);
+        }
+        List<StockXBidDeleteInputExcel> rows;
+        try {
+            rows = EasyExcel.read(file.getInputStream())
+                    .head(StockXBidDeleteInputExcel.class)
+                    .sheet()
+                    .doReadSync();
+        } catch (RuntimeException e) {
+            return Result.buildError("无法读取Excel，请确认文件格式和表头为货号");
+        }
+        LinkedHashMap<String, StockXBidDeleteInputExcel> uniqueRows = new LinkedHashMap<>();
+        if (rows != null) {
+            for (StockXBidDeleteInputExcel row : rows) {
+                if (row == null || StrUtil.isBlank(row.getStyleId())) {
+                    continue;
+                }
+                String normalized = row.getStyleId().trim().toUpperCase(Locale.ROOT);
+                row.setStyleId(normalized);
+                uniqueRows.putIfAbsent(normalized, row);
+            }
+        }
+        if (uniqueRows.isEmpty()) {
+            return Result.buildError("Excel中未找到有效货号");
+        }
+        Long taskId = taskExecutorManager.startDeleteBids(accountId,
+                new ArrayList<>(uniqueRows.values()));
+        if (taskId == null) {
+            return Result.buildError("任务已在运行、账号不存在或Excel中未找到有效货号");
+        }
+        return Result.buildSuccess(String.valueOf(taskId));
+    }
+
     @PostMapping("stockx/startCreateBids")
     public Result<String> startCreateBids(@RequestParam("file") MultipartFile file,
                                           @RequestParam("accountId") String accountId) throws IOException {
@@ -583,11 +626,15 @@ public class TaskController {
     }
 
     private String validateBidExcelFile(MultipartFile file) {
+        return validateExcelFile(file, "出价Excel");
+    }
+
+    private String validateExcelFile(MultipartFile file, String label) {
         if (file == null || file.isEmpty()) {
-            return "请上传出价Excel";
+            return "请上传" + label;
         }
         if (file.getSize() > MAX_BID_EXCEL_SIZE) {
-            return "出价Excel不能超过10MB";
+            return label + "不能超过10MB";
         }
         String filename = StrUtil.blankToDefault(file.getOriginalFilename(), "").toLowerCase(Locale.ROOT);
         if (!filename.endsWith(".xlsx") && !filename.endsWith(".xls")) {

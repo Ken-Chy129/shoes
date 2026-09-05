@@ -14,13 +14,20 @@ describe('StockX create-bids task progress', () => {
     expect(source).toContain("taskSucceeded ? '已完成' : '准备中'");
   });
 
-  it('shows delete-all confirmation and task progress', () => {
+  it('shows scoped delete confirmation, Excel input, and task progress', () => {
     const source = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
 
     expect(source).toContain("operation === 'delete_bids'");
+    expect(source).toContain('name="deleteBidsMode"');
+    expect(source).toContain('value="style_ids"');
+    expect(source).toContain('name="deleteBidsExcelFile"');
+    expect(source).toContain("TASK_API.START_DELETE_BIDS");
     expect(source).toContain('确认撤销所有出价？');
+    expect(source).toContain('确认撤销指定货号出价？');
     expect(source).toContain('确认全部撤销');
     expect(source).toContain("attrs.operation === 'delete_bids'");
+    expect(source).toContain("attrs.deleteMode === 'style_ids'");
+    expect(source).toContain('未匹配货号 {attrs.unmatchedStyleCount ?? 0}');
     expect(source).toContain('剩余 {attrs.remaining ?? 0}');
     expect(source).toContain('已撤销 {attrs.deleted ?? 0}');
     expect(source).toContain('失败 {attrs.failed ?? 0}');
