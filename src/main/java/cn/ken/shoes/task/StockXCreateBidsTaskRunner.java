@@ -252,6 +252,28 @@ public class StockXCreateBidsTaskRunner implements Runnable {
             progress.skipped++;
             return;
         }
+        if (feePolicy.enabled()) {
+            Integer normalizedSpotAsk = ShoesUtil.normalizeStockxPrice(matched.getStandardPrice());
+            BigDecimal spotAsk = normalizedSpotAsk != null
+                    ? BigDecimal.valueOf(normalizedSpotAsk) : null;
+            taskItem.setSalePrice(spotAsk);
+            if (spotAsk == null) {
+                taskItem.setOperateResult("跳过-费率监控无现货标价");
+                taskItemMapper.insert(taskItem);
+                progress.skipped++;
+                return;
+            }
+            BigDecimal profitableLimit = feePolicy.profitableBidLimit(spotAsk);
+            taskItem.setTargetPrice(profitableLimit);
+            if (!feePolicy.isProfitable(input.price(), spotAsk)) {
+                taskItem.setOperateResult("跳过-费率监控不盈利(求购$" + money(input.price())
+                        + "，现货$" + money(spotAsk) + "，盈利上限$"
+                        + money(profitableLimit) + ")");
+                taskItemMapper.insert(taskItem);
+                progress.skipped++;
+                return;
+            }
+        }
         if (!scheduledVariantIds.add(variantId)) {
             taskItem.setOperateResult("出价失败-Excel中尺码重复");
             taskItemMapper.insert(taskItem);
@@ -456,6 +478,10 @@ public class StockXCreateBidsTaskRunner implements Runnable {
             return matched.getUswSize();
         }
         return StrUtil.blankToDefault(matched.getUsmSize(), requestedSize);
+    }
+
+    private String money(BigDecimal value) {
+        return value.stripTrailingZeros().toPlainString();
     }
 
     private String validateInput(String modelNo, String size, BigDecimal price) {

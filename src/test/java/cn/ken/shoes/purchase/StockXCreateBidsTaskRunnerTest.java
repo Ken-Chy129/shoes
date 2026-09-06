@@ -12,6 +12,7 @@ import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.task.StockXCreateBidsTaskRunner;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -85,6 +86,86 @@ class StockXCreateBidsTaskRunnerTest {
         assertThat(client.submitted).isEmpty();
         assertThat(stored).singleElement().satisfies(item ->
                 assertThat(item.getOperateResult()).isEqualTo("跳过-已有有效出价"));
+    }
+
+    @Test
+    void submitsAProfitableBidWhenFeeMonitoringIsEnabled() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel market = priceRow("variant-1", "STYLE-1", "9", null, "42");
+        market.setStandardPrice(100);
+        client.searchRows = List.of(market);
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        new StockXCreateBidsTaskRunner(account(), 210L,
+                List.of(input("STYLE-1", "9", "90")), StockXBidFeePolicy.monitored(false),
+                client, taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.searchCalls.get()).isEqualTo(1);
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item ->
+                        assertThat(item.amount()).isEqualByComparingTo("90")));
+        assertThat(stored).singleElement().satisfies(item -> {
+            assertThat(item.getSalePrice()).isEqualByComparingTo("100");
+            assertThat(item.getTargetPrice()).isEqualByComparingTo("90");
+            assertThat(item.getOperateResult()).isEqualTo("出价已提交");
+        });
+    }
+
+    @Test
+    void skipsAnUnprofitableBidWithoutIssuingAnotherMarketRequest() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel market = priceRow("variant-1", "STYLE-1", "9", null, "42");
+        market.setStandardPrice(100);
+        client.searchRows = List.of(market);
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        new StockXCreateBidsTaskRunner(account(), 211L,
+                List.of(input("STYLE-1", "9", "91")), StockXBidFeePolicy.monitored(false),
+                client, taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.searchCalls.get()).isEqualTo(1);
+        assertThat(client.submitted).isEmpty();
+        assertThat(stored).singleElement().satisfies(item -> {
+            assertThat(item.getSalePrice()).isEqualByComparingTo("100");
+            assertThat(item.getTargetPrice()).isEqualByComparingTo("90");
+            assertThat(item.getOperateResult())
+                    .isEqualTo("跳过-费率监控不盈利(求购$91，现货$100，盈利上限$90)");
+        });
+    }
+
+    @Test
+    void skipsAMonitoredBidWhenTheSpotAskIsMissing() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.searchRows = List.of(priceRow("variant-1", "STYLE-1", "9", null, "42"));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        new StockXCreateBidsTaskRunner(account(), 212L,
+                List.of(input("STYLE-1", "9", "80")), StockXBidFeePolicy.monitored(false),
+                client, taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).isEmpty();
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult()).isEqualTo("跳过-费率监控无现货标价"));
+    }
+
+    @Test
+    void keepsTheLegacyCreateBehaviorWhenFeeMonitoringIsDisabled() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel market = priceRow("variant-1", "STYLE-1", "9", null, "42");
+        market.setStandardPrice(100);
+        client.searchRows = List.of(market);
+
+        new StockXCreateBidsTaskRunner(account(), 213L,
+                List.of(input("STYLE-1", "9", "999")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(new ArrayList<>())).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item ->
+                        assertThat(item.amount()).isEqualByComparingTo("999")));
     }
 
     @Test
