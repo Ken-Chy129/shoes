@@ -92,13 +92,16 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                         .fluentPut("interval", intervalSeconds)
                         .fluentPut("round", round)
                         .fluentPut("submitted", totals.submitted)
+                        .fluentPut("lowered", totals.lowered)
                         .fluentPut("highest", current.highest)
                         .fluentPut("capped", current.capped)
+                        .fluentPut("outside", current.outside)
                         .fluentPut("failed", totals.failed)
                         .toJSONString());
                 taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-                taskMapper.updateTaskFailReason(taskId, "第" + round + "轮：追价" + current.submitted
-                        + "条，已是最高" + current.highest + "条，达到上限" + current.capped
+                taskMapper.updateTaskFailReason(taskId, "第" + round + "轮：提交" + current.submitted
+                        + "条（压到$1 " + current.lowered + "条），已是最高" + current.highest
+                        + "条，达到上限" + current.capped + "条，Excel外" + current.outside
                         + "条，失败" + current.failed + "条");
                 waitBeforeNextRound(intervalSeconds * 1000L);
             }
@@ -125,67 +128,52 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         Map<String, JSONObject> activeBids = loadActiveBids();
         List<PreparedBid> prepared = new ArrayList<>();
         Counters counters = new Counters();
+        Set<String> excelBidIds = new HashSet<>();
 
         for (StockXBidUpdateInputExcel input : inputRows) {
             ensureNotCancelled();
             String bidId = input != null ? StrUtil.trim(input.getBidId()) : null;
             BigDecimal price = input != null ? input.getPrice() : null;
+            String normalizedBidId = StrUtil.isNotBlank(bidId)
+                    ? bidId.toLowerCase(Locale.ROOT) : null;
+            if (normalizedBidId != null) {
+                excelBidIds.add(normalizedBidId);
+            }
             String invalidReason = validateInput(bidId, price);
             if (invalidReason != null) {
                 insertFailure(round, bidId, price, invalidReason);
                 counters.failed++;
                 continue;
             }
-            JSONObject node = activeBids.get(bidId.toLowerCase(Locale.ROOT));
+            Boolean rowFeeEnabled;
+            try {
+                rowFeeEnabled = StockXBidFeePolicy.parseExcelEnabled(input.getFeeConfigEnabled());
+            } catch (IllegalArgumentException e) {
+                insertFailure(round, bidId, price, e.getMessage());
+                counters.failed++;
+                continue;
+            }
+            JSONObject node = activeBids.get(normalizedBidId);
             if (node == null) {
                 insertFailure(round, bidId, price, "未找到当前有效出价ID");
                 counters.failed++;
                 continue;
             }
-            String activeBidId = node.getString("id").trim();
-            TaskItemDO taskItem = StockXPurchaseItemConverter.convert(taskId, node,
-                    StockXPurchaseOperation.BIDS);
-            taskItem.setRound(round);
-            taskItem.setListingId(activeBidId);
-            BigDecimal currentBid = decimal(node.get("amount"));
-            BigDecimal highestBid = highestBid(node);
-            BigDecimal maximumPrice = price.stripTrailingZeros();
-            taskItem.setCurrentPrice(currentBid);
-            taskItem.setLowestPrice(highestBid);
-            taskItem.setTargetPrice(maximumPrice);
-            taskItem.setCurrencyCode(resolveMetadata(node, "currency", "currencyCode", "USD"));
-            taskItem.setOperateTime(new Date());
-            if (currentBid == null || highestBid == null) {
-                taskItem.setOrderStatus("数据异常");
-                taskItem.setOperateResult("修改出价失败-缺少当前出价或市场最高价");
-                taskItemMapper.insert(taskItem);
-                counters.failed++;
-                continue;
+            prepareBid(round, node, price.stripTrailingZeros(),
+                    feePolicy.enabled() && Boolean.TRUE.equals(rowFeeEnabled),
+                    false, prepared, counters);
+        }
+
+        if (feePolicy.enabled() && feePolicy.processOutsideExcel()) {
+            for (Map.Entry<String, JSONObject> entry : activeBids.entrySet()) {
+                ensureNotCancelled();
+                if (excelBidIds.contains(entry.getKey())) {
+                    continue;
+                }
+                counters.outside++;
+                prepareBid(round, entry.getValue(), null, true,
+                        true, prepared, counters);
             }
-            if (currentBid.compareTo(highestBid) >= 0) {
-                taskItem.setOrderStatus("最高出价");
-                taskItem.setOperateResult("已是最高出价($" + money(currentBid)
-                        + "，上限$" + money(maximumPrice) + ")");
-                taskItemMapper.insert(taskItem);
-                counters.highest++;
-                continue;
-            }
-            BigDecimal nextBid = highestBid.add(BigDecimal.ONE);
-            if (nextBid.compareTo(maximumPrice) > 0) {
-                taskItem.setOrderStatus("达到上限");
-                taskItem.setOperateResult("已达最高价上限(市场$" + money(highestBid)
-                        + "，上限$" + money(maximumPrice) + ")");
-                taskItemMapper.insert(taskItem);
-                counters.capped++;
-                continue;
-            }
-            StockXBidUpdateItem request = new StockXBidUpdateItem(
-                    activeBidId,
-                    nextBid,
-                    resolveMetadata(node, "deliveryOptionType", "effectiveDeliveryOptionType", "HOME_DELIVERY"),
-                    taskItem.getCurrencyCode(),
-                    resolveMetadata(node, "checkoutType", null, null));
-            prepared.add(new PreparedBid(taskItem, request, maximumPrice));
         }
 
         for (int offset = 0; offset < prepared.size(); offset += BATCH_SIZE) {
@@ -197,10 +185,12 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                 for (PreparedBid bid : batch) {
                     bid.taskItem().setOrderNumber(result.id());
                     bid.taskItem().setOrderStatus(result.status());
-                    bid.taskItem().setOperateResult("追价已提交($" + money(bid.request().amount())
-                            + "，上限$" + money(bid.maximumPrice()) + ")");
+                    bid.taskItem().setOperateResult(bid.successResult());
                     taskItemMapper.insert(bid.taskItem());
                     counters.submitted++;
+                    if (bid.lowered()) {
+                        counters.lowered++;
+                    }
                 }
             } catch (StockXRateLimitException | TaskCancelledException e) {
                 throw e;
@@ -218,6 +208,110 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
             }
         }
         return counters;
+    }
+
+    private void prepareBid(int round, JSONObject node, BigDecimal maximumPrice,
+                            boolean monitorFees, boolean outsideExcel,
+                            List<PreparedBid> prepared, Counters counters) {
+        String activeBidId = node.getString("id").trim();
+        TaskItemDO taskItem = StockXPurchaseItemConverter.convert(taskId, node,
+                StockXPurchaseOperation.BIDS);
+        taskItem.setRound(round);
+        taskItem.setListingId(activeBidId);
+        BigDecimal currentBid = decimal(node.get("amount"));
+        BigDecimal highestBid = highestBid(node);
+        taskItem.setCurrentPrice(currentBid);
+        taskItem.setLowestPrice(highestBid);
+        taskItem.setTargetPrice(maximumPrice);
+        taskItem.setCurrencyCode(resolveMetadata(node, "currency", "currencyCode", "USD"));
+        taskItem.setOperateTime(new Date());
+        if (currentBid == null || highestBid == null) {
+            taskItem.setOrderStatus("数据异常");
+            taskItem.setOperateResult("修改出价失败-缺少当前出价或市场最高价");
+            taskItemMapper.insert(taskItem);
+            counters.failed++;
+            return;
+        }
+
+        boolean alreadyHighest = currentBid.compareTo(highestBid) >= 0;
+        BigDecimal nextBid = alreadyHighest ? currentBid : highestBid.add(BigDecimal.ONE);
+        boolean maximumReached = maximumPrice != null && nextBid.compareTo(maximumPrice) > 0;
+        BigDecimal candidateBid = maximumReached ? currentBid : nextBid;
+
+        if (monitorFees) {
+            BigDecimal spotAsk = spotAsk(node);
+            taskItem.setSalePrice(spotAsk);
+            if (spotAsk == null) {
+                lowerToOne(node, taskItem, currentBid,
+                        outsideExcel ? "Excel外费率监控已压至$1(无现货标价)"
+                                : "费率监控已压至$1(无现货标价)",
+                        outsideExcel ? "Excel外已是$1-费率监控无现货标价"
+                                : "已是$1-费率监控无现货标价",
+                        prepared, counters);
+                return;
+            }
+            BigDecimal profitableLimit = feePolicy.profitableBidLimit(spotAsk);
+            if (!feePolicy.isProfitable(candidateBid, spotAsk)) {
+                String detail = "候选$" + money(candidateBid) + "，现货$" + money(spotAsk)
+                        + "，盈利上限$" + money(profitableLimit);
+                lowerToOne(node, taskItem, currentBid,
+                        (outsideExcel ? "Excel外费率监控已压至$1(" : "费率监控已压至$1(")
+                                + detail + ")",
+                        (outsideExcel ? "Excel外已是$1-费率监控不盈利("
+                                : "已是$1-费率监控不盈利(") + detail + ")",
+                        prepared, counters);
+                return;
+            }
+        }
+
+        if (alreadyHighest) {
+            taskItem.setOrderStatus("最高出价");
+            taskItem.setOperateResult(outsideExcel
+                    ? "Excel外已是最高出价($" + money(currentBid) + ")"
+                    : "已是最高出价($" + money(currentBid)
+                    + "，上限$" + money(maximumPrice) + ")");
+            taskItemMapper.insert(taskItem);
+            counters.highest++;
+            return;
+        }
+        if (maximumReached) {
+            taskItem.setOrderStatus("达到上限");
+            taskItem.setOperateResult("已达最高价上限(市场$" + money(highestBid)
+                    + "，上限$" + money(maximumPrice) + ")");
+            taskItemMapper.insert(taskItem);
+            counters.capped++;
+            return;
+        }
+
+        String successResult = outsideExcel
+                ? "Excel外追价已提交($" + money(nextBid) + ")"
+                : "追价已提交($" + money(nextBid) + "，上限$" + money(maximumPrice) + ")";
+        prepared.add(new PreparedBid(taskItem, updateRequest(node, taskItem, nextBid),
+                successResult, false));
+    }
+
+    private void lowerToOne(JSONObject node, TaskItemDO taskItem, BigDecimal currentBid,
+                            String submittedResult, String alreadyOneResult,
+                            List<PreparedBid> prepared, Counters counters) {
+        if (currentBid.compareTo(BigDecimal.ONE) == 0) {
+            taskItem.setOrderStatus("费率监控");
+            taskItem.setOperateResult(alreadyOneResult);
+            taskItemMapper.insert(taskItem);
+            counters.capped++;
+            return;
+        }
+        prepared.add(new PreparedBid(taskItem, updateRequest(node, taskItem, BigDecimal.ONE),
+                submittedResult, true));
+    }
+
+    private StockXBidUpdateItem updateRequest(JSONObject node, TaskItemDO taskItem,
+                                              BigDecimal amount) {
+        return new StockXBidUpdateItem(
+                node.getString("id").trim(),
+                amount,
+                resolveMetadata(node, "deliveryOptionType", "effectiveDeliveryOptionType", "HOME_DELIVERY"),
+                taskItem.getCurrencyCode(),
+                resolveMetadata(node, "checkoutType", null, null));
     }
 
     private Map<String, JSONObject> loadActiveBids() {
@@ -284,6 +378,17 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         return highest != null ? decimal(highest.get("amount")) : null;
     }
 
+    private BigDecimal spotAsk(JSONObject node) {
+        JSONObject variant = node.getJSONObject("productVariant");
+        JSONObject market = variant != null ? variant.getJSONObject("market") : null;
+        JSONObject state = market != null ? market.getJSONObject("state") : null;
+        JSONObject levels = state != null ? state.getJSONObject("askServiceLevels") : null;
+        JSONObject standard = levels != null ? levels.getJSONObject("standard") : null;
+        JSONObject lowest = standard != null ? standard.getJSONObject("lowest") : null;
+        BigDecimal amount = lowest != null ? decimal(lowest.get("amount")) : null;
+        return amount != null && amount.compareTo(BigDecimal.ZERO) > 0 ? amount : null;
+    }
+
     private BigDecimal decimal(Object value) {
         if (value == null) return null;
         try {
@@ -331,19 +436,23 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
     }
 
     private record PreparedBid(TaskItemDO taskItem, StockXBidUpdateItem request,
-                               BigDecimal maximumPrice) {
+                               String successResult, boolean lowered) {
     }
 
     private static final class Counters {
         private int submitted;
+        private int lowered;
         private int highest;
         private int capped;
+        private int outside;
         private int failed;
 
         private void add(Counters other) {
             submitted += other.submitted;
+            lowered += other.lowered;
             highest += other.highest;
             capped += other.capped;
+            outside += other.outside;
             failed += other.failed;
         }
     }

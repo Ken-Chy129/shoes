@@ -9,6 +9,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
 import cn.ken.shoes.task.StockXUpdateBidsTaskRunner;
 import com.alibaba.fastjson.JSONArray;
@@ -19,9 +20,11 @@ import java.lang.reflect.Proxy;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 class StockXUpdateBidsTaskRunnerTest {
 
@@ -105,15 +108,123 @@ class StockXUpdateBidsTaskRunnerTest {
                 .containsExactly("已是最高出价($120，上限$200)", "已达最高价上限(市场$150，上限$150)");
     }
 
+    @Test
+    void appliesFeeMonitoringOnlyToExcelRowsThatEnableIt() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("legacy", "variant-1", "80", "100", "100")),
+                edge(activeBid("profitable", "variant-2", "80", "89", "100")),
+                edge(activeBid("unprofitable", "variant-3", "80", "90", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(504L, List.of(
+                        input("legacy", "200", "否"),
+                        input("profitable", "200", "是"),
+                        input("unprofitable", "200", "是")),
+                StockXBidFeePolicy.monitored(false), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(new BigDecimal("101"), new BigDecimal("90"), BigDecimal.ONE));
+        assertThat(stored).extracting(TaskItemDO::getOperateResult)
+                .containsExactly(
+                        "追价已提交($101，上限$200)",
+                        "追价已提交($90，上限$200)",
+                        "费率监控已压至$1(候选$91，现货$100，盈利上限$90)");
+    }
+
+    @Test
+    void lowersAlreadyHighestAndMissingSpotAskBidsButDoesNotResubmitOneDollar() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("highest-loss", "variant-1", "95", "95", "100")),
+                edge(activeBid("missing-ask", "variant-2", "80", "100", null)),
+                edge(activeBid("already-one", "variant-3", "1", "100", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(505L, List.of(
+                        input("highest-loss", "200", "是"),
+                        input("missing-ask", "200", "是"),
+                        input("already-one", "200", "是")),
+                StockXBidFeePolicy.monitored(false), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(BigDecimal.ONE, BigDecimal.ONE));
+        assertThat(stored).extracting(TaskItemDO::getListingId, TaskItemDO::getOperateResult)
+                .containsExactlyInAnyOrder(
+                        tuple("highest-loss", "费率监控已压至$1(候选$95，现货$100，盈利上限$90)"),
+                        tuple("missing-ask", "费率监控已压至$1(无现货标价)"),
+                        tuple("already-one", "已是$1-费率监控不盈利(候选$101，现货$100，盈利上限$90)"));
+    }
+
+    @Test
+    void processesOutsideExcelBidsWithoutAMaximumUsingTheSameMarketPage() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("excel", "variant-1", "80", "80", "100")),
+                edge(activeBid("outside-profit", "variant-2", "20", "80", "100")),
+                edge(activeBid("outside-loss", "variant-3", "20", "95", "100")),
+                edge(activeBid("outside-highest", "variant-4", "80", "80", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(506L, List.of(input("excel", "200", "否")),
+                StockXBidFeePolicy.monitored(true), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.queryCalls.get()).isEqualTo(1);
+        assertThat(client.submitted).singleElement().satisfies(batch -> {
+            assertThat(batch).extracting(StockXBidUpdateItem::id)
+                    .containsExactly("outside-profit", "outside-loss");
+            assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                    .containsExactly(new BigDecimal("81"), BigDecimal.ONE);
+        });
+        assertThat(stored).extracting(TaskItemDO::getListingId, TaskItemDO::getOperateResult)
+                .containsExactlyInAnyOrder(
+                        tuple("excel", "已是最高出价($80，上限$200)"),
+                        tuple("outside-profit", "Excel外追价已提交($81)"),
+                        tuple("outside-loss", "Excel外费率监控已压至$1(候选$96，现货$100，盈利上限$90)"),
+                        tuple("outside-highest", "Excel外已是最高出价($80)"));
+        assertThat(stored).filteredOn(item -> item.getListingId().startsWith("outside-"))
+                .allSatisfy(item -> assertThat(item.getTargetPrice()).isNull());
+    }
+
     private static StockXBidUpdateInputExcel input(String bidId, String price) {
+        return input(bidId, price, null);
+    }
+
+    private static StockXBidUpdateInputExcel input(String bidId, String price,
+                                                   String feeConfigEnabled) {
         StockXBidUpdateInputExcel row = new StockXBidUpdateInputExcel();
         row.setBidId(bidId);
         row.setPrice(new BigDecimal(price));
+        row.setFeeConfigEnabled(feeConfigEnabled);
         return row;
     }
 
     private static JSONObject activeBid(String bidId, String variantId, String yourBid,
                                         String highestBid) {
+        return activeBid(bidId, variantId, yourBid, highestBid, null);
+    }
+
+    private static JSONObject activeBid(String bidId, String variantId, String yourBid,
+                                        String highestBid, String spotAsk) {
+        JSONObject state = new JSONObject(true)
+                .fluentPut("bidInventoryTypes", new JSONObject(true)
+                        .fluentPut("standard", new JSONObject(true)
+                                .fluentPut("highest", new JSONObject(true)
+                                        .fluentPut("amount", highestBid))));
+        if (spotAsk != null) {
+            state.put("askServiceLevels", new JSONObject(true)
+                    .fluentPut("standard", new JSONObject(true)
+                            .fluentPut("lowest", new JSONObject(true)
+                                    .fluentPut("amount", spotAsk))));
+        }
         return new JSONObject(true)
                 .fluentPut("id", bidId)
                 .fluentPut("amount", yourBid)
@@ -121,15 +232,15 @@ class StockXUpdateBidsTaskRunnerTest {
                 .fluentPut("productVariant", new JSONObject(true)
                         .fluentPut("id", variantId)
                         .fluentPut("market", new JSONObject(true)
-                                .fluentPut("state", new JSONObject(true)
-                                        .fluentPut("bidInventoryTypes", new JSONObject(true)
-                                                .fluentPut("standard", new JSONObject(true)
-                                                        .fluentPut("highest", new JSONObject(true)
-                                                                .fluentPut("amount", highestBid))))))
+                                .fluentPut("state", state))
                         .fluentPut("traits", new JSONObject(true).fluentPut("size", "9"))
                         .fluentPut("product", new JSONObject(true)
                                 .fluentPut("title", "Product " + bidId)
                                 .fluentPut("styleId", "STYLE-" + bidId)));
+    }
+
+    private static JSONObject edge(JSONObject node) {
+        return new JSONObject(true).fluentPut("node", node);
     }
 
     private static JSONObject page(List<JSONObject> edges) {
@@ -149,7 +260,14 @@ class StockXUpdateBidsTaskRunnerTest {
     private static StockXUpdateBidsTaskRunner singleRoundRunner(
             Long taskId, List<StockXBidUpdateInputExcel> input, StockXClient client,
             TaskMapper taskMapper, TaskItemMapper itemMapper) {
-        return new StockXUpdateBidsTaskRunner(account(), taskId, input, 300,
+        return singleRoundRunner(taskId, input, StockXBidFeePolicy.disabled(),
+                client, taskMapper, itemMapper);
+    }
+
+    private static StockXUpdateBidsTaskRunner singleRoundRunner(
+            Long taskId, List<StockXBidUpdateInputExcel> input, StockXBidFeePolicy feePolicy,
+            StockXClient client, TaskMapper taskMapper, TaskItemMapper itemMapper) {
+        return new StockXUpdateBidsTaskRunner(account(), taskId, input, 300, feePolicy,
                 client, taskMapper, itemMapper) {
             @Override
             protected void waitBeforeNextRound(long delayMs) {
@@ -191,10 +309,12 @@ class StockXUpdateBidsTaskRunnerTest {
     private static class FakeStockXClient extends StockXClient {
         private JSONObject activeBids = page(List.of());
         private final List<List<StockXBidUpdateItem>> submitted = new ArrayList<>();
+        private final AtomicInteger queryCalls = new AtomicInteger();
 
         @Override
         public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
                                             StockXAccount account) {
+            queryCalls.incrementAndGet();
             return activeBids;
         }
 
