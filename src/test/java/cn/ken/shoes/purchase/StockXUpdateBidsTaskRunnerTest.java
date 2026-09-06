@@ -212,6 +212,66 @@ class StockXUpdateBidsTaskRunnerTest {
                 .allSatisfy(item -> assertThat(item.getTargetPrice()).isNull());
     }
 
+    @Test
+    void lowersAnUnprofitableCurrentBidWhenTheMarketHighestIsMissing() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("missing-highest", "variant-1", "95", null, "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(508L, List.of(input("missing-highest", "200", "是")),
+                StockXBidFeePolicy.monitored(false), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(BigDecimal.ONE));
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult())
+                        .isEqualTo("费率监控已压至$1(候选$95，现货$100，盈利上限$90)"));
+    }
+
+    @Test
+    void lowersOutsideExcelBidsWhenMarketPricesExceedTheSafetyLimit() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("excel", "variant-1", "80", "80", "100")),
+                edge(activeBid("outside-abnormal", "variant-2", "20",
+                        "1000001", "1200000"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(509L, List.of(input("excel", "200", "否")),
+                StockXBidFeePolicy.monitored(true), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::id, StockXBidUpdateItem::amount)
+                        .containsExactly(tuple("outside-abnormal", BigDecimal.ONE)));
+        assertThat(stored).filteredOn(item -> "outside-abnormal".equals(item.getListingId()))
+                .singleElement().satisfies(item ->
+                        assertThat(item.getOperateResult())
+                                .isEqualTo("Excel外费率监控已压至$1(无现货标价)"));
+    }
+
+    @Test
+    void neverUsesAnAbnormallyHighMarketBidForLegacyChasing() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("abnormal-highest", "variant-1", "20", "1000001", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(510L, List.of(input("abnormal-highest", "2000000")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).isEmpty();
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult())
+                        .isEqualTo("修改出价失败-缺少市场最高价"));
+    }
+
     private static StockXBidUpdateInputExcel input(String bidId, String price) {
         return input(bidId, price, null);
     }

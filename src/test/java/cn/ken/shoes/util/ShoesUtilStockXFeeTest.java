@@ -6,6 +6,8 @@ import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXFeeConfig;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 class ShoesUtilStockXFeeTest {
@@ -59,6 +61,9 @@ class ShoesUtilStockXFeeTest {
         assertThat(ShoesUtil.normalizeStockxPrice(150)).isEqualTo(150);
         assertThat(ShoesUtil.normalizeStockxPrice(0)).isNull();
         assertThat(ShoesUtil.normalizeStockxPrice(123456789)).isNull();
+        assertThat(ShoesUtil.normalizeStockxPrice(new BigDecimal("1000000")))
+                .isEqualByComparingTo("1000000");
+        assertThat(ShoesUtil.normalizeStockxPrice(new BigDecimal("1000000.01"))).isNull();
 
         assertThat(ShoesUtil.toStockxPriceColumn(150)).isEqualByComparingTo("150");
         assertThat(ShoesUtil.toStockxPriceColumn(123456789)).isNull();

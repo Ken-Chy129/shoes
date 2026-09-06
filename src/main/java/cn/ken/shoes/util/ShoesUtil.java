@@ -19,6 +19,7 @@ public class ShoesUtil {
      * 直接写库会抛 Data truncation 并让整个任务失败，因此统一按无效报价处理。
      */
     private static final int MAX_STOCKX_PRICE = 1_000_000;
+    private static final BigDecimal MAX_STOCKX_PRICE_DECIMAL = BigDecimal.valueOf(MAX_STOCKX_PRICE);
 
     private static final Pattern KC_EU_SIZE_PATTEN = Pattern.compile("EU\\s*(\\d+\\.?\\d*)", Pattern.CASE_INSENSITIVE);
 
@@ -167,6 +168,14 @@ public class ShoesUtil {
      */
     public static Integer normalizeStockxPrice(Integer price) {
         if (price == null || price <= 0 || price > MAX_STOCKX_PRICE) {
+            return null;
+        }
+        return price;
+    }
+
+    public static BigDecimal normalizeStockxPrice(BigDecimal price) {
+        if (price == null || price.compareTo(BigDecimal.ZERO) <= 0
+                || price.compareTo(MAX_STOCKX_PRICE_DECIMAL) > 0) {
             return null;
         }
         return price;

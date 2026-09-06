@@ -15,6 +15,7 @@ import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
+import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
@@ -227,17 +228,19 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         taskItem.setTargetPrice(maximumPrice);
         taskItem.setCurrencyCode(resolveMetadata(node, "currency", "currencyCode", "USD"));
         taskItem.setOperateTime(new Date());
-        if (currentBid == null || highestBid == null) {
+        if (currentBid == null) {
             taskItem.setOrderStatus("数据异常");
-            taskItem.setOperateResult("修改出价失败-缺少当前出价或市场最高价");
+            taskItem.setOperateResult("修改出价失败-缺少当前出价");
             taskItemMapper.insert(taskItem);
             counters.failed++;
             return;
         }
 
-        boolean alreadyHighest = currentBid.compareTo(highestBid) >= 0;
-        BigDecimal nextBid = alreadyHighest ? currentBid : highestBid.add(BigDecimal.ONE);
-        boolean maximumReached = maximumPrice != null && nextBid.compareTo(maximumPrice) > 0;
+        boolean alreadyHighest = highestBid != null && currentBid.compareTo(highestBid) >= 0;
+        BigDecimal nextBid = highestBid == null || alreadyHighest
+                ? currentBid : highestBid.add(BigDecimal.ONE);
+        boolean maximumReached = highestBid != null && maximumPrice != null
+                && nextBid.compareTo(maximumPrice) > 0;
         BigDecimal candidateBid = maximumReached ? currentBid : nextBid;
 
         if (monitorFees) {
@@ -264,6 +267,14 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                         prepared, counters);
                 return;
             }
+        }
+
+        if (highestBid == null) {
+            taskItem.setOrderStatus("数据异常");
+            taskItem.setOperateResult("修改出价失败-缺少市场最高价");
+            taskItemMapper.insert(taskItem);
+            counters.failed++;
+            return;
         }
 
         if (alreadyHighest) {
@@ -377,7 +388,8 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         JSONObject inventoryTypes = state != null ? state.getJSONObject("bidInventoryTypes") : null;
         JSONObject standard = inventoryTypes != null ? inventoryTypes.getJSONObject("standard") : null;
         JSONObject highest = standard != null ? standard.getJSONObject("highest") : null;
-        return highest != null ? decimal(highest.get("amount")) : null;
+        return highest != null
+                ? ShoesUtil.normalizeStockxPrice(decimal(highest.get("amount"))) : null;
     }
 
     private BigDecimal spotAsk(JSONObject node) {
@@ -388,7 +400,7 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         JSONObject standard = levels != null ? levels.getJSONObject("standard") : null;
         JSONObject lowest = standard != null ? standard.getJSONObject("lowest") : null;
         BigDecimal amount = lowest != null ? decimal(lowest.get("amount")) : null;
-        return amount != null && amount.compareTo(BigDecimal.ZERO) > 0 ? amount : null;
+        return ShoesUtil.normalizeStockxPrice(amount);
     }
 
     private BigDecimal decimal(Object value) {
