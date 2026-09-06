@@ -26,6 +26,7 @@ import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.stockx.StockXAccount;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.service.StockXService;
 import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
@@ -393,13 +394,14 @@ public class TaskExecutorManager {
                 if (operation == StockXPurchaseOperation.CREATE_BIDS) {
                     var snapshot = taskInputSnapshotStore.loadCreateBidsInput(source.getId());
                     yield snapshot.isPresent() && !snapshot.get().isEmpty()
-                            ? startCreateBids(account, snapshot.get()) : null;
+                            ? startCreateBids(account, snapshot.get(), bidFeePolicy(params, false)) : null;
                 }
                 if (operation == StockXPurchaseOperation.UPDATE_BIDS) {
                     var snapshot = taskInputSnapshotStore.loadUpdateBidsInput(source.getId());
                     yield snapshot.isPresent() && !snapshot.get().isEmpty()
                             ? startUpdateBids(account, snapshot.get(),
-                            params.getLongValue("interval") > 0 ? params.getLongValue("interval") : 300L) : null;
+                            params.getLongValue("interval") > 0 ? params.getLongValue("interval") : 300L,
+                            bidFeePolicy(params, true)) : null;
                 }
                 if (operation == StockXPurchaseOperation.DELETE_BIDS
                         && "style_ids".equalsIgnoreCase(params.getString("deleteMode"))) {
@@ -1208,9 +1210,15 @@ public class TaskExecutorManager {
     }
 
     public Long startCreateBids(String accountId, List<StockXBidInputExcel> inputRows) {
+        return startCreateBids(accountId, inputRows, StockXBidFeePolicy.disabled());
+    }
+
+    public Long startCreateBids(String accountId, List<StockXBidInputExcel> inputRows,
+                                StockXBidFeePolicy feePolicy) {
         if (inputRows == null || inputRows.isEmpty() || inputRows.stream().anyMatch(row -> row == null)) {
             return null;
         }
+        feePolicy = feePolicy != null ? feePolicy : StockXBidFeePolicy.disabled();
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             log.error("账号不存在: {}", accountId);
@@ -1221,17 +1229,18 @@ public class TaskExecutorManager {
             return null;
         }
         List<StockXBidInputExcel> snapshot = List.copyOf(inputRows);
-        String params = new JSONObject(true)
+        JSONObject paramsJson = new JSONObject(true)
                 .fluentPut("operation", StockXPurchaseOperation.CREATE_BIDS.getCode())
-                .fluentPut("inputCount", snapshot.size())
-                .toJSONString();
+                .fluentPut("inputCount", snapshot.size());
+        appendBidFeeParams(paramsJson, feePolicy, false);
+        String params = paramsJson.toJSONString();
         Long taskId = null;
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             taskInputSnapshotStore.saveCreateBidsInput(taskId, snapshot);
             TaskSwitch.resetPurchaseCancel(accountId);
             StockXCreateBidsTaskRunner runner = new StockXCreateBidsTaskRunner(
-                    account, taskId, snapshot, stockXClient, taskMapper, taskItemMapper);
+                    account, taskId, snapshot, feePolicy, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-create-bids-" + account.getName()).start();
             log.info("创建出价任务已启动: [{}], inputCount:{}", account.getName(), snapshot.size());
             return taskId;
@@ -1246,12 +1255,18 @@ public class TaskExecutorManager {
 
     public Long startUpdateBids(String accountId, List<StockXBidUpdateInputExcel> inputRows,
                                 long intervalSeconds) {
+        return startUpdateBids(accountId, inputRows, intervalSeconds, StockXBidFeePolicy.disabled());
+    }
+
+    public Long startUpdateBids(String accountId, List<StockXBidUpdateInputExcel> inputRows,
+                                long intervalSeconds, StockXBidFeePolicy feePolicy) {
         if (inputRows == null || inputRows.isEmpty() || inputRows.stream().anyMatch(row -> row == null)) {
             return null;
         }
         if (intervalSeconds < 60 || intervalSeconds > 86400) {
             throw new IllegalArgumentException("轮询间隔必须在60到86400秒之间");
         }
+        feePolicy = feePolicy != null ? feePolicy : StockXBidFeePolicy.disabled();
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null) {
             log.error("账号不存在: {}", accountId);
@@ -1262,18 +1277,20 @@ public class TaskExecutorManager {
             return null;
         }
         List<StockXBidUpdateInputExcel> snapshot = List.copyOf(inputRows);
-        String params = new JSONObject(true)
+        JSONObject paramsJson = new JSONObject(true)
                 .fluentPut("operation", StockXPurchaseOperation.UPDATE_BIDS.getCode())
                 .fluentPut("inputCount", snapshot.size())
-                .fluentPut("interval", intervalSeconds)
-                .toJSONString();
+                .fluentPut("interval", intervalSeconds);
+        appendBidFeeParams(paramsJson, feePolicy, true);
+        String params = paramsJson.toJSONString();
         Long taskId = null;
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             taskInputSnapshotStore.saveUpdateBidsInput(taskId, snapshot);
             TaskSwitch.resetPurchaseCancel(accountId);
             StockXUpdateBidsTaskRunner runner = new StockXUpdateBidsTaskRunner(
-                    account, taskId, snapshot, intervalSeconds, stockXClient, taskMapper, taskItemMapper);
+                    account, taskId, snapshot, intervalSeconds, feePolicy,
+                    stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-update-bids-" + account.getName()).start();
             log.info("修改出价任务已启动: [{}], inputCount:{}", account.getName(), snapshot.size());
             return taskId;
@@ -1283,6 +1300,27 @@ public class TaskExecutorManager {
             }
             TaskSwitch.clearPurchaseState(accountId);
             throw e;
+        }
+    }
+
+    private static StockXBidFeePolicy bidFeePolicy(JSONObject params, boolean includeOutsideExcel) {
+        return new StockXBidFeePolicy(params.getBooleanValue("feeMonitorEnabled"),
+                params.getBigDecimal("merchantFeeRate"),
+                params.getBigDecimal("minMerchantFee"),
+                params.getBigDecimal("transferFeeRate"),
+                includeOutsideExcel && params.getBooleanValue("processOutsideExcel"));
+    }
+
+    private static void appendBidFeeParams(JSONObject params, StockXBidFeePolicy feePolicy,
+                                           boolean includeOutsideExcel) {
+        params.put("feeMonitorEnabled", feePolicy.enabled());
+        if (feePolicy.enabled()) {
+            params.put("merchantFeeRate", feePolicy.merchantFeeRate());
+            params.put("minMerchantFee", feePolicy.minMerchantFee());
+            params.put("transferFeeRate", feePolicy.transferFeeRate());
+        }
+        if (includeOutsideExcel) {
+            params.put("processOutsideExcel", feePolicy.enabled() && feePolicy.processOutsideExcel());
         }
     }
 

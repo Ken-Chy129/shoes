@@ -6,6 +6,7 @@ import cn.ken.shoes.manager.TaskExecutorManager;
 import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -147,7 +148,7 @@ class TaskControllerPurchaseTest {
         when(manager.startUpdateBids(org.mockito.ArgumentMatchers.eq("account-a"), argThat(rows ->
                 rows.size() == 1 && "bid-123".equals(rows.get(0).getBidId())
                         && rows.get(0).getPrice().compareTo(new BigDecimal("77")) == 0),
-                org.mockito.ArgumentMatchers.eq(300L)))
+                org.mockito.ArgumentMatchers.eq(300L), argThat(policy -> !policy.enabled())))
                 .thenReturn(107L);
         TaskController controller = new TaskController();
         setField(controller, "taskExecutorManager", manager);
@@ -157,6 +158,48 @@ class TaskControllerPurchaseTest {
 
         assertThat(result.getSuccess()).isTrue();
         assertThat(result.getData()).isEqualTo("107");
+    }
+
+    @Test
+    void passesValidatedFeeMonitoringConfigurationToUpdateBids() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startUpdateBids(eq("account-a"), argThat(rows ->
+                        rows.size() == 1 && "是".equals(rows.get(0).getFeeConfigEnabled())),
+                eq(300L), argThat(policy -> policy.enabled()
+                        && policy.processOutsideExcel()
+                        && policy.merchantFeeRate().compareTo(new BigDecimal("0.08")) == 0
+                        && policy.minMerchantFee().compareTo(new BigDecimal("6.25")) == 0
+                        && policy.transferFeeRate().compareTo(new BigDecimal("0.04")) == 0)))
+                .thenReturn(109L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startUpdateBids(
+                updateExcelFile("updates.xlsx", List.of(update("bid-123", "77", "true"))),
+                "account-a", 300L, true, new BigDecimal("0.08"),
+                new BigDecimal("6.25"), new BigDecimal("0.04"), true);
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("109");
+    }
+
+    @Test
+    void requiresTheExcelFeeFlagWhenUpdateMonitoringIsEnabled() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+        StockXBidUpdateInputExcel row = update("bid-1", "77");
+        row.setFeeConfigEnabled(null);
+
+        Result<String> result = controller.startUpdateBids(
+                updateExcelFile("updates.xlsx", List.of(row)), "account-a", 300L,
+                true, StockXBidFeePolicy.DEFAULT_MERCHANT_FEE_RATE,
+                StockXBidFeePolicy.DEFAULT_MIN_MERCHANT_FEE,
+                StockXBidFeePolicy.DEFAULT_TRANSFER_FEE_RATE, false);
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("费率配置是否启用");
+        verifyNoInteractions(manager);
     }
 
     @Test
@@ -194,7 +237,8 @@ class TaskControllerPurchaseTest {
                 rows.size() == 1
                         && "100289469".equals(rows.get(0).getStyleId())
                         && "US M 4.5".equals(rows.get(0).getSize())
-                        && rows.get(0).getPrice().compareTo(BigDecimal.ONE) == 0)))
+                        && rows.get(0).getPrice().compareTo(BigDecimal.ONE) == 0),
+                argThat(policy -> !policy.enabled())))
                 .thenReturn(106L);
         TaskController controller = new TaskController();
         setField(controller, "taskExecutorManager", manager);
@@ -205,6 +249,41 @@ class TaskControllerPurchaseTest {
 
         assertThat(result.getSuccess()).isTrue();
         assertThat(result.getData()).isEqualTo("106");
+    }
+
+    @Test
+    void passesValidatedFeeMonitoringConfigurationToCreateBids() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startCreateBids(eq("account-a"), argThat(rows -> rows.size() == 1),
+                eq(new StockXBidFeePolicy(true, new BigDecimal("0.08"),
+                        new BigDecimal("6.25"), new BigDecimal("0.04"), false))))
+                .thenReturn(110L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startCreateBids(
+                excelFile("bids.xlsx", List.of(bid("STYLE-1", "US 9", "80"))),
+                "account-a", true, new BigDecimal("0.08"),
+                new BigDecimal("6.25"), new BigDecimal("0.04"));
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("110");
+    }
+
+    @Test
+    void rejectsInvalidBidFeeConfigurationBeforeStartingATask() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startCreateBids(
+                excelFile("bids.xlsx", List.of(bid("STYLE-1", "US 9", "80"))),
+                "account-a", true, new BigDecimal("1.01"),
+                new BigDecimal("5.79"), new BigDecimal("0.03"));
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("商家手续费率");
+        verifyNoInteractions(manager);
     }
 
     @Test
@@ -239,10 +318,14 @@ class TaskControllerPurchaseTest {
     }
 
     private static StockXBidUpdateInputExcel update(String bidId, String price) {
+        return update(bidId, price, "否");
+    }
+
+    private static StockXBidUpdateInputExcel update(String bidId, String price, String feeConfigEnabled) {
         StockXBidUpdateInputExcel row = new StockXBidUpdateInputExcel();
         row.setBidId(bidId);
         row.setPrice(new BigDecimal(price));
-        row.setFeeConfigEnabled("否");
+        row.setFeeConfigEnabled(feeConfigEnabled);
         return row;
     }
 

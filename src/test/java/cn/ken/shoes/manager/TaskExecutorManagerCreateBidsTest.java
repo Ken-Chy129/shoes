@@ -13,6 +13,7 @@ import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.Test;
@@ -68,14 +69,20 @@ class TaskExecutorManagerCreateBidsTest {
 
         try {
             Long taskId = manager.startCreateBids(accountName,
-                    List.of(bid("100289469", "US M 4.5", "1")));
+                    List.of(bid("100289469", "US M 4.5", "1")),
+                    new StockXBidFeePolicy(true, new BigDecimal("0.08"),
+                            new BigDecimal("6.25"), new BigDecimal("0.04"), false));
 
             assertThat(taskId).isEqualTo(301L);
             assertThat(submitted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(createdTask.get().getTaskType()).isEqualTo("purchase");
             assertThat(createdTask.get().getParams())
                     .contains("\"operation\":\"create_bids\"")
-                    .contains("\"inputCount\":1");
+                    .contains("\"inputCount\":1")
+                    .contains("\"feeMonitorEnabled\":true")
+                    .contains("\"merchantFeeRate\":0.08")
+                    .contains("\"minMerchantFee\":6.25")
+                    .contains("\"transferFeeRate\":0.04");
             assertThat(snapshots.loadCreateBidsInput(taskId)).hasValueSatisfying(rows ->
                     assertThat(rows).singleElement().satisfies(row ->
                             assertThat(row.getPrice()).isEqualByComparingTo("1")));
@@ -170,6 +177,7 @@ class TaskExecutorManagerCreateBidsTest {
                 row.setId("variant-1");
                 row.setModelNo(modelNo);
                 row.setUsmSize(modelNo.equals("ORIGINAL") ? "9" : "4.5");
+                row.setStandardPrice(200);
                 return List.of(row);
             }
 

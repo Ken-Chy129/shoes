@@ -13,6 +13,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
 import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
@@ -41,10 +42,20 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
     private final StockXClient stockXClient;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final StockXBidFeePolicy feePolicy;
 
     public StockXUpdateBidsTaskRunner(StockXAccount account, Long taskId,
                                       List<StockXBidUpdateInputExcel> inputRows,
                                       long intervalSeconds,
+                                      StockXClient stockXClient, TaskMapper taskMapper,
+                                      TaskItemMapper taskItemMapper) {
+        this(account, taskId, inputRows, intervalSeconds, StockXBidFeePolicy.disabled(),
+                stockXClient, taskMapper, taskItemMapper);
+    }
+
+    public StockXUpdateBidsTaskRunner(StockXAccount account, Long taskId,
+                                      List<StockXBidUpdateInputExcel> inputRows,
+                                      long intervalSeconds, StockXBidFeePolicy feePolicy,
                                       StockXClient stockXClient, TaskMapper taskMapper,
                                       TaskItemMapper taskItemMapper) {
         this.account = account;
@@ -54,6 +65,7 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         this.stockXClient = stockXClient;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.feePolicy = feePolicy != null ? feePolicy : StockXBidFeePolicy.disabled();
     }
 
     @Override

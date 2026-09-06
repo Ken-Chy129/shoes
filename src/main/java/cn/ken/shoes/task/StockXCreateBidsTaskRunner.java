@@ -17,6 +17,7 @@ import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.model.stockx.StockXBidCreateItem;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.util.ShoesUtil;
 import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
@@ -53,19 +54,38 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
     private final int searchConcurrency;
+    private final StockXBidFeePolicy feePolicy;
 
     public StockXCreateBidsTaskRunner(StockXAccount account, Long taskId,
                                       List<StockXBidInputExcel> inputRows,
                                       StockXClient stockXClient, TaskMapper taskMapper,
                                       TaskItemMapper taskItemMapper) {
         this(account, taskId, inputRows, stockXClient, taskMapper, taskItemMapper,
-                DEFAULT_SEARCH_CONCURRENCY);
+                DEFAULT_SEARCH_CONCURRENCY, StockXBidFeePolicy.disabled());
+    }
+
+    public StockXCreateBidsTaskRunner(StockXAccount account, Long taskId,
+                                      List<StockXBidInputExcel> inputRows,
+                                      StockXBidFeePolicy feePolicy,
+                                      StockXClient stockXClient, TaskMapper taskMapper,
+                                      TaskItemMapper taskItemMapper) {
+        this(account, taskId, inputRows, stockXClient, taskMapper, taskItemMapper,
+                DEFAULT_SEARCH_CONCURRENCY, feePolicy);
     }
 
     public StockXCreateBidsTaskRunner(StockXAccount account, Long taskId,
                                       List<StockXBidInputExcel> inputRows,
                                       StockXClient stockXClient, TaskMapper taskMapper,
                                       TaskItemMapper taskItemMapper, int searchConcurrency) {
+        this(account, taskId, inputRows, stockXClient, taskMapper, taskItemMapper,
+                searchConcurrency, StockXBidFeePolicy.disabled());
+    }
+
+    public StockXCreateBidsTaskRunner(StockXAccount account, Long taskId,
+                                      List<StockXBidInputExcel> inputRows,
+                                      StockXClient stockXClient, TaskMapper taskMapper,
+                                      TaskItemMapper taskItemMapper, int searchConcurrency,
+                                      StockXBidFeePolicy feePolicy) {
         this.account = account;
         this.taskId = taskId;
         this.inputRows = inputRows != null ? List.copyOf(inputRows) : List.of();
@@ -73,6 +93,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
         this.searchConcurrency = Math.max(1, searchConcurrency);
+        this.feePolicy = feePolicy != null ? feePolicy : StockXBidFeePolicy.disabled();
     }
 
     @Override

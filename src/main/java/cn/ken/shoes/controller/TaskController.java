@@ -23,6 +23,7 @@ import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
+import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
 import cn.ken.shoes.service.StockXReplenishmentService;
@@ -562,9 +563,24 @@ public class TaskController {
 
     @PostMapping("stockx/startCreateBids")
     public Result<String> startCreateBids(@RequestParam("file") MultipartFile file,
-                                          @RequestParam("accountId") String accountId) throws IOException {
+                                          @RequestParam("accountId") String accountId,
+                                          @RequestParam(value = "feeMonitorEnabled", defaultValue = "false")
+                                          boolean feeMonitorEnabled,
+                                          @RequestParam(value = "merchantFeeRate", defaultValue = "0.07")
+                                          BigDecimal merchantFeeRate,
+                                          @RequestParam(value = "minMerchantFee", defaultValue = "5.79")
+                                          BigDecimal minMerchantFee,
+                                          @RequestParam(value = "transferFeeRate", defaultValue = "0.03")
+                                          BigDecimal transferFeeRate) throws IOException {
         if (StrUtil.isBlank(accountId)) {
             return Result.buildError("accountId不能为空");
+        }
+        StockXBidFeePolicy feePolicy;
+        try {
+            feePolicy = new StockXBidFeePolicy(feeMonitorEnabled, merchantFeeRate,
+                    minMerchantFee, transferFeeRate, false);
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
         }
         String fileError = validateBidExcelFile(file);
         if (fileError != null) {
@@ -583,23 +599,47 @@ public class TaskController {
         if (rowsError != null) {
             return Result.buildError(rowsError);
         }
-        Long taskId = taskExecutorManager.startCreateBids(accountId, rows);
+        Long taskId = taskExecutorManager.startCreateBids(accountId, rows, feePolicy);
         if (taskId == null) {
             return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }
 
+    public Result<String> startCreateBids(MultipartFile file, String accountId) throws IOException {
+        return startCreateBids(file, accountId, false,
+                StockXBidFeePolicy.DEFAULT_MERCHANT_FEE_RATE,
+                StockXBidFeePolicy.DEFAULT_MIN_MERCHANT_FEE,
+                StockXBidFeePolicy.DEFAULT_TRANSFER_FEE_RATE);
+    }
+
     @PostMapping("stockx/startUpdateBids")
     public Result<String> startUpdateBids(@RequestParam("file") MultipartFile file,
                                           @RequestParam("accountId") String accountId,
                                           @RequestParam(value = "interval", defaultValue = "300")
-                                          long intervalSeconds) throws IOException {
+                                          long intervalSeconds,
+                                          @RequestParam(value = "feeMonitorEnabled", defaultValue = "false")
+                                          boolean feeMonitorEnabled,
+                                          @RequestParam(value = "merchantFeeRate", defaultValue = "0.07")
+                                          BigDecimal merchantFeeRate,
+                                          @RequestParam(value = "minMerchantFee", defaultValue = "5.79")
+                                          BigDecimal minMerchantFee,
+                                          @RequestParam(value = "transferFeeRate", defaultValue = "0.03")
+                                          BigDecimal transferFeeRate,
+                                          @RequestParam(value = "processOutsideExcel", defaultValue = "false")
+                                          boolean processOutsideExcel) throws IOException {
         if (StrUtil.isBlank(accountId)) {
             return Result.buildError("accountId不能为空");
         }
         if (intervalSeconds < 60 || intervalSeconds > 86400) {
             return Result.buildError("轮询间隔必须在60到86400秒之间");
+        }
+        StockXBidFeePolicy feePolicy;
+        try {
+            feePolicy = new StockXBidFeePolicy(feeMonitorEnabled, merchantFeeRate,
+                    minMerchantFee, transferFeeRate, processOutsideExcel);
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
         }
         String fileError = validateBidExcelFile(file);
         if (fileError != null) {
@@ -612,17 +652,25 @@ public class TaskController {
                     .sheet()
                     .doReadSync();
         } catch (RuntimeException e) {
-            return Result.buildError("无法读取Excel，请确认文件格式和表头为出价ID、价格");
+            return Result.buildError("无法读取Excel，请确认文件格式和表头为出价ID、价格、费率配置是否启用");
         }
-        String rowsError = validateBidUpdateRows(rows);
+        String rowsError = validateBidUpdateRows(rows, feePolicy.enabled());
         if (rowsError != null) {
             return Result.buildError(rowsError);
         }
-        Long taskId = taskExecutorManager.startUpdateBids(accountId, rows, intervalSeconds);
+        Long taskId = taskExecutorManager.startUpdateBids(accountId, rows, intervalSeconds, feePolicy);
         if (taskId == null) {
             return Result.buildError("任务已在运行、账号不存在或Excel输入为空");
         }
         return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    public Result<String> startUpdateBids(MultipartFile file, String accountId,
+                                          long intervalSeconds) throws IOException {
+        return startUpdateBids(file, accountId, intervalSeconds, false,
+                StockXBidFeePolicy.DEFAULT_MERCHANT_FEE_RATE,
+                StockXBidFeePolicy.DEFAULT_MIN_MERCHANT_FEE,
+                StockXBidFeePolicy.DEFAULT_TRANSFER_FEE_RATE, false);
     }
 
     private String validateBidExcelFile(MultipartFile file) {
@@ -673,7 +721,8 @@ public class TaskController {
         return null;
     }
 
-    private String validateBidUpdateRows(List<StockXBidUpdateInputExcel> rows) {
+    private String validateBidUpdateRows(List<StockXBidUpdateInputExcel> rows,
+                                         boolean feeMonitorEnabled) {
         if (rows == null || rows.isEmpty()) {
             return "Excel中未找到修改出价数据";
         }
@@ -693,6 +742,18 @@ public class TaskController {
             }
             row.setBidId(row.getBidId().trim());
             row.setPrice(price.stripTrailingZeros());
+            Boolean rowFeeEnabled;
+            try {
+                rowFeeEnabled = StockXBidFeePolicy.parseExcelEnabled(row.getFeeConfigEnabled());
+            } catch (IllegalArgumentException e) {
+                return "修改出价Excel第" + excelRow + "行的" + e.getMessage();
+            }
+            if (feeMonitorEnabled && rowFeeEnabled == null) {
+                return "修改出价Excel第" + excelRow + "行的费率配置是否启用必填";
+            }
+            if (rowFeeEnabled != null) {
+                row.setFeeConfigEnabled(rowFeeEnabled ? "是" : "否");
+            }
             if (!seen.add(row.getBidId().toLowerCase(Locale.ROOT))) {
                 return "修改出价Excel第" + excelRow + "行的出价ID重复";
             }
