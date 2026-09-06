@@ -35,6 +35,8 @@ import java.util.Set;
 public class StockXUpdateBidsTaskRunner implements Runnable {
 
     private static final int BATCH_SIZE = 50;
+    private static final int MAX_QUERY_ATTEMPTS = 3;
+    private static final long QUERY_RETRY_DELAY_MS = 2_000L;
 
     private final StockXAccount account;
     private final Long taskId;
@@ -331,15 +333,10 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         Map<String, JSONObject> result = new LinkedHashMap<>();
         Set<String> seenCursors = new HashSet<>();
         String after = null;
+        int pageNumber = 1;
         while (true) {
             ensureNotCancelled();
-            JSONObject page = stockXClient.queryPurchasePage(StockXPurchaseOperation.BIDS, after, account);
-            if (page != null && page.getBooleanValue("_unauthorized")) {
-                throw new IllegalStateException("TOKEN_EXPIRED");
-            }
-            if (page == null || page.getJSONArray("edges") == null || page.getJSONObject("pageInfo") == null) {
-                throw new IllegalStateException("读取当前有效出价失败，已停止修改");
-            }
+            JSONObject page = loadActiveBidPageWithRetry(after, pageNumber);
             for (JSONObject edge : page.getJSONArray("edges").toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
                 if (node != null && StrUtil.isNotBlank(node.getString("id"))) {
@@ -355,7 +352,37 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                 throw new IllegalStateException("读取当前有效出价时分页游标无效");
             }
             after = nextCursor;
+            pageNumber++;
         }
+    }
+
+    private JSONObject loadActiveBidPageWithRetry(String after, int pageNumber) {
+        for (int attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
+            ensureNotCancelled();
+            JSONObject page = stockXClient.queryPurchasePage(
+                    StockXPurchaseOperation.BIDS, after, account);
+            if (page != null && page.getBooleanValue("_unauthorized")) {
+                throw new IllegalStateException("TOKEN_EXPIRED");
+            }
+            if (page != null && page.getJSONArray("edges") != null
+                    && page.getJSONObject("pageInfo") != null) {
+                if (attempt > 1) {
+                    taskMapper.updateTaskFailReason(taskId, null);
+                }
+                return page;
+            }
+            if (attempt < MAX_QUERY_ATTEMPTS) {
+                taskMapper.updateTaskFailReason(taskId, "读取当前有效出价第" + pageNumber
+                        + "页失败，2秒后重试（"
+                        + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）");
+                log.warn("[{}] 读取当前有效出价第{}页失败，2秒后重试（{}/{}）, taskId:{}",
+                        account.getName(), pageNumber, attempt,
+                        MAX_QUERY_ATTEMPTS - 1, taskId);
+                waitBeforeNextQueryRetry(QUERY_RETRY_DELAY_MS);
+            }
+        }
+        throw new IllegalStateException("读取当前有效出价第" + pageNumber
+                + "页失败（已重试2次），已停止修改");
     }
 
     private String resolveMetadata(JSONObject node, String primaryKey, String secondaryKey,
@@ -433,6 +460,21 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         while (remaining > 0) {
             ensureNotCancelled();
             long sleepMs = Math.min(remaining, 1000L);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TaskCancelledException();
+            }
+            remaining -= sleepMs;
+        }
+    }
+
+    protected void waitBeforeNextQueryRetry(long delayMs) {
+        long remaining = delayMs;
+        while (remaining > 0) {
+            ensureNotCancelled();
+            long sleepMs = Math.min(remaining, 1_000L);
             try {
                 Thread.sleep(sleepMs);
             } catch (InterruptedException e) {

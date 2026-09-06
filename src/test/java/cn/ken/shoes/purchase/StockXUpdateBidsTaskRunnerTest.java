@@ -93,6 +93,27 @@ class StockXUpdateBidsTaskRunnerTest {
     }
 
     @Test
+    void retriesATransientFailureWhenReadingTheCurrentBidPage() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.transientNullReads = 1;
+        client.activeBids = page(List.of(
+                edge(activeBid("retry-bid", "variant-retry", "80", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+        AtomicReference<String> status = new AtomicReference<>();
+
+        singleRoundRunner(511L, List.of(input("retry-bid", "200")), client,
+                taskMapper(status, new AtomicReference<>()), itemMapper(stored)).run();
+
+        assertThat(client.queryCalls.get()).isEqualTo(2);
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(new BigDecimal("101")));
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult()).isEqualTo("追价已提交($101，上限$200)"));
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.CANCEL.getCode());
+    }
+
+    @Test
     void doesNotChangeAnAlreadyHighestBidOrExceedTheMaximum() {
         FakeStockXClient client = new FakeStockXClient();
         client.activeBids = page(List.of(
@@ -351,6 +372,11 @@ class StockXUpdateBidsTaskRunnerTest {
             protected void waitBeforeNextRound(long delayMs) {
                 throw new cn.ken.shoes.exception.TaskCancelledException();
             }
+
+            @Override
+            protected void waitBeforeNextQueryRetry(long delayMs) {
+                // 测试不真实等待。
+            }
         };
     }
 
@@ -388,11 +414,16 @@ class StockXUpdateBidsTaskRunnerTest {
         private JSONObject activeBids = page(List.of());
         private final List<List<StockXBidUpdateItem>> submitted = new ArrayList<>();
         private final AtomicInteger queryCalls = new AtomicInteger();
+        private int transientNullReads;
 
         @Override
         public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
                                             StockXAccount account) {
             queryCalls.incrementAndGet();
+            if (transientNullReads > 0) {
+                transientNullReads--;
+                return null;
+            }
             return activeBids;
         }
 
