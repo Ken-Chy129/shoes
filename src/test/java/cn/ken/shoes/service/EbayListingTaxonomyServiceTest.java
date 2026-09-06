@@ -157,7 +157,7 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
-    void displaysMensAndWomensUsSizesTogetherWhenEuSizeChartHasBoth() {
+    void usesTheMensStandardSizeWhenEuSizeChartHasBoth() {
         SizeChartDO chart = new SizeChartDO();
         chart.setBrand("Onitsuka Tiger");
         chart.setGender("MENS");
@@ -176,11 +176,11 @@ class EbayListingTaxonomyServiceTest {
                 "15709", "1183C102-751", metadata, "EU", "42.5");
 
         assertThat(resolved.aspects()).containsEntry(
-                "US Shoe Size", List.of("9 Men/10.5 Women"));
+                "US Shoe Size", List.of("9"));
     }
 
     @Test
-    void keepsCombinedSizeWhenEbayCategoryAllowsIt() {
+    void usesAStandardNumericSizeEvenWhenTheAspectIsMarkedFreeText() {
         SizeChartDO chart = new SizeChartDO();
         chart.setBrand("Onitsuka Tiger");
         chart.setGender("MENS");
@@ -192,9 +192,10 @@ class EbayListingTaxonomyServiceTest {
                 .fluentPut("localizedAspectName", "US Shoe Size")
                 .fluentPut("aspectConstraint", new JSONObject(true)
                         .fluentPut("aspectRequired", true)
-                        .fluentPut("aspectMode", "SELECTION_ONLY"))
-                .fluentPut("aspectValues", List.of(new JSONObject(true)
-                        .fluentPut("localizedValue", "9 Men/10.5 Women")));
+                        .fluentPut("aspectMode", "FREE_TEXT"))
+                .fluentPut("aspectValues", List.of(
+                        new JSONObject(true).fluentPut("localizedValue", "9"),
+                        new JSONObject(true).fluentPut("localizedValue", "10.5")));
         when(client.getItemAspectsForCategory("0", "15709"))
                 .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(sizeAspect)));
 
@@ -206,7 +207,7 @@ class EbayListingTaxonomyServiceTest {
                 "15709", "1183C102-751", metadata, "EU", "42.5");
 
         assertThat(resolved.aspects()).containsEntry(
-                "US Shoe Size", List.of("9 Men/10.5 Women"));
+                "US Shoe Size", List.of("9"));
     }
 
     @Test
@@ -232,14 +233,60 @@ class EbayListingTaxonomyServiceTest {
 
         assertThat(resolved.aspects())
                 .containsEntry("Department", List.of("Women"))
-                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+                .containsEntry("US Shoe Size", List.of("10.5"));
 
         EbayListingTaxonomyService.ResolvedTaxonomy resolvedFromWomenSize = service.resolve(
                 "15709", "AH7860-139", metadata, "USW", "10.5");
 
         assertThat(resolvedFromWomenSize.aspects())
                 .containsEntry("Department", List.of("Women"))
-                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+                .containsEntry("US Shoe Size", List.of("10.5"));
+    }
+
+    @Test
+    void infersWomenFromTheTitleWhenLegacyMetadataHasNoGender() {
+        JSONObject department = new JSONObject(true)
+                .fluentPut("localizedAspectName", "Department")
+                .fluentPut("aspectConstraint", new JSONObject(true)
+                        .fluentPut("aspectRequired", true)
+                        .fluentPut("aspectMode", "SELECTION_ONLY"))
+                .fluentPut("aspectValues", List.of(
+                        new JSONObject(true).fluentPut("localizedValue", "Women"),
+                        new JSONObject(true).fluentPut("localizedValue", "Unisex Adults")));
+        when(client.getItemAspectsForCategory("0", "95672"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(department)));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("(WMNS) Nike Air Zoom Vomero 5 Photon Dust");
+        metadata.setGender(null);
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "95672", "FD0884-025", metadata, "USM", "7");
+
+        assertThat(resolved.aspects()).containsEntry("Department", List.of("Women"));
+    }
+
+    @Test
+    void derivesRequiredLegacyAspectsFromTheShoeTitle() {
+        JSONObject style = selectionAspect("Style", true, "Sneaker");
+        JSONObject color = freeTextAspect("Color", true, "Black", "White", "Multicolor");
+        JSONObject upper = freeTextAspect("Upper Material", true, "Leather", "Synthetic");
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true)
+                        .fluentPut("aspects", List.of(style, color, upper)));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Jordan 4 Retro White Thunder");
+        metadata.setProductType(null);
+        metadata.setColor(null);
+        metadata.setColorway(null);
+        metadata.setUpperMaterial(null);
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "FQ8138-001", metadata, "USM", "10");
+
+        assertThat(resolved.aspects())
+                .containsEntry("Style", List.of("Sneaker"))
+                .containsEntry("Color", List.of("White"))
+                .containsEntry("Upper Material", List.of("Leather"));
     }
 
     @Test
@@ -287,6 +334,25 @@ class EbayListingTaxonomyServiceTest {
                                 .fluentPut("aspectRequired", false)
                                 .fluentPut("aspectMode", "FREE_TEXT")))
                 .toList());
+    }
+
+    private JSONObject selectionAspect(String name, boolean required, String... values) {
+        return aspect(name, required, "SELECTION_ONLY", values);
+    }
+
+    private JSONObject freeTextAspect(String name, boolean required, String... values) {
+        return aspect(name, required, "FREE_TEXT", values);
+    }
+
+    private JSONObject aspect(String name, boolean required, String mode, String... values) {
+        return new JSONObject(true)
+                .fluentPut("localizedAspectName", name)
+                .fluentPut("aspectConstraint", new JSONObject(true)
+                        .fluentPut("aspectRequired", required)
+                        .fluentPut("aspectMode", mode))
+                .fluentPut("aspectValues", java.util.Arrays.stream(values)
+                        .map(value -> new JSONObject(true).fluentPut("localizedValue", value))
+                        .toList());
     }
 
     private EbayProductMetadata metadata() {

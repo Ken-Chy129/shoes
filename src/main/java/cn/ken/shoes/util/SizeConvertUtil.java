@@ -150,11 +150,7 @@ public class SizeConvertUtil {
         if (normalizedGender == null) {
             return null;
         }
-        Map<String, List<SizeChartDO>> brandCharts = KC_SIZE_CACHE.entrySet().stream()
-                .filter(entry -> entry.getKey() != null && entry.getKey().equalsIgnoreCase(brand.trim()))
-                .map(Map.Entry::getValue)
-                .findFirst()
-                .orElse(null);
+        Map<String, List<SizeChartDO>> brandCharts = findBrandCharts(brand);
         if (brandCharts == null) {
             return null;
         }

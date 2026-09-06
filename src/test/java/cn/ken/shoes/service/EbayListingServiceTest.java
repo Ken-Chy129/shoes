@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.client.EbayPictureApiClient;
+import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayInventoryLocationRequest;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
@@ -45,7 +46,8 @@ class EbayListingServiceTest {
         EbayProperties properties = new EbayProperties();
         properties.setEnvironment("sandbox");
         service = new EbayListingService(
-                apiClient, properties, new EbayPictureService(pictureApiClient));
+                apiClient, properties, new EbayPictureService(pictureApiClient), ignored -> {
+                });
         when(apiClient.getOffersBySku(anyString())).thenReturn(List.of());
         when(apiClient.getInventoryItemGroup(anyString())).thenReturn(Optional.empty());
     }
@@ -93,6 +95,31 @@ class EbayListingServiceTest {
         assertThat(result.getOfferId()).isEqualTo("offer-123");
         assertThat(result.getListingId()).isEqualTo("listing-456");
         assertThat(result.getEnvironment()).isEqualTo("sandbox");
+    }
+
+    @Test
+    void repairsAvailabilityAndRetriesTransientPublishFailuresWithoutCreatingAnotherOffer() {
+        EbayListingRequest request = listingRequest();
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-123");
+        when(apiClient.publishOffer("offer-123"))
+                .thenThrow(new EbayApiException(
+                        "eBay API request failed (HTTP 400): 25604: Availability not found"))
+                .thenReturn("listing-456");
+
+        EbayListingResult result = service.publish(request);
+
+        assertThat(result.getListingId()).isEqualTo("listing-456");
+        verify(apiClient, times(2)).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-1"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-123"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, times(2)).publishOffer("offer-123");
     }
 
     @Test

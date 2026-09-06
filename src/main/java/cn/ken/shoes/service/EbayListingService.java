@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.model.ebay.EbayInventoryLocationRequest;
@@ -8,6 +9,7 @@ import cn.ken.shoes.model.ebay.EbayListingResult;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,6 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.LongConsumer;
 
 @Service
 public class EbayListingService {
@@ -24,12 +27,20 @@ public class EbayListingService {
     private final EbaySellApiClient apiClient;
     private final EbayProperties properties;
     private final EbayPictureService pictureService;
+    private final LongConsumer retrySleeper;
 
+    @Autowired
     public EbayListingService(EbaySellApiClient apiClient, EbayProperties properties,
                               EbayPictureService pictureService) {
+        this(apiClient, properties, pictureService, EbayListingService::sleep);
+    }
+
+    EbayListingService(EbaySellApiClient apiClient, EbayProperties properties,
+                       EbayPictureService pictureService, LongConsumer retrySleeper) {
         this.apiClient = apiClient;
         this.properties = properties;
         this.pictureService = pictureService;
+        this.retrySleeper = retrySleeper;
     }
 
     public EbayListingResult publish(EbayListingRequest request) {
@@ -44,15 +55,55 @@ public class EbayListingService {
         String listingId;
         if (existing == null) {
             offerId = apiClient.createOffer(payload, request.getContentLanguage());
-            listingId = apiClient.publishOffer(offerId);
+            listingId = publishOfferWithRepair(
+                    offerId, request, hostedImageUrls, payload);
         } else {
             offerId = existing.offerId();
             apiClient.updateOffer(offerId, payload, request.getContentLanguage());
             listingId = existing.published()
                     ? existing.listingId()
-                    : apiClient.publishOffer(offerId);
+                    : publishOfferWithRepair(
+                    offerId, request, hostedImageUrls, payload);
         }
         return new EbayListingResult(request.getSku(), offerId, listingId, properties.getEnvironment());
+    }
+
+    private String publishOfferWithRepair(String offerId, EbayListingRequest request,
+                                          List<String> hostedImageUrls,
+                                          JSONObject offerPayload) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                return apiClient.publishOffer(offerId);
+            } catch (EbayApiException e) {
+                if (attempt == 3 || !isRetryablePublishFailure(e)) {
+                    throw e;
+                }
+                apiClient.createOrReplaceInventoryItem(
+                        request.getSku(), inventoryPayload(request, hostedImageUrls),
+                        request.getContentLanguage());
+                apiClient.updateOffer(
+                        offerId, offerPayload, request.getContentLanguage());
+                retrySleeper.accept(750L * attempt);
+            }
+        }
+        throw new IllegalStateException("eBay发布重试未返回结果");
+    }
+
+    private boolean isRetryablePublishFailure(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && (message.contains("25001:")
+                || message.contains("25004:")
+                || message.contains("25604:")
+                || message.contains("HTTP 500"));
+    }
+
+    private static void sleep(long millis) {
+        try {
+            Thread.sleep(millis);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("eBay发布重试被中断", e);
+        }
     }
 
     public List<EbayListingResult> publishGroup(String inventoryItemGroupKey,

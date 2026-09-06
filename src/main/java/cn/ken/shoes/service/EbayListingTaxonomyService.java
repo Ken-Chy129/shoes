@@ -36,7 +36,7 @@ public class EbayListingTaxonomyService {
         if (metadata == null) {
             throw new IllegalArgumentException("商品资料不能为空");
         }
-        String department = department(sizeSystem, metadata.getGender());
+        String department = department(sizeSystem, metadata.getGender(), metadata.getTitle());
         if ((categoryOverride == null || categoryOverride.isBlank())
                 && "EU".equals(sizeSystem) && department == null) {
             throw new IllegalArgumentException(
@@ -209,11 +209,16 @@ public class EbayListingTaxonomyService {
             // dimension across categories. Athletic shoes expose "US Shoe
             // Size", while soccer cleats (for example category 109133) use
             // the shorter "US Size".
-            case "usshoesize", "ussize" -> usShoeSize(metadata, sizeSystem, sizeValue);
+            case "usshoesize", "ussize" -> usShoeSize(
+                    metadata, sizeSystem, sizeValue, department);
             case "eushoesize", "eusize" -> "EU".equals(sizeSystem) ? sizeValue : null;
-            case "color", "colour", "farbe" -> firstPresent(metadata.getColor(), metadata.getColorway());
-            case "uppermaterial", "obermaterial" -> metadata.getUpperMaterial();
-            case "type", "producttype", "style", "stil", "produktart" -> metadata.getProductType();
+            case "color", "colour", "farbe" -> color(metadata);
+            case "uppermaterial", "obermaterial" -> firstPresent(
+                    metadata.getUpperMaterial(), inferredUpperMaterial(metadata.getTitle()));
+            case "style", "stil" -> firstPresent(
+                    metadata.getProductType(), inferredStyle(metadata.getTitle()));
+            case "type", "producttype", "produktart" -> firstPresent(
+                    metadata.getProductType(), "Athletic");
             case "stylecode", "mpn" -> styleCode;
             case "model", "modell", "modelname", "modellbezeichnung" -> metadata.getModelName();
             case "productline", "produktlinie" -> metadata.getProductLine();
@@ -224,13 +229,22 @@ public class EbayListingTaxonomyService {
 
     private String normalizeAllowedValue(AspectRule rule, String candidate) {
         if (candidate == null || candidate.isBlank() || rule.allowedValues().isEmpty()
-                || !"SELECTION_ONLY".equalsIgnoreCase(rule.mode())) {
+                || !usesStandardValues(rule)) {
             return candidate;
         }
-        return rule.allowedValues().stream()
+        String exact = rule.allowedValues().stream()
                 .filter(value -> value.equalsIgnoreCase(candidate.trim()))
                 .findFirst()
-                .orElseGet(() -> synonym(rule, candidate));
+                .orElse(null);
+        if (exact != null) {
+            return exact;
+        }
+        String normalized = rule.allowedValues().stream()
+                .filter(value -> normalizedValue(value)
+                        .equals(normalizedValue(candidate)))
+                .findFirst()
+                .orElse(null);
+        return normalized != null ? normalized : synonym(rule, candidate);
     }
 
     private String synonym(AspectRule rule, String candidate) {
@@ -251,28 +265,101 @@ public class EbayListingTaxonomyService {
             }
         }
         String normalized = candidate.toLowerCase(Locale.ROOT);
-        if (normalized.contains("sneaker")) {
+        if (isDepartmentAspect(rule.name())) {
+            if (normalized.contains("women") || normalized.contains("female")) {
+                return allowedValue(allowedValues, "Women");
+            }
+            if (normalized.contains("kid") || normalized.contains("youth")
+                    || normalized.contains("grade school")) {
+                return firstAllowedValue(allowedValues,
+                        "Unisex Kids", "Girls", "Boys", "Kids");
+            }
+            if (normalized.contains("unisex")) {
+                return firstAllowedValue(allowedValues, "Unisex Adults", "Unisex");
+            }
+            if (normalized.contains("men") || normalized.contains("male")) {
+                return allowedValue(allowedValues, "Men");
+            }
+        }
+        if (isStyleOrTypeAspect(rule.name())
+                && (normalized.contains("sneaker") || normalized.contains("shoe"))) {
             return allowedValues.stream()
                     .filter(value -> value.equalsIgnoreCase("Sneaker")
                             || value.equalsIgnoreCase("Athletic"))
                     .findFirst().orElse(null);
         }
+        if (isStyleOrTypeAspect(rule.name())
+                && (normalized.contains("slide") || normalized.contains("slipper")
+                || normalized.contains("sandal") || normalized.contains("mule"))) {
+            return firstAllowedValue(allowedValues,
+                    "Slide", "Slides", "Sandal", "Slipper", "Mule", "Athletic");
+        }
         return null;
     }
 
+    private boolean usesStandardValues(AspectRule rule) {
+        return "SELECTION_ONLY".equalsIgnoreCase(rule.mode())
+                || isUsSizeAspect(rule.name())
+                || isColorAspect(rule.name())
+                || isDepartmentAspect(rule.name())
+                || isStyleOrTypeAspect(rule.name())
+                || isUpperMaterialAspect(rule.name());
+    }
+
+    private boolean isUsSizeAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "usshoesize".equals(name) || "ussize".equals(name);
+    }
+
     private boolean isColorAspect(String rawName) {
-        String name = rawName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        String name = normalizedAspectName(rawName);
         return "color".equals(name) || "colour".equals(name) || "farbe".equals(name);
     }
 
-    private String usShoeSize(EbayProductMetadata metadata, String sizeSystem, String sizeValue) {
+    private boolean isDepartmentAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "department".equals(name) || "gender".equals(name) || "abteilung".equals(name);
+    }
+
+    private boolean isStyleOrTypeAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "style".equals(name) || "stil".equals(name)
+                || "type".equals(name) || "producttype".equals(name)
+                || "produktart".equals(name);
+    }
+
+    private boolean isUpperMaterialAspect(String rawName) {
+        String name = normalizedAspectName(rawName);
+        return "uppermaterial".equals(name) || "obermaterial".equals(name);
+    }
+
+    private String normalizedAspectName(String rawName) {
+        return rawName == null ? ""
+                : rawName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private String normalizedValue(String value) {
+        return value == null ? ""
+                : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+    }
+
+    private String usShoeSize(EbayProductMetadata metadata, String sizeSystem,
+                              String sizeValue, String department) {
+        String targetGender = "Women".equals(department) ? "women" : "men";
         if ("EU".equals(sizeSystem)) {
-            return SizeConvertUtil.getKcUsSizeDisplay(
-                    metadata.getBrand(), metadata.getGender(), sizeValue);
+            return SizeConvertUtil.getKcUsSize(
+                    metadata.getBrand(), targetGender, sizeValue);
         }
-        String display = SizeConvertUtil.getKcUsSizeDisplayFromUs(
+        boolean inputMatchesDepartment = ("USW".equals(sizeSystem) && "Women".equals(department))
+                || ("USM".equals(sizeSystem) && !"Women".equals(department));
+        if (inputMatchesDepartment) {
+            return sizeValue;
+        }
+        String euSize = SizeConvertUtil.getKcEuSizeFromUs(
                 metadata.getBrand(), sizeSystem, sizeValue);
-        return display == null || display.isBlank() ? sizeValue : display;
+        String converted = SizeConvertUtil.getKcUsSize(
+                metadata.getBrand(), targetGender, euSize);
+        return converted == null || converted.isBlank() ? sizeValue : converted;
     }
 
     private Map<String, List<String>> fallbackAspects(EbayProductMetadata metadata,
@@ -297,7 +384,7 @@ public class EbayListingTaxonomyService {
         }
     }
 
-    private String department(String sizeSystem, String metadataGender) {
+    private String department(String sizeSystem, String metadataGender, String title) {
         String normalized = metadataGender == null ? "" : metadataGender.toLowerCase(Locale.ROOT);
         if (normalized.contains("women") || normalized.contains("female")) {
             return "Women";
@@ -308,11 +395,66 @@ public class EbayListingTaxonomyService {
         if (normalized.contains("unisex")) {
             return "Unisex Adults";
         }
+        if (normalized.contains("kid") || normalized.contains("youth")
+                || normalized.contains("grade school")) {
+            return "Unisex Kids";
+        }
+        String normalizedTitle = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        if (normalizedTitle.contains("(wmns)") || normalizedTitle.contains("(women")
+                || normalizedTitle.contains(" women's") || normalizedTitle.startsWith("women")) {
+            return "Women";
+        }
+        if (normalizedTitle.contains("(gs)") || normalizedTitle.contains("grade school")
+                || normalizedTitle.contains("(kids)")) {
+            return "Unisex Kids";
+        }
         if ("USW".equals(sizeSystem)) {
             return "Women";
         }
         if ("USM".equals(sizeSystem)) {
             return "Men";
+        }
+        return null;
+    }
+
+    private String color(EbayProductMetadata metadata) {
+        String value = firstPresent(metadata.getColor(),
+                EbayTitleColorExtractor.extract(metadata.getColorway()));
+        value = firstPresent(value, EbayTitleColorExtractor.extract(metadata.getTitle()));
+        return firstPresent(value, "Multicolor");
+    }
+
+    private String inferredStyle(String title) {
+        String normalized = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        if (normalized.contains("slide") || normalized.contains("slipper")
+                || normalized.contains("mule")) {
+            return "Slide";
+        }
+        return "Sneaker";
+    }
+
+    private String inferredUpperMaterial(String title) {
+        String normalized = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        if (normalized.contains("slide") || normalized.contains("foam rnr")
+                || normalized.contains("foam runner") || normalized.contains("clog")) {
+            return "Rubber";
+        }
+        return "Leather";
+    }
+
+    private String allowedValue(List<String> allowedValues, String expected) {
+        return allowedValues.stream()
+                .filter(value -> value.equalsIgnoreCase(expected))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String firstAllowedValue(List<String> allowedValues, String... candidates) {
+        for (String candidate : candidates) {
+            String match = allowedValue(allowedValues, candidate);
+            if (match != null) {
+                return match;
+            }
         }
         return null;
     }
