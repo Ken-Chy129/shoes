@@ -18,6 +18,7 @@ import {
     TASK_TYPE_LABELS,
 } from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
+import {formatRatePercent} from "./taskParamFormat";
 import ExcelFieldHint, {ExcelFieldHintProps} from "@/components/ExcelFieldHint";
 
 interface TaskRecord {
@@ -1244,7 +1245,7 @@ const TaskPage = () => {
         if (k === 'inputCount') return `${v}行`;
         if (k === 'modelNoCount') return `${v}个`;
         if (k === 'feeMonitorEnabled') return v ? '开启' : '关闭';
-        if (k === 'merchantFeeRate' || k === 'transferFeeRate') return `${Number(v) * 100}%`;
+        if (k === 'merchantFeeRate' || k === 'transferFeeRate') return formatRatePercent(v);
         if (k === 'minMerchantFee') return `$${v}`;
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'listingFetchMode') return v === 'excel_search' ? '按Excel货号搜索' : '全量扫描';

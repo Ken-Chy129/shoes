@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { formatRatePercent } = require('./taskParamFormat');
 
 describe('StockX bid fee monitoring UI', () => {
   const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
@@ -39,5 +40,11 @@ describe('StockX bid fee monitoring UI', () => {
     expect(page).toContain("merchantFeeRate: '手续费'");
     expect(page).toContain("minMerchantFee: '最低手续费'");
     expect(page).toContain("transferFeeRate: '转账费'");
+  });
+
+  it('formats fee rates without floating-point noise', () => {
+    expect(formatRatePercent('0.07')).toBe('7%');
+    expect(formatRatePercent(0.075)).toBe('7.5%');
+    expect(formatRatePercent(0)).toBe('0%');
   });
 });
