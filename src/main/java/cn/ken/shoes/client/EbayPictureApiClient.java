@@ -22,6 +22,7 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
 import java.io.IOException;
 import java.io.StringReader;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -54,7 +55,7 @@ public class EbayPictureApiClient {
         this.endpoint = requireSecureEndpoint(endpoint);
     }
 
-    public String uploadExternalPicture(String imageUrl, String pictureName) {
+    public Optional<String> uploadExternalPicture(String imageUrl, String pictureName) {
         String payload = """
                 <?xml version="1.0" encoding="utf-8"?>
                 <UploadSiteHostedPicturesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
@@ -86,10 +87,33 @@ public class EbayPictureApiClient {
             if (!SUCCESS_ACKS.contains(ack) || fullUrl == null || fullUrl.isBlank()) {
                 throw new EbayApiException("eBay图片托管失败：未返回托管地址");
             }
-            return fullUrl.trim();
+            int maxDimension = maxPictureDimension(document);
+            if (maxDimension > 0 && maxDimension < 500) {
+                return Optional.empty();
+            }
+            return Optional.of(fullUrl.trim());
         } catch (IOException e) {
             throw new EbayApiException("eBay图片托管失败：网络异常", e);
         }
+    }
+
+    private int maxPictureDimension(Document document) {
+        return Math.max(maxInteger(document, "PictureHeight"),
+                maxInteger(document, "PictureWidth"));
+    }
+
+    private int maxInteger(Document document, String localName) {
+        NodeList nodes = document.getElementsByTagNameNS("*", localName);
+        int max = 0;
+        for (int i = 0; i < nodes.getLength(); i++) {
+            try {
+                max = Math.max(max,
+                        Integer.parseInt(nodes.item(i).getTextContent().trim()));
+            } catch (NumberFormatException ignored) {
+                // Ignore malformed optional size metadata and retain the hosted image.
+            }
+        }
+        return max;
     }
 
     private Document parseXml(String xml) {

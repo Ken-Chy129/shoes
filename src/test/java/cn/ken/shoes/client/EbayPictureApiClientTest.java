@@ -52,10 +52,10 @@ class EbayPictureApiClientTest {
                 </UploadSiteHostedPicturesResponse>
                 """));
 
-        String hostedUrl = client.uploadExternalPicture(
+        var hostedUrl = client.uploadExternalPicture(
                 "https://cdn.example.com/shoe?a=1&b=2", "DD1391-100-1");
 
-        assertThat(hostedUrl).isEqualTo(
+        assertThat(hostedUrl).contains(
                 "https://i.ebayimg.com/images/g/abc/s-l1600.jpg");
         RecordedRequest request = server.takeRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
@@ -66,6 +66,26 @@ class EbayPictureApiClientTest {
         assertThat(request.getBody().readUtf8())
                 .contains("<ExternalPictureURL>https://cdn.example.com/shoe?a=1&amp;b=2</ExternalPictureURL>")
                 .contains("<PictureName>DD1391-100-1</PictureName>");
+    }
+
+    @Test
+    void marksAnUploadedPictureAsIneligibleWhenItsLongestSideIsBelow500Pixels() {
+        server.enqueue(xmlResponse("""
+                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <SiteHostedPictureDetails>
+                    <FullURL>https://i.ebayimg.com/images/g/small/s-l1600.jpg</FullURL>
+                    <PictureSetMember>
+                      <PictureHeight>476</PictureHeight>
+                      <PictureWidth>476</PictureWidth>
+                    </PictureSetMember>
+                  </SiteHostedPictureDetails>
+                </UploadSiteHostedPicturesResponse>
+                """));
+
+        assertThat(client.uploadExternalPicture(
+                "https://cdn.example.com/small.jpg", "SMALL-1"))
+                .isEmpty();
     }
 
     @Test

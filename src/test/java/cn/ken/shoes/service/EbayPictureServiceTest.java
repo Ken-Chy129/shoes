@@ -4,6 +4,7 @@ import cn.ken.shoes.client.EbayPictureApiClient;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -19,7 +20,8 @@ class EbayPictureServiceTest {
         EbayPictureApiClient client = mock(EbayPictureApiClient.class);
         when(client.uploadExternalPicture(
                 "https://cdn.example.com/shoe.jpg", "SKU-1-1"))
-                .thenReturn("https://i.ebayimg.com/images/g/new/s-l1600.jpg");
+                .thenReturn(Optional.of(
+                        "https://i.ebayimg.com/images/g/new/s-l1600.jpg"));
         EbayPictureService service = new EbayPictureService(client);
 
         List<String> result = service.hostImages(List.of(
@@ -31,6 +33,26 @@ class EbayPictureServiceTest {
                 "https://i.ebayimg.com/images/g/existing/s-l1600.jpg");
         verify(client, never()).uploadExternalPicture(
                 "https://i.ebayimg.com/images/g/existing/s-l1600.jpg", "SKU-1-2");
+    }
+
+    @Test
+    void skipsImagesThatEbayReportsBelowItsMinimumResolution() {
+        EbayPictureApiClient client = mock(EbayPictureApiClient.class);
+        when(client.uploadExternalPicture(
+                "https://cdn.example.com/small.jpg", "SKU-1-1"))
+                .thenReturn(Optional.empty());
+        when(client.uploadExternalPicture(
+                "https://cdn.example.com/large.jpg", "SKU-1-2"))
+                .thenReturn(Optional.of(
+                        "https://i.ebayimg.com/images/g/large/s-l1600.jpg"));
+        EbayPictureService service = new EbayPictureService(client);
+
+        List<String> result = service.hostImages(List.of(
+                "https://cdn.example.com/small.jpg",
+                "https://cdn.example.com/large.jpg"), "SKU-1");
+
+        assertThat(result).containsExactly(
+                "https://i.ebayimg.com/images/g/large/s-l1600.jpg");
     }
 
     @Test

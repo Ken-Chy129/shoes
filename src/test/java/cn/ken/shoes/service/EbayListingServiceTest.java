@@ -42,7 +42,8 @@ class EbayListingServiceTest {
         when(pictureApiClient.uploadExternalPicture(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString()))
-                .thenReturn("https://i.ebayimg.com/images/g/test/s-l1600.jpg");
+                .thenReturn(Optional.of(
+                        "https://i.ebayimg.com/images/g/test/s-l1600.jpg"));
         EbayProperties properties = new EbayProperties();
         properties.setEnvironment("sandbox");
         service = new EbayListingService(

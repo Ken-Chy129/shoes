@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Service
 public class EbayPictureService {
@@ -36,12 +37,20 @@ public class EbayPictureService {
                 hostedUrls.add(sourceUrl);
                 continue;
             }
-            String hostedUrl = apiClient.uploadExternalPicture(
+            Optional<String> hosted = apiClient.uploadExternalPicture(
                     sourceUrl, pictureName(pictureNamePrefix, i + 1));
+            if (hosted.isEmpty()) {
+                continue;
+            }
+            String hostedUrl = hosted.get();
             if (!isEbayHosted(validateImageUrl(hostedUrl))) {
                 throw new EbayApiException("eBay图片托管返回了无效地址");
             }
             hostedUrls.add(hostedUrl);
+        }
+        if (hostedUrls.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "图片分辨率不足，至少一张图片的最长边需达到500像素");
         }
         return List.copyOf(hostedUrls);
     }

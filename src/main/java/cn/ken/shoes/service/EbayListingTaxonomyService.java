@@ -418,7 +418,7 @@ public class EbayListingTaxonomyService {
     }
 
     private String color(EbayProductMetadata metadata) {
-        String value = firstPresent(metadata.getColor(),
+        String value = firstPresent(EbayTitleColorExtractor.extract(metadata.getColor()),
                 EbayTitleColorExtractor.extract(metadata.getColorway()));
         value = firstPresent(value, EbayTitleColorExtractor.extract(metadata.getTitle()));
         return firstPresent(value, "Multicolor");

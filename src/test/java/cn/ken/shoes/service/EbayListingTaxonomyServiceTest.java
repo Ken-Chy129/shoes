@@ -311,6 +311,24 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
+    void fallsBackToTheEnglishTitleWhenTheCachedColorIsNotAnEbayValue() {
+        JSONObject colorAspect = selectionAspect(
+                "Color", true, "Black", "White", "Multicolor");
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true).fluentPut(
+                        "aspects", List.of(colorAspect)));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("adidas Yeezy Boost 350 V2 Cream White Triple White");
+        metadata.setColor("白色");
+        metadata.setColorway("Cwhite/Cwhite/Cwhite");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "CP9366", metadata, "USM", "12");
+
+        assertThat(resolved.aspects()).containsEntry("Color", List.of("White"));
+    }
+
+    @Test
     void keepsStandardShoeFallbackWhenApplicationTokenIsTemporarilyUnavailable() {
         when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
                 .thenThrow(new IllegalStateException("application token unavailable"));
