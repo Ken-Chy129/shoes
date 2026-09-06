@@ -25,6 +25,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -225,6 +226,43 @@ class EbayListingServiceTest {
                 .containsOnly("listing-group-456");
         verify(pictureApiClient).uploadExternalPicture(
                 "https://example.com/shoe.jpg", "group-style-1-1");
+    }
+
+    @Test
+    void retriesTransientInventoryWritesBeforePublishingAGroup() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        doThrow(new EbayApiException(
+                "eBay API request failed (HTTP 400): 25604: Availability not found"))
+                .doNothing()
+                .when(apiClient).createOrReplaceInventoryItem(
+                        org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.eq("en-US"));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9", "offer-10");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        verify(apiClient, times(2)).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, times(2)).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(results)
+                .extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
     }
 
     @Test

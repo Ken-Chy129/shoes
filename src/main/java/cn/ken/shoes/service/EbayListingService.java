@@ -24,6 +24,8 @@ import java.util.function.LongConsumer;
 @Service
 public class EbayListingService {
 
+    private static final int MAX_IDEMPOTENT_WRITE_ATTEMPTS = 5;
+
     private final EbaySellApiClient apiClient;
     private final EbayProperties properties;
     private final EbayPictureService pictureService;
@@ -46,9 +48,7 @@ public class EbayListingService {
     public EbayListingResult publish(EbayListingRequest request) {
         List<String> hostedImageUrls = pictureService.hostImages(
                 request.getImageUrls(), request.getSku());
-        apiClient.createOrReplaceInventoryItem(
-                request.getSku(), inventoryPayload(request, hostedImageUrls),
-                request.getContentLanguage());
+        createOrReplaceInventoryItemWithRetry(request, hostedImageUrls);
         JSONObject payload = offerPayload(request);
         OfferSnapshot existing = findOffer(request.getSku(), request.getMarketplaceId());
         String offerId;
@@ -59,7 +59,8 @@ public class EbayListingService {
                     offerId, request, hostedImageUrls, payload);
         } else {
             offerId = existing.offerId();
-            apiClient.updateOffer(offerId, payload, request.getContentLanguage());
+            updateOfferWithRetry(
+                    offerId, payload, request.getContentLanguage());
             listingId = existing.published()
                     ? existing.listingId()
                     : publishOfferWithRepair(
@@ -78,10 +79,8 @@ public class EbayListingService {
                 if (attempt == 3 || !isRetryablePublishFailure(e)) {
                     throw e;
                 }
-                apiClient.createOrReplaceInventoryItem(
-                        request.getSku(), inventoryPayload(request, hostedImageUrls),
-                        request.getContentLanguage());
-                apiClient.updateOffer(
+                createOrReplaceInventoryItemWithRetry(request, hostedImageUrls);
+                updateOfferWithRetry(
                         offerId, offerPayload, request.getContentLanguage());
                 retrySleeper.accept(750L * attempt);
             }
@@ -150,11 +149,9 @@ public class EbayListingService {
         }
 
         for (EbayListingRequest variant : variants) {
-            apiClient.createOrReplaceInventoryItem(
-                    variant.getSku(), inventoryPayload(variant, hostedImageUrls),
-                    variant.getContentLanguage());
+            createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
         }
-        apiClient.createOrReplaceInventoryItemGroup(
+        createOrReplaceInventoryItemGroupWithRetry(
                 inventoryItemGroupKey,
                 inventoryGroupPayload(
                         variants, groupAspects, hostedImageUrls, existingGroup),
@@ -175,7 +172,7 @@ public class EbayListingService {
                 pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
             } else {
                 offerId = existing.offerId();
-                apiClient.updateOffer(
+                updateOfferWithRetry(
                         offerId, offerPayload(variant), variant.getContentLanguage());
                 if (existing.published()) {
                     listingIds.put(variant.getSku(), existing.listingId());
@@ -208,6 +205,40 @@ public class EbayListingService {
                     properties.getEnvironment()));
         }
         return List.copyOf(results);
+    }
+
+    private void createOrReplaceInventoryItemWithRetry(
+            EbayListingRequest request, List<String> hostedImageUrls) {
+        retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItem(
+                request.getSku(), inventoryPayload(request, hostedImageUrls),
+                request.getContentLanguage()));
+    }
+
+    private void createOrReplaceInventoryItemGroupWithRetry(
+            String inventoryItemGroupKey, JSONObject payload, String contentLanguage) {
+        retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItemGroup(
+                inventoryItemGroupKey, payload, contentLanguage));
+    }
+
+    private void updateOfferWithRetry(
+            String offerId, JSONObject payload, String contentLanguage) {
+        retryIdempotentWrite(() -> apiClient.updateOffer(
+                offerId, payload, contentLanguage));
+    }
+
+    private void retryIdempotentWrite(Runnable operation) {
+        for (int attempt = 1; attempt <= MAX_IDEMPOTENT_WRITE_ATTEMPTS; attempt++) {
+            try {
+                operation.run();
+                return;
+            } catch (EbayApiException e) {
+                if (attempt == MAX_IDEMPOTENT_WRITE_ATTEMPTS
+                        || !isRetryablePublishFailure(e)) {
+                    throw e;
+                }
+                retrySleeper.accept(750L * attempt);
+            }
+        }
     }
 
     public JSONObject getPrerequisites(String marketplaceId) {
