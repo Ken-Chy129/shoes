@@ -13,4 +13,7 @@ public class StockXBidUpdateInputExcel {
 
     @ExcelProperty("价格")
     private BigDecimal price;
+
+    @ExcelProperty("费率配置是否启用")
+    private String feeConfigEnabled;
 }

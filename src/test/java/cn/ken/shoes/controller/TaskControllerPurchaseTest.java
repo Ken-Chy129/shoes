@@ -242,6 +242,7 @@ class TaskControllerPurchaseTest {
         StockXBidUpdateInputExcel row = new StockXBidUpdateInputExcel();
         row.setBidId(bidId);
         row.setPrice(new BigDecimal(price));
+        row.setFeeConfigEnabled("否");
         return row;
     }
 
