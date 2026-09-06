@@ -145,13 +145,16 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                 counters.failed++;
                 continue;
             }
-            Boolean rowFeeEnabled;
-            try {
-                rowFeeEnabled = StockXBidFeePolicy.parseExcelEnabled(input.getFeeConfigEnabled());
-            } catch (IllegalArgumentException e) {
-                insertFailure(round, bidId, price, e.getMessage());
-                counters.failed++;
-                continue;
+            boolean monitorFees = false;
+            if (feePolicy.enabled()) {
+                try {
+                    monitorFees = Boolean.TRUE.equals(
+                            StockXBidFeePolicy.parseExcelEnabled(input.getFeeConfigEnabled()));
+                } catch (IllegalArgumentException e) {
+                    insertFailure(round, bidId, price, e.getMessage());
+                    counters.failed++;
+                    continue;
+                }
             }
             JSONObject node = activeBids.get(normalizedBidId);
             if (node == null) {
@@ -160,8 +163,7 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                 continue;
             }
             prepareBid(round, node, price.stripTrailingZeros(),
-                    feePolicy.enabled() && Boolean.TRUE.equals(rowFeeEnabled),
-                    false, prepared, counters);
+                    monitorFees, false, prepared, counters);
         }
 
         if (feePolicy.enabled() && feePolicy.processOutsideExcel()) {

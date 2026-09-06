@@ -742,17 +742,19 @@ public class TaskController {
             }
             row.setBidId(row.getBidId().trim());
             row.setPrice(price.stripTrailingZeros());
-            Boolean rowFeeEnabled;
-            try {
-                rowFeeEnabled = StockXBidFeePolicy.parseExcelEnabled(row.getFeeConfigEnabled());
-            } catch (IllegalArgumentException e) {
-                return "修改出价Excel第" + excelRow + "行的" + e.getMessage();
-            }
-            if (feeMonitorEnabled && rowFeeEnabled == null) {
-                return "修改出价Excel第" + excelRow + "行的费率配置是否启用必填";
-            }
-            if (rowFeeEnabled != null) {
+            if (feeMonitorEnabled) {
+                Boolean rowFeeEnabled;
+                try {
+                    rowFeeEnabled = StockXBidFeePolicy.parseExcelEnabled(row.getFeeConfigEnabled());
+                } catch (IllegalArgumentException e) {
+                    return "修改出价Excel第" + excelRow + "行的" + e.getMessage();
+                }
+                if (rowFeeEnabled == null) {
+                    return "修改出价Excel第" + excelRow + "行的费率配置是否启用必填";
+                }
                 row.setFeeConfigEnabled(rowFeeEnabled ? "是" : "否");
+            } else {
+                row.setFeeConfigEnabled(null);
             }
             if (!seen.add(row.getBidId().toLowerCase(Locale.ROOT))) {
                 return "修改出价Excel第" + excelRow + "行的出价ID重复";

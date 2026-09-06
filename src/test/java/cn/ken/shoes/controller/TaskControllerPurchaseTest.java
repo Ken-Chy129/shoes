@@ -203,6 +203,24 @@ class TaskControllerPurchaseTest {
     }
 
     @Test
+    void ignoresTheExcelFeeFlagWhenUpdateMonitoringIsDisabled() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startUpdateBids(eq("account-a"), argThat(rows ->
+                        rows.size() == 1 && rows.get(0).getFeeConfigEnabled() == null),
+                eq(300L), argThat(policy -> !policy.enabled())))
+                .thenReturn(111L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startUpdateBids(
+                updateExcelFile("updates.xlsx", List.of(update("bid-123", "77", "任意旧值"))),
+                "account-a", 300L);
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("111");
+    }
+
+    @Test
     void rejectsDuplicateBidIdsInUpdateExcel() throws Exception {
         TaskExecutorManager manager = mock(TaskExecutorManager.class);
         TaskController controller = new TaskController();

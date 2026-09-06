@@ -109,6 +109,24 @@ class StockXUpdateBidsTaskRunnerTest {
     }
 
     @Test
+    void ignoresTheRowFeeFlagWhenTaskMonitoringIsDisabled() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBids = page(List.of(
+                edge(activeBid("legacy", "variant-1", "80", "100", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        singleRoundRunner(507L, List.of(input("legacy", "200", "任意旧值")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()),
+                itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(new BigDecimal("101")));
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult()).isEqualTo("追价已提交($101，上限$200)"));
+    }
+
+    @Test
     void appliesFeeMonitoringOnlyToExcelRowsThatEnableIt() {
         FakeStockXClient client = new FakeStockXClient();
         client.activeBids = page(List.of(

@@ -122,6 +122,7 @@ class TaskInputSnapshotStoreTest {
         StockXBidUpdateInputExcel row = new StockXBidUpdateInputExcel();
         row.setBidId("bid-1");
         row.setPrice(new BigDecimal("88"));
+        row.setFeeConfigEnabled("是");
 
         store.saveUpdateBidsInput(16L, List.of(row));
 
@@ -129,6 +130,7 @@ class TaskInputSnapshotStoreTest {
                 assertThat(rows).singleElement().satisfies(saved -> {
                     assertThat(saved.getBidId()).isEqualTo("bid-1");
                     assertThat(saved.getPrice()).isEqualByComparingTo("88");
+                    assertThat(saved.getFeeConfigEnabled()).isEqualTo("是");
                 }));
     }
 
