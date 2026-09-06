@@ -159,14 +159,17 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         return `${prefix}${value}`;
     };
 
-    const purchaseOperation = useMemo(() => {
+    const purchaseParams = useMemo(() => {
         if (taskType !== 'purchase' || !params) return undefined;
         try {
-            return JSON.parse(params).operation as 'bids' | 'orders' | 'history' | 'create_bids' | 'update_bids' | undefined;
+            return JSON.parse(params);
         } catch {
             return undefined;
         }
     }, [taskType, params]);
+    const purchaseOperation = purchaseParams?.operation as
+        'bids' | 'orders' | 'history' | 'create_bids' | 'update_bids' | undefined;
+    const feeMonitorEnabled = Boolean(purchaseParams?.feeMonitorEnabled);
 
     const productColumns = [
         {
@@ -321,6 +324,18 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             dataIndex: 'currentPrice', key: 'currentPrice', width: 105,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
         },
+        ...(feeMonitorEnabled && (purchaseOperation === 'create_bids' || purchaseOperation === 'update_bids') ? [
+            {
+                title: '现货标价', dataIndex: 'salePrice', key: 'spotAsk', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+        ] : []),
+        ...(feeMonitorEnabled && purchaseOperation === 'create_bids' ? [
+            {
+                title: '盈利上限', dataIndex: 'targetPrice', key: 'profitableBidLimit', width: 105,
+                render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
+            },
+        ] : []),
         ...(purchaseOperation === 'bids' ? [
             {
                 title: '现货价格', dataIndex: 'lowestPrice', key: 'standardLowest', width: 105,
@@ -575,7 +590,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 dataSource={taskItems}
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1700
-                    : taskType === 'purchase' ? 1500
+                        : taskType === 'purchase' ? 1700
                         : taskType === 'model_search' ? 1450
                             : taskType === 'replenishment' ? 1550
                                 : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') ? 1700 : 1130}}

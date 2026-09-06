@@ -100,6 +100,39 @@ const SORT_OPTIONS = [
 
 const CREATE_FORM_LABEL_WIDTH = 120;
 
+const BidFeeMonitorFields = ({includeOutsideExcel = false}: {includeOutsideExcel?: boolean}) => <>
+    <Form.Item name="bidFeeMonitorEnabled" label="费率监控" valuePropName="checked" initialValue={false}
+               extra="开启后会按当前现货标价扣除手续费，拦截不盈利的求购价。">
+        <Switch checkedChildren="开启" unCheckedChildren="关闭"/>
+    </Form.Item>
+    <Form.Item noStyle shouldUpdate={(prev, cur) =>
+        prev.bidFeeMonitorEnabled !== cur.bidFeeMonitorEnabled}>
+        {({getFieldValue}) => getFieldValue('bidFeeMonitorEnabled') ? <>
+            <Form.Item name="bidMerchantFeeRate" label="手续费比例" initialValue={0.07}
+                       rules={[{required: true, message: '请输入手续费比例'}]}
+                       extra="0.07 表示 7%">
+                <InputNumber min={0} max={1} step={0.01} precision={2} style={{width: 220}}/>
+            </Form.Item>
+            <Form.Item name="bidMinMerchantFee" label="最低手续费($)" initialValue={5.79}
+                       rules={[{required: true, message: '请输入最低手续费'}]}>
+                <InputNumber min={0} step={0.01} precision={2} style={{width: 220}}/>
+            </Form.Item>
+            <Form.Item name="bidTransferFeeRate" label="转账费比例" initialValue={0.03}
+                       rules={[{required: true, message: '请输入转账费比例'}]}
+                       extra="0.03 表示 3%">
+                <InputNumber min={0} max={1} step={0.01} precision={2} style={{width: 220}}/>
+            </Form.Item>
+            {includeOutsideExcel && (
+                <Form.Item name="processOutsideExcel" label="处理Excel外商品"
+                           valuePropName="checked" initialValue={false}
+                           extra="开启后，Excel 外的有效出价也会追价；不受最高价限制，但不盈利时会压到 $1。">
+                    <Switch checkedChildren="处理" unCheckedChildren="忽略"/>
+                </Form.Item>
+            )}
+        </> : null}
+    </Form.Item>
+</>;
+
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
@@ -412,7 +445,13 @@ const TaskPage = () => {
                     const file = values.createBidsExcelFile?.[0]?.originFileObj;
                     if (!file) { message.error('请上传创建出价Excel文件'); setCreating(false); return; }
                     doUploadRequestWithParams(TASK_API.START_CREATE_BIDS, file,
-                        {accountId: values.accountId}, {
+                        {
+                            accountId: values.accountId,
+                            feeMonitorEnabled: String(Boolean(values.bidFeeMonitorEnabled)),
+                            merchantFeeRate: String(values.bidMerchantFeeRate ?? 0.07),
+                            minMerchantFee: String(values.bidMinMerchantFee ?? 5.79),
+                            transferFeeRate: String(values.bidTransferFeeRate ?? 0.03),
+                        }, {
                             onSuccess: (res: any) => {
                                 if (!res.success) {
                                     message.error(res.errorMsg || '创建出价任务创建失败');
@@ -430,7 +469,15 @@ const TaskPage = () => {
                     const file = values.updateBidsExcelFile?.[0]?.originFileObj;
                     if (!file) { message.error('请上传修改出价Excel文件'); setCreating(false); return; }
                     doUploadRequestWithParams(TASK_API.START_UPDATE_BIDS, file,
-                        {accountId: values.accountId, interval: values.updateBidsInterval || 300}, {
+                        {
+                            accountId: values.accountId,
+                            interval: values.updateBidsInterval || 300,
+                            feeMonitorEnabled: String(Boolean(values.bidFeeMonitorEnabled)),
+                            merchantFeeRate: String(values.bidMerchantFeeRate ?? 0.07),
+                            minMerchantFee: String(values.bidMinMerchantFee ?? 5.79),
+                            transferFeeRate: String(values.bidTransferFeeRate ?? 0.03),
+                            processOutsideExcel: String(Boolean(values.bidFeeMonitorEnabled && values.processOutsideExcel)),
+                        }, {
                             onSuccess: (res: any) => {
                                 if (!res.success) {
                                     message.error(res.errorMsg || '修改出价任务创建失败');
@@ -1095,12 +1142,14 @@ const TaskPage = () => {
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
                             </Upload>
                         </Form.Item>
+                        <BidFeeMonitorFields/>
                     </> : getFieldValue('purchaseOperation') === 'update_bids' ? <>
                         <Form.Item name="updateBidsExcelFile" label="修改出价Excel" valuePropName="fileList"
                                    getValueFromEvent={(e: any) => e?.fileList}
                                    rules={[{required: true, message: '请上传修改出价Excel'}]}
                                    extra={<ExcelFieldHint
-                                       requirement="填写「出价ID」「价格」两列"
+                                       requirement="填写「出价ID」「价格」；开启费率监控时还需填写「费率配置是否启用」"
+                                       note="行级填写“是”才执行盈利判断；填写“否”保持原有最高价追价逻辑。"
                                    />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>
@@ -1111,6 +1160,7 @@ const TaskPage = () => {
                                    extra="每轮重新读取当前出价和市场最高出价；建议5分钟，最短60秒。">
                             <InputNumber min={60} max={86400} addonAfter="秒" style={{width: 220}}/>
                         </Form.Item>
+                        <BidFeeMonitorFields includeOutsideExcel/>
                     </> : getFieldValue('purchaseOperation') === 'delete_bids' ? <>
                         <Form.Item name="deleteBidsMode" label="撤销范围" initialValue="all">
                             <Radio.Group>
@@ -1168,7 +1218,7 @@ const TaskPage = () => {
     const PARAM_LABELS: Record<string, string> = {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
-        maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
+        maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数',
     };
@@ -1193,6 +1243,9 @@ const TaskPage = () => {
         if (k === 'deleteMode') return v === 'style_ids' ? '指定货号' : '全部撤销';
         if (k === 'inputCount') return `${v}行`;
         if (k === 'modelNoCount') return `${v}个`;
+        if (k === 'feeMonitorEnabled') return v ? '开启' : '关闭';
+        if (k === 'merchantFeeRate' || k === 'transferFeeRate') return `${Number(v) * 100}%`;
+        if (k === 'minMerchantFee') return `$${v}`;
         if (k === 'processOutsideExcel') return v ? '是' : '否';
         if (k === 'listingFetchMode') return v === 'excel_search' ? '按Excel货号搜索' : '全量扫描';
         if (k === 'searchType') return v === 'shoes' ? '鞋类' : '服饰';
