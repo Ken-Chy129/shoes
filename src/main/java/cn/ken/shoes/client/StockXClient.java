@@ -303,8 +303,10 @@ public class StockXClient {
         Set<String> cursors = new HashSet<>();
         Instant cutoff = Instant.now().minus(90, ChronoUnit.DAYS);
         while (true) {
-            JSONObject response = queryReadPro(
-                    buildVariantSalesRequest(variantId, market, after).toJSONString(), market, account);
+            String request = buildVariantSalesRequest(variantId, market, after).toJSONString();
+            JSONObject response = account != null && StrUtil.isNotBlank(account.getApiKey())
+                    ? queryDirectPro(request, market, account)
+                    : queryReadPro(request, market, account);
             if (response == null) {
                 throw new IllegalStateException("StockX成交记录接口无响应");
             }
@@ -338,6 +340,34 @@ public class StockXClient {
             after = next;
         }
         return sales;
+    }
+
+    /** 成交明细为只读请求；直连可避免共享网页代理连接数耗尽导致整项任务失败。 */
+    protected JSONObject queryDirectPro(String body, String country, StockXAccount account) {
+        acquireReadPermit(account.getName());
+        String raw = HttpUtil.doPost(StockXConfig.GRAPHQL, body,
+                buildViperHeaders(account), false);
+        if (StrUtil.isBlank(raw)) {
+            return null;
+        }
+        try {
+            JSONObject response = JSON.parseObject(raw);
+            if (StockXRateLimitGuard.isRateLimited(raw)) {
+                throw new StockXRateLimitException(account.getName(),
+                        StockXReadAccountPool.DEFAULT_READ_COOLDOWN_MS,
+                        "StockX成交记录接口限流", StockXRateLimitType.GENERAL,
+                        StockXRateLimitGuard.matchedSignal(raw));
+            }
+            if (response != null && "Unauthorized".equalsIgnoreCase(response.getString("message"))) {
+                throw new IllegalStateException("StockX Token已过期，请更新Token");
+            }
+            return response;
+        } catch (StockXRateLimitException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("StockX成交记录响应无法解析, bodyLen:{}", raw.length());
+            return null;
+        }
     }
 
     static JSONObject buildVariantSalesRequest(String variantId, String market, String after) {

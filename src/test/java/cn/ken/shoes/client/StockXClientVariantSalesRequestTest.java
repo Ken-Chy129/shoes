@@ -4,10 +4,37 @@ import com.alibaba.fastjson.JSONObject;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StockXClientVariantSalesRequestTest {
+    @Test
+    void usesDirectGraphQlForAccountWithCatalogCredentials() {
+        AtomicBoolean directCalled = new AtomicBoolean();
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryDirectPro(String body, String country, StockXAccount account) {
+                directCalled.set(true);
+                return JSONObject.parseObject("""
+                        {"data":{"variant":{"market":{"sales":{"edges":[],"pageInfo":{}}}}}}
+                        """);
+            }
+
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                throw new AssertionError("配置API Key后成交明细不应走代理");
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-1");
+        account.setApiKey("api-key");
+
+        assertThat(client.queryVariantSales("variant-1", account)).isEmpty();
+        assertThat(directCalled).isTrue();
+    }
+
     @Test
     void buildsTheCurrentStockXProVariantSalesContract() {
         JSONObject request = StockXClient.buildVariantSalesRequest("variant-1", "US", null);
