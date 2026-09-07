@@ -157,7 +157,7 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
-    void displaysMensAndWomensUsSizesTogetherWhenEuSizeChartHasBoth() {
+    void usesTheMensStandardSizeWhenEuSizeChartHasBoth() {
         SizeChartDO chart = new SizeChartDO();
         chart.setBrand("Onitsuka Tiger");
         chart.setGender("MENS");
@@ -175,12 +175,11 @@ class EbayListingTaxonomyServiceTest {
         EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
                 "15709", "1183C102-751", metadata, "EU", "42.5");
 
-        assertThat(resolved.aspects()).containsEntry(
-                "US Shoe Size", List.of("9 Men/10.5 Women"));
+        assertThat(resolved.aspects()).containsEntry("US Shoe Size", List.of("9"));
     }
 
     @Test
-    void keepsTheCombinedSizeWhenTheAspectIsFreeTextWithRecommendedValues() {
+    void avoidsTheCombinedSizeWhenTheCategoryOnlyRecommendsPlainNumbers() {
         SizeChartDO chart = new SizeChartDO();
         chart.setBrand("Onitsuka Tiger");
         chart.setGender("MENS");
@@ -206,12 +205,36 @@ class EbayListingTaxonomyServiceTest {
         EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
                 "15709", "1183C102-751", metadata, "EU", "42.5");
 
+        assertThat(resolved.aspects()).containsEntry("US Shoe Size", List.of("9"));
+    }
+
+    @Test
+    void displaysMensAndWomensUsSizesTogetherWhenTheCategoryListsCombinedLabels() {
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Onitsuka Tiger");
+        chart.setGender("MENS");
+        chart.setEuSize("42.5");
+        chart.setMenUSSize("9");
+        chart.setWomenUSSize("10.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(
+                        selectionAspect("US Shoe Size", true,
+                                "8.5 Men/10 Women", "9 Men/10.5 Women"))));
+
+        EbayProductMetadata metadata = metadata();
+        metadata.setBrand("Onitsuka Tiger");
+        metadata.setGender("mens");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                "15709", "1183C102-751", metadata, "EU", "42.5");
+
         assertThat(resolved.aspects()).containsEntry(
                 "US Shoe Size", List.of("9 Men/10.5 Women"));
     }
 
     @Test
-    void fallsBackToASingleGenderSizeWhenTheCategoryRestrictsSizeValues() {
+    void alignsTheSizeToTheCategoryStandardValues() {
         SizeChartDO chart = new SizeChartDO();
         chart.setBrand("Onitsuka Tiger");
         chart.setGender("MENS");
@@ -256,14 +279,14 @@ class EbayListingTaxonomyServiceTest {
 
         assertThat(resolved.aspects())
                 .containsEntry("Department", List.of("Women"))
-                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+                .containsEntry("US Shoe Size", List.of("10.5"));
 
         EbayListingTaxonomyService.ResolvedTaxonomy resolvedFromWomenSize = service.resolve(
                 "15709", "AH7860-139", metadata, "USW", "10.5");
 
         assertThat(resolvedFromWomenSize.aspects())
                 .containsEntry("Department", List.of("Women"))
-                .containsEntry("US Shoe Size", List.of("9 Men/10.5 Women"));
+                .containsEntry("US Shoe Size", List.of("10.5"));
     }
 
     @Test
