@@ -68,6 +68,9 @@ public class EbayDelistService {
     /**
      * 启动下架任务。
      *
+     * <p>枚举在架商品需要按 SKU 逐个查询 eBay，账号商品多时要好几分钟，
+     * 因此这里只建任务并立即返回，枚举和下架都在后台线程完成。
+     *
      * @param styleIds 需要下架的货号；为空表示下架全部在架商品
      * @return 任务ID；已有下架任务在运行时返回 null
      */
@@ -77,12 +80,6 @@ public class EbayDelistService {
                 "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode());
         if (existing != null || !running.isEmpty()) {
             return null;
-        }
-        List<DelistTarget> listings = resolveActiveListings(targets);
-        if (listings.isEmpty()) {
-            throw new IllegalArgumentException(targets.isEmpty()
-                    ? "没有找到在架的eBay商品"
-                    : "指定货号没有找到在架的eBay商品：" + String.join("、", targets));
         }
 
         TaskDO task = new TaskDO();
@@ -95,20 +92,49 @@ public class EbayDelistService {
         task.setParams(new JSONObject(true)
                 .fluentPut("styleIds", targets)
                 .fluentPut("scope", targets.isEmpty() ? "all" : "style_ids")
-                .fluentPut("plannedCount", listings.size())
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .toJSONString());
         taskMapper.insert(task);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         running.put(task.getId(), cancelled);
         try {
-            executor.execute(() -> run(task.getId(), listings, cancelled));
+            executor.execute(() -> discoverAndRun(task.getId(), targets, cancelled));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
             taskMapper.updateTaskFailed(task.getId(), "下架任务启动失败");
             throw e;
         }
+    }
+
+    /**
+     * 后台枚举在架商品并执行下架。枚举结果为空或枚举本身失败时，
+     * 任务直接标记失败，失败原因写回任务记录。
+     */
+    void discoverAndRun(Long taskId, List<String> targets, AtomicBoolean cancelled) {
+        List<DelistTarget> listings;
+        try {
+            listings = resolveActiveListings(targets);
+        } catch (Exception e) {
+            log.error("eBay下架任务枚举在架商品失败, taskId:{}", taskId, e);
+            taskMapper.updateTaskFailed(taskId, "枚举在架商品失败：" + safeError(e));
+            running.remove(taskId);
+            return;
+        }
+        if (listings.isEmpty()) {
+            taskMapper.updateTaskFailed(taskId, targets.isEmpty()
+                    ? "没有找到在架的eBay商品"
+                    : "指定货号没有找到在架的eBay商品：" + String.join("、", targets));
+            running.remove(taskId);
+            return;
+        }
+        taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+                .fluentPut("total", listings.size())
+                .fluentPut("delisted", 0)
+                .fluentPut("alreadyEnded", 0)
+                .fluentPut("failed", 0)
+                .toJSONString());
+        run(taskId, listings, cancelled);
     }
 
     public void cancel(Long taskId) {

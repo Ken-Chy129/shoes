@@ -22,6 +22,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -76,9 +77,10 @@ class EbayDelistServiceTest {
         verify(ebayClient).withdrawOffer("offer-1");
         verify(ebayClient).withdrawOffer("offer-2");
         verify(taskMapper).updateTaskStatus(7001L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+        // 枚举完成后先写一次总数，跑完再写最终结果，这里断言最终那次。
         ArgumentCaptor<String> attributes = ArgumentCaptor.forClass(String.class);
-        verify(taskMapper).updateTaskAttributes(eq(7001L), attributes.capture());
-        assertThat(attributes.getValue())
+        verify(taskMapper, times(2)).updateTaskAttributes(eq(7001L), attributes.capture());
+        assertThat(attributes.getAllValues().getLast())
                 .contains("\"total\":2")
                 .contains("\"delisted\":2")
                 .contains("\"failed\":0");
@@ -132,14 +134,41 @@ class EbayDelistServiceTest {
     }
 
     @Test
-    void refusesToStartWhenNothingIsListed() {
+    void failsTheTaskWhenNothingIsListed() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
         when(ebayClient.getInventoryItemSkus()).thenReturn(List.of());
 
-        assertThatThrownBy(() -> service.start(List.of()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("没有找到在架的eBay商品");
-        verify(taskMapper, never()).insert(org.mockito.ArgumentMatchers.any(TaskDO.class));
+        assertThat(service.start(List.of())).isEqualTo(7001L);
+
+        verify(taskMapper).updateTaskFailed(eq(7001L), contains("没有找到在架的eBay商品"));
+        verify(ebayClient, never()).withdrawOffer(org.mockito.ArgumentMatchers.anyString());
+        assertThat(service.canRun()).isTrue();
+    }
+
+    @Test
+    void createsTheTaskBeforeEnumeratingSoTheCallerIsNotBlocked() {
+        java.util.List<Runnable> deferred = new java.util.ArrayList<>();
+        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper,
+                ebayClient, new EbayProperties(), deferred::add);
+
+        Long taskId = asyncService.start(List.of());
+
+        assertThat(taskId).isEqualTo(7001L);
+        assertThat(deferred).hasSize(1);
+        // 枚举尚未开始：任务已可见，但还没有调用过 eBay。
+        verify(ebayClient, never()).getInventoryItemSkus();
+    }
+
+    @Test
+    void failsTheTaskWhenEnumeratingActiveListingsBreaks() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayClient.getInventoryItemSkus())
+                .thenThrow(new EbayApiException("eBay API request failed (HTTP 500)"));
+
+        assertThat(service.start(List.of())).isEqualTo(7001L);
+
+        verify(taskMapper).updateTaskFailed(eq(7001L), contains("枚举在架商品失败"));
+        assertThat(service.canRun()).isTrue();
     }
 
     @Test
@@ -180,8 +209,9 @@ class EbayDelistServiceTest {
                         .fluentPut("listing", new JSONObject(true)
                                 .fluentPut("listingStatus", "ENDED"))));
 
-        assertThatThrownBy(() -> service.start(List.of()))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThat(service.start(List.of())).isEqualTo(7001L);
+
+        verify(taskMapper).updateTaskFailed(eq(7001L), contains("没有找到在架的eBay商品"));
         verify(ebayClient, never()).withdrawOffer("offer-ended");
     }
 
