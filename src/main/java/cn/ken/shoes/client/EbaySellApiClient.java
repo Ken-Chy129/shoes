@@ -17,6 +17,7 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -140,10 +141,42 @@ public class EbaySellApiClient {
      * Returns all active offers for the configured marketplace. The Inventory API
      * is paginated, so callers do not need to know the eBay page size.
      */
-    public List<JSONObject> getActiveOffers(String marketplaceId) {
-        return getOffers(builder -> builder
-                .addQueryParameter("marketplace_id", requireValue(marketplaceId, "marketplaceId"))
-                .addQueryParameter("listing_status", "ACTIVE"), false);
+    /**
+     * 读取这些 SKU 下仍在售的 offer。
+     *
+     * <p>eBay 的 {@code GET /offer} 必须带 SKU：只按站点和 listing_status
+     * 过滤会被拒绝（错误码 25707），因此枚举在架商品只能逐个 SKU 查询。
+     * 单个 SKU 查询失败不会中断整批，保证一个坏 SKU 不影响其余商品。
+     */
+    public List<JSONObject> getActiveOffersBySkus(Collection<String> skus) {
+        List<JSONObject> offers = new ArrayList<>();
+        for (String sku : skus == null ? List.<String>of() : skus) {
+            if (sku == null || sku.isBlank()) {
+                continue;
+            }
+            for (JSONObject offer : getOffersBySku(sku)) {
+                if (isActiveOffer(offer)) {
+                    offers.add(offer);
+                }
+            }
+        }
+        return List.copyOf(offers);
+    }
+
+    /**
+     * 判断 offer 是否仍占用一个在售 listing。已结束或从未发布的返回 false。
+     */
+    public boolean isActiveOffer(JSONObject offer) {
+        if (offer == null) {
+            return false;
+        }
+        JSONObject listing = offer.getJSONObject("listing");
+        String listingStatus = listing == null ? null : listing.getString("listingStatus");
+        if (listingStatus != null) {
+            return "ACTIVE".equalsIgnoreCase(listingStatus)
+                    || "OUT_OF_STOCK".equalsIgnoreCase(listingStatus);
+        }
+        return "PUBLISHED".equalsIgnoreCase(offer.getString("status"));
     }
 
     /**

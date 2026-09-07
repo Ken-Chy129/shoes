@@ -47,7 +47,7 @@ class EbayPriceSyncServiceTest {
     void calculatesPriceAndUpdatesOffer() {
         TaskItemDO mapping = mapping();
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping));
-        when(ebayClient.getActiveOffers("EBAY_US")).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
+        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
         PoisonPriceDO price = new PoisonPriceDO();
         price.setModelNo("DD1391-100");
         price.setEuSize("42");
@@ -71,7 +71,7 @@ class EbayPriceSyncServiceTest {
     void setsQuantityToZeroWhenSizeHasNoPoisonPrice() {
         TaskItemDO mapping = mapping();
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping));
-        when(ebayClient.getActiveOffers("EBAY_US")).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 2)));
+        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 2)));
         PoisonPriceDO other = new PoisonPriceDO();
         other.setModelNo("OTHER");
         other.setEuSize("42");
@@ -90,7 +90,7 @@ class EbayPriceSyncServiceTest {
     @Test
     void skipsAllUpdatesWhenPoisonReturnsEmpty() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping()));
-        when(ebayClient.getActiveOffers("EBAY_US")).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
+        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
         when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of());
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
@@ -118,6 +118,24 @@ class EbayPriceSyncServiceTest {
         mapping.setEuSize("42");
         mapping.setTitle("Nike Dunk Low");
         return mapping;
+    }
+
+    @Test
+    void readsOffersByMappedSkuBecauseEbayRejectsAccountWideOfferListing() {
+        TaskItemDO first = mapping();
+        TaskItemDO second = mapping();
+        second.setSku("SKU-2");
+        second.setOfferId("offer-2");
+        when(taskItemMapper.selectEbayListingMappings())
+                .thenReturn(List.of(first, second));
+        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenReturn(List.of());
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        ArgumentCaptor<java.util.Collection<String>> skus =
+                ArgumentCaptor.forClass(java.util.Collection.class);
+        verify(ebayClient).getActiveOffersBySkus(skus.capture());
+        assertThat(skus.getValue()).containsExactly("SKU-1", "SKU-2");
     }
 
     private JSONObject offer(String offerId, String sku, String price, int quantity) {

@@ -19,6 +19,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -112,9 +113,8 @@ public class EbayPriceSyncService {
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier, int round) {
         List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
-        List<JSONObject> offers = ebayClient.getActiveOffers(properties.getDefaultMarketplaceId());
         Map<String, TaskItemDO> byOfferId = new HashMap<>();
-        Map<String, TaskItemDO> bySku = new HashMap<>();
+        Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
         for (TaskItemDO mapping : mappings == null ? List.<TaskItemDO>of() : mappings) {
             if (mapping.getOfferId() != null) {
                 byOfferId.putIfAbsent(mapping.getOfferId(), mapping);
@@ -123,6 +123,12 @@ public class EbayPriceSyncService {
                 bySku.putIfAbsent(mapping.getSku(), mapping);
             }
         }
+        /*
+         * 只按已上架映射的 SKU 查 offer。eBay 不允许按站点直接列出全部
+         * offer（错误码 25707），而改价本来也只处理有映射的商品，
+         * 因此按 SKU 查询既是唯一可行方式，也避免了扫描无关库存。
+         */
+        List<JSONObject> offers = ebayClient.getActiveOffersBySkus(bySku.keySet());
 
         List<OfferContext> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();

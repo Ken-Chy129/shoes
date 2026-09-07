@@ -13,6 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -196,26 +197,45 @@ class EbaySellApiClientTest {
     }
 
     @Test
-    void readsActiveOffersWithPaginationAndUpdatesAnOffer() throws Exception {
-        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-1\",\"sku\":\"SKU-1\"}],\"total\":2}"));
-        server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-2\",\"sku\":\"SKU-2\"}],\"total\":2}"));
+    void readsActiveOffersBySkuAndUpdatesAnOffer() throws Exception {
+        server.enqueue(jsonResponse("""
+                {"offers":[{"offerId":"offer-1","sku":"SKU-1",
+                  "listing":{"listingStatus":"ACTIVE"}}],"total":1}
+                """));
+        server.enqueue(jsonResponse("""
+                {"offers":[{"offerId":"offer-2","sku":"SKU-2",
+                  "listing":{"listingStatus":"ENDED"}}],"total":1}
+                """));
         server.enqueue(new MockResponse().setResponseCode(204));
 
-        assertThat(client.getActiveOffers("EBAY_US")).extracting(o -> o.getString("offerId"))
-                .containsExactly("offer-1", "offer-2");
+        assertThat(client.getActiveOffersBySkus(List.of("SKU-1", "SKU-2")))
+                .extracting(o -> o.getString("offerId"))
+                .containsExactly("offer-1");
         JSONObject payload = JSON.parseObject("""
                 {"sku":"SKU-1","availableQuantity":0,"pricingSummary":{"price":{"currency":"USD","value":"10.00"}}}
                 """);
         client.updateOffer("offer-1", payload, "en-US");
 
         assertThat(server.takeRequest().getPath())
-                .isEqualTo("/sell/inventory/v1/offer?marketplace_id=EBAY_US&listing_status=ACTIVE&limit=200&offset=0");
+                .isEqualTo("/sell/inventory/v1/offer?sku=SKU-1&limit=200&offset=0");
         assertThat(server.takeRequest().getPath())
-                .isEqualTo("/sell/inventory/v1/offer?marketplace_id=EBAY_US&listing_status=ACTIVE&limit=200&offset=1");
+                .isEqualTo("/sell/inventory/v1/offer?sku=SKU-2&limit=200&offset=0");
         RecordedRequest update = server.takeRequest();
         assertThat(update.getMethod()).isEqualTo("PUT");
         assertThat(update.getPath()).isEqualTo("/sell/inventory/v1/offer/offer-1");
         assertThat(JSON.parseObject(update.getBody().readUtf8())).isEqualTo(payload);
+    }
+
+    @Test
+    void treatsAPublishedOfferWithoutListingDetailAsActive() {
+        assertThat(client.isActiveOffer(JSON.parseObject(
+                "{\"offerId\":\"offer-1\",\"status\":\"PUBLISHED\"}"))).isTrue();
+        assertThat(client.isActiveOffer(JSON.parseObject(
+                "{\"offerId\":\"offer-2\",\"status\":\"UNPUBLISHED\"}"))).isFalse();
+        assertThat(client.isActiveOffer(JSON.parseObject("""
+                {"offerId":"offer-3","status":"PUBLISHED",
+                 "listing":{"listingStatus":"OUT_OF_STOCK"}}
+                """))).isTrue();
     }
 
     @Test

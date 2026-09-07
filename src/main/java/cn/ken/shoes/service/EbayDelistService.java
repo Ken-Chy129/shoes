@@ -187,7 +187,7 @@ public class EbayDelistService {
         Map<String, DelistTarget> byOfferId = new LinkedHashMap<>();
         for (String sku : ebayClient.getInventoryItemSkus()) {
             for (JSONObject offer : ebayClient.getOffersBySku(sku)) {
-                if (offer == null || !isActive(offer)) {
+                if (offer == null || !ebayClient.isActiveOffer(offer)) {
                     continue;
                 }
                 String offerId = offer.getString("offerId");
@@ -216,19 +216,6 @@ public class EbayDelistService {
             }
         }
         return bySku;
-    }
-
-    /**
-     * 只有已发布且仍在售的 offer 需要下架；已结束或未发布的直接跳过。
-     */
-    private boolean isActive(JSONObject offer) {
-        JSONObject listing = offer.getJSONObject("listing");
-        String listingStatus = listing == null ? null : listing.getString("listingStatus");
-        if (listingStatus != null) {
-            return "ACTIVE".equalsIgnoreCase(listingStatus)
-                    || "OUT_OF_STOCK".equalsIgnoreCase(listingStatus);
-        }
-        return "PUBLISHED".equalsIgnoreCase(offer.getString("status"));
     }
 
     private String listingId(JSONObject offer) {

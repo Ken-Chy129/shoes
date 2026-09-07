@@ -37,6 +37,22 @@ class EbayDelistServiceTest {
         taskMapper = mock(TaskMapper.class);
         taskItemMapper = mock(TaskItemMapper.class);
         ebayClient = mock(EbaySellApiClient.class);
+        // 在架判定由客户端统一实现，这里沿用真实逻辑而不是当成桩方法。
+        when(ebayClient.isActiveOffer(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(invocation -> {
+                    JSONObject offer = invocation.getArgument(0);
+                    if (offer == null) {
+                        return false;
+                    }
+                    JSONObject listing = offer.getJSONObject("listing");
+                    String listingStatus = listing == null
+                            ? null : listing.getString("listingStatus");
+                    if (listingStatus != null) {
+                        return "ACTIVE".equalsIgnoreCase(listingStatus)
+                                || "OUT_OF_STOCK".equalsIgnoreCase(listingStatus);
+                    }
+                    return "PUBLISHED".equalsIgnoreCase(offer.getString("status"));
+                });
         doAnswer(invocation -> {
             invocation.<TaskDO>getArgument(0).setId(7001L);
             return 1;
