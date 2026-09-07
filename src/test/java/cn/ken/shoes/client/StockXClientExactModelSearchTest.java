@@ -102,6 +102,9 @@ class StockXClientExactModelSearchTest {
             assertThat(item.getStandardPrice()).isEqualTo(300);
             assertThat(item.getFlexPrice()).isEqualTo(315);
             assertThat(item.getLast90DaysSales()).isEqualTo(826);
+            assertThat(item.getAveragePrice90Days()).isEqualByComparingTo("173");
+            assertThat(item.getSalesCount90Days()).isEqualTo(826);
+            assertThat(item.getAveragePrice30Days()).isNull();
         });
         assertThat(client.calls).containsExactly(
                 "search:ALIAS-1", "product:wrong-product", "product:exact-product", "market:exact-product");

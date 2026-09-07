@@ -89,6 +89,22 @@ class TaskInputSnapshotStoreTest {
     }
 
     @Test
+    void roundTripsPurchaseGuidanceInput() {
+        TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
+        ModelNoSearchExcel row = new ModelNoSearchExcel();
+        row.setModelNo("DD1391-100");
+        row.setSize("EU 44");
+
+        store.savePurchaseGuidanceInput(19L, List.of(row));
+
+        assertThat(store.loadPurchaseGuidanceInput(19L)).hasValueSatisfying(rows ->
+                assertThat(rows).singleElement().satisfies(saved -> {
+                    assertThat(saved.getModelNo()).isEqualTo("DD1391-100");
+                    assertThat(saved.getSize()).isEqualTo("EU 44");
+                }));
+    }
+
+    @Test
     void missingTaskInputReturnsEmptyOptional() {
         TaskInputSnapshotStore store = new TaskInputSnapshotStore(tempDir);
 
@@ -96,6 +112,7 @@ class TaskInputSnapshotStoreTest {
         assertThat(store.loadDelist(99L)).isEmpty();
         assertThat(store.loadCreateBidsInput(99L)).isEmpty();
         assertThat(store.loadDeleteBidsInput(99L)).isEmpty();
+        assertThat(store.loadPurchaseGuidanceInput(99L)).isEmpty();
     }
 
     @Test

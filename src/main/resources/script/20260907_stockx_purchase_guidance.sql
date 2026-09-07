@@ -1,0 +1,15 @@
+ALTER TABLE task_item
+    ADD COLUMN average_sale_price_7d DECIMAL(10,2) NULL COMMENT 'StockX最近7天平均成交价' AFTER second_highest_bid_count,
+    ADD COLUMN median_sale_price_7d DECIMAL(10,2) NULL COMMENT 'StockX最近7天成交中位价' AFTER average_sale_price_7d,
+    ADD COLUMN sales_count_7d INT NULL COMMENT 'StockX最近7天成交量' AFTER median_sale_price_7d,
+    ADD COLUMN average_sale_price_30d DECIMAL(10,2) NULL COMMENT 'StockX最近30天平均成交价' AFTER sales_count_7d,
+    ADD COLUMN median_sale_price_30d DECIMAL(10,2) NULL COMMENT 'StockX最近30天成交中位价' AFTER average_sale_price_30d,
+    ADD COLUMN sales_count_30d INT NULL COMMENT 'StockX最近30天成交量' AFTER median_sale_price_30d,
+    ADD COLUMN average_sale_price_90d DECIMAL(10,2) NULL COMMENT 'StockX最近90天平均成交价' AFTER sales_count_30d,
+    ADD COLUMN median_sale_price_90d DECIMAL(10,2) NULL COMMENT 'StockX最近90天成交中位价' AFTER average_sale_price_90d,
+    ADD COLUMN sales_count_90d INT NULL COMMENT 'StockX最近90天成交量' AFTER median_sale_price_90d,
+    ADD COLUMN recommended_bid DECIMAL(10,2) NULL COMMENT 'StockX建议出价' AFTER sales_count_90d,
+    ADD COLUMN reference_sale_price DECIMAL(10,2) NULL COMMENT '建议所用成交参考价' AFTER recommended_bid,
+    ADD COLUMN reference_price_label VARCHAR(32) NULL COMMENT '成交参考价说明' AFTER reference_sale_price,
+    ADD COLUMN sales_activity VARCHAR(16) NULL COMMENT '成交活跃度' AFTER reference_price_label,
+    ADD COLUMN sales_trend VARCHAR(16) NULL COMMENT '近期走势' AFTER sales_activity;

@@ -78,6 +78,7 @@ public class TaskDO {
         EBAY_BULK_LISTING("eBay批量上架", "ebay_bulk_listing"),
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
         EBAY_DELIST("eBay下架", "ebay_delist"),
+        PURCHASE_GUIDANCE("购买价格参考", "purchase_guidance"),
         ;
 
         private final String name;

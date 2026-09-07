@@ -147,6 +147,48 @@ public class TaskItemDO {
     @TableField("second_highest_bid_count")
     private Integer secondHighestBidCount;
 
+    @TableField("average_sale_price_7d")
+    private BigDecimal averageSalePrice7d;
+
+    @TableField("median_sale_price_7d")
+    private BigDecimal medianSalePrice7d;
+
+    @TableField("sales_count_7d")
+    private Integer salesCount7d;
+
+    @TableField("average_sale_price_30d")
+    private BigDecimal averageSalePrice30d;
+
+    @TableField("median_sale_price_30d")
+    private BigDecimal medianSalePrice30d;
+
+    @TableField("sales_count_30d")
+    private Integer salesCount30d;
+
+    @TableField("average_sale_price_90d")
+    private BigDecimal averageSalePrice90d;
+
+    @TableField("median_sale_price_90d")
+    private BigDecimal medianSalePrice90d;
+
+    @TableField("sales_count_90d")
+    private Integer salesCount90d;
+
+    @TableField("recommended_bid")
+    private BigDecimal recommendedBid;
+
+    @TableField("reference_sale_price")
+    private BigDecimal referenceSalePrice;
+
+    @TableField("reference_price_label")
+    private String referencePriceLabel;
+
+    @TableField("sales_activity")
+    private String salesActivity;
+
+    @TableField("sales_trend")
+    private String salesTrend;
+
     /**
      * 本次请求的上架数量
      */

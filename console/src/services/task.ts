@@ -6,6 +6,7 @@ const TASK_TYPE = {
     EXCEL_DELIST: 'excel_delist',
     MODEL_SEARCH: 'model_search',
     PURCHASE: 'purchase',
+    PURCHASE_GUIDANCE: 'purchase_guidance',
     EXTEND_SHIPPING: 'extend_shipping',
     REPLENISHMENT: 'replenishment',
     EBAY_BULK_LISTING: 'ebay_bulk_listing',
@@ -52,6 +53,7 @@ enum TASK_API {
     START_UPDATE_BIDS = '/api/task/stockx/startUpdateBids',
     // StockX 按指定货号撤销出价（Excel：货号）
     START_DELETE_BIDS = '/api/task/stockx/startDeleteBids',
+    START_PURCHASE_GUIDANCE = '/api/task/stockx/startPurchaseGuidance',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）

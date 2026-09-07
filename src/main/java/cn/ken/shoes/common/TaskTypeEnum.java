@@ -17,6 +17,7 @@ public enum TaskTypeEnum {
     MODEL_SEARCH("model_search", "货号搜索上架", true),
     FETCH_ORDERS("fetch_orders", "获取订单", false),
     PURCHASE("purchase", "购买", false),
+    PURCHASE_GUIDANCE("purchase_guidance", "购买价格参考", false),
     EXTEND_SHIPPING("extend_shipping", "订单延期", false),
     REPLENISHMENT("replenishment", "补单", false),
     EBAY_BULK_LISTING("ebay_bulk_listing", "eBay批量上架", false),

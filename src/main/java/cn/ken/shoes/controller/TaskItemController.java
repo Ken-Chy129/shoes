@@ -11,6 +11,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
+import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
 import cn.ken.shoes.model.excel.EbayListingTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
@@ -131,6 +132,29 @@ public class TaskItemController {
             EasyExcel.write(response.getOutputStream(), StockXOrderTaskExcel.class)
                     .sheet("订单明细")
                     .doWrite(orderExcelList);
+            return;
+        }
+
+        if (task != null && TaskTypeEnum.PURCHASE_GUIDANCE.getCode().equals(task.getTaskType())) {
+            List<StockXPurchaseGuidanceExcel> rows = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                StockXPurchaseGuidanceExcel row = new StockXPurchaseGuidanceExcel();
+                row.setStyleId(item.getStyleId()); row.setSize(item.getSize()); row.setEuSize(item.getEuSize());
+                row.setTitle(item.getTitle()); row.setVariantId(item.getProductId());
+                row.setHighestBidPrice(item.getHighestBidPrice()); row.setLowestAskPrice(item.getLowestPrice());
+                row.setFlexLowestAskPrice(item.getFlexLowestPrice());
+                row.setLatestSalePrice(item.getSalePrice()); row.setLatestSaleAt(item.getSoldOn());
+                row.setAveragePrice7d(item.getAverageSalePrice7d()); row.setMedianPrice7d(item.getMedianSalePrice7d());
+                row.setSalesCount7d(item.getSalesCount7d()); row.setAveragePrice30d(item.getAverageSalePrice30d());
+                row.setMedianPrice30d(item.getMedianSalePrice30d()); row.setSalesCount30d(item.getSalesCount30d());
+                row.setAveragePrice90d(item.getAverageSalePrice90d()); row.setMedianPrice90d(item.getMedianSalePrice90d());
+                row.setSalesCount90d(item.getSalesCount90d()); row.setRecommendedBid(item.getRecommendedBid());
+                row.setReferencePriceLabel(item.getReferencePriceLabel()); row.setReferenceSalePrice(item.getReferenceSalePrice());
+                row.setSalesTrend(item.getSalesTrend()); row.setSalesActivity(item.getSalesActivity());
+                row.setReason(item.getOperateResult()); rows.add(row);
+            }
+            EasyExcel.write(response.getOutputStream(), StockXPurchaseGuidanceExcel.class)
+                    .sheet("购买价格参考").doWrite(rows);
             return;
         }
 

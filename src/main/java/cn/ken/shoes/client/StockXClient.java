@@ -24,6 +24,7 @@ import cn.ken.shoes.model.stockx.StockXBidUpdateItem;
 import cn.ken.shoes.model.stockx.StockXBidBatch;
 import cn.ken.shoes.model.stockx.StockXBidDeleteItem;
 import cn.ken.shoes.model.stockx.StockXBidDeleteResult;
+import cn.ken.shoes.model.stockx.StockXSale;
 import cn.ken.shoes.util.BrandUtil;
 import cn.ken.shoes.util.HttpUtil;
 import cn.ken.shoes.util.LimiterHelper;
@@ -291,6 +292,60 @@ public class StockXClient {
             result.put(variantIds.get(i), market);
         }
         return result;
+    }
+
+    public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+        if (StrUtil.isBlank(variantId)) return Collections.emptyList();
+        String market = StrUtil.blankToDefault(account != null ? account.getCountry() : null, "US");
+        List<StockXSale> sales = new ArrayList<>();
+        String after = null;
+        Set<String> cursors = new HashSet<>();
+        Instant cutoff = Instant.now().minus(90, ChronoUnit.DAYS);
+        while (true) {
+            JSONObject response = queryReadPro(
+                    buildVariantSalesRequest(variantId, market, after).toJSONString(), market, account);
+            if (response == null) {
+                throw new IllegalStateException("StockX成交记录接口无响应");
+            }
+            JSONArray errors = response.getJSONArray("errors");
+            if (errors != null && !errors.isEmpty()) {
+                String message = errors.getJSONObject(0) != null
+                        ? errors.getJSONObject(0).getString("message") : null;
+                throw new IllegalStateException("StockX成交记录查询失败: "
+                        + StrUtil.blankToDefault(message, "未知错误"));
+            }
+            JSONObject data = response != null ? response.getJSONObject("data") : null;
+            JSONObject variant = data != null ? data.getJSONObject("variant") : null;
+            JSONObject marketData = variant != null ? variant.getJSONObject("market") : null;
+            JSONObject connection = marketData != null ? marketData.getJSONObject("sales") : null;
+            JSONArray edges = connection != null ? connection.getJSONArray("edges") : null;
+            if (edges == null) {
+                throw new IllegalStateException("StockX成交记录响应缺少sales字段");
+            }
+            boolean reachedCutoff = false;
+            for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
+                JSONObject node = edge.getJSONObject("node");
+                if (node == null || node.getBigDecimal("amount") == null || StrUtil.isBlank(node.getString("createdAt"))) continue;
+                Instant createdAt = Instant.parse(node.getString("createdAt"));
+                if (createdAt.isBefore(cutoff)) reachedCutoff = true;
+                else sales.add(new StockXSale(node.getBigDecimal("amount"), createdAt));
+            }
+            JSONObject pageInfo = connection.getJSONObject("pageInfo");
+            String next = pageInfo != null ? pageInfo.getString("endCursor") : null;
+            if (reachedCutoff || StrUtil.isBlank(next)) break;
+            if (!cursors.add(next)) throw new IllegalStateException("成交记录分页游标重复");
+            after = next;
+        }
+        return sales;
+    }
+
+    static JSONObject buildVariantSalesRequest(String variantId, String market, String after) {
+        return new JSONObject(true)
+                .fluentPut("operationName", "VariantSales")
+                .fluentPut("variables", new JSONObject(true).fluentPut("id", variantId)
+                        .fluentPut("currencyCode", "USD").fluentPut("market", market)
+                        .fluentPut("after", after).fluentPut("viewerContext", "BUYER"))
+                .fluentPut("query", "query VariantSales($id:String!,$currencyCode:CurrencyCode,$market:String,$after:String,$viewerContext:MarketViewerContext){variant(id:$id){id market(currencyCode:$currencyCode){currencyCode sales(market:$market,after:$after,viewerContext:$viewerContext){edges{cursor node{amount createdAt orderType}} pageInfo{total startCursor endCursor}}}}}");
     }
 
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
@@ -1226,14 +1281,43 @@ public class StockXClient {
                 excel.setLast72HoursSales(Optional.ofNullable(mvMarket.getJSONObject("salesInformation").getInteger("salesLast72Hours")).orElse(0));
             }
             if (mvMarket != null && mvMarket.getJSONObject("statistics") != null) {
-                excel.setLast90DaysSales(Optional.ofNullable(mvMarket.getJSONObject("statistics")
-                                .getJSONObject("last90Days"))
-                        .map(statistics -> statistics.getInteger("salesCount"))
-                        .orElse(0));
+                JSONObject statistics = mvMarket.getJSONObject("statistics");
+                applySaleWindow(excel, statistics.getJSONObject("last7Days"), 7);
+                applySaleWindow(excel, statistics.getJSONObject("last30Days"), 30);
+                applySaleWindow(excel, statistics.getJSONObject("last90Days"), 90);
+                excel.setLast90DaysSales(excel.getSalesCount90Days() != null
+                        ? excel.getSalesCount90Days() : 0);
             }
             itemResult.add(excel);
         }
         return itemResult;
+    }
+
+    private static void applySaleWindow(StockXPriceExcel excel, JSONObject statistics, int days) {
+        if (statistics == null) {
+            return;
+        }
+        BigDecimal average = statistics.getBigDecimal("averagePrice");
+        BigDecimal median = statistics.getBigDecimal("medianPrice");
+        Integer count = statistics.getInteger("salesCount");
+        switch (days) {
+            case 7 -> {
+                excel.setAveragePrice7Days(average);
+                excel.setMedianPrice7Days(median);
+                excel.setSalesCount7Days(count);
+            }
+            case 30 -> {
+                excel.setAveragePrice30Days(average);
+                excel.setMedianPrice30Days(median);
+                excel.setSalesCount30Days(count);
+            }
+            case 90 -> {
+                excel.setAveragePrice90Days(average);
+                excel.setMedianPrice90Days(median);
+                excel.setSalesCount90Days(count);
+            }
+            default -> throw new IllegalArgumentException("不支持的成交统计区间: " + days);
+        }
     }
 
     private String getUsSize(SearchTypeEnum searchTypeEnum, Map<String, String> sizeMap) {

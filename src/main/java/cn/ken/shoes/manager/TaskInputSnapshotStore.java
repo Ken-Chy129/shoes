@@ -35,6 +35,7 @@ public class TaskInputSnapshotStore {
     private static final String CREATE_BIDS_FILE = "create-bids.json";
     private static final String UPDATE_BIDS_FILE = "update-bids.json";
     private static final String DELETE_BIDS_FILE = "delete-bids.json";
+    private static final String PURCHASE_GUIDANCE_FILE = "purchase-guidance.json";
     private static final String EBAY_BULK_LISTING_FILE = "ebay-bulk-listing.json";
 
     private final Path root;
@@ -148,6 +149,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<StockXBidDeleteInputExcel>> loadDeleteBidsInput(Long taskId) {
         return loadList(taskId, DELETE_BIDS_FILE, StockXBidDeleteInputExcel.class, "指定货号撤销出价");
+    }
+
+    public void savePurchaseGuidanceInput(Long taskId, List<ModelNoSearchExcel> input) {
+        write(taskPath(taskId, PURCHASE_GUIDANCE_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<ModelNoSearchExcel>> loadPurchaseGuidanceInput(Long taskId) {
+        return loadList(taskId, PURCHASE_GUIDANCE_FILE, ModelNoSearchExcel.class, "购买价格参考");
     }
 
     public void saveEbayBulkListingInput(Long taskId, List<EbayListingExcel> input) {

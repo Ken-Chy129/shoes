@@ -419,6 +419,11 @@ public class TaskExecutorManager {
                 }
                 yield operation != null ? startPurchase(account, operation) : null;
             }
+            case PURCHASE_GUIDANCE -> {
+                var snapshot = taskInputSnapshotStore.loadPurchaseGuidanceInput(source.getId());
+                yield snapshot.isPresent() && !snapshot.get().isEmpty()
+                        ? startPurchaseGuidance(account, snapshot.get()) : null;
+            }
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
             case EBAY_BULK_LISTING -> null;
@@ -426,6 +431,33 @@ public class TaskExecutorManager {
                     params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
         };
+    }
+
+    public Long startPurchaseGuidance(String accountId, List<ModelNoSearchExcel> rows) {
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null || rows == null || rows.isEmpty()) return null;
+        List<ModelNoSearchExcel> snapshot = rows.stream().filter(row -> row != null
+                        && StrUtil.isNotBlank(row.getModelNo()) && StrUtil.isNotBlank(row.getSize()))
+                .map(row -> {
+                    ModelNoSearchExcel copy = new ModelNoSearchExcel();
+                    copy.setModelNo(row.getModelNo().trim());
+                    copy.setSize(row.getSize().trim());
+                    return copy;
+                }).toList();
+        if (snapshot.isEmpty()) return null;
+        Long taskId = createTask("stockx", TaskTypeEnum.PURCHASE_GUIDANCE.getCode(), account.getName(),
+                new JSONObject(true).fluentPut("inputCount", snapshot.size()).toJSONString());
+        try {
+            taskInputSnapshotStore.savePurchaseGuidanceInput(taskId, snapshot);
+        } catch (RuntimeException e) {
+            taskMapper.deleteById(taskId);
+            throw e;
+        }
+        TaskSwitch.markSearchListRunning(taskId);
+        TaskSwitch.resetSearchListCancel(taskId);
+        new Thread(new StockXPurchaseGuidanceTaskRunner(account, taskId, snapshot, stockXClient,
+                taskMapper, taskItemMapper), "StockX-Purchase-Guidance-" + taskId).start();
+        return taskId;
     }
 
     public Long startEbayDelist(java.util.List<String> styleIds) {

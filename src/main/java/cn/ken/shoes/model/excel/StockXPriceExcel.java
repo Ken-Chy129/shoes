@@ -3,6 +3,8 @@ package cn.ken.shoes.model.excel;
 import com.alibaba.excel.annotation.ExcelProperty;
 import lombok.Data;
 
+import java.math.BigDecimal;
+
 /**
  * @author Ken-Chy129
  * @date 2025/6/15
@@ -49,6 +51,24 @@ public class StockXPriceExcel {
 
     @ExcelProperty("绿叉90天销量")
     private Integer last90DaysSales;
+
+    private BigDecimal averagePrice7Days;
+
+    private BigDecimal medianPrice7Days;
+
+    private Integer salesCount7Days;
+
+    private BigDecimal averagePrice30Days;
+
+    private BigDecimal medianPrice30Days;
+
+    private Integer salesCount30Days;
+
+    private BigDecimal averagePrice90Days;
+
+    private BigDecimal medianPrice90Days;
+
+    private Integer salesCount90Days;
 
     @ExcelProperty("得物价格")
     private Integer poisonPrice;

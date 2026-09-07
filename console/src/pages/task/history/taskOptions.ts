@@ -6,6 +6,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   fetch_listings: '获取上架商品',
   fetch_orders: '获取订单',
   purchase: '购买',
+  purchase_guidance: '购买价格参考',
   extend_shipping: '订单延期',
   replenishment: '补单',
   ebay_bulk_listing: '批量上架',
@@ -27,6 +28,7 @@ export const STOCKX_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.fetch_listings, value: 'fetch_listings'},
   {label: TASK_TYPE_LABELS.fetch_orders, value: 'fetch_orders'},
   {label: TASK_TYPE_LABELS.purchase, value: 'purchase'},
+  {label: TASK_TYPE_LABELS.purchase_guidance, value: 'purchase_guidance'},
   {label: TASK_TYPE_LABELS.extend_shipping, value: 'extend_shipping'},
   {label: TASK_TYPE_LABELS.replenishment, value: 'replenishment'},
 ];

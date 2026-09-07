@@ -557,6 +557,15 @@ const TaskPage = () => {
                         onFinally: () => setCreating(false),
                     });
                 }
+            } else if (createPlatform === 'stockx' && createTaskType === 'purchase_guidance') {
+                const file = values.purchaseGuidanceExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传购买价格参考Excel'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.START_PURCHASE_GUIDANCE, file, {
+                    accountId: values.accountId,
+                }, {
+                    onSuccess: () => { message.success('购买价格参考任务已创建'); setCreateModalVisible(false); queryTaskList(); setCreating(false); },
+                    onError: () => { message.error('Excel上传失败'); setCreating(false); },
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'extend_shipping') {
                 doPostRequest(TASK_API.START_SHIPPING_EXTENSION, {
                     accountId: values.accountId,
@@ -1008,6 +1017,18 @@ const TaskPage = () => {
                     }}
                 </Form.Item>
             </>;
+        }
+
+        if (createPlatform === 'stockx' && createTaskType === 'purchase_guidance') {
+            return <Form.Item name="purchaseGuidanceExcel" label="价格参考Excel"
+                              valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
+                              rules={[{required: true, message: '请上传Excel'}]}
+                              extra={<ExcelFieldHint requiredFields={['货号', '尺码']}
+                                  note="只查询行情，不会创建真实出价；展示7/30/90天成交情况，缺失数据会显示暂无数据。"/>}>
+                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                    <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                </Upload>
+            </Form.Item>;
         }
 
         if (createPlatform === 'stockx' && createTaskType === 'price_down') {

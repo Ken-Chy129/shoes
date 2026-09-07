@@ -181,7 +181,7 @@ public class TaskService {
                     TaskSwitch.cancelExcel(accountName, inventoryType, fetchMode);
                 }
             }
-            case "listing", "model_search" -> {
+            case "listing", "model_search", "purchase_guidance" -> {
                 if (clearState) {
                     TaskSwitch.clearSearchListRunState(task.getId());
                 } else {

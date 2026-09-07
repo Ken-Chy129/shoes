@@ -376,6 +376,20 @@ public class TaskController {
 
     // ==================== StockX 获取上架商品 ====================
 
+    @PostMapping("stockx/startPurchaseGuidance")
+    public Result<String> startPurchaseGuidance(@RequestParam("file") MultipartFile file,
+                                                @RequestParam("accountId") String accountId) throws IOException {
+        List<ModelNoSearchExcel> rows = EasyExcel.read(file.getInputStream())
+                .head(ModelNoSearchExcel.class).sheet().doReadSync();
+        if (rows == null || rows.isEmpty()) return Result.buildError("Excel中未找到数据");
+        if (rows.stream().anyMatch(row -> row == null || StrUtil.isBlank(row.getModelNo())
+                || StrUtil.isBlank(row.getSize()))) {
+            return Result.buildError("Excel中的货号和尺码均为必填");
+        }
+        Long taskId = taskExecutorManager.startPurchaseGuidance(accountId, rows);
+        return taskId != null ? Result.buildSuccess(String.valueOf(taskId)) : Result.buildError("账号不存在或输入为空");
+    }
+
     @PostMapping("stockx/startFetchListings")
     public Result<String> startFetchListings(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");

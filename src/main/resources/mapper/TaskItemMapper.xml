@@ -28,6 +28,20 @@
         <result property="highestBidCount" column="highest_bid_count"/>
         <result property="secondHighestBidPrice" column="second_highest_bid_price"/>
         <result property="secondHighestBidCount" column="second_highest_bid_count"/>
+        <result property="averageSalePrice7d" column="average_sale_price_7d"/>
+        <result property="medianSalePrice7d" column="median_sale_price_7d"/>
+        <result property="salesCount7d" column="sales_count_7d"/>
+        <result property="averageSalePrice30d" column="average_sale_price_30d"/>
+        <result property="medianSalePrice30d" column="median_sale_price_30d"/>
+        <result property="salesCount30d" column="sales_count_30d"/>
+        <result property="averageSalePrice90d" column="average_sale_price_90d"/>
+        <result property="medianSalePrice90d" column="median_sale_price_90d"/>
+        <result property="salesCount90d" column="sales_count_90d"/>
+        <result property="recommendedBid" column="recommended_bid"/>
+        <result property="referenceSalePrice" column="reference_sale_price"/>
+        <result property="referencePriceLabel" column="reference_price_label"/>
+        <result property="salesActivity" column="sales_activity"/>
+        <result property="salesTrend" column="sales_trend"/>
         <result property="listingQuantity" column="listing_quantity"/>
         <result property="poisonPrice" column="poison_price"/>
         <result property="poison35Price" column="poison_35_price"/>

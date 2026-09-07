@@ -38,6 +38,20 @@ interface TaskItemRecord {
     salePrice: number;
     payoutAmount: number;
     soldOn: string;
+    averageSalePrice7d: number;
+    medianSalePrice7d: number;
+    salesCount7d: number;
+    averageSalePrice30d: number;
+    medianSalePrice30d: number;
+    salesCount30d: number;
+    averageSalePrice90d: number;
+    medianSalePrice90d: number;
+    salesCount90d: number;
+    recommendedBid: number;
+    referenceSalePrice: number;
+    referencePriceLabel: string;
+    salesActivity: string;
+    salesTrend: string;
 }
 
 interface TaskItemModalProps {
@@ -387,6 +401,30 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '购买时间', dataIndex: 'soldOn', key: 'soldOn', width: 165},
     ];
 
+    const guidanceMoney = (value: number) => value === null || value === undefined ? '暂无数据' : `$${value}`;
+    const guidanceColumns = [
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 125},
+        {title: 'US码', dataIndex: 'size', key: 'size', width: 70},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 70},
+        {title: '当前最高求购', dataIndex: 'highestBidPrice', key: 'highestBidPrice', width: 115, render: guidanceMoney},
+        {title: '当前最低卖价', dataIndex: 'lowestPrice', key: 'lowestPrice', width: 115, render: guidanceMoney},
+        {title: '最近成交价', dataIndex: 'salePrice', key: 'lastSalePrice', width: 100, render: guidanceMoney},
+        {title: '最近成交时间', dataIndex: 'soldOn', key: 'lastSaleAt', width: 165, render: (v: string) => v || '暂无数据'},
+        {title: '建议出价', dataIndex: 'recommendedBid', key: 'recommendedBid', width: 100, render: guidanceMoney},
+        {title: '近期走势', dataIndex: 'salesTrend', key: 'salesTrend', width: 90},
+        {title: '成交活跃度', dataIndex: 'salesActivity', key: 'salesActivity', width: 100},
+        {title: '7天中位价', dataIndex: 'medianSalePrice7d', key: 'medianSalePrice7d', width: 105, render: guidanceMoney},
+        {title: '7天平均价', dataIndex: 'averageSalePrice7d', key: 'averageSalePrice7d', width: 100, render: guidanceMoney},
+        {title: '7天成交量', dataIndex: 'salesCount7d', key: 'salesCount7d', width: 95, render: (v: number) => v ?? '暂无数据'},
+        {title: '30天中位价', dataIndex: 'medianSalePrice30d', key: 'medianSalePrice30d', width: 110, render: guidanceMoney},
+        {title: '30天平均价', dataIndex: 'averageSalePrice30d', key: 'averageSalePrice30d', width: 105, render: guidanceMoney},
+        {title: '30天成交量', dataIndex: 'salesCount30d', key: 'salesCount30d', width: 100, render: (v: number) => v ?? '暂无数据'},
+        {title: '90天中位价', dataIndex: 'medianSalePrice90d', key: 'medianSalePrice90d', width: 110, render: guidanceMoney},
+        {title: '90天平均价', dataIndex: 'averageSalePrice90d', key: 'averageSalePrice90d', width: 105, render: guidanceMoney},
+        {title: '90天成交量', dataIndex: 'salesCount90d', key: 'salesCount90d', width: 100, render: (v: number) => v ?? '暂无数据'},
+        {title: '建议说明', dataIndex: 'operateResult', key: 'operateResult', width: 300},
+    ];
+
     const modelSearchColumns = [
         {title: 'variantId', dataIndex: 'productId', key: 'productId', width: 190, ellipsis: true},
         {title: '品牌', dataIndex: 'brand', key: 'brand', width: 90, ellipsis: true},
@@ -471,7 +509,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 170, ellipsis: true},
     ];
 
-    const columns = taskType === 'purchase'
+    const columns = taskType === 'purchase_guidance' ? guidanceColumns : taskType === 'purchase'
         ? (purchaseOperation === 'bids' || purchaseOperation === 'create_bids' || purchaseOperation === 'update_bids'
             ? purchaseBidColumns : purchaseOrderColumns)
         : taskType === 'fetch_orders'
@@ -500,7 +538,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         <Modal
             title={taskType === 'extend_shipping' ? '订单延期明细'
                 : taskType === 'replenishment' ? '补单明细'
-                        : taskType === 'purchase' ? '购买明细'
+                            : taskType === 'purchase' ? '购买明细'
+                                : taskType === 'purchase_guidance' ? '购买价格参考明细'
                             : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
                                 ? 'eBay商品明细' : '任务明细'}
             open={visible}
@@ -591,6 +630,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1700
                         : taskType === 'purchase' ? 1700
+                            : taskType === 'purchase_guidance' ? 2200
                         : taskType === 'model_search' ? 1450
                             : taskType === 'replenishment' ? 1550
                                 : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') ? 1700 : 1130}}
