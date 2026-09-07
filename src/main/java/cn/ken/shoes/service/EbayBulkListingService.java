@@ -212,12 +212,24 @@ public class EbayBulkListingService {
             String us = request.getAspects() == null ? null
                     : request.getAspects().getOrDefault("US Shoe Size", List.of()).stream()
                     .findFirst().orElse(null);
-            String eu = SizeConvertUtil.getStockXEuSize(request.getBrand(), us);
+            String eu = SizeConvertUtil.getStockXEuSize(
+                    request.getBrand(), singleGenderSize(us));
             if (eu != null) {
                 return eu;
             }
         }
         return ShoesUtil.getShoesSizeFrom(normalized);
+    }
+
+    /**
+     * eBay 的鞋码属性可能是 "9 Men/10.5 Women" 这种男女合并标签，
+     * 而尺码表按单一美国码建索引，这里取男码一侧用于欧码反查。
+     */
+    private String singleGenderSize(String usSize) {
+        if (usSize == null || !usSize.contains(" Men/")) {
+            return usSize;
+        }
+        return usSize.substring(0, usSize.indexOf(" Men/")).trim();
     }
 
     private void validateInput(List<EbayListingExcel> rows) {

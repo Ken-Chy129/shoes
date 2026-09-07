@@ -177,7 +177,7 @@ public class EbayListingTaxonomyService {
         Map<String, List<String>> result = new LinkedHashMap<>();
         List<String> missing = new ArrayList<>();
         for (AspectRule rule : rules) {
-            String candidate = aspectValue(rule.name(), metadata, styleCode,
+            String candidate = aspectValue(rule, metadata, styleCode,
                     sizeSystem, sizeValue, department);
             String normalized = normalizeAllowedValue(rule, candidate);
             if (normalized == null || normalized.isBlank()) {
@@ -198,10 +198,10 @@ public class EbayListingTaxonomyService {
         return result;
     }
 
-    private String aspectValue(String rawName, EbayProductMetadata metadata,
+    private String aspectValue(AspectRule rule, EbayProductMetadata metadata,
                                String styleCode, String sizeSystem,
                                String sizeValue, String department) {
-        String name = rawName.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+        String name = normalizedAspectName(rule.name());
         return switch (name) {
             case "brand", "marke" -> metadata.getBrand();
             case "department", "gender", "abteilung" -> department;
@@ -210,7 +210,7 @@ public class EbayListingTaxonomyService {
             // Size", while soccer cleats (for example category 109133) use
             // the shorter "US Size".
             case "usshoesize", "ussize" -> usShoeSize(
-                    metadata, sizeSystem, sizeValue, department);
+                    rule, metadata, sizeSystem, sizeValue, department);
             case "eushoesize", "eusize" -> "EU".equals(sizeSystem) ? sizeValue : null;
             case "color", "colour", "farbe" -> color(metadata);
             case "uppermaterial", "obermaterial" -> firstPresent(
@@ -298,8 +298,14 @@ public class EbayListingTaxonomyService {
     }
 
     private boolean usesStandardValues(AspectRule rule) {
-        return "SELECTION_ONLY".equalsIgnoreCase(rule.mode())
-                || isUsSizeAspect(rule.name())
+        // Shoe-size aspects are FREE_TEXT in the categories we list into
+        // (verified against 15709, 95672, 24087 and 109133), so the values
+        // eBay returns are recommendations rather than a white list. Aligning
+        // to them would reject eBay's own combined "9 Men/10.5 Women" labels.
+        if (isUsSizeAspect(rule.name())) {
+            return isSelectionOnly(rule);
+        }
+        return isSelectionOnly(rule)
                 || isColorAspect(rule.name())
                 || isDepartmentAspect(rule.name())
                 || isStyleOrTypeAspect(rule.name())
@@ -343,9 +349,28 @@ public class EbayListingTaxonomyService {
                 : value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
     }
 
-    private String usShoeSize(EbayProductMetadata metadata, String sizeSystem,
-                              String sizeValue, String department) {
-        String targetGender = "Women".equals(department) ? "women" : "men";
+    /**
+     * eBay 的鞋码维度在男鞋/女鞋类目里是自由文本，买家看到的下拉通常是
+     * "9 Men/10.5 Women" 这种男女合并标签。尺码表两边都有值时输出合并标签，
+     * 否则退回单性别标准码；类目若把尺码限定为可选值列表也退回标准码。
+     */
+    private String usShoeSize(AspectRule rule, EbayProductMetadata metadata,
+                              String sizeSystem, String sizeValue, String department) {
+        String standard = standardUsShoeSize(metadata, sizeSystem, sizeValue, department);
+        if (isSelectionOnly(rule)) {
+            return standard;
+        }
+        String combined = "EU".equals(sizeSystem)
+                ? SizeConvertUtil.getKcUsSizeDisplay(
+                        metadata.getBrand(), targetGender(department), sizeValue)
+                : SizeConvertUtil.getKcUsSizeDisplayFromUs(
+                        metadata.getBrand(), sizeSystem, sizeValue);
+        return isCombinedSize(combined) ? combined : standard;
+    }
+
+    private String standardUsShoeSize(EbayProductMetadata metadata, String sizeSystem,
+                                      String sizeValue, String department) {
+        String targetGender = targetGender(department);
         if ("EU".equals(sizeSystem)) {
             return SizeConvertUtil.getKcUsSize(
                     metadata.getBrand(), targetGender, sizeValue);
@@ -360,6 +385,18 @@ public class EbayListingTaxonomyService {
         String converted = SizeConvertUtil.getKcUsSize(
                 metadata.getBrand(), targetGender, euSize);
         return converted == null || converted.isBlank() ? sizeValue : converted;
+    }
+
+    private String targetGender(String department) {
+        return "Women".equals(department) ? "women" : "men";
+    }
+
+    private boolean isCombinedSize(String value) {
+        return value != null && value.contains(" Men/") && value.endsWith(" Women");
+    }
+
+    private boolean isSelectionOnly(AspectRule rule) {
+        return "SELECTION_ONLY".equalsIgnoreCase(rule.mode());
     }
 
     private Map<String, List<String>> fallbackAspects(EbayProductMetadata metadata,
