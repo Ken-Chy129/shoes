@@ -298,14 +298,8 @@ public class EbayListingTaxonomyService {
     }
 
     private boolean usesStandardValues(AspectRule rule) {
-        // Shoe-size aspects are FREE_TEXT in the categories we list into
-        // (verified against 15709, 95672, 24087 and 109133), so the values
-        // eBay returns are recommendations rather than a white list. Aligning
-        // to them would reject eBay's own combined "9 Men/10.5 Women" labels.
-        if (isUsSizeAspect(rule.name())) {
-            return isSelectionOnly(rule);
-        }
         return isSelectionOnly(rule)
+                || isUsSizeAspect(rule.name())
                 || isColorAspect(rule.name())
                 || isDepartmentAspect(rule.name())
                 || isStyleOrTypeAspect(rule.name())
@@ -350,14 +344,16 @@ public class EbayListingTaxonomyService {
     }
 
     /**
-     * eBay 的鞋码维度在男鞋/女鞋类目里是自由文本，买家看到的下拉通常是
-     * "9 Men/10.5 Women" 这种男女合并标签。尺码表两边都有值时输出合并标签，
-     * 否则退回单性别标准码；类目若把尺码限定为可选值列表也退回标准码。
+     * 买家在 eBay 上看到的鞋码有时是 "9 Men/10.5 Women" 这种男女合并标签，
+     * 但那只在类目真的把合并串列入标准值时才能用。Taxonomy 把鞋码声明为
+     * FREE_TEXT，可发布接口仍会拿标准值校验：向 15709 提交 "4 Men/5.5 Women"
+     * 会被错误 25129 拒掉（已对生产实测）。所以默认用单性别标准码，
+     * 仅当类目候选值里确实包含合并标签时才输出合并串。
      */
     private String usShoeSize(AspectRule rule, EbayProductMetadata metadata,
                               String sizeSystem, String sizeValue, String department) {
         String standard = standardUsShoeSize(metadata, sizeSystem, sizeValue, department);
-        if (isSelectionOnly(rule)) {
+        if (!categoryOffersCombinedSizes(rule)) {
             return standard;
         }
         String combined = "EU".equals(sizeSystem)
@@ -366,6 +362,11 @@ public class EbayListingTaxonomyService {
                 : SizeConvertUtil.getKcUsSizeDisplayFromUs(
                         metadata.getBrand(), sizeSystem, sizeValue);
         return isCombinedSize(combined) ? combined : standard;
+    }
+
+    /** 类目的尺码候选值里是否存在男女合并标签。 */
+    private boolean categoryOffersCombinedSizes(AspectRule rule) {
+        return rule.allowedValues().stream().anyMatch(this::isCombinedSize);
     }
 
     private String standardUsShoeSize(EbayProductMetadata metadata, String sizeSystem,
