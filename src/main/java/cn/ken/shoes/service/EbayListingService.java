@@ -9,6 +9,7 @@ import cn.ken.shoes.model.ebay.EbayListingResult;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -18,9 +19,11 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongConsumer;
 
+@Slf4j
 @Service
 public class EbayListingService {
 
@@ -154,7 +157,8 @@ public class EbayListingService {
         createOrReplaceInventoryItemGroupWithRetry(
                 inventoryItemGroupKey,
                 inventoryGroupPayload(
-                        variants, groupAspects, hostedImageUrls, existingGroup),
+                        variants, groupAspects, hostedImageUrls, existingGroup,
+                        allGroupSkus, incomingSkus),
                 first.getContentLanguage());
 
         boolean listingAlreadyPublished = publishedGroupOffer != null;
@@ -320,7 +324,9 @@ public class EbayListingService {
     private JSONObject inventoryGroupPayload(List<EbayListingRequest> variants,
                                              GroupAspects groupAspects,
                                              List<String> hostedImageUrls,
-                                             JSONObject existingGroup) {
+                                             JSONObject existingGroup,
+                                             Set<String> groupSkus,
+                                             Set<String> incomingSkus) {
         EbayListingRequest first = variants.getFirst();
         JSONObject payload = new JSONObject(true);
         payload.put("title", first.getTitle());
@@ -332,7 +338,8 @@ public class EbayListingService {
         JSONObject specification = new JSONObject(true);
         specification.put("name", groupAspects.varyingName());
         specification.put("values", JSON.parseArray(JSON.toJSONString(
-                mergedVariationValues(existingGroup, groupAspects))));
+                mergedVariationValues(existingGroup, groupAspects,
+                        groupSkus, incomingSkus))));
         JSONObject variesBy = new JSONObject(true);
         variesBy.put("specifications", new JSONArray().fluentAdd(specification));
         payload.put("variesBy", variesBy);
@@ -419,18 +426,77 @@ public class EbayListingService {
     }
 
     private List<String> mergedVariationValues(JSONObject existingGroup,
-                                               GroupAspects groupAspects) {
-        LinkedHashSet<String> values = new LinkedHashSet<>();
-        if (existingGroup != null) {
-            ExistingVariation existingVariation = existingVariation(existingGroup);
-            if (!groupAspects.varyingName().equals(existingVariation.name())) {
-                throw new IllegalArgumentException("已有商品组的变体属性为"
-                        + existingVariation.name() + "，不能改为" + groupAspects.varyingName());
-            }
-            values.addAll(existingVariation.values());
+                                               GroupAspects groupAspects,
+                                               Set<String> groupSkus,
+                                               Set<String> incomingSkus) {
+        if (existingGroup == null) {
+            return List.copyOf(new LinkedHashSet<>(groupAspects.values()));
         }
+        ExistingVariation existingVariation = existingVariation(existingGroup);
+        if (!groupAspects.varyingName().equals(existingVariation.name())) {
+            throw new IllegalArgumentException("已有商品组的变体属性为"
+                    + existingVariation.name() + "，不能改为" + groupAspects.varyingName());
+        }
+        // 只保留仍被组内其它 SKU 使用的历史值。上一次失败的上架会把作废的
+        // 尺码串留在 variesBy 里，累积下来会让后续上架撞上早已不用的值而报错
+        // （eBay 25129 报的尺码常常和本次提交的对不上，就是撞了这些残留）。
+        LinkedHashSet<String> values = new LinkedHashSet<>(
+                variationValuesInUse(existingVariation, groupSkus, incomingSkus));
         values.addAll(groupAspects.values());
         return List.copyOf(values);
+    }
+
+    /**
+     * 找出历史变体值里仍然有效的部分。
+     *
+     * <p>逐个读取本次未提交的组内 SKU，把它们实际在用的变体属性值收集起来；
+     * 只有确认「组内没有任何 SKU 还在用」的历史值才会被剔除。读不到库存项
+     * （网络抖动、SKU 已删除）时一律保守保留，宁可多留也不误删别人的尺码。
+     */
+    private List<String> variationValuesInUse(ExistingVariation existingVariation,
+                                              Set<String> groupSkus,
+                                              Set<String> incomingSkus) {
+        if (existingVariation.values().isEmpty()) {
+            return List.of();
+        }
+        Set<String> inUse = new LinkedHashSet<>();
+        boolean allReadable = true;
+        for (String sku : groupSkus) {
+            if (incomingSkus.contains(sku)) {
+                continue;
+            }
+            Optional<JSONObject> item;
+            try {
+                item = apiClient.getInventoryItem(sku);
+            } catch (RuntimeException e) {
+                log.warn("读取eBay库存项失败，保留其历史尺码, sku:{}", sku, e);
+                allReadable = false;
+                continue;
+            }
+            if (item.isEmpty()) {
+                allReadable = false;
+                continue;
+            }
+            List<String> value = aspectValues(item.get(), existingVariation.name());
+            if (value.size() == 1 && !value.getFirst().isBlank()) {
+                inUse.add(value.getFirst());
+            } else {
+                allReadable = false;
+            }
+        }
+        // 只要有任何 SKU 的实际尺码没读准，就不做剔除，避免误删。
+        if (!allReadable) {
+            return existingVariation.values();
+        }
+        return existingVariation.values().stream()
+                .filter(inUse::contains)
+                .toList();
+    }
+
+    private List<String> aspectValues(JSONObject inventoryItem, String aspectName) {
+        JSONObject product = inventoryItem.getJSONObject("product");
+        JSONObject aspects = product == null ? null : product.getJSONObject("aspects");
+        return aspects == null ? List.of() : stringValues(aspects.getJSONArray(aspectName));
     }
 
     private ExistingVariation existingVariation(JSONObject existingGroup) {

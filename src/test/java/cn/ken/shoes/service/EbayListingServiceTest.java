@@ -547,4 +547,66 @@ class EbayListingServiceTest {
                 .fluentPut("variesBy", new JSONObject(true)
                         .fluentPut("specifications", List.of(specification)));
     }
+
+    @Test
+    void dropsVariationValuesNoLongerUsedByAnySkuInTheGroup() {
+        // 上一次上架失败会把作废的尺码串留在 variesBy 里。重新上架时这些
+        // 残留值必须被剔除，否则 eBay 会拿早已不用的值来校验并报 25129。
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-9", "shoe-sku-10"),
+                        List.of("9 Men/10.5 Women", "10 Men/11.5 Women", "10"))));
+        when(apiClient.getInventoryItem("shoe-sku-10"))
+                .thenReturn(Optional.of(inventoryItemWithSize("10")));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+
+        service.publishGroup("group-style-1", List.of(size9));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("10", "9");
+    }
+
+    @Test
+    void keepsHistoricVariationValuesWhenAnInventoryItemCannotBeRead() {
+        // 读不到库存项时宁可多留：一次网络抖动不该把别人的尺码摘掉。
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-9", "shoe-sku-10"), List.of("10", "11"))));
+        when(apiClient.getInventoryItem("shoe-sku-10"))
+                .thenThrow(new EbayApiException("boom"));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+
+        service.publishGroup("group-style-1", List.of(size9));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("10", "11", "9");
+    }
+
+    private JSONObject inventoryItemWithSize(String size) {
+        return new JSONObject(true).fluentPut("product", new JSONObject(true)
+                .fluentPut("aspects", new JSONObject(true)
+                        .fluentPut("US Shoe Size", List.of(size))));
+    }
 }

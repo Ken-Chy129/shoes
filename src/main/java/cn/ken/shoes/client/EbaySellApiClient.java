@@ -96,6 +96,15 @@ public class EbaySellApiClient {
         return Optional.ofNullable(execute(request, Set.of(200), true));
     }
 
+    /** 读取单个库存项；SKU 不存在时返回空。 */
+    public Optional<JSONObject> getInventoryItem(String sku) {
+        HttpUrl url = inventoryUrl("inventory_item").newBuilder()
+                .addPathSegment(requireValue(sku, "sku"))
+                .build();
+        Request request = request(url, null).get().build();
+        return Optional.ofNullable(execute(request, Set.of(200), true));
+    }
+
     public String publishOffer(String offerId) {
         HttpUrl url = inventoryUrl("offer").newBuilder()
                 .addPathSegment(requireValue(offerId, "offerId"))
