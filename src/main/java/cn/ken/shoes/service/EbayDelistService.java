@@ -26,8 +26,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * eBay 下架任务。结束在架 listing，但保留 offer 与库存数据，
  * 因此同一批商品之后可以直接重新上架，无需重建 SKU。
  *
- * <p>下架范围来自批量上架任务留下的 task_item 映射，可选按货号过滤；
- * 不传货号表示下架当前记录在册的全部 eBay 在架商品。
+ * <p>下架范围以 eBay 账号上的真实在架 offer 为准，而不是本地任务记录：
+ * 历史上有些 listing 的映射没有落库（例如上架成功但任务明细写入失败），
+ * 只按本地记录下架会漏掉它们。本地映射仅用于补齐货号、标题等展示信息，
+ * 以及支持按货号过滤。
  */
 @Slf4j
 @Service
@@ -76,7 +78,7 @@ public class EbayDelistService {
         if (existing != null || !running.isEmpty()) {
             return null;
         }
-        List<TaskItemDO> listings = resolveListings(targets);
+        List<DelistTarget> listings = resolveActiveListings(targets);
         if (listings.isEmpty()) {
             throw new IllegalArgumentException(targets.isEmpty()
                     ? "没有找到在架的eBay商品"
@@ -122,18 +124,18 @@ public class EbayDelistService {
                 "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
     }
 
-    void run(Long taskId, List<TaskItemDO> listings, AtomicBoolean cancelled) {
+    void run(Long taskId, List<DelistTarget> listings, AtomicBoolean cancelled) {
         int delisted = 0;
         int alreadyEnded = 0;
         int failed = 0;
         try {
-            for (TaskItemDO listing : listings) {
+            for (DelistTarget listing : listings) {
                 if (cancelled.get()) {
                     break;
                 }
                 String result;
                 try {
-                    boolean ended = ebayClient.withdrawOffer(listing.getOfferId());
+                    boolean ended = ebayClient.withdrawOffer(listing.offerId());
                     if (ended) {
                         delisted++;
                         result = "下架成功";
@@ -145,7 +147,7 @@ public class EbayDelistService {
                     failed++;
                     result = "下架失败(" + safeError(e) + ")";
                     log.warn("eBay下架失败, taskId:{}, offerId:{}, sku:{}",
-                            taskId, listing.getOfferId(), listing.getSku(), e);
+                            taskId, listing.offerId(), listing.sku(), e);
                 }
                 recordItem(taskId, listing, result);
             }
@@ -174,27 +176,70 @@ public class EbayDelistService {
     }
 
     /**
-     * 汇总当前记录在册的在架商品，按 offerId 去重并保留最新一条映射。
+     * 以 eBay 账号上的在架 offer 为准列出下架目标，并用本地映射补齐展示信息。
+     *
+     * <p>按货号过滤时，只保留本地映射能确认货号的 offer；没有映射的 offer
+     * 无法判断货号，因此仅在全量下架时纳入。
      */
-    List<TaskItemDO> resolveListings(List<String> styleIds) {
-        List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
-        if (mappings == null || mappings.isEmpty()) {
-            return List.of();
-        }
+    List<DelistTarget> resolveActiveListings(List<String> styleIds) {
+        Map<String, TaskItemDO> mappingsBySku = mappingsBySku();
         Set<String> wanted = Set.copyOf(styleIds);
-        Map<String, TaskItemDO> byOfferId = new LinkedHashMap<>();
-        for (TaskItemDO mapping : mappings) {
-            String offerId = mapping.getOfferId();
-            if (offerId == null || offerId.isBlank()) {
-                continue;
+        Map<String, DelistTarget> byOfferId = new LinkedHashMap<>();
+        for (String sku : ebayClient.getInventoryItemSkus()) {
+            for (JSONObject offer : ebayClient.getOffersBySku(sku)) {
+                if (offer == null || !isActive(offer)) {
+                    continue;
+                }
+                String offerId = offer.getString("offerId");
+                if (offerId == null || offerId.isBlank()) {
+                    continue;
+                }
+                TaskItemDO mapping = mappingsBySku.get(sku);
+                String styleId = mapping == null ? null : mapping.getStyleId();
+                if (!wanted.isEmpty() && (styleId == null
+                        || !wanted.contains(styleId.trim().toUpperCase(Locale.ROOT)))) {
+                    continue;
+                }
+                byOfferId.putIfAbsent(offerId, new DelistTarget(offerId, sku,
+                        listingId(offer), mapping));
             }
-            if (!wanted.isEmpty() && (mapping.getStyleId() == null
-                    || !wanted.contains(mapping.getStyleId().trim().toUpperCase(Locale.ROOT)))) {
-                continue;
-            }
-            byOfferId.putIfAbsent(offerId, mapping);
         }
         return List.copyOf(byOfferId.values());
+    }
+
+    private Map<String, TaskItemDO> mappingsBySku() {
+        List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
+        Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
+        for (TaskItemDO mapping : mappings == null ? List.<TaskItemDO>of() : mappings) {
+            if (mapping.getSku() != null && !mapping.getSku().isBlank()) {
+                bySku.putIfAbsent(mapping.getSku(), mapping);
+            }
+        }
+        return bySku;
+    }
+
+    /**
+     * 只有已发布且仍在售的 offer 需要下架；已结束或未发布的直接跳过。
+     */
+    private boolean isActive(JSONObject offer) {
+        JSONObject listing = offer.getJSONObject("listing");
+        String listingStatus = listing == null ? null : listing.getString("listingStatus");
+        if (listingStatus != null) {
+            return "ACTIVE".equalsIgnoreCase(listingStatus)
+                    || "OUT_OF_STOCK".equalsIgnoreCase(listingStatus);
+        }
+        return "PUBLISHED".equalsIgnoreCase(offer.getString("status"));
+    }
+
+    private String listingId(JSONObject offer) {
+        JSONObject listing = offer.getJSONObject("listing");
+        return listing == null ? null : listing.getString("listingId");
+    }
+
+    /**
+     * 一个待下架的在架 offer。mapping 可能为空，表示本地没有留下映射记录。
+     */
+    record DelistTarget(String offerId, String sku, String listingId, TaskItemDO mapping) {
     }
 
     private List<String> normalizeStyleIds(List<String> styleIds) {
@@ -214,19 +259,25 @@ public class EbayDelistService {
         return List.copyOf(normalized);
     }
 
-    private void recordItem(Long taskId, TaskItemDO listing, String result) {
+    private void recordItem(Long taskId, DelistTarget listing, String result) {
+        TaskItemDO mapping = listing.mapping();
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(0);
-        item.setBrand(listing.getBrand());
-        item.setTitle(listing.getTitle());
-        item.setListingId(listing.getListingId());
-        item.setSku(listing.getSku());
-        item.setOfferId(listing.getOfferId());
-        item.setStyleId(listing.getStyleId());
-        item.setSize(listing.getSize());
-        item.setEuSize(listing.getEuSize());
-        item.setCurrentPrice(listing.getCurrentPrice());
+        item.setSku(listing.sku());
+        item.setOfferId(listing.offerId());
+        item.setListingId(listing.listingId());
+        if (mapping != null) {
+            item.setBrand(mapping.getBrand());
+            item.setTitle(mapping.getTitle());
+            item.setStyleId(mapping.getStyleId());
+            item.setSize(mapping.getSize());
+            item.setEuSize(mapping.getEuSize());
+            item.setCurrentPrice(mapping.getCurrentPrice());
+            if (item.getListingId() == null || item.getListingId().isBlank()) {
+                item.setListingId(mapping.getListingId());
+            }
+        }
         item.setListingQuantity(0);
         item.setOperateResult(result);
         item.setOperateTime(new Date());

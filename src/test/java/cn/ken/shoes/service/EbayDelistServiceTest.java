@@ -7,6 +7,7 @@ import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
+import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -49,6 +50,7 @@ class EbayDelistServiceTest {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
+        ebayHasActiveOffers("SKU-1", "SKU-2");
         when(ebayClient.withdrawOffer("offer-1")).thenReturn(true);
         when(ebayClient.withdrawOffer("offer-2")).thenReturn(true);
 
@@ -71,6 +73,7 @@ class EbayDelistServiceTest {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
+        ebayHasActiveOffers("SKU-1", "SKU-2");
         when(ebayClient.withdrawOffer("offer-2")).thenReturn(true);
 
         service.start(List.of("ah7860-139"));
@@ -83,6 +86,7 @@ class EbayDelistServiceTest {
     void treatsAnAlreadyEndedListingAsSuccess() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100")));
+        ebayHasActiveOffers("SKU-1");
         when(ebayClient.withdrawOffer("offer-1")).thenReturn(false);
 
         service.start(List.of());
@@ -98,6 +102,7 @@ class EbayDelistServiceTest {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
+        ebayHasActiveOffers("SKU-1", "SKU-2");
         when(ebayClient.withdrawOffer("offer-1"))
                 .thenThrow(new EbayApiException("eBay API 500: internal error"));
         when(ebayClient.withdrawOffer("offer-2")).thenReturn(true);
@@ -113,6 +118,7 @@ class EbayDelistServiceTest {
     @Test
     void refusesToStartWhenNothingIsListed() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayClient.getInventoryItemSkus()).thenReturn(List.of());
 
         assertThatThrownBy(() -> service.start(List.of()))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -133,12 +139,75 @@ class EbayDelistServiceTest {
     }
 
     @Test
-    void deduplicatesRepeatedOfferMappings() {
+    void withdrawsActiveListingsThatHaveNoLocalMapping() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
-                mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-1", "SKU-1", "DD1391-100")));
+        ebayHasActiveOffers("SKU-1", "SKU-ORPHAN");
+        when(ebayClient.withdrawOffer("offer-1")).thenReturn(true);
+        when(ebayClient.withdrawOffer("offer-orphan")).thenReturn(true);
 
-        assertThat(service.resolveListings(List.of())).hasSize(1);
+        service.start(List.of());
+
+        verify(ebayClient).withdrawOffer("offer-1");
+        verify(ebayClient).withdrawOffer("offer-orphan");
+    }
+
+    @Test
+    void skipsOffersThatAreAlreadyEndedOrUnpublished() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayClient.getInventoryItemSkus()).thenReturn(List.of("SKU-ENDED"));
+        when(ebayClient.getOffersBySku("SKU-ENDED")).thenReturn(List.of(
+                new JSONObject(true)
+                        .fluentPut("offerId", "offer-ended")
+                        .fluentPut("sku", "SKU-ENDED")
+                        .fluentPut("status", "UNPUBLISHED")
+                        .fluentPut("listing", new JSONObject(true)
+                                .fluentPut("listingStatus", "ENDED"))));
+
+        assertThatThrownBy(() -> service.start(List.of()))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(ebayClient, never()).withdrawOffer("offer-ended");
+    }
+
+    @Test
+    void keepsTheStyleIdAndSizeFromTheLocalMappingInTheAuditTrail() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+                mapping("offer-1", "SKU-1", "DD1391-100")));
+        ebayHasActiveOffers("SKU-1");
+        when(ebayClient.withdrawOffer("offer-1")).thenReturn(true);
+
+        service.start(List.of());
+
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getStyleId()).isEqualTo("DD1391-100");
+        assertThat(item.getValue().getSize()).isEqualTo("USM10");
+        assertThat(item.getValue().getOfferId()).isEqualTo("offer-1");
+    }
+
+    /**
+     * 让 eBay 侧返回这些 SKU 及其在架 offer。
+     */
+    private void ebayHasActiveOffers(String... skus) {
+        when(ebayClient.getInventoryItemSkus()).thenReturn(List.of(skus));
+        for (String sku : skus) {
+            when(ebayClient.getOffersBySku(sku))
+                    .thenReturn(List.of(activeOffer(offerIdFor(sku), sku)));
+        }
+    }
+
+    private String offerIdFor(String sku) {
+        return "offer-" + sku.toLowerCase(java.util.Locale.ROOT).replace("sku-", "");
+    }
+
+    private JSONObject activeOffer(String offerId, String sku) {
+        return new JSONObject(true)
+                .fluentPut("offerId", offerId)
+                .fluentPut("sku", sku)
+                .fluentPut("status", "PUBLISHED")
+                .fluentPut("listing", new JSONObject(true)
+                        .fluentPut("listingId", "listing-" + offerId)
+                        .fluentPut("listingStatus", "ACTIVE"));
     }
 
     private TaskItemDO mapping(String offerId, String sku, String styleId) {

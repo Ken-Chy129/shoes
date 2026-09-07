@@ -214,6 +214,46 @@ public class EbaySellApiClient {
     }
 
     /**
+     * 分页读取账号下所有库存项的 SKU。
+     *
+     * <p>eBay 的 {@code GET /offer} 只支持按 SKU 查询，按站点直接列出
+     * 全部 offer 会被拒绝（错误码 25707），所以枚举在架商品必须先取
+     * 库存项 SKU，再用 {@link #getOffersBySku(String)} 逐个查 offer。
+     */
+    public List<String> getInventoryItemSkus() {
+        List<String> skus = new ArrayList<>();
+        int offset = 0;
+        int limit = 100;
+        while (true) {
+            HttpUrl url = inventoryUrl("inventory_item").newBuilder()
+                    .addQueryParameter("limit", String.valueOf(limit))
+                    .addQueryParameter("offset", String.valueOf(offset))
+                    .build();
+            JSONObject page = get(url);
+            if (page == null) {
+                break;
+            }
+            var items = page.getJSONArray("inventoryItems");
+            if (items == null || items.isEmpty()) {
+                break;
+            }
+            for (int i = 0; i < items.size(); i++) {
+                JSONObject item = items.getJSONObject(i);
+                String sku = item == null ? null : item.getString("sku");
+                if (sku != null && !sku.isBlank()) {
+                    skus.add(sku);
+                }
+            }
+            Integer total = page.getInteger("total");
+            if (total != null ? skus.size() >= total : items.size() < limit) {
+                break;
+            }
+            offset += items.size();
+        }
+        return List.copyOf(skus);
+    }
+
+    /**
      * 结束单个 offer 对应的在架 listing，但保留 offer 与库存数据，
      * 便于之后重新上架。eBay 对已结束或未发布的 offer 返回 25002/25004，
      * 这里视为「已下架」而不是失败。

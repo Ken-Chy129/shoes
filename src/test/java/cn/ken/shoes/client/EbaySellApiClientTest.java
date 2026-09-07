@@ -150,6 +150,21 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void readsEveryInventoryItemSkuAcrossPages() throws Exception {
+        server.enqueue(jsonResponse(
+                "{\"inventoryItems\":[{\"sku\":\"SKU-1\"}],\"total\":2}"));
+        server.enqueue(jsonResponse(
+                "{\"inventoryItems\":[{\"sku\":\"SKU-2\"}],\"total\":2}"));
+
+        assertThat(client.getInventoryItemSkus()).containsExactly("SKU-1", "SKU-2");
+
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/inventory_item?limit=100&offset=0");
+        assertThat(server.takeRequest().getPath())
+                .isEqualTo("/sell/inventory/v1/inventory_item?limit=100&offset=1");
+    }
+
+    @Test
     void withdrawsAnOfferToEndTheListing() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(204));
 
