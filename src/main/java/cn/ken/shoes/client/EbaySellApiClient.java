@@ -96,6 +96,19 @@ public class EbaySellApiClient {
         return Optional.ofNullable(execute(request, Set.of(200), true));
     }
 
+    /**
+     * 删除商品组本身，组内的库存项与 offer 全部保留。
+     * eBay 侧偶发会把某个组的服务端状态弄坏，之后整组发布只回 25001，
+     * 删掉再用同一个 key 重建即可恢复。组不存在时按已删除处理。
+     */
+    public void deleteInventoryItemGroup(String inventoryItemGroupKey) {
+        HttpUrl url = inventoryUrl("inventory_item_group").newBuilder()
+                .addPathSegment(requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"))
+                .build();
+        Request request = request(url, null).delete().build();
+        execute(request, Set.of(200, 204), true);
+    }
+
     /** 读取单个库存项；SKU 不存在时返回空。 */
     public Optional<JSONObject> getInventoryItem(String sku) {
         HttpUrl url = inventoryUrl("inventory_item").newBuilder()

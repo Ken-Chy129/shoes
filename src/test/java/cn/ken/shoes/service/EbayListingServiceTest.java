@@ -229,6 +229,66 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void recreatesTheItemGroupWhenGroupPublishFailsWith25001() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9", "offer-10");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenThrow(new EbayApiException(
+                        "eBay API request failed (HTTP 500): 25001: Internal Server Error"))
+                .thenReturn("listing-group-repaired");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        InOrder order = inOrder(apiClient);
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        order.verify(apiClient).deleteInventoryItemGroup("group-style-1");
+        order.verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(results)
+                .extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-repaired");
+    }
+
+    @Test
+    void doesNotRecreateTheItemGroupForOtherGroupPublishFailures() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9", "offer-10");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenThrow(new EbayApiException(
+                        "eBay API request failed (HTTP 400): 25002: The item specific Color is missing."));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.publishGroup(
+                        "group-style-1", List.of(size9, size10)))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("25002");
+
+        verify(apiClient, never()).deleteInventoryItemGroup(
+                org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
     void retriesTransientInventoryWritesBeforePublishingAGroup() {
         EbayListingRequest size9 = listingRequest();
         size9.setSku("shoe-sku-9");

@@ -154,12 +154,11 @@ public class EbayListingService {
         for (EbayListingRequest variant : variants) {
             createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
         }
+        JSONObject groupPayload = inventoryGroupPayload(
+                variants, groupAspects, hostedImageUrls, existingGroup,
+                allGroupSkus, incomingSkus);
         createOrReplaceInventoryItemGroupWithRetry(
-                inventoryItemGroupKey,
-                inventoryGroupPayload(
-                        variants, groupAspects, hostedImageUrls, existingGroup,
-                        allGroupSkus, incomingSkus),
-                first.getContentLanguage());
+                inventoryItemGroupKey, groupPayload, first.getContentLanguage());
 
         boolean listingAlreadyPublished = publishedGroupOffer != null;
         String existingListingId = publishedGroupOffer == null
@@ -196,8 +195,8 @@ public class EbayListingService {
                 }
             }
         } else {
-            existingListingId = apiClient.publishOfferByInventoryItemGroup(
-                    inventoryItemGroupKey, first.getMarketplaceId());
+            existingListingId = publishGroupWithRepair(
+                    inventoryItemGroupKey, groupPayload, first);
         }
 
         List<EbayListingResult> results = new ArrayList<>(variants.size());
@@ -209,6 +208,35 @@ public class EbayListingService {
                     properties.getEnvironment()));
         }
         return List.copyOf(results);
+    }
+
+    /**
+     * 整组发布。eBay 偶发会把某个商品组的服务端状态弄坏，此后该组的整组发布
+     * 永远只回 25001（内部错误），而组内数据本身完全合法——把组删掉再用同一个
+     * key 和同样的 payload 重建即可恢复。这里对 25001 做一次这样的自愈重试。
+     */
+    private String publishGroupWithRepair(String inventoryItemGroupKey,
+                                          JSONObject groupPayload,
+                                          EbayListingRequest first) {
+        try {
+            return apiClient.publishOfferByInventoryItemGroup(
+                    inventoryItemGroupKey, first.getMarketplaceId());
+        } catch (EbayApiException e) {
+            if (!isCorruptedGroupFailure(e)) {
+                throw e;
+            }
+            log.warn("商品组{}整组发布返回25001，删除并重建该组后重试", inventoryItemGroupKey, e);
+            apiClient.deleteInventoryItemGroup(inventoryItemGroupKey);
+            createOrReplaceInventoryItemGroupWithRetry(
+                    inventoryItemGroupKey, groupPayload, first.getContentLanguage());
+            return apiClient.publishOfferByInventoryItemGroup(
+                    inventoryItemGroupKey, first.getMarketplaceId());
+        }
+    }
+
+    private boolean isCorruptedGroupFailure(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && message.contains("25001:");
     }
 
     private void createOrReplaceInventoryItemWithRetry(
