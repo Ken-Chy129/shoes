@@ -1029,10 +1029,20 @@ public class StockXClient {
                 log.error("searchExactItemWithPrice|Token已过期或无效，请更新Token");
                 return null;
             }
+            JSONArray errors = searchResponse.getJSONArray("errors");
+            if (errors != null && !errors.isEmpty()) {
+                String message = errors.getJSONObject(0) != null
+                        ? errors.getJSONObject(0).getString("message") : null;
+                throw new IllegalStateException("StockX商品搜索失败: "
+                        + StrUtil.blankToDefault(message, "未知错误"));
+            }
             JSONObject data = searchResponse.getJSONObject("data");
             JSONObject browse = data != null ? data.getJSONObject("browse") : null;
             JSONObject results = browse != null ? browse.getJSONObject("results") : null;
             JSONArray edges = results != null ? results.getJSONArray("edges") : null;
+            if (data == null || browse == null || results == null || edges == null) {
+                throw new IllegalStateException("StockX商品搜索响应结构异常");
+            }
             if (CollectionUtils.isEmpty(edges)) {
                 continue;
             }
@@ -1387,25 +1397,19 @@ public class StockXClient {
     }
 
     private String buildItemSearchRequest(String query, Integer index, String sort, String country) {
-        JSONObject requestJson = new JSONObject(true);
-        requestJson.put("operationName", "getDiscoveryData");
+        // StockX 会不定期淘汰 persisted-query 哈希；复用完整查询文本可避免旧哈希静默返回空结果。
+        JSONObject requestJson = JSON.parseObject(buildBrandQueryRequest("nike", 1, 1));
         JSONObject variables = new JSONObject(true);
         variables.put("country", country);
         variables.put("currency", "USD");
+        variables.put("enableOpenSearch", false);
         variables.put("flow", "SEARCH_RESULTS");
         variables.put("market", country);
         variables.put("page", Map.of("index", index, "limit", 40));
-        variables.put("unifiedDiscoveryEnabled", false);
         variables.put("filters", List.of());
         variables.put("query", query);
         variables.put("sort", Map.of("id", sort));
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "a425201c8e4ccc83ecad211836645be32d6306ad42894b34f2a4b15de3408d20");
-        extensions.put("persistedQuery", persistedQuery);
-        requestJson.put("extensions", extensions);
         return requestJson.toJSONString();
     }
 

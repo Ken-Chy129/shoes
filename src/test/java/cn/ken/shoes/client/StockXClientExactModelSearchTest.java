@@ -11,11 +11,48 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class StockXClientExactModelSearchTest {
+
+    @Test
+    void exactSearchUsesFullDiscoveryQueryInsteadOfExpiringPersistedHash() {
+        AtomicReference<JSONObject> searchRequest = new AtomicReference<>();
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                JSONObject request = JSON.parseObject(body);
+                searchRequest.set(request);
+                return JSON.parseObject("{\"data\":{\"browse\":{\"results\":{\"edges\":[]}}}}");
+            }
+        };
+
+        assertThat(client.searchExactItemWithPrice("DD1391-100", "shoes", "US", new StockXAccount()))
+                .isEmpty();
+        assertThat(searchRequest.get().getString("query")).contains("query getDiscoveryData");
+        assertThat(searchRequest.get()).doesNotContainKey("extensions");
+        assertThat(searchRequest.get().getJSONObject("variables"))
+                .containsEntry("query", "DD1391-100")
+                .containsEntry("enableOpenSearch", false);
+    }
+
+    @Test
+    void exactSearchRejectsGraphQlErrorsInsteadOfReportingMissingProduct() {
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                return JSON.parseObject("{\"errors\":[{\"message\":\"discovery unavailable\"}]}");
+            }
+        };
+
+        assertThatThrownBy(() -> client.searchExactItemWithPrice(
+                "DD1391-100", "shoes", "US", new StockXAccount()))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("discovery unavailable");
+    }
 
     @Test
     void loadsExactProductMetadataAndOfficialImagesWithoutMarketRequest() {
