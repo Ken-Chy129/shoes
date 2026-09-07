@@ -38,6 +38,7 @@ import com.alibaba.fastjson.JSONObject;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Headers;
+import okhttp3.HttpUrl;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
@@ -1018,6 +1019,16 @@ public class StockXClient {
         String finalCountry = country != null ? country : "HK";
         List<String> aliases = splitModelAliases(modelNo);
 
+        // 官方 Catalog API 的商品搜索比网页 browse 查询稳定，且直接返回 styleId/productId。
+        // 老账号可能没有 API Key，因此仍保留下方 GraphQL 流程作为兼容兜底。
+        if (account != null && StrUtil.isNotBlank(account.getApiKey())
+                && StrUtil.isNotBlank(account.getAuthorization())) {
+            List<StockXPriceExcel> catalogResult = searchExactItemWithCatalog(aliases, searchTypeEnum, account);
+            if (catalogResult != null && !catalogResult.isEmpty()) {
+                return catalogResult;
+            }
+        }
+
         Set<String> checkedUrlKeys = new HashSet<>();
         for (String alias : aliases) {
             JSONObject searchResponse = queryReadPro(
@@ -1070,6 +1081,111 @@ public class StockXClient {
             }
         }
         return Collections.emptyList();
+    }
+
+    private List<StockXPriceExcel> searchExactItemWithCatalog(List<String> aliases,
+                                                               SearchTypeEnum searchTypeEnum,
+                                                               StockXAccount account) {
+        for (String alias : aliases) {
+            HttpUrl searchUrl = Objects.requireNonNull(HttpUrl.parse(StockXConfig.SEARCH_ITEMS)).newBuilder()
+                    .addQueryParameter("query", alias)
+                    .addQueryParameter("pageNumber", "1")
+                    .addQueryParameter("pageSize", "20")
+                    .build();
+            Object searchPayload = queryCatalog(searchUrl.toString(), account);
+            if (!(searchPayload instanceof JSONObject searchResponse)) {
+                continue;
+            }
+            JSONArray products = searchResponse.getJSONArray("products");
+            if (products == null) {
+                continue;
+            }
+            for (JSONObject product : products.toJavaList(JSONObject.class)) {
+                if (!matchesAnyModelAlias(aliases, product.getString("styleId"))) {
+                    continue;
+                }
+                String productId = product.getString("productId");
+                if (StrUtil.isBlank(productId)) {
+                    continue;
+                }
+                String variantsUrl = StockXConfig.SEARCH_SIZE.replace("{productId}", productId);
+                String marketUrl = StockXConfig.SEARCH_PRICE.replace("{productId}", productId);
+                Object variantsPayload = queryCatalog(variantsUrl, account);
+                Object marketPayload = queryCatalog(marketUrl, account);
+                if (variantsPayload instanceof JSONArray variants && marketPayload instanceof JSONArray market) {
+                    List<StockXPriceExcel> rows = buildCatalogPriceRows(product, variants, market, searchTypeEnum);
+                    if (!rows.isEmpty()) {
+                        return rows;
+                    }
+                }
+            }
+        }
+        return Collections.emptyList();
+    }
+
+    private List<StockXPriceExcel> buildCatalogPriceRows(JSONObject product, JSONArray variants,
+                                                          JSONArray market, SearchTypeEnum searchTypeEnum) {
+        Map<String, JSONObject> marketByVariant = market.toJavaList(JSONObject.class).stream()
+                .filter(value -> StrUtil.isNotBlank(value.getString("variantId")))
+                .collect(Collectors.toMap(value -> value.getString("variantId"), value -> value,
+                        (first, ignored) -> first));
+        List<StockXPriceExcel> result = new ArrayList<>();
+        for (JSONObject variant : variants.toJavaList(JSONObject.class)) {
+            String variantId = variant.getString("variantId");
+            JSONObject marketData = marketByVariant.get(variantId);
+            JSONObject sizeChart = variant.getJSONObject("sizeChart");
+            JSONArray conversions = sizeChart != null ? sizeChart.getJSONArray("availableConversions") : null;
+            if (marketData == null || conversions == null) {
+                continue;
+            }
+            Map<String, String> sizeMap = conversions.toJavaList(JSONObject.class).stream()
+                    .filter(value -> StrUtil.isNotBlank(value.getString("type")))
+                    .collect(Collectors.toMap(value -> value.getString("type"), value -> value.getString("size"),
+                            (first, ignored) -> first));
+            StockXPriceExcel row = new StockXPriceExcel();
+            row.setId(variantId);
+            row.setUk(product.getString("urlKey"));
+            row.setModelNo(product.getString("styleId"));
+            row.setTitle(product.getString("title"));
+            row.setBrand(product.getString("brand"));
+            row.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
+            row.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
+            row.setUswSize(getUsWomenSize(searchTypeEnum, sizeMap));
+            row.setPrice(marketData.getInteger("lowestAskAmount"));
+            row.setStandardPrice(marketData.getInteger("lowestAskAmount"));
+            row.setFlexPrice(marketData.getInteger("flexLowestAskAmount"));
+            row.setPurchasePrice(marketData.getInteger("highestBidAmount"));
+            result.add(row);
+        }
+        return result;
+    }
+
+    protected Object queryCatalog(String url, StockXAccount account) {
+        LimiterHelper.limitStockxApi(account.getName());
+        String raw = HttpUtil.doGet(url, buildHeaders(account), false);
+        if (StrUtil.isBlank(raw)) {
+            return null;
+        }
+        try {
+            Object payload = JSON.parse(raw);
+            if (payload instanceof JSONObject object) {
+                if (StockXRateLimitGuard.isRateLimited(raw)) {
+                    throw new StockXRateLimitException(account.getName(),
+                            StockXReadAccountPool.DEFAULT_READ_COOLDOWN_MS,
+                            "StockX Catalog接口限流", StockXRateLimitType.GENERAL,
+                            StockXRateLimitGuard.matchedSignal(raw));
+                }
+                if ("Unauthorized".equalsIgnoreCase(object.getString("message"))) {
+                    throw new IllegalStateException("StockX Token已过期，请更新Token");
+                }
+            }
+            return payload;
+        } catch (StockXRateLimitException | IllegalStateException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("StockX Catalog响应无法解析, url:{}, bodyLen:{}", url, raw.length());
+            return null;
+        }
     }
 
     /**

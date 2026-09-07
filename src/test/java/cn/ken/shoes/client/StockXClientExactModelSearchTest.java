@@ -19,6 +19,66 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class StockXClientExactModelSearchTest {
 
     @Test
+    void exactSearchUsesOfficialCatalogWhenAccountHasApiKey() {
+        List<String> urls = new ArrayList<>();
+        StockXClient client = new StockXClient() {
+            @Override
+            protected Object queryCatalog(String url, StockXAccount account) {
+                urls.add(url);
+                if (url.contains("/catalog/search")) {
+                    return JSON.parseObject("""
+                            {"products":[
+                              {"productId":"wrong-id","urlKey":"wrong","styleId":"DD1391-101","title":"Wrong"},
+                              {"productId":"product-id","urlKey":"nike-dunk","styleId":"DD1391-100","title":"Dunk","brand":"Nike"}
+                            ]}
+                            """);
+                }
+                if (url.endsWith("/variants")) {
+                    return JSON.parseArray("""
+                            [{"variantId":"variant-id","sizeChart":{"availableConversions":[
+                              {"type":"us m","size":"US M 10"},
+                              {"type":"us w","size":"US W 11.5"},
+                              {"type":"eu","size":"EU 44"}
+                            ]}}]
+                            """);
+                }
+                if (url.endsWith("/market-data")) {
+                    return JSON.parseArray("""
+                            [{"variantId":"variant-id","highestBidAmount":"48","lowestAskAmount":"64",
+                              "flexLowestAskAmount":"66"}]
+                            """);
+                }
+                throw new AssertionError("Unexpected Catalog URL: " + url);
+            }
+
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                throw new AssertionError("Catalog命中后不应调用GraphQL搜索");
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-1");
+        account.setApiKey("api-key");
+        account.setAuthorization("Bearer test");
+
+        List<StockXPriceExcel> result = client.searchExactItemWithPrice(
+                "DD1391-100", "shoes", "US", account);
+
+        assertThat(result).singleElement().satisfies(item -> {
+            assertThat(item.getId()).isEqualTo("variant-id");
+            assertThat(item.getModelNo()).isEqualTo("DD1391-100");
+            assertThat(item.getUsmSize()).isEqualTo("10");
+            assertThat(item.getUswSize()).isEqualTo("11.5");
+            assertThat(item.getEuSize()).isEqualTo("44");
+            assertThat(item.getPurchasePrice()).isEqualTo(48);
+            assertThat(item.getStandardPrice()).isEqualTo(64);
+            assertThat(item.getFlexPrice()).isEqualTo(66);
+        });
+        assertThat(urls).hasSize(3);
+        assertThat(urls.getFirst()).contains("query=DD1391-100", "pageSize=20");
+    }
+
+    @Test
     void exactSearchUsesFullDiscoveryQueryInsteadOfExpiringPersistedHash() {
         AtomicReference<JSONObject> searchRequest = new AtomicReference<>();
         StockXClient client = new StockXClient() {
