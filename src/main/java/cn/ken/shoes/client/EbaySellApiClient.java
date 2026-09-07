@@ -213,6 +213,41 @@ public class EbaySellApiClient {
         execute(request, Set.of(200, 204));
     }
 
+    /**
+     * 结束单个 offer 对应的在架 listing，但保留 offer 与库存数据，
+     * 便于之后重新上架。eBay 对已结束或未发布的 offer 返回 25002/25004，
+     * 这里视为「已下架」而不是失败。
+     */
+    public boolean withdrawOffer(String offerId) {
+        HttpUrl url = inventoryUrl("offer").newBuilder()
+                .addPathSegment(requireValue(offerId, "offerId"))
+                .addPathSegment("withdraw")
+                .build();
+        Request request = request(url, null)
+                .post(EMPTY_JSON_BODY)
+                .build();
+        try {
+            execute(request, Set.of(200, 204));
+            return true;
+        } catch (EbayApiException e) {
+            if (isAlreadyWithdrawn(e)) {
+                return false;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * eBay 在 offer 已经结束或从未发布时返回这些错误码，对下架来说是幂等成功。
+     */
+    private boolean isAlreadyWithdrawn(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && (message.contains("25002:")
+                || message.contains("25004:")
+                || message.contains("25044:")
+                || message.contains("25801:"));
+    }
+
     public JSONObject getFulfillmentPolicies(String marketplaceId) {
         return get(policyUrl("fulfillment_policy", marketplaceId));
     }

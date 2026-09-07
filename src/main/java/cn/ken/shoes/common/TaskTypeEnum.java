@@ -21,6 +21,7 @@ public enum TaskTypeEnum {
     REPLENISHMENT("replenishment", "补单", false),
     EBAY_BULK_LISTING("ebay_bulk_listing", "eBay批量上架", false),
     EBAY_PRICE_SYNC("ebay_price_sync", "eBay定时改价", true),
+    EBAY_DELIST("ebay_delist", "eBay下架", false),
     ;
 
     private final String code;

@@ -32,6 +32,7 @@ import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
 import cn.ken.shoes.service.EbayPriceSyncService;
 import cn.ken.shoes.service.EbayBulkListingService;
+import cn.ken.shoes.service.EbayDelistService;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -90,6 +91,9 @@ public class TaskExecutorManager {
 
     @Resource
     private EbayBulkListingService ebayBulkListingService;
+
+    @Resource
+    private EbayDelistService ebayDelistService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -295,7 +299,8 @@ public class TaskExecutorManager {
                 && (taskType == TaskTypeEnum.LISTING || taskType == TaskTypeEnum.PRICE_DOWN))
                 || ("ebay".equals(task.getPlatform())
                 && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
-                || taskType == TaskTypeEnum.EBAY_BULK_LISTING));
+                || taskType == TaskTypeEnum.EBAY_BULK_LISTING
+                || taskType == TaskTypeEnum.EBAY_DELIST));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -313,6 +318,9 @@ public class TaskExecutorManager {
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
             return startEbayPriceSync(
                     params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_DELIST) {
+            return startEbayDelist(styleIds(params));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
@@ -416,7 +424,34 @@ public class TaskExecutorManager {
             case EBAY_BULK_LISTING -> null;
             case EBAY_PRICE_SYNC -> startEbayPriceSync(
                     params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
+            case EBAY_DELIST -> startEbayDelist(styleIds(params));
         };
+    }
+
+    public Long startEbayDelist(java.util.List<String> styleIds) {
+        return ebayDelistService.start(styleIds);
+    }
+
+    public void cancelEbayDelist(Long taskId) {
+        ebayDelistService.cancel(taskId);
+    }
+
+    /**
+     * 下架任务的货号参数：缺失或为空表示下架全部在架商品。
+     */
+    private java.util.List<String> styleIds(JSONObject params) {
+        var array = params == null ? null : params.getJSONArray("styleIds");
+        if (array == null) {
+            return java.util.List.of();
+        }
+        java.util.List<String> styleIds = new java.util.ArrayList<>();
+        for (int i = 0; i < array.size(); i++) {
+            String value = array.getString(i);
+            if (value != null && !value.isBlank()) {
+                styleIds.add(value);
+            }
+        }
+        return java.util.List.copyOf(styleIds);
     }
 
     public Long startEbayPriceSync(long intervalHours, java.math.BigDecimal priceMultiplier) {

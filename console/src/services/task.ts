@@ -10,6 +10,7 @@ const TASK_TYPE = {
     REPLENISHMENT: 'replenishment',
     EBAY_BULK_LISTING: 'ebay_bulk_listing',
     EBAY_PRICE_SYNC: 'ebay_price_sync',
+    EBAY_DELIST: 'ebay_delist',
 };
 
 enum TASK_API {
@@ -59,6 +60,9 @@ enum TASK_API {
     EBAY_START_BULK_LISTING = '/api/task/ebay/startBulkListing',
     EBAY_BULK_LISTING_TEMPLATE = '/api/task/ebay/bulkListingTemplate',
     EBAY_START_PRICE_SYNC = '/api/task/ebay/startPriceSync',
+    // eBay 下架（结束在架listing，保留offer与库存以便重新上架）
+    EBAY_START_DELIST = '/api/task/ebay/startDelist',
+    EBAY_CANCEL_DELIST = '/api/task/ebay/cancelDelist',
 }
 
 export {TASK_API, TASK_TYPE}

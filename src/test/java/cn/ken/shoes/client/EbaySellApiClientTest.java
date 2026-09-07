@@ -150,6 +150,37 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void withdrawsAnOfferToEndTheListing() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(204));
+
+        assertThat(client.withdrawOffer("offer-1")).isTrue();
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getPath())
+                .isEqualTo("/sell/inventory/v1/offer/offer-1/withdraw");
+    }
+
+    @Test
+    void reportsAnAlreadyEndedOfferAsNotWithdrawnInsteadOfFailing() {
+        server.enqueue(jsonResponse(
+                "{\"errors\":[{\"errorId\":25002,\"message\":\"offer is not published\"}]}")
+                .setResponseCode(400));
+
+        assertThat(client.withdrawOffer("offer-1")).isFalse();
+    }
+
+    @Test
+    void propagatesUnexpectedWithdrawFailures() {
+        server.enqueue(jsonResponse(
+                "{\"errors\":[{\"errorId\":25001,\"message\":\"system error\"}]}")
+                .setResponseCode(500));
+
+        assertThatThrownBy(() -> client.withdrawOffer("offer-1"))
+                .isInstanceOf(EbayApiException.class);
+    }
+
+    @Test
     void readsActiveOffersWithPaginationAndUpdatesAnOffer() throws Exception {
         server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-1\",\"sku\":\"SKU-1\"}],\"total\":2}"));
         server.enqueue(jsonResponse("{\"offers\":[{\"offerId\":\"offer-2\",\"sku\":\"SKU-2\"}],\"total\":2}"));

@@ -10,11 +10,13 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   replenishment: '补单',
   ebay_bulk_listing: '批量上架',
   ebay_price_sync: '定时改价',
+  ebay_delist: 'eBay下架',
 };
 
 export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_bulk_listing, value: 'ebay_bulk_listing'},
   {label: TASK_TYPE_LABELS.ebay_price_sync, value: 'ebay_price_sync'},
+  {label: TASK_TYPE_LABELS.ebay_delist, value: 'ebay_delist'},
 ];
 
 export const STOCKX_TASK_OPTIONS = [

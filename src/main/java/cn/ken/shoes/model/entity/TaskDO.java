@@ -77,6 +77,7 @@ public class TaskDO {
         EXCEL_DELIST("下架", "excel_delist"),
         EBAY_BULK_LISTING("eBay批量上架", "ebay_bulk_listing"),
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
+        EBAY_DELIST("eBay下架", "ebay_delist"),
         ;
 
         private final String name;

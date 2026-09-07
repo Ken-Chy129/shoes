@@ -157,6 +157,39 @@ public class TaskController {
         }
     }
 
+    /**
+     * 启动 eBay 下架任务。styleIds 为空表示下架当前在架的全部商品；
+     * 下架只结束在架 listing，offer 与库存数据保留，便于之后重新上架。
+     */
+    @PostMapping("ebay/startDelist")
+    public Result<String> startEbayDelist(@RequestBody(required = false) JSONObject body) {
+        List<String> styleIds = new ArrayList<>();
+        var array = body == null ? null : body.getJSONArray("styleIds");
+        if (array != null) {
+            for (int i = 0; i < array.size(); i++) {
+                String value = array.getString(i);
+                if (value != null && !value.isBlank()) {
+                    styleIds.add(value);
+                }
+            }
+        }
+        try {
+            Long taskId = taskExecutorManager.startEbayDelist(styleIds);
+            if (taskId == null) {
+                return Result.buildError("eBay下架任务已在运行，请等待当前任务结束");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
+    @PostMapping("ebay/cancelDelist")
+    public Result<Void> cancelEbayDelist(@RequestParam Long taskId) {
+        taskExecutorManager.cancelEbayDelist(taskId);
+        return Result.buildSuccess();
+    }
+
     // ==================== StockX Excel 压价 ====================
 
     @PostMapping("stockx/uploadPriceDownExcel")
