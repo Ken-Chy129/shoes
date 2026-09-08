@@ -55,6 +55,64 @@ class SearchServicePartialResultTest {
         }
     }
 
+    @Test
+    void keywordSearchWithoutAnyRowIsMarkedFailedInsteadOfSuccess() throws Exception {
+        SearchTaskDO task = new SearchTaskDO();
+        task.setId(589L);
+        task.setPlatform("stockx");
+        task.setQuery("nike");
+        task.setSorts("featured,most-active");
+        task.setPageCount(25);
+        task.setType("keyword");
+        task.setSearchType("shoes");
+
+        AtomicReference<String> savedFilePath = new AtomicReference<>();
+        List<String> statusUpdates = new ArrayList<>();
+        SearchServiceTestSupport support = new SearchServiceTestSupport(task, savedFilePath, statusUpdates);
+        SearchService service = support.service();
+
+        // 上游一条都没返回（例如被 Cloudflare 403 拦截）
+        support.onSearch(pageIndex -> List.of());
+
+        service.executeSearchTask(task.getId());
+
+        assertThat(statusUpdates).as("全空结果不能报执行成功").doesNotContain("success");
+        assertThat(statusUpdates).as("全空结果应判定为执行失败").contains("failed");
+        assertThat(savedFilePath.get()).as("不应写出只有表头的空文件").isNull();
+    }
+
+    @Test
+    void keywordSearchKeepsSuccessWhenAtLeastOneSortReturnsRows() throws Exception {
+        SearchTaskDO task = new SearchTaskDO();
+        task.setId(592L);
+        task.setPlatform("stockx");
+        task.setQuery("nike");
+        task.setSorts("featured");
+        task.setPageCount(1);
+        task.setType("keyword");
+        task.setSearchType("shoes");
+
+        AtomicReference<String> savedFilePath = new AtomicReference<>();
+        List<String> statusUpdates = new ArrayList<>();
+        SearchServiceTestSupport support = new SearchServiceTestSupport(task, savedFilePath, statusUpdates);
+        SearchService service = support.service();
+
+        support.onSearch(pageIndex -> List.of(price("DD1391-100", "44", 155)));
+
+        service.executeSearchTask(task.getId());
+
+        assertThat(statusUpdates).as("有数据时仍应报成功").contains("success");
+        File saved = savedFilePath.get() == null ? null : new File(savedFilePath.get());
+        try {
+            assertThat(saved).isNotNull();
+            assertThat(saved).exists();
+        } finally {
+            if (saved != null) {
+                deleteQuietly(saved);
+            }
+        }
+    }
+
     private static StockXPriceExcel price(String modelNo, String euSize, int amount) {
         StockXPriceExcel excel = new StockXPriceExcel();
         excel.setModelNo(modelNo);

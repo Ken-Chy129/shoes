@@ -294,11 +294,12 @@ class StockXClientExactModelSearchTest {
             }
             if ("GetMarketData".equals(operation)) {
                 calls.add("market:" + id);
-                assertThat(request.getJSONObject("variables").getBoolean("includeProcessingFeeForPricing"))
-                        .isFalse();
-                assertThat(request.getJSONObject("extensions")
-                        .getJSONObject("persistedQuery").getString("sha256Hash"))
-                        .isEqualTo("5ba554f0c3f881e67a555da21d7f16a36416a67ef9898bc8b9a78c2371641453");
+                // Viper 网关不认 Iron 的 persisted 哈希，只读行情必须带完整查询文本。
+                assertThat(request).doesNotContainKey("extensions");
+                assertThat(request.getString("query")).contains("query GetMarketData");
+                assertThat(request.getJSONObject("variables"))
+                        .containsEntry("currencyCode", "USD")
+                        .containsEntry("market", "US");
                 return JSON.parseObject("""
                         {"data":{"product":{"variants":[
                           {"id":"variant-1","market":{"state":{

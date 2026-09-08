@@ -155,6 +155,9 @@ public class SearchService {
             // 计算总的查询次数用于进度计算
             int totalQueries = sortsList.size() * pageCount;
             int completedQueries = 0;
+            // 关键词搜索一条都没抓到时，不能当成"执行成功"写出空文件：
+            // 上游被拦截/限流和"这个词确实没有商品"从结果上无法区分，宁可报失败让用户重试。
+            int emptySorts = 0;
 
             // 遍历每个sort进行查询
             for (String sort : sortsList) {
@@ -170,6 +173,7 @@ public class SearchService {
                 totalQueries -= (pageCount - Math.max(actualPages, 1));
                 if (totalPage == 0 || CollectionUtils.isEmpty(firstPair.getValue())) {
                     log.error("executeSearchTask no result, taskId:{}, query:{}, sort:{}, page:{}", taskId, query, sort, 1);
+                    emptySorts++;
                     completedQueries++;
                     int progress = (int) ((completedQueries * 100.0) / totalQueries);
                     searchTaskMapper.updateProgress(taskId, progress);
@@ -222,6 +226,13 @@ public class SearchService {
                     flushPartialResult(taskId, platform, filePath, resultMap);
                 }
             }
+
+        // 每个排序都没拿到数据 → 判定为任务失败，而不是写一个只有表头的空文件报成功。
+        if (emptySorts == sortsList.size()) {
+            log.error("executeKeywordSearch all sorts empty, taskId:{}, query:{}", taskId, query);
+            throw new IllegalStateException("StockX搜索未返回任何商品(共" + sortsList.size()
+                    + "个排序均为空)，可能被上游拦截或限流，请稍后重试");
+        }
 
         // 保存到Excel
         List<JSONObject> resultList = new ArrayList<>(resultMap.values());

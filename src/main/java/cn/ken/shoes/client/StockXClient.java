@@ -985,17 +985,26 @@ public class StockXClient {
         String finalCountry = country != null ? country : "HK";
         JSONObject jsonObject = queryReadPro(
                 buildItemSearchRequest(query, pageIndex, sort, finalCountry), finalCountry, account);
+        // 请求失败(403/网络异常)必须报错：否则会和"关键词确实没搜到商品"混为一谈，
+        // 任务最终写出只有表头的空 Excel 并被标记成执行成功。
         if (jsonObject == null) {
-            return Pair.of(0, Collections.emptyList());
+            throw new IllegalStateException("StockX商品搜索无响应(可能被拦截或网络异常)");
         }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {
             log.error("searchItemWithPrice|Token已过期或无效，请更新Token");
             return null;
         }
+        JSONArray searchErrors = jsonObject.getJSONArray("errors");
+        if (searchErrors != null && !searchErrors.isEmpty()) {
+            String message = searchErrors.getJSONObject(0) != null
+                    ? searchErrors.getJSONObject(0).getString("message") : null;
+            throw new IllegalStateException("StockX商品搜索失败: "
+                    + StrUtil.blankToDefault(message, "未知错误"));
+        }
         JSONObject data = jsonObject.getJSONObject("data");
         if (data == null || data.getJSONObject("browse") == null || data.getJSONObject("browse").getJSONObject("results") == null) {
             log.error("searchItemWithPrice unexpected response, query:{}, response:{}", query, jsonObject.toJSONString());
-            return Pair.of(0, Collections.emptyList());
+            throw new IllegalStateException("StockX商品搜索响应结构异常");
         }
         JSONObject results = data.getJSONObject("browse").getJSONObject("results");
         JSONObject pageInfo = results.getJSONObject("pageInfo");
@@ -1559,38 +1568,78 @@ public class StockXClient {
         return requestJson.toJSONString();
     }
 
+    /**
+     * 商品资料查询。字段与 {@link #buildPriceRows} 的解析保持一致，并覆盖 eBay 资料兜底所需的
+     * description/model/gender/media。
+     */
+    private static final String GET_PRODUCT_QUERY = """
+            query GetProduct($id: String!) {
+              product(id: $id) {
+                id
+                urlKey
+                title
+                brand
+                styleId
+                description
+                model
+                gender
+                productCategory
+                media { thumbUrl smallImageUrl imageUrl }
+                variants { id sizeChart { displayOptions { size type } } }
+              }
+            }""";
+
+    /**
+     * 行情查询。Viper 网关的 MarketStatistics 只提供 annual/lastSale 聚合，
+     * 没有 last7Days/last30Days/last90Days，缺失区间按既有约定保持为空而不补 0。
+     */
+    private static final String GET_MARKET_DATA_QUERY = """
+            query GetMarketData($id: String!, $currencyCode: CurrencyCode!, $country: String!, $market: String!) {
+              product(id: $id) {
+                id
+                variants {
+                  id
+                  market(currencyCode: $currencyCode) {
+                    state(country: $country, market: $market) {
+                      lowestAsk { amount }
+                      highestBid { amount }
+                      askServiceLevels {
+                        standard { lowest { amount } }
+                        expressStandard { lowest { amount } }
+                      }
+                    }
+                    salesInformation { salesLast72Hours }
+                    statistics(market: $market) {
+                      annual { averagePrice salesCount }
+                      lastSale { amount }
+                    }
+                  }
+                }
+              }
+            }""";
+
     private String buildGetProductRequest(String urlKey) {
         JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "GetProduct");
+        // 只读请求走 Viper(pro.stockx.com) 指纹，而 Viper 网关不认 Iron 的 persisted 哈希
+        // (返回 PersistedQueryNotFound)，所以这里必须带完整查询文本。
+        requestJson.put("query", GET_PRODUCT_QUERY);
         JSONObject variables = new JSONObject(true);
         variables.put("id", urlKey);
-        variables.put("skipBreadcrumbs", true);
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "9e0faa98b5745bd79ef47e2479239514b41084c29a86d3f6dacce68543281914");
-        extensions.put("persistedQuery", persistedQuery);
-        requestJson.put("extensions", extensions);
         return requestJson.toJSONString();
     }
 
     private String buildGetMarketDataRequest(String urlKey, String country) {
         JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "GetMarketData");
+        requestJson.put("query", GET_MARKET_DATA_QUERY);
         JSONObject variables = new JSONObject(true);
         variables.put("id", urlKey);
         variables.put("currencyCode", "USD");
-        variables.put("marketName", country);
-        variables.put("viewerContext", "BUYER");
-        variables.put("includeProcessingFeeForPricing", false);
+        variables.put("country", country);
+        variables.put("market", country);
         requestJson.put("variables", variables);
-        JSONObject extensions = new JSONObject(true);
-        JSONObject persistedQuery = new JSONObject(true);
-        persistedQuery.put("version", 1);
-        persistedQuery.put("sha256Hash", "5ba554f0c3f881e67a555da21d7f16a36416a67ef9898bc8b9a78c2371641453");
-        extensions.put("persistedQuery", persistedQuery);
-        requestJson.put("extensions", extensions);
         return requestJson.toJSONString();
     }
 
@@ -1683,6 +1732,33 @@ public class StockXClient {
             return null;
         }
         return jsonObject;
+    }
+
+    /**
+     * 只读 GraphQL 统一使用 Viper(pro.stockx.com) 指纹。
+     * <p>实测(2026-09-08)：stockx.com 的 Iron 指纹对 getDiscoveryData/GetProduct/GetMarketData
+     * 一律返回 Cloudflare 403，同一账号同一查询换成 Viper 立即正常返回。
+     */
+    private Headers buildReadHeaders(StockXAccount account, String country) {
+        return Headers.of(
+                "Content-Type", "application/json",
+                "accept", "*/*",
+                "accept-language", "zh-CN",
+                "authorization", account.getAuthorization().strip(),
+                "apollographql-client-name", "Viper",
+                "apollographql-client-version", "2026.06.11.00",
+                "selected-country", country,
+                "origin", "https://pro.stockx.com",
+                "referer", "https://pro.stockx.com/",
+                "User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36 Edg/149.0.0.0",
+                "sec-ch-ua", "\"Microsoft Edge\";v=\"149\", \"Chromium\";v=\"149\", \"Not)A;Brand\";v=\"24\"",
+                "sec-ch-ua-mobile", "?0",
+                "sec-ch-ua-platform", "\"Windows\"",
+                "sec-fetch-dest", "empty",
+                "sec-fetch-mode", "cors",
+                "sec-fetch-site", "same-site",
+                "x-stockx-device-id", HttpUtil.getStockXDeviceId()
+        );
     }
 
     private Headers buildProHeaders(StockXAccount account, String country) {
@@ -2057,7 +2133,7 @@ public class StockXClient {
     private ReadAttempt attemptReadCandidate(String body, String country, StockXAccount candidate) {
         try {
             JSONObject result = executeReadCandidate(
-                    body, buildProHeaders(candidate, country), candidate.getName());
+                    body, buildReadHeaders(candidate, country), candidate.getName());
             if (result != null && !"Unauthorized".equals(result.getString("message"))) {
                 readAccountPool.markSuccess(candidate.getName());
             }
