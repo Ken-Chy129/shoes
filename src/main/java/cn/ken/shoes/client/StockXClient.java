@@ -985,10 +985,12 @@ public class StockXClient {
         String finalCountry = country != null ? country : "HK";
         JSONObject jsonObject = queryReadPro(
                 buildItemSearchRequest(query, pageIndex, sort, finalCountry), finalCountry, account);
-        // 请求失败(403/网络异常)必须报错：否则会和"关键词确实没搜到商品"混为一谈，
-        // 任务最终写出只有表头的空 Excel 并被标记成执行成功。
+        // 无响应通常是代理偶发重置(HttpUtil 已重试3次)。这里按"该页无结果"返回而不是直接抛错，
+        // 避免长任务因为其中一页的抖动整体失败；如果所有排序都拿不到数据，
+        // SearchService 会在收尾时把任务判定为失败，不会写出空文件报成功。
         if (jsonObject == null) {
-            throw new IllegalStateException("StockX商品搜索无响应(可能被拦截或网络异常)");
+            log.error("searchItemWithPrice no response, query:{}, page:{}", query, pageIndex);
+            return Pair.of(0, Collections.emptyList());
         }
         if ("Unauthorized".equals(jsonObject.getString("message"))) {
             log.error("searchItemWithPrice|Token已过期或无效，请更新Token");
