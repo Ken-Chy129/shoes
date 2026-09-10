@@ -2,6 +2,7 @@ package cn.ken.shoes.task;
 
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -38,6 +39,7 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
     private final Long taskId;
     private final List<ModelNoSearchExcel> inputRows;
     private final StockXClient stockXClient;
+    private final PriceManager priceManager;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
     private final StockXPurchaseGuidanceCalculator calculator = new StockXPurchaseGuidanceCalculator();
@@ -45,10 +47,17 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
     public StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, List<ModelNoSearchExcel> inputRows,
                                             StockXClient stockXClient, TaskMapper taskMapper,
                                             TaskItemMapper taskItemMapper) {
+        this(account, taskId, inputRows, stockXClient, null, taskMapper, taskItemMapper);
+    }
+
+    public StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, List<ModelNoSearchExcel> inputRows,
+                                            StockXClient stockXClient, PriceManager priceManager,
+                                            TaskMapper taskMapper, TaskItemMapper taskItemMapper) {
         this.account = account;
         this.taskId = taskId;
         this.inputRows = inputRows != null ? List.copyOf(inputRows) : List.of();
         this.stockXClient = stockXClient;
+        this.priceManager = priceManager;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
     }
@@ -139,6 +148,7 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         item.setLowestPrice(positive(price.getStandardPrice()));
         item.setFlexLowestPrice(positive(price.getFlexPrice()));
         item.setHighestBidPrice(highestBid);
+        item.setPoisonPrice(lookupPoisonPrice(item.getStyleId(), item.getEuSize()));
         item.setAverageSalePrice7d(seven.averagePrice()); item.setMedianSalePrice7d(seven.medianPrice());
         item.setSalesCount7d(seven.salesCount()); item.setAverageSalePrice30d(thirty.averagePrice());
         item.setMedianSalePrice30d(thirty.medianPrice()); item.setSalesCount30d(thirty.salesCount());
@@ -152,6 +162,20 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         item.setOperateResult(guidance.reason());
         item.setOperateTime(new Date());
         return item;
+    }
+
+    /** 得物价格只是参考列，查询失败不能影响 StockX 建议结果。 */
+    private BigDecimal lookupPoisonPrice(String styleId, String euSize) {
+        if (priceManager == null || StrUtil.isBlank(styleId) || StrUtil.isBlank(euSize)) {
+            return null;
+        }
+        try {
+            Integer poisonPrice = priceManager.getPoisonPrice(styleId, euSize);
+            return poisonPrice != null ? BigDecimal.valueOf(poisonPrice) : null;
+        } catch (RuntimeException e) {
+            log.warn("[{}] 查询得物价格失败, styleId:{}, euSize:{}", account.getName(), styleId, euSize, e);
+            return null;
+        }
     }
 
     private void insertFailure(ModelNoSearchExcel input, String reason) {

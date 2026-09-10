@@ -4,6 +4,7 @@ import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.ModelSearchOperation;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -12,6 +13,7 @@ import cn.ken.shoes.model.excel.TaskItemExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
+import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
 import cn.ken.shoes.model.excel.EbayListingTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
@@ -143,6 +145,7 @@ public class TaskItemController {
                 row.setTitle(item.getTitle()); row.setVariantId(item.getProductId());
                 row.setHighestBidPrice(item.getHighestBidPrice()); row.setLowestAskPrice(item.getLowestPrice());
                 row.setFlexLowestAskPrice(item.getFlexLowestPrice());
+                row.setPoisonPrice(item.getPoisonPrice());
                 row.setLatestSalePrice(item.getSalePrice()); row.setLatestSaleAt(item.getSoldOn());
                 row.setAveragePrice7d(item.getAverageSalePrice7d()); row.setMedianPrice7d(item.getMedianSalePrice7d());
                 row.setSalesCount7d(item.getSalesCount7d()); row.setAveragePrice30d(item.getAverageSalePrice30d());
@@ -155,6 +158,33 @@ public class TaskItemController {
             }
             EasyExcel.write(response.getOutputStream(), StockXPurchaseGuidanceExcel.class)
                     .sheet("购买价格参考").doWrite(rows);
+            return;
+        }
+
+        if (task != null && TaskTypeEnum.PURCHASE.getCode().equals(task.getTaskType())
+                && isPurchaseOrderOperation(task)) {
+            // 买家侧订单/历史记录的价格存放在 salePrice，通用导出只读 currentPrice，会把价格列全部导成 "-"。
+            SimpleDateFormat purchaseDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            List<StockXPurchaseOrderExcel> purchaseRows = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                StockXPurchaseOrderExcel excel = new StockXPurchaseOrderExcel();
+                excel.setOrderNumber(item.getOrderNumber());
+                excel.setChainId(item.getListingId());
+                excel.setVariantId(item.getProductId());
+                excel.setBrand(item.getBrand());
+                excel.setTitle(item.getTitle());
+                excel.setStyleId(item.getStyleId());
+                excel.setSize(item.getSize());
+                excel.setEuSize(item.getEuSize());
+                excel.setPurchasePrice(formatMoney(item.getSalePrice(), item.getCurrencyCode()));
+                excel.setOrderStatus(item.getOrderStatus());
+                excel.setPurchaseTime(item.getSoldOn() != null
+                        ? purchaseDateFormat.format(item.getSoldOn()) : "-");
+                purchaseRows.add(excel);
+            }
+            EasyExcel.write(response.getOutputStream(), StockXPurchaseOrderExcel.class)
+                    .sheet("购买明细")
+                    .doWrite(purchaseRows);
             return;
         }
 
@@ -227,6 +257,20 @@ public class TaskItemController {
         }
         String prefix = "USD".equals(currencyCode) ? "$" : (StrUtil.isNotBlank(currencyCode) ? currencyCode + " " : "");
         return prefix + amount.setScale(2, java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
+    }
+
+    private boolean isPurchaseOrderOperation(TaskDO task) {
+        if (StrUtil.isBlank(task.getParams())) {
+            return false;
+        }
+        StockXPurchaseOperation operation;
+        try {
+            operation = StockXPurchaseOperation.fromCode(
+                    JSONObject.parseObject(task.getParams()).getString("operation"));
+        } catch (RuntimeException e) {
+            return false;
+        }
+        return operation == StockXPurchaseOperation.ORDERS || operation == StockXPurchaseOperation.HISTORY;
     }
 
     private String buildExportFileName(Long taskId) {

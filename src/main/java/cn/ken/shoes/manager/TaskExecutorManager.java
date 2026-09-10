@@ -456,7 +456,7 @@ public class TaskExecutorManager {
         TaskSwitch.markSearchListRunning(taskId);
         TaskSwitch.resetSearchListCancel(taskId);
         new Thread(new StockXPurchaseGuidanceTaskRunner(account, taskId, snapshot, stockXClient,
-                taskMapper, taskItemMapper), "StockX-Purchase-Guidance-" + taskId).start();
+                priceManager, taskMapper, taskItemMapper), "StockX-Purchase-Guidance-" + taskId).start();
         return taskId;
     }
 

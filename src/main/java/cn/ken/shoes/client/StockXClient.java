@@ -1592,8 +1592,9 @@ public class StockXClient {
             }""";
 
     /**
-     * 行情查询。Viper 网关的 MarketStatistics 只提供 annual/lastSale 聚合，
-     * 没有 last7Days/last30Days/last90Days，缺失区间按既有约定保持为空而不补 0。
+     * 行情查询。实测(2026-09-10) Viper 网关的 MarketStatistics 提供 last72Hours/last90Days/annual/lastSale，
+     * 其中 PeriodStatistics 只有 salesCount 和 averagePrice；没有 last7Days/last30Days 和 medianPrice，
+     * 缺失区间按既有约定保持为空而不补 0。
      */
     private static final String GET_MARKET_DATA_QUERY = """
             query GetMarketData($id: String!, $currencyCode: CurrencyCode!, $country: String!, $market: String!) {
@@ -1612,6 +1613,7 @@ public class StockXClient {
                     }
                     salesInformation { salesLast72Hours }
                     statistics(market: $market) {
+                      last90Days { salesCount averagePrice }
                       annual { averagePrice salesCount }
                       lastSale { amount }
                     }

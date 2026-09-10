@@ -16,6 +16,7 @@ public class StockXPurchaseGuidanceExcel {
     @ExcelProperty("当前最高求购价") private BigDecimal highestBidPrice;
     @ExcelProperty("当前最低卖价") private BigDecimal lowestAskPrice;
     @ExcelProperty("Flex最低卖价") private BigDecimal flexLowestAskPrice;
+    @ExcelProperty("得物价格") private BigDecimal poisonPrice;
     @ExcelProperty("最近成交价") private BigDecimal latestSalePrice;
     @ExcelProperty("最近成交时间") private Date latestSaleAt;
     @ExcelProperty("7天平均成交价") private BigDecimal averagePrice7d;

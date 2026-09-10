@@ -297,6 +297,8 @@ class StockXClientExactModelSearchTest {
                 // Viper 网关不认 Iron 的 persisted 哈希，只读行情必须带完整查询文本。
                 assertThat(request).doesNotContainKey("extensions");
                 assertThat(request.getString("query")).contains("query GetMarketData");
+                // Viper 网关只暴露 last90Days{salesCount averagePrice}，搜索导出的 90 天销量依赖这一字段。
+                assertThat(request.getString("query")).contains("last90Days { salesCount averagePrice }");
                 assertThat(request.getJSONObject("variables"))
                         .containsEntry("currencyCode", "USD")
                         .containsEntry("market", "US");

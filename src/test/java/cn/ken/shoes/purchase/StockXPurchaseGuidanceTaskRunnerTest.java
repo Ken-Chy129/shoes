@@ -1,6 +1,7 @@
 package cn.ken.shoes.purchase;
 
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.manager.PriceManager;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskItemDO;
@@ -70,6 +71,50 @@ class StockXPurchaseGuidanceTaskRunnerTest {
             assertThat(item.getRecommendedBid()).isEqualByComparingTo("90");
             assertThat(item.getOperateResult()).contains("90天成交中位价");
         });
+    }
+
+    @Test
+    void attachesPoisonPriceByStyleIdAndEuSize() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        TaskItemMapper itemMapper = mapper(TaskItemMapper.class, (method, args) -> {
+            if ("insert".equals(method)) {
+                inserted.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> null);
+        StockXClient client = new StockXClient() {
+            @Override
+            public List<StockXPriceExcel> searchExactItemWithPrice(String modelNo, String type,
+                                                                   String country, StockXAccount account) {
+                StockXPriceExcel row = new StockXPriceExcel();
+                row.setId("variant-1");
+                row.setModelNo("DD1391-100");
+                row.setUsmSize("10");
+                row.setEuSize("44");
+                return List.of(row);
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                return List.of();
+            }
+        };
+        PriceManager priceManager = new PriceManager() {
+            @Override
+            public Integer getPoisonPrice(String modelNo, String euSize) {
+                return "DD1391-100".equals(modelNo) && "44".equals(euSize) ? 699 : null;
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 13L, List.of(input("DD1391-100", "US 10")),
+                client, priceManager, taskMapper, itemMapper).run();
+
+        assertThat(inserted).singleElement().satisfies(item ->
+                assertThat(item.getPoisonPrice()).isEqualByComparingTo("699"));
     }
 
     private static ModelNoSearchExcel input(String modelNo, String size) {
