@@ -1269,15 +1269,23 @@ public class StockXClient {
                 metadata.setTitle(firstNonBlank(product.getString("title"),
                         summary != null ? summary.getString("title") : null));
                 metadata.setBrand(product.getString("brand"));
-                metadata.setDescription(product.getString("description"));
                 metadata.setModelName(product.getString("model"));
                 metadata.setGender(product.getString("gender"));
+                metadata.setProductType(product.getString("productCategory"));
+                // 配色、产品线在 traits 里，eBay 的 Color 属性靠配色解析，比从标题猜准。
+                Map<String, String> traits = traitValues(product.getJSONArray("traits"));
+                metadata.setColorway(traits.get("colorway"));
+                metadata.setProductLine(traits.get("product line"));
+                // StockX 描述经常为空，或者按账号地区返回中文；eBay 美国站需要英文，
+                // 这时用标题/配色/发售信息拼一段简短英文描述。
+                metadata.setDescription(usableEnglishDescription(
+                        product.getString("description"), metadata, traits));
                 LinkedHashSet<String> images = new LinkedHashSet<>();
                 appendMediaUrls(product.get("media"), images);
                 if (summary != null) {
                     appendMediaUrls(summary.get("media"), images);
                 }
-                metadata.setImageUrls(images.stream().limit(6).toList());
+                metadata.setImageUrls(images.stream().limit(8).toList());
                 if (StrUtil.isNotBlank(metadata.getTitle()) && !metadata.getImageUrls().isEmpty()) {
                     return metadata;
                 }
@@ -1290,6 +1298,59 @@ public class StockXClient {
         return StrUtil.isNotBlank(first) ? first : second;
     }
 
+    private static Map<String, String> traitValues(JSONArray traits) {
+        Map<String, String> result = new HashMap<>();
+        if (traits == null) {
+            return result;
+        }
+        for (Object value : traits) {
+            if (!(value instanceof JSONObject trait)) {
+                continue;
+            }
+            String name = trait.getString("name");
+            String traitValue = trait.getString("value");
+            if (StrUtil.isNotBlank(name) && StrUtil.isNotBlank(traitValue)) {
+                result.putIfAbsent(name.trim().toLowerCase(Locale.ROOT), traitValue.trim());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 描述为空或明显不是英文（含 CJK 字符）时，用已知信息拼一段英文描述。
+     */
+    static String usableEnglishDescription(String description, EbayProductMetadata metadata,
+                                           Map<String, String> traits) {
+        if (StrUtil.isNotBlank(description) && !containsCjk(description)) {
+            return description.trim();
+        }
+        StringBuilder text = new StringBuilder();
+        text.append(metadata.getTitle().trim()).append('.');
+        if (StrUtil.isNotBlank(metadata.getColorway())) {
+            text.append(" Colorway: ").append(metadata.getColorway()).append('.');
+        }
+        String style = traits.get("style");
+        if (StrUtil.isNotBlank(style)) {
+            text.append(" Style code: ").append(style).append('.');
+        }
+        String releaseDate = traits.get("release date");
+        if (StrUtil.isNotBlank(releaseDate)) {
+            text.append(" Released ").append(releaseDate).append('.');
+        }
+        text.append(" Brand new, 100% authentic, ships in the original box.");
+        return text.toString();
+    }
+
+    private static boolean containsCjk(String text) {
+        return text.codePoints().anyMatch(cp -> {
+            Character.UnicodeScript script = Character.UnicodeScript.of(cp);
+            return script == Character.UnicodeScript.HAN
+                    || script == Character.UnicodeScript.HIRAGANA
+                    || script == Character.UnicodeScript.KATAKANA
+                    || script == Character.UnicodeScript.HANGUL;
+        });
+    }
+
     private static void appendMediaUrls(Object rawMedia, Set<String> images) {
         if (rawMedia instanceof JSONArray mediaArray) {
             for (Object value : mediaArray) {
@@ -1300,18 +1361,34 @@ public class StockXClient {
         if (!(rawMedia instanceof JSONObject media)) {
             return;
         }
-        String smallImageUrl = media.getString("smallImageUrl");
-        String thumbUrl = media.getString("thumbUrl");
-        String imageUrl = StrUtil.isNotBlank(smallImageUrl) ? smallImageUrl : thumbUrl;
-        if (StrUtil.isBlank(imageUrl)) {
-            return;
+        // 商品详情的 media 是对象：imageUrl 为 700px 主图，all360Images 为 36 帧环拍图；
+        // 搜索结果的 media 只有 smallImageUrl/thumbUrl。优先大图，环拍图只取几帧代表角度。
+        String mainImage = firstNonBlank(media.getString("imageUrl"),
+                firstNonBlank(media.getString("smallImageUrl"), media.getString("thumbUrl")));
+        if (StrUtil.isNotBlank(mainImage) && !isRotationFrame(mainImage)) {
+            images.add(mainImage);
         }
-        if (imageUrl.contains("/360/") && imageUrl.matches(".*img\\d{2}\\.[A-Za-z0-9]+(?:\\?.*)?")) {
-            for (String frame : REPRESENTATIVE_ROTATION_FRAMES) {
-                images.add(imageUrl.replaceFirst("img\\d{2}(?=\\.)", "img" + frame));
+        JSONArray rotation = media.getJSONArray("all360Images");
+        if (rotation != null && !rotation.isEmpty()) {
+            String firstFrame = rotation.getString(0);
+            if (isRotationFrame(firstFrame)) {
+                addRepresentativeFrames(firstFrame, images);
+                return;
             }
-        } else {
-            images.add(imageUrl);
+        }
+        if (StrUtil.isNotBlank(mainImage) && isRotationFrame(mainImage)) {
+            addRepresentativeFrames(mainImage, images);
+        }
+    }
+
+    private static boolean isRotationFrame(String url) {
+        return url != null && url.contains("/360/")
+                && url.matches(".*img\\d{2}\\.[A-Za-z0-9]+(?:\\?.*)?");
+    }
+
+    private static void addRepresentativeFrames(String frameUrl, Set<String> images) {
+        for (String frame : REPRESENTATIVE_ROTATION_FRAMES) {
+            images.add(frameUrl.replaceFirst("img\\d{2}(?=\\.)", "img" + frame));
         }
     }
 
@@ -1586,7 +1663,8 @@ public class StockXClient {
                 model
                 gender
                 productCategory
-                media { thumbUrl smallImageUrl imageUrl }
+                media { thumbUrl smallImageUrl imageUrl all360Images }
+                traits { name value }
                 variants { id sizeChart { displayOptions { size type } } }
               }
             }""";

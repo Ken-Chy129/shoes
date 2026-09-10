@@ -150,6 +150,65 @@ class StockXClientExactModelSearchTest {
     }
 
     @Test
+    void readsColorwayProductLineAndMainImageFromTheProductDetail() {
+        // 详情接口的 media 是对象（主图 + 36 帧环拍），配色/产品线在 traits 里；
+        // 描述为中文时要换成英文描述，否则会原样上到 eBay 美国站。
+        StockXClient client = new StockXClient() {
+            @Override
+            protected JSONObject queryReadPro(String body, String country, StockXAccount preferredAccount) {
+                String operation = JSON.parseObject(body).getString("operationName");
+                if ("getDiscoveryData".equals(operation)) {
+                    return JSON.parseObject("""
+                            {"data":{"browse":{"results":{"edges":[
+                              {"node":{"urlKey":"detail-product"}}
+                            ]}}}}
+                            """);
+                }
+                return JSON.parseObject("""
+                        {"data":{"product":{"styleId":"FV4921-600","title":"Nike Kobe 6 Protro Reverse Grinch",
+                          "brand":"Nike","description":"耐克 Kobe 6 复刻","model":"Nike Kobe 6 Protro","gender":"men",
+                          "productCategory":"sneakers",
+                          "media":{"imageUrl":"https://images.stockx.com/images/Kobe-Product.jpg?w=700",
+                                   "smallImageUrl":"https://images.stockx.com/images/Kobe-Product.jpg?w=300",
+                                   "all360Images":["https://images.stockx.com/360/Kobe/Lv2/img01.jpg?w=559",
+                                                   "https://images.stockx.com/360/Kobe/Lv2/img02.jpg?w=559"]},
+                          "traits":[{"name":"Style","value":"FV4921-600"},
+                                    {"name":"Colorway","value":"Bright Crimson/Black/Electric Green"},
+                                    {"name":"Release Date","value":"2023-12-15"},
+                                    {"name":"Product Line","value":"Nike Kobe"}]}}}
+                        """);
+            }
+        };
+
+        EbayProductMetadata result = client.queryProductMetadataByModelNo("FV4921-600");
+
+        assertThat(result.getColorway()).isEqualTo("Bright Crimson/Black/Electric Green");
+        assertThat(result.getProductLine()).isEqualTo("Nike Kobe");
+        assertThat(result.getGender()).isEqualTo("men");
+        assertThat(result.getProductType()).isEqualTo("sneakers");
+        assertThat(result.getDescription())
+                .startsWith("Nike Kobe 6 Protro Reverse Grinch.")
+                .contains("Colorway: Bright Crimson/Black/Electric Green")
+                .contains("Style code: FV4921-600")
+                .contains("Released 2023-12-15")
+                .doesNotContain("耐克");
+        assertThat(result.getImageUrls()).startsWith(
+                "https://images.stockx.com/images/Kobe-Product.jpg?w=700",
+                "https://images.stockx.com/360/Kobe/Lv2/img01.jpg?w=559",
+                "https://images.stockx.com/360/Kobe/Lv2/img07.jpg?w=559");
+        assertThat(result.getImageUrls()).hasSize(7);
+    }
+
+    @Test
+    void keepsAnEnglishStockXDescriptionAsIs() {
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle("Title");
+        assertThat(StockXClient.usableEnglishDescription(
+                "  The Nike Dunk Low returns.  ", metadata, java.util.Map.of()))
+                .isEqualTo("The Nike Dunk Low returns.");
+    }
+
+    @Test
     void expandsStockXRotationImageIntoRepresentativeFrames() {
         StockXClient client = new StockXClient() {
             @Override
