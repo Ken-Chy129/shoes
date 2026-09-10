@@ -334,12 +334,14 @@ public class EbaySellApiClient {
 
     /**
      * eBay 在 offer 已经结束或从未发布时返回这些错误码，对下架来说是幂等成功。
+     * 25082 表示该变体已不在 listing 上（库存置 0 后被 eBay 移除），同样无需再下架。
      */
     private boolean isAlreadyWithdrawn(EbayApiException error) {
         String message = error.getMessage();
         return message != null && (message.contains("25002:")
                 || message.contains("25004:")
                 || message.contains("25044:")
+                || message.contains("25082:")
                 || message.contains("25801:"));
     }
 

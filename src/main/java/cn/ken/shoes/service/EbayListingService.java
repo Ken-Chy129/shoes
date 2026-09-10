@@ -134,10 +134,14 @@ public class EbayListingService {
                     continue;
                 }
                 OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
-                if (offer != null && offer.published()) {
+                if (offer != null && offer.published() && offer.inStock()) {
                     retainedGroupOffers.put(sku, offer);
                 } else {
-                    log.info("商品组{}中的历史SKU {}已下架或未发布，本次不再带入", inventoryItemGroupKey, sku);
+                    // 库存为 0 的变体会被 eBay 从 listing 上静默移除（定时改价对
+                    // 无得物价格的尺码就是这么清库存的），之后再拿它做整组发布或
+                    // 下架都会报 25082，所以这类 SKU 也当作不在架处理。
+                    log.info("商品组{}中的历史SKU {}已下架、未发布或库存为0，本次不再带入",
+                            inventoryItemGroupKey, sku);
                 }
             }
             if (!retainedGroupOffers.isEmpty()) {
@@ -690,12 +694,16 @@ public class EbayListingService {
         }
         boolean published = isPublished(offer);
         String listingId = listingId(offer);
+        Integer availableQuantity = offer.getInteger("availableQuantity");
         if (published && listingId == null) {
             JSONObject detail = apiClient.getOffer(offerId);
             listingId = listingId(detail);
             published = isPublished(detail) || published;
+            if (availableQuantity == null && detail != null) {
+                availableQuantity = detail.getInteger("availableQuantity");
+            }
         }
-        return new OfferSnapshot(offerId, published, listingId);
+        return new OfferSnapshot(offerId, published, listingId, availableQuantity);
     }
 
     /**
@@ -783,7 +791,12 @@ public class EbayListingService {
     private record ExistingVariation(String name, List<String> values) {
     }
 
-    private record OfferSnapshot(String offerId, boolean published, String listingId) {
+    private record OfferSnapshot(String offerId, boolean published, String listingId,
+                                 Integer availableQuantity) {
+        /** 库存未知时保守地视为有货，避免因读不到数量而误剔尺码。 */
+        boolean inStock() {
+            return availableQuantity == null || availableQuantity > 0;
+        }
     }
 
     private record PendingOffer(String sku, String offerId) {

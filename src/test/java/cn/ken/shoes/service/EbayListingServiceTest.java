@@ -870,6 +870,44 @@ class EbayListingServiceTest {
                 .containsOnly("listing-group-new");
     }
 
+    @Test
+    void dropsOutOfStockSkusFromAnExistingGroupBeforeRelisting() {
+        // 定时改价会把没有得物价格的尺码库存置 0，eBay 随即把该变体从 listing
+        // 上移掉；之后若仍把它留在 variantSKUs 里，发布会报 25082。
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-10", "shoe-sku-11"), List.of("10", "11"))));
+        when(apiClient.getOffersBySku("shoe-sku-10"))
+                .thenReturn(List.of(publishedOffer("offer-10", "shoe-sku-10", "listing-group-456")
+                        .fluentPut("availableQuantity", 1)));
+        when(apiClient.getOffersBySku("shoe-sku-11"))
+                .thenReturn(List.of(publishedOffer("offer-11", "shoe-sku-11", "listing-group-456")
+                        .fluentPut("availableQuantity", 0)));
+        when(apiClient.getInventoryItem("shoe-sku-10"))
+                .thenReturn(Optional.of(inventoryItemWithSize("10")));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9");
+        when(apiClient.publishOffer("offer-9")).thenReturn("listing-group-456");
+
+        service.publishGroup("group-style-1", List.of(size9));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
+                .containsExactly("shoe-sku-10", "shoe-sku-9");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("10", "9");
+        verify(apiClient, never()).getInventoryItem("shoe-sku-11");
+    }
+
     private JSONObject endedOffer(String offerId, String sku, String listingId) {
         return new JSONObject(true)
                 .fluentPut("offerId", offerId)
