@@ -125,14 +125,28 @@ class EbayListingTaxonomyServiceTest {
     }
 
     @Test
-    void requiresGenderForEuSizesInsteadOfSilentlySelectingMensShoes() {
+    void defaultsEuSizesToMensShoesWhenGenderIsUnknown() {
+        // 资料库缺性别时不能让整个货号上架失败：EU 码按男鞋处理并换算男码。
+        SizeChartDO chart = new SizeChartDO();
+        chart.setBrand("Nike");
+        chart.setGender("MENS");
+        chart.setEuSize("42");
+        chart.setMenUSSize("8.5");
+        SizeConvertUtil.initCache(List.of(chart));
+        when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
+                .thenReturn(new JSONObject());
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(aspects("Brand", "Department", "US Shoe Size"));
         EbayProductMetadata metadata = metadata();
         metadata.setGender(null);
 
-        assertThatThrownBy(() -> service.resolve(null, "DD1391-100", metadata, "EU", "42"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("性别")
-                .hasMessageContaining("分类ID");
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "DD1391-100", metadata, "EU", "42");
+
+        assertThat(resolved.categoryId()).isEqualTo("15709");
+        assertThat(resolved.aspects())
+                .containsEntry("Department", List.of("Men"))
+                .containsEntry("US Shoe Size", List.of("8.5"));
     }
 
     @Test

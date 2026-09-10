@@ -7,6 +7,7 @@ import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.util.SizeConvertUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -17,8 +18,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 @Service
 public class EbayListingTaxonomyService {
+
+    private static final String DEFAULT_DEPARTMENT = "Men";
 
     private final EbayProperties properties;
     private final EbayTaxonomyApiClient client;
@@ -37,10 +41,12 @@ public class EbayListingTaxonomyService {
             throw new IllegalArgumentException("商品资料不能为空");
         }
         String department = department(sizeSystem, metadata.getGender(), metadata.getTitle());
-        if ((categoryOverride == null || categoryOverride.isBlank())
-                && "EU".equals(sizeSystem) && department == null) {
-            throw new IllegalArgumentException(
-                    "EU尺码无法自动判断男鞋或女鞋，请在商品资料库补充性别，或在Excel填写分类ID");
+        if (department == null) {
+            // EU 码本身不分男女，资料库又没给性别时按男鞋处理：EU 码换算美码
+            // 时男码是各品牌尺码表的标准维度，这样能保证大多数货号可以上架，
+            // 而不是整个货号卡在“无法判断性别”上。
+            log.info("商品{}未识别到性别，EU尺码按男鞋处理", styleCode);
+            department = DEFAULT_DEPARTMENT;
         }
         CategoryChoice category = categoryOverride == null || categoryOverride.isBlank()
                 ? resolveCategory(metadata, department)

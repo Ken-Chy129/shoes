@@ -22,12 +22,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.LongConsumer;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 public class EbayListingService {
 
     private static final int MAX_IDEMPOTENT_WRITE_ATTEMPTS = 5;
+    private static final Pattern SINGLE_LISTING_SKU = Pattern.compile("SKU:\\s*([A-Za-z0-9_-]+)");
 
     private final EbaySellApiClient apiClient;
     private final EbayProperties properties;
@@ -117,12 +120,14 @@ public class EbayListingService {
         JSONObject existingGroup = apiClient.getInventoryItemGroup(inventoryItemGroupKey)
                 .orElse(null);
         EbayListingRequest first = variants.getFirst();
-        Set<String> incomingSkus = new LinkedHashSet<>(variants.stream()
-                .map(EbayListingRequest::getSku)
-                .toList());
+        Set<String> incomingSkus = skusOf(variants);
         // 历史组里只保留仍在架的 SKU。已下架尺码的 offer 已经 ENDED，若继续留在
         // variantSKUs 里，这次发布会把早已下架的尺码一起重新挂出去。
         Map<String, OfferSnapshot> retainedGroupOffers = new LinkedHashMap<>();
+        // 在架历史 SKU 实际使用的尺码值（读不到时为 null），后面既用来剔除
+        // variesBy 里的残留值，也用来识别本次尺码是否和历史 SKU 撞车。
+        Map<String, String> retainedSizeValues = new LinkedHashMap<>();
+        Map<String, OfferSnapshot> existingOffers = new LinkedHashMap<>();
         if (existingGroup != null) {
             for (String sku : stringValues(existingGroup.getJSONArray("variantSKUs"))) {
                 if (incomingSkus.contains(sku)) {
@@ -135,28 +140,48 @@ public class EbayListingService {
                     log.info("商品组{}中的历史SKU {}已下架或未发布，本次不再带入", inventoryItemGroupKey, sku);
                 }
             }
-            if (retainedGroupOffers.isEmpty()) {
-                // 整组都已下架：旧组只剩作废尺码，删掉后按全新商品处理。
-                log.info("商品组{}已无在架SKU，删除旧组后重新创建", inventoryItemGroupKey);
-                apiClient.deleteInventoryItemGroup(inventoryItemGroupKey);
-                existingGroup = null;
+            if (!retainedGroupOffers.isEmpty()) {
+                ExistingVariation existingVariation = existingVariation(existingGroup);
+                for (String sku : retainedGroupOffers.keySet()) {
+                    retainedSizeValues.put(sku, inventoryItemSizeValue(sku, existingVariation.name()));
+                }
+                // EU 码换算出的美码可能和组里已在架的 USM 码一样（EU38 与 USM5.5），
+                // 同一尺码值在组里只能出现一次，这时直接更新那条在架 SKU。
+                reuseSkusWithSameSize(variants, existingVariation.name(), retainedSizeValues);
+                incomingSkus = skusOf(variants);
+                for (String sku : incomingSkus) {
+                    OfferSnapshot reused = retainedGroupOffers.remove(sku);
+                    if (reused != null) {
+                        existingOffers.put(sku, reused);
+                        retainedSizeValues.remove(sku);
+                    }
+                }
             }
         }
-        if (variants.size() == 1 && existingGroup == null) {
-            return List.of(publish(variants.getFirst()));
-        }
-        GroupAspects groupAspects = validateAndResolveGroupAspects(variants, existingGroup);
-        List<String> hostedImageUrls = pictureService.hostImages(
-                first.getImageUrls(), inventoryItemGroupKey);
-        Set<String> allGroupSkus = new LinkedHashSet<>(retainedGroupOffers.keySet());
-        allGroupSkus.addAll(incomingSkus);
-        Map<String, OfferSnapshot> existingOffers = new LinkedHashMap<>();
         for (String sku : incomingSkus) {
+            if (existingOffers.containsKey(sku)) {
+                continue;
+            }
             OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
             if (offer != null) {
                 existingOffers.put(sku, offer);
             }
         }
+        boolean anyLiveOffer = !retainedGroupOffers.isEmpty()
+                || existingOffers.values().stream().anyMatch(OfferSnapshot::published);
+        if (existingGroup != null && !anyLiveOffer) {
+            // 整组都已下架：旧组只剩作废尺码，删掉后按全新商品处理。
+            log.info("商品组{}已无在架SKU，删除旧组后重新创建", inventoryItemGroupKey);
+            apiClient.deleteInventoryItemGroup(inventoryItemGroupKey);
+            existingGroup = null;
+        }
+        // 单尺码也统一走商品组：先前单尺码直接发单品 listing，之后再补尺码时
+        // eBay 会报 25704（SKU 已是单品 listing），同一货号就散成多个 listing。
+        GroupAspects groupAspects = validateAndResolveGroupAspects(variants, existingGroup);
+        List<String> hostedImageUrls = pictureService.hostImages(
+                first.getImageUrls(), inventoryItemGroupKey);
+        Set<String> allGroupSkus = new LinkedHashSet<>(retainedGroupOffers.keySet());
+        allGroupSkus.addAll(incomingSkus);
         OfferSnapshot publishedGroupOffer = existingOffers.values().stream()
                 .filter(OfferSnapshot::published)
                 .findFirst()
@@ -167,7 +192,7 @@ public class EbayListingService {
         }
         JSONObject groupPayload = inventoryGroupPayload(
                 variants, groupAspects, hostedImageUrls, existingGroup,
-                allGroupSkus, incomingSkus);
+                allGroupSkus, retainedSizeValues);
         createOrReplaceInventoryItemGroupWithRetry(
                 inventoryItemGroupKey, groupPayload, first.getContentLanguage());
 
@@ -197,17 +222,26 @@ public class EbayListingService {
             offerIds.put(variant.getSku(), offerId);
         }
 
-        if (listingAlreadyPublished) {
-            for (PendingOffer pending : pendingOffers) {
-                String listingId = apiClient.publishOffer(pending.offerId());
-                listingIds.put(pending.sku(), listingId);
-                if (existingListingId == null) {
-                    existingListingId = listingId;
+        try {
+            if (listingAlreadyPublished) {
+                for (PendingOffer pending : pendingOffers) {
+                    String listingId = apiClient.publishOffer(pending.offerId());
+                    listingIds.put(pending.sku(), listingId);
+                    if (existingListingId == null) {
+                        existingListingId = listingId;
+                    }
                 }
+            } else {
+                existingListingId = publishGroupWithRepair(
+                        inventoryItemGroupKey, groupPayload, first);
             }
-        } else {
-            existingListingId = publishGroupWithRepair(
-                    inventoryItemGroupKey, groupPayload, first);
+        } catch (EbayApiException e) {
+            if (!isSingleSkuListingConflict(e)) {
+                throw e;
+            }
+            existingListingId = republishAfterWithdrawingSingleListings(
+                    e, inventoryItemGroupKey, groupPayload, first, offerIds, allGroupSkus.size());
+            listingIds.clear();
         }
 
         List<EbayListingResult> results = new ArrayList<>(variants.size());
@@ -219,6 +253,101 @@ public class EbayListingService {
                     properties.getEnvironment()));
         }
         return List.copyOf(results);
+    }
+
+    private Set<String> skusOf(List<EbayListingRequest> variants) {
+        return new LinkedHashSet<>(variants.stream()
+                .map(EbayListingRequest::getSku)
+                .toList());
+    }
+
+    /**
+     * 本次提交的尺码若与组里某个在架 SKU 的尺码值相同，改为复用那个 SKU：
+     * 后续会覆盖它的库存项并更新 offer 的价格/数量，而不是再建一个同码 SKU。
+     */
+    private void reuseSkusWithSameSize(List<EbayListingRequest> variants, String varyingName,
+                                       Map<String, String> retainedSizeValues) {
+        for (EbayListingRequest variant : variants) {
+            List<String> value = effectiveAspects(variant).get(varyingName);
+            if (value == null || value.size() != 1 || value.getFirst().isBlank()) {
+                continue;
+            }
+            for (Map.Entry<String, String> retained : retainedSizeValues.entrySet()) {
+                if (value.getFirst().equals(retained.getValue())
+                        && !retained.getKey().equals(variant.getSku())) {
+                    log.info("尺码{}已由在架SKU {}占用，本次SKU {}改为更新该SKU",
+                            value.getFirst(), retained.getKey(), variant.getSku());
+                    variant.setSku(retained.getKey());
+                    break;
+                }
+            }
+        }
+    }
+
+    /** 读取库存项实际使用的变体属性值；读不到或值不唯一时返回 null。 */
+    private String inventoryItemSizeValue(String sku, String aspectName) {
+        Optional<JSONObject> item;
+        try {
+            item = apiClient.getInventoryItem(sku);
+        } catch (RuntimeException e) {
+            log.warn("读取eBay库存项失败，保留其历史尺码, sku:{}", sku, e);
+            return null;
+        }
+        if (item.isEmpty()) {
+            return null;
+        }
+        List<String> value = aspectValues(item.get(), aspectName);
+        return value.size() == 1 && !value.getFirst().isBlank() ? value.getFirst() : null;
+    }
+
+    /**
+     * eBay 25704：组里某个 SKU 早先被当成单品 listing 发布过，不能再进多尺码
+     * listing。把那条单品 offer 下架后整组重新发布，让所有尺码回到同一个 listing。
+     */
+    private String republishAfterWithdrawingSingleListings(EbayApiException error,
+                                                           String inventoryItemGroupKey,
+                                                           JSONObject groupPayload,
+                                                           EbayListingRequest first,
+                                                           Map<String, String> offerIds,
+                                                           int maxAttempts) {
+        EbayApiException current = error;
+        for (int attempt = 0; attempt < Math.max(1, maxAttempts); attempt++) {
+            String sku = conflictingSku(current);
+            String offerId = sku == null ? null : offerIds.get(sku);
+            if (offerId == null && sku != null) {
+                OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
+                offerId = offer == null ? null : offer.offerId();
+            }
+            if (offerId == null) {
+                throw current;
+            }
+            log.warn("商品组{}中的SKU {}已是单品listing，下架该offer {}后整组重新发布",
+                    inventoryItemGroupKey, sku, offerId);
+            apiClient.withdrawOffer(offerId);
+            try {
+                return publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
+            } catch (EbayApiException e) {
+                if (!isSingleSkuListingConflict(e)) {
+                    throw e;
+                }
+                current = e;
+            }
+        }
+        throw current;
+    }
+
+    private boolean isSingleSkuListingConflict(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && message.contains("25704:");
+    }
+
+    private String conflictingSku(EbayApiException error) {
+        String message = error.getMessage();
+        if (message == null) {
+            return null;
+        }
+        Matcher matcher = SINGLE_LISTING_SKU.matcher(message);
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     /**
@@ -365,7 +494,7 @@ public class EbayListingService {
                                              List<String> hostedImageUrls,
                                              JSONObject existingGroup,
                                              Set<String> groupSkus,
-                                             Set<String> incomingSkus) {
+                                             Map<String, String> retainedSizeValues) {
         EbayListingRequest first = variants.getFirst();
         JSONObject payload = new JSONObject(true);
         payload.put("title", first.getTitle());
@@ -376,8 +505,7 @@ public class EbayListingService {
         JSONObject specification = new JSONObject(true);
         specification.put("name", groupAspects.varyingName());
         specification.put("values", JSON.parseArray(JSON.toJSONString(
-                mergedVariationValues(existingGroup, groupAspects,
-                        groupSkus, incomingSkus))));
+                mergedVariationValues(existingGroup, groupAspects, retainedSizeValues))));
         JSONObject variesBy = new JSONObject(true);
         variesBy.put("specifications", new JSONArray().fluentAdd(specification));
         payload.put("variesBy", variesBy);
@@ -403,16 +531,17 @@ public class EbayListingService {
         }
 
         if (variants.size() == 1) {
-            ExistingVariation existingVariation = existingVariation(existingGroup);
-            List<String> value = effectiveAspects(first).get(existingVariation.name());
+            String varyingName = existingGroup != null
+                    ? existingVariation(existingGroup).name()
+                    : singleVariantSizeAspect(first);
+            List<String> value = effectiveAspects(first).get(varyingName);
             if (value == null || value.size() != 1 || value.getFirst().isBlank()) {
                 throw new IllegalArgumentException("新增尺码缺少商品组使用的"
-                        + existingVariation.name() + "属性");
+                        + varyingName + "属性");
             }
             Map<String, List<String>> common = new LinkedHashMap<>(effectiveAspects(first));
-            common.remove(existingVariation.name());
-            return new GroupAspects(
-                    existingVariation.name(), List.of(value.getFirst()), common);
+            common.remove(varyingName);
+            return new GroupAspects(varyingName, List.of(value.getFirst()), common);
         }
 
         Map<String, List<String>> firstAspects = effectiveAspects(first);
@@ -453,10 +582,19 @@ public class EbayListingService {
         return new GroupAspects(varyingName, values, common);
     }
 
+    /** 只有一个尺码且尚无商品组时，用请求里的尺码属性作为变体维度。 */
+    private String singleVariantSizeAspect(EbayListingRequest request) {
+        Map<String, List<String>> aspects = effectiveAspects(request);
+        return aspects.keySet().stream()
+                .filter(name -> isUsSizeAspect(name) || isEuSizeAspect(name))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "同一货号必须且只能按尺码生成变体（未识别到尺码属性）"));
+    }
+
     private List<String> mergedVariationValues(JSONObject existingGroup,
                                                GroupAspects groupAspects,
-                                               Set<String> groupSkus,
-                                               Set<String> incomingSkus) {
+                                               Map<String, String> retainedSizeValues) {
         if (existingGroup == null) {
             return List.copyOf(new LinkedHashSet<>(groupAspects.values()));
         }
@@ -469,7 +607,7 @@ public class EbayListingService {
         // 尺码串留在 variesBy 里，累积下来会让后续上架撞上早已不用的值而报错
         // （eBay 25129 报的尺码常常和本次提交的对不上，就是撞了这些残留）。
         LinkedHashSet<String> values = new LinkedHashSet<>(
-                variationValuesInUse(existingVariation, groupSkus, incomingSkus));
+                variationValuesInUse(existingVariation, retainedSizeValues));
         values.addAll(groupAspects.values());
         return List.copyOf(values);
     }
@@ -477,45 +615,19 @@ public class EbayListingService {
     /**
      * 找出历史变体值里仍然有效的部分。
      *
-     * <p>逐个读取本次未提交的组内 SKU，把它们实际在用的变体属性值收集起来；
-     * 只有确认「组内没有任何 SKU 还在用」的历史值才会被剔除。读不到库存项
-     * （网络抖动、SKU 已删除）时一律保守保留，宁可多留也不误删别人的尺码。
+     * <p>依据组内在架历史 SKU 实际在用的变体属性值，只有确认「组内没有任何
+     * SKU 还在用」的历史值才会被剔除。有任何 SKU 的尺码没读到（网络抖动、
+     * SKU 已删除）时一律保守保留，宁可多留也不误删别人的尺码。
      */
     private List<String> variationValuesInUse(ExistingVariation existingVariation,
-                                              Set<String> groupSkus,
-                                              Set<String> incomingSkus) {
+                                              Map<String, String> retainedSizeValues) {
         if (existingVariation.values().isEmpty()) {
             return List.of();
         }
-        Set<String> inUse = new LinkedHashSet<>();
-        boolean allReadable = true;
-        for (String sku : groupSkus) {
-            if (incomingSkus.contains(sku)) {
-                continue;
-            }
-            Optional<JSONObject> item;
-            try {
-                item = apiClient.getInventoryItem(sku);
-            } catch (RuntimeException e) {
-                log.warn("读取eBay库存项失败，保留其历史尺码, sku:{}", sku, e);
-                allReadable = false;
-                continue;
-            }
-            if (item.isEmpty()) {
-                allReadable = false;
-                continue;
-            }
-            List<String> value = aspectValues(item.get(), existingVariation.name());
-            if (value.size() == 1 && !value.getFirst().isBlank()) {
-                inUse.add(value.getFirst());
-            } else {
-                allReadable = false;
-            }
-        }
-        // 只要有任何 SKU 的实际尺码没读准，就不做剔除，避免误删。
-        if (!allReadable) {
+        if (retainedSizeValues.containsValue(null)) {
             return existingVariation.values();
         }
+        Set<String> inUse = new LinkedHashSet<>(retainedSizeValues.values());
         return existingVariation.values().stream()
                 .filter(inUse::contains)
                 .toList();

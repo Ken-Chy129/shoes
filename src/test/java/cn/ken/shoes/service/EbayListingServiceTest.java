@@ -694,15 +694,23 @@ class EbayListingServiceTest {
         when(apiClient.createOffer(
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
                 .thenReturn("offer-8");
-        when(apiClient.publishOffer("offer-8")).thenReturn("listing-new");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-new");
 
         List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size8));
 
-        verify(apiClient).deleteInventoryItemGroup("group-style-1");
-        verify(apiClient, never()).createOrReplaceInventoryItemGroup(
-                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.anyString());
-        verify(apiClient).publishOffer("offer-8");
+        InOrder order = inOrder(apiClient);
+        order.verify(apiClient).deleteInventoryItemGroup("group-style-1");
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        order.verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs")).containsExactly("shoe-sku-8");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("8");
+        verify(apiClient, never()).publishOffer(org.mockito.ArgumentMatchers.anyString());
         assertThat(results).singleElement().satisfies(result -> {
             assertThat(result.getOfferId()).isEqualTo("offer-8");
             assertThat(result.getListingId()).isEqualTo("listing-new");
@@ -743,6 +751,123 @@ class EbayListingServiceTest {
                 .containsExactly("6", "8");
         verify(apiClient, never()).deleteInventoryItemGroup(org.mockito.ArgumentMatchers.anyString());
         verify(apiClient).publishOffer("offer-8");
+    }
+
+    @Test
+    void publishesASingleSizeAsAGroupSoLaterSizesCanJoinTheSameListing() {
+        // 单尺码若直接发单品 listing，之后补尺码会被 eBay 25704 拒掉，
+        // 同一货号就会散成多个 listing。所以单尺码也要走商品组发布。
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-9");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs")).containsExactly("shoe-sku-9");
+        JSONObject specification = groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0);
+        assertThat(specification.getString("name")).isEqualTo("US Shoe Size");
+        assertThat(specification.getJSONArray("values")).containsExactly("9");
+        verify(apiClient, never()).publishOffer(org.mockito.ArgumentMatchers.anyString());
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.getOfferId()).isEqualTo("offer-9");
+            assertThat(result.getListingId()).isEqualTo("listing-group-456");
+        });
+    }
+
+    @Test
+    void reusesTheLiveSkuWhenAnEuSizeResolvesToAUsSizeAlreadyInTheGroup() {
+        // EU38 换算成美码 5.5，而组里已有在架的 USM5.5：同一尺码值在组里只能
+        // 出现一次（eBay 25013），应更新那条在架 SKU 而不是再建一个 SKU。
+        EbayListingRequest eu38 = listingRequest();
+        eu38.setSku("shoe-sku-eu-38");
+        eu38.setQuantity(4);
+        eu38.setAspects(new LinkedHashMap<>(eu38.getAspects()));
+        eu38.getAspects().put("US Shoe Size", List.of("5.5"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-usm-55", "shoe-sku-usm-6"), List.of("5.5", "6"))));
+        when(apiClient.getOffersBySku("shoe-sku-usm-55"))
+                .thenReturn(List.of(publishedOffer("offer-55", "shoe-sku-usm-55", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-usm-6"))
+                .thenReturn(List.of(publishedOffer("offer-6", "shoe-sku-usm-6", "listing-group-456")));
+        when(apiClient.getInventoryItem("shoe-sku-usm-55"))
+                .thenReturn(Optional.of(inventoryItemWithSize("5.5")));
+        when(apiClient.getInventoryItem("shoe-sku-usm-6"))
+                .thenReturn(Optional.of(inventoryItemWithSize("6")));
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(eu38));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
+                .containsExactly("shoe-sku-usm-6", "shoe-sku-usm-55");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("6", "5.5");
+        verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-usm-55"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, never()).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-eu-38"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-55"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, never()).createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient, never()).publishOffer(org.mockito.ArgumentMatchers.anyString());
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.getSku()).isEqualTo("shoe-sku-usm-55");
+            assertThat(result.getOfferId()).isEqualTo("offer-55");
+            assertThat(result.getListingId()).isEqualTo("listing-group-456");
+        });
+    }
+
+    @Test
+    void withdrawsASingleSkuListingAndRepublishesTheGroupOn25704() {
+        // 老版本把 43 码单独发成了单品 listing。再加 44 码时 eBay 报 25704，
+        // 应下架那条单品 offer 后整组重新发布，让两个尺码回到同一个 listing。
+        EbayListingRequest size43 = listingRequest();
+        size43.setSku("shoe-sku-43");
+        size43.setAspects(new LinkedHashMap<>(size43.getAspects()));
+        size43.getAspects().put("US Shoe Size", List.of("9.5"));
+        EbayListingRequest size44 = listingRequest();
+        size44.setSku("shoe-sku-44");
+        size44.setAspects(new LinkedHashMap<>(size44.getAspects()));
+        size44.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.getOffersBySku("shoe-sku-43"))
+                .thenReturn(List.of(publishedOffer("offer-43", "shoe-sku-43", "listing-single")));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-44");
+        when(apiClient.publishOffer("offer-44"))
+                .thenThrow(new EbayApiException("eBay API request failed (HTTP 400): 25704: "
+                        + "The following SKU is already listed as a single SKU listing. "
+                        + "SKU: shoe-sku-43 Listingid is : listing-single"));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-new");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size43, size44));
+
+        InOrder order = inOrder(apiClient);
+        order.verify(apiClient).publishOffer("offer-44");
+        order.verify(apiClient).withdrawOffer("offer-43");
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(results)
+                .extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-new");
     }
 
     private JSONObject endedOffer(String offerId, String sku, String listingId) {
