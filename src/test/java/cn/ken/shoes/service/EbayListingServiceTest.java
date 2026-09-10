@@ -625,6 +625,9 @@ class EbayListingServiceTest {
         when(apiClient.getOffersBySku("shoe-sku-9"))
                 .thenReturn(List.of(publishedOffer(
                         "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-10"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-10", "shoe-sku-10", "listing-group-456")));
 
         service.publishGroup("group-style-1", List.of(size9));
 
@@ -652,6 +655,9 @@ class EbayListingServiceTest {
         when(apiClient.getOffersBySku("shoe-sku-9"))
                 .thenReturn(List.of(publishedOffer(
                         "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-10"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-10", "shoe-sku-10", "listing-group-456")));
 
         service.publishGroup("group-style-1", List.of(size9));
 
@@ -668,5 +674,85 @@ class EbayListingServiceTest {
         return new JSONObject(true).fluentPut("product", new JSONObject(true)
                 .fluentPut("aspects", new JSONObject(true)
                         .fluentPut("US Shoe Size", List.of(size))));
+    }
+
+    @Test
+    void dropsEndedSkusFromAnExistingGroupBeforeRelisting() {
+        // 5/6/7 码曾经上架又整组下架，offer 状态为 ENDED 但仍带旧 listingId。
+        // 再上 8 码时不能把这些已下架的 SKU 一起带回 variantSKUs。
+        EbayListingRequest size8 = listingRequest();
+        size8.setSku("shoe-sku-8");
+        size8.setAspects(new LinkedHashMap<>(size8.getAspects()));
+        size8.getAspects().put("US Shoe Size", List.of("8"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-5", "shoe-sku-6", "shoe-sku-7"), List.of("5", "6", "7"))));
+        for (String sku : List.of("shoe-sku-5", "shoe-sku-6", "shoe-sku-7")) {
+            when(apiClient.getOffersBySku(sku))
+                    .thenReturn(List.of(endedOffer("offer-" + sku, sku, "listing-old")));
+        }
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-8");
+        when(apiClient.publishOffer("offer-8")).thenReturn("listing-new");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size8));
+
+        verify(apiClient).deleteInventoryItemGroup("group-style-1");
+        verify(apiClient, never()).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient).publishOffer("offer-8");
+        assertThat(results).singleElement().satisfies(result -> {
+            assertThat(result.getOfferId()).isEqualTo("offer-8");
+            assertThat(result.getListingId()).isEqualTo("listing-new");
+        });
+    }
+
+    @Test
+    void keepsOnlyActiveSkusWhenAddingASizeToAPartiallyDelistedGroup() {
+        // 6 码仍在架、5 码已下架：新上 8 码时组里只应保留 6 和 8。
+        EbayListingRequest size8 = listingRequest();
+        size8.setSku("shoe-sku-8");
+        size8.setAspects(new LinkedHashMap<>(size8.getAspects()));
+        size8.getAspects().put("US Shoe Size", List.of("8"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-5", "shoe-sku-6"), List.of("5", "6"))));
+        when(apiClient.getOffersBySku("shoe-sku-5"))
+                .thenReturn(List.of(endedOffer("offer-5", "shoe-sku-5", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-6"))
+                .thenReturn(List.of(publishedOffer("offer-6", "shoe-sku-6", "listing-group-456")));
+        when(apiClient.getInventoryItem("shoe-sku-6"))
+                .thenReturn(Optional.of(inventoryItemWithSize("6")));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-8");
+        when(apiClient.publishOffer("offer-8")).thenReturn("listing-group-456");
+
+        service.publishGroup("group-style-1", List.of(size8));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
+                .containsExactly("shoe-sku-6", "shoe-sku-8");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactly("6", "8");
+        verify(apiClient, never()).deleteInventoryItemGroup(org.mockito.ArgumentMatchers.anyString());
+        verify(apiClient).publishOffer("offer-8");
+    }
+
+    private JSONObject endedOffer(String offerId, String sku, String listingId) {
+        return new JSONObject(true)
+                .fluentPut("offerId", offerId)
+                .fluentPut("sku", sku)
+                .fluentPut("marketplaceId", "EBAY_US")
+                .fluentPut("status", "PUBLISHED")
+                .fluentPut("listing", new JSONObject(true)
+                        .fluentPut("listingId", listingId)
+                        .fluentPut("listingStatus", "ENDED"));
     }
 }

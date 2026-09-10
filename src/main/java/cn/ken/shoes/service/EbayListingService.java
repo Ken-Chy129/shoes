@@ -116,17 +116,40 @@ public class EbayListingService {
         List<EbayListingRequest> variants = List.copyOf(requests);
         JSONObject existingGroup = apiClient.getInventoryItemGroup(inventoryItemGroupKey)
                 .orElse(null);
+        EbayListingRequest first = variants.getFirst();
+        Set<String> incomingSkus = new LinkedHashSet<>(variants.stream()
+                .map(EbayListingRequest::getSku)
+                .toList());
+        // 历史组里只保留仍在架的 SKU。已下架尺码的 offer 已经 ENDED，若继续留在
+        // variantSKUs 里，这次发布会把早已下架的尺码一起重新挂出去。
+        Map<String, OfferSnapshot> retainedGroupOffers = new LinkedHashMap<>();
+        if (existingGroup != null) {
+            for (String sku : stringValues(existingGroup.getJSONArray("variantSKUs"))) {
+                if (incomingSkus.contains(sku)) {
+                    continue;
+                }
+                OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
+                if (offer != null && offer.published()) {
+                    retainedGroupOffers.put(sku, offer);
+                } else {
+                    log.info("商品组{}中的历史SKU {}已下架或未发布，本次不再带入", inventoryItemGroupKey, sku);
+                }
+            }
+            if (retainedGroupOffers.isEmpty()) {
+                // 整组都已下架：旧组只剩作废尺码，删掉后按全新商品处理。
+                log.info("商品组{}已无在架SKU，删除旧组后重新创建", inventoryItemGroupKey);
+                apiClient.deleteInventoryItemGroup(inventoryItemGroupKey);
+                existingGroup = null;
+            }
+        }
         if (variants.size() == 1 && existingGroup == null) {
             return List.of(publish(variants.getFirst()));
         }
         GroupAspects groupAspects = validateAndResolveGroupAspects(variants, existingGroup);
-        EbayListingRequest first = variants.getFirst();
         List<String> hostedImageUrls = pictureService.hostImages(
                 first.getImageUrls(), inventoryItemGroupKey);
-        Set<String> allGroupSkus = mergedGroupSkus(existingGroup, variants);
-        Set<String> incomingSkus = new LinkedHashSet<>(variants.stream()
-                .map(EbayListingRequest::getSku)
-                .toList());
+        Set<String> allGroupSkus = new LinkedHashSet<>(retainedGroupOffers.keySet());
+        allGroupSkus.addAll(incomingSkus);
         Map<String, OfferSnapshot> existingOffers = new LinkedHashMap<>();
         for (String sku : incomingSkus) {
             OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
@@ -137,19 +160,7 @@ public class EbayListingService {
         OfferSnapshot publishedGroupOffer = existingOffers.values().stream()
                 .filter(OfferSnapshot::published)
                 .findFirst()
-                .orElse(null);
-        if (publishedGroupOffer == null) {
-            for (String sku : allGroupSkus) {
-                if (incomingSkus.contains(sku)) {
-                    continue;
-                }
-                OfferSnapshot offer = findOffer(sku, first.getMarketplaceId());
-                if (offer != null && offer.published()) {
-                    publishedGroupOffer = offer;
-                    break;
-                }
-            }
-        }
+                .orElseGet(() -> retainedGroupOffers.values().stream().findFirst().orElse(null));
 
         for (EbayListingRequest variant : variants) {
             createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
@@ -360,8 +371,7 @@ public class EbayListingService {
         payload.put("title", first.getTitle());
         payload.put("description", first.getDescription());
         payload.put("imageUrls", JSON.parseArray(JSON.toJSONString(hostedImageUrls)));
-        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(
-                mergedGroupSkus(existingGroup, variants))));
+        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(groupSkus)));
         payload.put("aspects", JSON.parseObject(JSON.toJSONString(groupAspects.common())));
         JSONObject specification = new JSONObject(true);
         specification.put("name", groupAspects.varyingName());
@@ -441,16 +451,6 @@ public class EbayListingService {
             }
         });
         return new GroupAspects(varyingName, values, common);
-    }
-
-    private Set<String> mergedGroupSkus(JSONObject existingGroup,
-                                        List<EbayListingRequest> variants) {
-        Set<String> skus = new LinkedHashSet<>();
-        if (existingGroup != null) {
-            skus.addAll(stringValues(existingGroup.getJSONArray("variantSKUs")));
-        }
-        variants.stream().map(EbayListingRequest::getSku).forEach(skus::add);
-        return skus;
     }
 
     private List<String> mergedVariationValues(JSONObject existingGroup,
@@ -576,18 +576,34 @@ public class EbayListingService {
         if (offerId == null || offerId.isBlank()) {
             return null;
         }
-        boolean published = "PUBLISHED".equalsIgnoreCase(offer.getString("status"))
-                || "ACTIVE".equalsIgnoreCase(offer.getString("listingStatus"))
-                || listingId(offer) != null;
+        boolean published = isPublished(offer);
         String listingId = listingId(offer);
         if (published && listingId == null) {
             JSONObject detail = apiClient.getOffer(offerId);
             listingId = listingId(detail);
-            published = published
-                    || "PUBLISHED".equalsIgnoreCase(detail.getString("status"))
-                    || "ACTIVE".equalsIgnoreCase(detail.getString("listingStatus"));
+            published = isPublished(detail) || published;
         }
         return new OfferSnapshot(offerId, published, listingId);
+    }
+
+    /**
+     * offer 是否还占着一个在售 listing。下架(withdraw)后的 offer 仍会带着旧的
+     * listingId，但 listingStatus 已是 ENDED，不能再当成已发布去复用。
+     */
+    private boolean isPublished(JSONObject offer) {
+        if (offer == null) {
+            return false;
+        }
+        JSONObject listing = offer.getJSONObject("listing");
+        String listingStatus = firstNonBlank(
+                listing == null ? null : listing.getString("listingStatus"),
+                offer.getString("listingStatus"));
+        if (listingStatus != null) {
+            return "ACTIVE".equalsIgnoreCase(listingStatus)
+                    || "OUT_OF_STOCK".equalsIgnoreCase(listingStatus);
+        }
+        return "PUBLISHED".equalsIgnoreCase(offer.getString("status"))
+                || listingId(offer) != null;
     }
 
     private String listingId(JSONObject offer) {
