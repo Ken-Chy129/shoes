@@ -433,6 +433,92 @@ class EbayListingTaxonomyServiceTest {
                         .toList());
     }
 
+    @Test
+    void listsGradeSchoolShoesInTheKidsCategoryWithYouthSizesConvertedFromEu() {
+        // (GS) = Grade School 大童款：走童鞋类目、Department 为 Unisex Kids，
+        // EU 码按 KIDS 尺码表换算并去掉 Y 后缀（eBay 童鞋类目的标准值只是数字）。
+        SizeChartDO kids = new SizeChartDO();
+        kids.setBrand("Nike");
+        kids.setGender("KIDS");
+        kids.setEuSize("38");
+        kids.setUsSize("5.5Y");
+        SizeChartDO mens = new SizeChartDO();
+        mens.setBrand("Nike");
+        mens.setGender("MENS");
+        mens.setEuSize("38");
+        mens.setMenUSSize("5.5");
+        mens.setWomenUSSize("7");
+        SizeConvertUtil.initCache(List.of(kids, mens));
+        when(client.getCategorySuggestions("0",
+                "Jordan 4 Retro Red Cement (GS) Unisex Kids Shoes"))
+                .thenReturn(new JSONObject());
+        when(client.getItemAspectsForCategory("0", "155202"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(
+                        freeTextAspect("Brand", true),
+                        selectionAspect("Department", false, "Unisex Kids"),
+                        freeTextAspect("US Shoe Size", true, "5", "5.5", "6"))));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Jordan 4 Retro Red Cement (GS)");
+        metadata.setGender("kids");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "408452-161", metadata, "EU", "38");
+
+        assertThat(resolved.categoryId()).isEqualTo("155202");
+        assertThat(resolved.aspects())
+                .containsEntry("Department", List.of("Unisex Kids"))
+                .containsEntry("US Shoe Size", List.of("5.5"));
+    }
+
+    @Test
+    void recognisesGradeSchoolFromTheTitleEvenWhenGenderIsMissing() {
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Jordan 11 Retro Legend Blue (2024) (GS)");
+        metadata.setGender(null);
+        when(client.getCategorySuggestions("0",
+                "Jordan 11 Retro Legend Blue (2024) (GS) Unisex Kids Shoes"))
+                .thenReturn(new JSONObject());
+        when(client.getItemAspectsForCategory("0", "155202"))
+                .thenReturn(aspects("Brand", "Department"));
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "378038-104", metadata, "EU", "38");
+
+        assertThat(resolved.categoryId()).isEqualTo("155202");
+        assertThat(resolved.aspects()).containsEntry("Department", List.of("Unisex Kids"));
+    }
+
+    @Test
+    void listsPreschoolAndToddlerShoesInTheBabyCategoryWithCSizes() {
+        // (PS)/(TD) 小童、婴童款用 C 码，走 Baby Shoes 类目。
+        SizeChartDO baby = new SizeChartDO();
+        baby.setBrand("Nike");
+        baby.setGender("BABY");
+        baby.setEuSize("27");
+        baby.setUsSize("10C");
+        SizeConvertUtil.initCache(List.of(baby));
+        when(client.getCategorySuggestions("0",
+                "Jordan 4 Retro Red Cement (PS) Unisex Baby & Toddler Shoes"))
+                .thenReturn(new JSONObject());
+        when(client.getItemAspectsForCategory("0", "147285"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(
+                        freeTextAspect("Brand", true),
+                        selectionAspect("Department", true,
+                                "Unisex Baby & Toddler", "Boys", "Girls"),
+                        freeTextAspect("US Shoe Size", true, "9.5", "10"))));
+        EbayProductMetadata metadata = metadata();
+        metadata.setTitle("Jordan 4 Retro Red Cement (PS)");
+        metadata.setGender("kids");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "BQ7669-161", metadata, "EU", "27");
+
+        assertThat(resolved.categoryId()).isEqualTo("147285");
+        assertThat(resolved.aspects())
+                .containsEntry("Department", List.of("Unisex Baby & Toddler"))
+                .containsEntry("US Shoe Size", List.of("10"));
+    }
+
     private EbayProductMetadata metadata() {
         EbayProductMetadata metadata = new EbayProductMetadata();
         metadata.setTitle("Nike Dunk Low Retro White Black");

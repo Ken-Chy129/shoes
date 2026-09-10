@@ -164,8 +164,10 @@ public class SizeConvertUtil {
             if (!normalizedEuSize.equals(normalizeSize(chart.getEuSize()))) {
                 continue;
             }
-            String usSize = Gender.MENS.name().equals(normalizedGender)
-                    ? chart.getMenUSSize() : chart.getWomenUSSize();
+            // 童鞋/婴童尺码表只有通用 usSize 一列（如 5.5Y、10C）。
+            String usSize = Gender.MENS.name().equals(normalizedGender) ? chart.getMenUSSize()
+                    : Gender.WOMENS.name().equals(normalizedGender) ? chart.getWomenUSSize()
+                    : null;
             if (usSize == null || usSize.isBlank()) {
                 usSize = chart.getUsSize();
             }
@@ -290,6 +292,13 @@ public class SizeConvertUtil {
             return null;
         }
         String normalized = gender.trim().toLowerCase(Locale.ROOT);
+        if (normalized.contains("baby") || normalized.contains("toddler")
+                || normalized.contains("infant")) {
+            return Gender.BABY.name();
+        }
+        if (normalized.contains("kid") || normalized.contains("youth")) {
+            return Gender.KIDS.name();
+        }
         if (normalized.contains("women") || normalized.contains("female")) {
             return Gender.WOMENS.name();
         }

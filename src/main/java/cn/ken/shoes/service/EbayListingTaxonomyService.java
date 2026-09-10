@@ -23,6 +23,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class EbayListingTaxonomyService {
 
     private static final String DEFAULT_DEPARTMENT = "Men";
+    private static final String KIDS_DEPARTMENT = "Unisex Kids";
+    private static final String BABY_DEPARTMENT = "Unisex Baby & Toddler";
 
     private final EbayProperties properties;
     private final EbayTaxonomyApiClient client;
@@ -72,6 +74,13 @@ public class EbayListingTaxonomyService {
                 // Taxonomy is advisory. Standard sneakers retain the existing safe fallback.
             }
             if (isStandardShoe(metadata.getProductType())) {
+                if (BABY_DEPARTMENT.equals(department)) {
+                    return new CategoryChoice(properties.getDefaultBabyCategoryId(), "Baby Shoes");
+                }
+                if (KIDS_DEPARTMENT.equals(department)) {
+                    return new CategoryChoice(properties.getDefaultKidsCategoryId(),
+                            "Unisex Kids' Shoes");
+                }
                 boolean women = "Women".equals(department);
                 return new CategoryChoice(women
                         ? properties.getDefaultWomensCategoryId()
@@ -275,6 +284,11 @@ public class EbayListingTaxonomyService {
             if (normalized.contains("women") || normalized.contains("female")) {
                 return allowedValue(allowedValues, "Women");
             }
+            if (normalized.contains("baby") || normalized.contains("toddler")
+                    || normalized.contains("infant")) {
+                return firstAllowedValue(allowedValues,
+                        BABY_DEPARTMENT, "Unisex Baby", "Baby", "Unisex Kids");
+            }
             if (normalized.contains("kid") || normalized.contains("youth")
                     || normalized.contains("grade school")) {
                 return firstAllowedValue(allowedValues,
@@ -359,7 +373,7 @@ public class EbayListingTaxonomyService {
     private String usShoeSize(AspectRule rule, EbayProductMetadata metadata,
                               String sizeSystem, String sizeValue, String department) {
         String standard = standardUsShoeSize(metadata, sizeSystem, sizeValue, department);
-        if (!categoryOffersCombinedSizes(rule)) {
+        if (isKidsDepartment(department) || !categoryOffersCombinedSizes(rule)) {
             return standard;
         }
         String combined = "EU".equals(sizeSystem)
@@ -379,8 +393,8 @@ public class EbayListingTaxonomyService {
                                       String sizeValue, String department) {
         String targetGender = targetGender(department);
         if ("EU".equals(sizeSystem)) {
-            return SizeConvertUtil.getKcUsSize(
-                    metadata.getBrand(), targetGender, sizeValue);
+            return ebayUsSize(SizeConvertUtil.getKcUsSize(
+                    metadata.getBrand(), targetGender, sizeValue), department);
         }
         boolean inputMatchesDepartment = ("USW".equals(sizeSystem) && "Women".equals(department))
                 || ("USM".equals(sizeSystem) && !"Women".equals(department));
@@ -389,13 +403,35 @@ public class EbayListingTaxonomyService {
         }
         String euSize = SizeConvertUtil.getKcEuSizeFromUs(
                 metadata.getBrand(), sizeSystem, sizeValue);
-        String converted = SizeConvertUtil.getKcUsSize(
-                metadata.getBrand(), targetGender, euSize);
+        String converted = ebayUsSize(SizeConvertUtil.getKcUsSize(
+                metadata.getBrand(), targetGender, euSize), department);
         return converted == null || converted.isBlank() ? sizeValue : converted;
     }
 
     private String targetGender(String department) {
+        if (BABY_DEPARTMENT.equals(department)) {
+            return "baby";
+        }
+        if (KIDS_DEPARTMENT.equals(department)) {
+            return "kids";
+        }
         return "Women".equals(department) ? "women" : "men";
+    }
+
+    private boolean isKidsDepartment(String department) {
+        return KIDS_DEPARTMENT.equals(department) || BABY_DEPARTMENT.equals(department);
+    }
+
+    /**
+     * 尺码表里的童鞋码带 Y/C/K 后缀（5.5Y、10C），而 eBay 童鞋类目的
+     * US Shoe Size 标准值只是数字（5.5、10），提交前把后缀去掉。
+     */
+    private String ebayUsSize(String usSize, String department) {
+        if (usSize == null || !isKidsDepartment(department)) {
+            return usSize;
+        }
+        String stripped = usSize.trim().replaceAll("(?i)[YCK]$", "").trim();
+        return stripped.isEmpty() ? usSize : stripped;
     }
 
     private boolean isCombinedSize(String value) {
@@ -430,6 +466,19 @@ public class EbayListingTaxonomyService {
 
     private String department(String sizeSystem, String metadataGender, String title) {
         String normalized = metadataGender == null ? "" : metadataGender.toLowerCase(Locale.ROOT);
+        String normalizedTitle = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        // 资料库的性别对童鞋只到 "kids" 这一级，先看标题里的年龄段标记：
+        // GS=Grade School(大童) 用 Y 码，PS=Preschool(小童)/TD=Toddler(婴童) 用 C 码。
+        if (hasBabyMarker(normalizedTitle)) {
+            return BABY_DEPARTMENT;
+        }
+        if (hasKidsMarker(normalizedTitle)) {
+            return KIDS_DEPARTMENT;
+        }
+        if (normalized.contains("baby") || normalized.contains("toddler")
+                || normalized.contains("infant")) {
+            return BABY_DEPARTMENT;
+        }
         if (normalized.contains("women") || normalized.contains("female")) {
             return "Women";
         }
@@ -441,16 +490,11 @@ public class EbayListingTaxonomyService {
         }
         if (normalized.contains("kid") || normalized.contains("youth")
                 || normalized.contains("grade school")) {
-            return "Unisex Kids";
+            return KIDS_DEPARTMENT;
         }
-        String normalizedTitle = title == null ? "" : title.toLowerCase(Locale.ROOT);
         if (normalizedTitle.contains("(wmns)") || normalizedTitle.contains("(women")
                 || normalizedTitle.contains(" women's") || normalizedTitle.startsWith("women")) {
             return "Women";
-        }
-        if (normalizedTitle.contains("(gs)") || normalizedTitle.contains("grade school")
-                || normalizedTitle.contains("(kids)")) {
-            return "Unisex Kids";
         }
         if ("USW".equals(sizeSystem)) {
             return "Women";
@@ -459,6 +503,19 @@ public class EbayListingTaxonomyService {
             return "Men";
         }
         return null;
+    }
+
+    private boolean hasKidsMarker(String normalizedTitle) {
+        return normalizedTitle.contains("(gs)") || normalizedTitle.contains("grade school")
+                || normalizedTitle.contains("(kids)") || normalizedTitle.contains("(youth)")
+                || normalizedTitle.contains("big kids");
+    }
+
+    private boolean hasBabyMarker(String normalizedTitle) {
+        return normalizedTitle.contains("(ps)") || normalizedTitle.contains("(td)")
+                || normalizedTitle.contains("preschool") || normalizedTitle.contains("pre-school")
+                || normalizedTitle.contains("toddler") || normalizedTitle.contains("infant")
+                || normalizedTitle.contains("(baby)") || normalizedTitle.contains("little kids");
     }
 
     private String color(EbayProductMetadata metadata) {

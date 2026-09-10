@@ -67,6 +67,8 @@ ebay:
   defaultReturnPolicyId: your_return_policy_id
   defaultMensCategoryId: "15709"
   defaultWomensCategoryId: "95672"
+  defaultKidsCategoryId: "155202"
+  defaultBabyCategoryId: "147285"
   defaultMarketplaceId: EBAY_US
   defaultCurrency: USD
   defaultContentLanguage: en-US
