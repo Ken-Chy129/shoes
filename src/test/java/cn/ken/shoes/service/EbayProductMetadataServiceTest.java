@@ -55,6 +55,7 @@ class EbayProductMetadataServiceTest {
         KickScrewClient kickScrewClient = mock(KickScrewClient.class);
         when(cacheMapper.selectById("DD1391-100")).thenReturn(null);
         when(itemMapper.selectHandleByModelNo("DD1391-100")).thenReturn("nike-dunk-low-retro-white-black");
+        when(itemMapper.selectGenderByModelNo("DD1391-100")).thenReturn("WOMENS");
         EbayProductMetadata fetched = new EbayProductMetadata();
         fetched.setTitle("Nike Dunk Low Retro");
         fetched.setDescription("Product description");
@@ -79,6 +80,9 @@ class EbayProductMetadataServiceTest {
         assertThat(cache.getValue().getModelName()).isEqualTo("Dunk Low");
         assertThat(cache.getValue().getProductLine()).isEqualTo("Nike Dunk");
         assertThat(cache.getValue().getCountryOfOrigin()).isEqualTo("Vietnam");
+        // 详情接口没有性别，应从本地 KC 商品表补上并一起写进资料库。
+        assertThat(result.getGender()).isEqualTo("WOMENS");
+        assertThat(cache.getValue().getGender()).isEqualTo("WOMENS");
     }
 
     @Test

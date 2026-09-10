@@ -132,6 +132,11 @@
         where model_no = #{modelNo}
     </select>
 
+    <select id="selectGenderByModelNo" resultType="java.lang.String">
+        select gender from kick_screw_item
+        where model_no = #{modelNo}
+    </select>
+
     <select id="selectExistModelNos" resultType="java.lang.String">
         select model_no from kick_screw_item
         where model_no in

@@ -33,5 +33,7 @@ public interface KickScrewItemMapper extends BaseMapper<KickScrewItemDO> {
 
     String selectHandleByModelNo(@Param("modelNo") String modelNo);
 
+    String selectGenderByModelNo(@Param("modelNo") String modelNo);
+
     List<String> selectAllModelNos();
 }

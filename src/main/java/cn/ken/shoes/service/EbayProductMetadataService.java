@@ -57,6 +57,7 @@ public class EbayProductMetadataService {
             }
             EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
             fillMissingKickScrewColor(fetched);
+            fillMissingKickScrewGender(modelNo, fetched);
             validate(fetched);
             catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
             return fetched;
@@ -148,6 +149,21 @@ public class EbayProductMetadataService {
         metadata.setImageUrls(images != null ? images : List.of());
         validate(metadata);
         return metadata;
+    }
+
+    /**
+     * KC storefront 商品详情接口不返回性别，但本地爬下来的 KC 商品列表
+     * （kick_screw_item.gender: MENS/WOMENS/KIDS/BABY/UNISEX）有，补进资料里，
+     * 这样类目、Department 和尺码换算就不用再靠标题猜。
+     */
+    private void fillMissingKickScrewGender(String modelNo, EbayProductMetadata metadata) {
+        if (metadata == null || present(metadata.getGender())) {
+            return;
+        }
+        String gender = kickScrewItemMapper.selectGenderByModelNo(modelNo);
+        if (present(gender)) {
+            metadata.setGender(gender.trim());
+        }
     }
 
     private void fillMissingKickScrewColor(EbayProductMetadata metadata) {
