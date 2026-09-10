@@ -11,14 +11,16 @@
 ```json
 {
   "intervalHours": 6,
-  "priceMultiplier": 1.1
+  "priceMultiplier": 1.1,
+  "priceAddition": 250
 }
 ```
 
 - `intervalHours`：1~168 的整数小时。
 - `priceMultiplier`：0.01~100 的正数倍率。
+- `priceAddition`：0~100000 的人民币固定加价，可选，缺省为 250（兼容历史任务参数）。
 - 汇率使用 `PriceSwitch.EXCHANGE_RATE`（人民币元/美元）。
-- 目标美元价 = 得物人民币价格 × `priceMultiplier` ÷ 汇率，四舍五入到两位小数。
+- 目标美元价 = (得物人民币价格 × `priceMultiplier` + `priceAddition`) ÷ 汇率，四舍五入到两位小数。
 
 ## 每轮流程
 

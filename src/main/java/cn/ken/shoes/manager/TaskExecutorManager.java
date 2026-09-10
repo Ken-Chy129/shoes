@@ -252,7 +252,7 @@ public class TaskExecutorManager {
         }
         if ("ebay".equals(platform) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
             return startEbayPriceSync(params.getLongValue("intervalHours"),
-                    params.getBigDecimal("priceMultiplier")) != null;
+                    params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition")) != null;
         }
         log.warn("重启恢复：不支持的平台: {}", platform);
         return false;
@@ -316,8 +316,8 @@ public class TaskExecutorManager {
             return startTask(taskType);
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PRICE_SYNC) {
-            return startEbayPriceSync(
-                    params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
+            return startEbayPriceSync(params.getLongValue("intervalHours"),
+                    params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_DELIST) {
             return startEbayDelist(styleIds(params));
@@ -427,8 +427,8 @@ public class TaskExecutorManager {
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
             case EBAY_BULK_LISTING -> null;
-            case EBAY_PRICE_SYNC -> startEbayPriceSync(
-                    params.getLongValue("intervalHours"), params.getBigDecimal("priceMultiplier"));
+            case EBAY_PRICE_SYNC -> startEbayPriceSync(params.getLongValue("intervalHours"),
+                    params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
         };
     }
@@ -488,6 +488,12 @@ public class TaskExecutorManager {
 
     public Long startEbayPriceSync(long intervalHours, java.math.BigDecimal priceMultiplier) {
         return ebayPriceSyncService.start(intervalHours, priceMultiplier);
+    }
+
+    /** priceAddition 为 null 时（历史任务参数）沿用服务端默认加价。 */
+    public Long startEbayPriceSync(long intervalHours, java.math.BigDecimal priceMultiplier,
+                                   java.math.BigDecimal priceAddition) {
+        return ebayPriceSyncService.start(intervalHours, priceMultiplier, priceAddition);
     }
 
     public void cancelEbayPriceSync(Long taskId) {

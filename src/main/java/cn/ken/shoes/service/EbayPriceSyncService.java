@@ -41,6 +41,10 @@ public class EbayPriceSyncService {
     private static final long MAX_INTERVAL_HOURS = 168;
     private static final BigDecimal MIN_MULTIPLIER = new BigDecimal("0.01");
     private static final BigDecimal MAX_MULTIPLIER = new BigDecimal("100");
+    /** 固定加价项（人民币），未传时沿用历史默认值 250。 */
+    public static final BigDecimal DEFAULT_ADDITION = new BigDecimal("250");
+    private static final BigDecimal MIN_ADDITION = BigDecimal.ZERO;
+    private static final BigDecimal MAX_ADDITION = new BigDecimal("100000");
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -62,7 +66,12 @@ public class EbayPriceSyncService {
     }
 
     public synchronized Long start(long intervalHours, BigDecimal priceMultiplier) {
-        validate(intervalHours, priceMultiplier);
+        return start(intervalHours, priceMultiplier, DEFAULT_ADDITION);
+    }
+
+    public synchronized Long start(long intervalHours, BigDecimal priceMultiplier, BigDecimal priceAddition) {
+        BigDecimal addition = priceAddition == null ? DEFAULT_ADDITION : priceAddition;
+        validate(intervalHours, priceMultiplier, addition);
         TaskDO existing = taskMapper.selectRunningTask(
                 "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode());
         if (existing != null || !running.isEmpty()) {
@@ -79,13 +88,14 @@ public class EbayPriceSyncService {
         task.setParams(new JSONObject(true)
                 .fluentPut("intervalHours", intervalHours)
                 .fluentPut("priceMultiplier", priceMultiplier)
+                .fluentPut("priceAddition", addition)
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .toJSONString());
         taskMapper.insert(task);
         RunHandle handle = new RunHandle();
         running.put(task.getId(), handle);
         Thread thread = Thread.ofVirtual().name("Ebay-Price-Sync-" + task.getId()).start(
-                () -> runLoop(task.getId(), intervalHours, priceMultiplier, handle));
+                () -> runLoop(task.getId(), intervalHours, priceMultiplier, addition, handle));
         handle.thread = thread;
         return task.getId();
     }
@@ -108,10 +118,14 @@ public class EbayPriceSyncService {
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier) {
-        runSingleRound(taskId, priceMultiplier, 0);
+        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, 0);
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier, int round) {
+        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, round);
+    }
+
+    void runSingleRound(Long taskId, BigDecimal priceMultiplier, BigDecimal priceAddition, int round) {
         List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
         Map<String, TaskItemDO> byOfferId = new HashMap<>();
         Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
@@ -186,7 +200,7 @@ public class EbayPriceSyncService {
         int failed = 0;
         for (OfferContext context : contexts) {
             BigDecimal poisonPrice = prices.get(priceKey(context.mapping().getStyleId(), context.euSize()));
-            BigDecimal target = poisonPrice == null ? null : targetPrice(poisonPrice, priceMultiplier);
+            BigDecimal target = poisonPrice == null ? null : targetPrice(poisonPrice, priceMultiplier, priceAddition);
             int targetQuantity = poisonPrice == null ? 0 : Math.max(context.quantity(), 0);
             String result;
             try {
@@ -214,13 +228,14 @@ public class EbayPriceSyncService {
                 .fluentPut("failed", failed).toJSONString());
     }
 
-    private void runLoop(Long taskId, long intervalHours, BigDecimal multiplier, RunHandle handle) {
+    private void runLoop(Long taskId, long intervalHours, BigDecimal multiplier,
+                         BigDecimal addition, RunHandle handle) {
         int round = 0;
         try {
             while (!handle.cancelled.get()) {
                 round++;
                 try {
-                    runSingleRound(taskId, multiplier, round);
+                    runSingleRound(taskId, multiplier, addition, round);
                     taskMapper.updateTaskRound(taskId, round);
                 } catch (Exception e) {
                     log.error("eBay定时改价第{}轮失败，保留现有库存和价格, taskId={}", round, taskId, e);
@@ -298,12 +313,14 @@ public class EbayPriceSyncService {
         payload.put("availableQuantity", quantity);
     }
 
-    private BigDecimal targetPrice(BigDecimal poisonPrice, BigDecimal multiplier) {
+    /** 目标美元价 = (得物人民币价 × 系数 + 固定加价) ÷ 汇率。 */
+    private BigDecimal targetPrice(BigDecimal poisonPrice, BigDecimal multiplier, BigDecimal addition) {
         double exchangeRate = PriceSwitch.EXCHANGE_RATE == null ? 0D : PriceSwitch.EXCHANGE_RATE;
         if (exchangeRate <= 0D) {
             throw new IllegalStateException("汇率配置无效");
         }
         BigDecimal target = poisonPrice.multiply(multiplier)
+                .add(addition == null ? DEFAULT_ADDITION : addition)
                 .divide(BigDecimal.valueOf(exchangeRate), 2, RoundingMode.HALF_UP);
         return target.max(new BigDecimal("0.01"));
     }
@@ -364,13 +381,17 @@ public class EbayPriceSyncService {
         return message.length() <= 160 ? message : message.substring(0, 160);
     }
 
-    private void validate(long intervalHours, BigDecimal multiplier) {
+    private void validate(long intervalHours, BigDecimal multiplier, BigDecimal addition) {
         if (intervalHours < MIN_INTERVAL_HOURS || intervalHours > MAX_INTERVAL_HOURS) {
             throw new IllegalArgumentException("执行间隔必须是1到168小时");
         }
         if (multiplier == null || multiplier.compareTo(MIN_MULTIPLIER) < 0
                 || multiplier.compareTo(MAX_MULTIPLIER) > 0) {
             throw new IllegalArgumentException("得物价格系数必须在0.01到100之间");
+        }
+        if (addition == null || addition.compareTo(MIN_ADDITION) < 0
+                || addition.compareTo(MAX_ADDITION) > 0) {
+            throw new IllegalArgumentException("固定加价必须在0到100000元之间");
         }
     }
 

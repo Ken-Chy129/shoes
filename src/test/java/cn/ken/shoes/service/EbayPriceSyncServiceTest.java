@@ -54,17 +54,54 @@ class EbayPriceSyncServiceTest {
         price.setPrice(100);
         when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
 
-        service.runSingleRound(88L, new BigDecimal("1.1"), 3);
+        // (100 * 1.1 + 250) / 7.3 = 49.315 -> 49.32
+        service.runSingleRound(88L, new BigDecimal("1.1"), new BigDecimal("250"), 3);
+
+        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
+        assertThat(payload.getValue().getJSONObject("pricingSummary")
+                .getJSONObject("price").getString("value")).isEqualTo("49.32");
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getRound()).isEqualTo(3);
+        assertThat(item.getValue().getTargetPrice()).isEqualByComparingTo("49.32");
+        assertThat(item.getValue().getOperateResult()).startsWith("改价成功");
+    }
+
+    @Test
+    void defaultsAdditionTo250WhenNotProvided() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping()));
+        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
+        PoisonPriceDO price = new PoisonPriceDO();
+        price.setModelNo("DD1391-100");
+        price.setEuSize("42");
+        price.setPrice(100);
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
+        assertThat(payload.getValue().getJSONObject("pricingSummary")
+                .getJSONObject("price").getString("value")).isEqualTo("49.32");
+    }
+
+    @Test
+    void zeroAdditionKeepsPureMultiplierPrice() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping()));
+        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
+        PoisonPriceDO price = new PoisonPriceDO();
+        price.setModelNo("DD1391-100");
+        price.setEuSize("42");
+        price.setPrice(100);
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), BigDecimal.ZERO, 1);
 
         ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
         verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
         assertThat(payload.getValue().getJSONObject("pricingSummary")
                 .getJSONObject("price").getString("value")).isEqualTo("15.07");
-        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
-        verify(taskItemMapper).insert(item.capture());
-        assertThat(item.getValue().getRound()).isEqualTo(3);
-        assertThat(item.getValue().getTargetPrice()).isEqualByComparingTo("15.07");
-        assertThat(item.getValue().getOperateResult()).startsWith("改价成功");
     }
 
     @Test
@@ -105,6 +142,8 @@ class EbayPriceSyncServiceTest {
         assertThatThrownBy(() -> service.start(0, new BigDecimal("1.1")))
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.start(1, BigDecimal.ZERO))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service.start(1, new BigDecimal("1.1"), new BigDecimal("-1")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 

@@ -146,8 +146,9 @@ public class TaskController {
     public Result<String> startEbayPriceSync(@RequestBody JSONObject body) {
         long intervalHours = body.getLongValue("intervalHours");
         BigDecimal priceMultiplier = body.getBigDecimal("priceMultiplier");
+        BigDecimal priceAddition = body.getBigDecimal("priceAddition");
         try {
-            Long taskId = taskExecutorManager.startEbayPriceSync(intervalHours, priceMultiplier);
+            Long taskId = taskExecutorManager.startEbayPriceSync(intervalHours, priceMultiplier, priceAddition);
             if (taskId == null) {
                 return Result.buildError("eBay定时改价任务已在运行，或参数/账号配置无效");
             }
