@@ -19,6 +19,8 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
 
     void updateTaskStatus(Long id, String status);
 
+    int cancelRunningTask(Long id);
+
     void updateTaskFailed(Long id, String failReason);
 
     int updateTaskPaused(Long id, String failReason);

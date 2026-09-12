@@ -102,6 +102,9 @@ public class EbayPriceSyncService {
     }
 
     public void cancel(Long taskId) {
+        // 先持久化取消状态：即使服务重启后内存句柄已丢失，历史 running
+        // 任务也能被正常终止；正在执行的线程随后通过取消标志收尾。
+        taskMapper.cancelRunningTask(taskId);
         RunHandle handle = running.get(taskId);
         if (handle != null) {
             handle.cancelled.set(true);

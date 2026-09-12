@@ -7,6 +7,7 @@ import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
+import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
@@ -145,6 +146,15 @@ class EbayPriceSyncServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> service.start(1, new BigDecimal("1.1"), new BigDecimal("-1")))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void cancellationImmediatelyPersistsEvenWhenRuntimeHandleWasLost() {
+        service.cancel(88L);
+
+        verify(taskMapper).cancelRunningTask(88L);
+        verify(taskMapper, never()).updateTaskStatus(
+                88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
     }
 
     private TaskItemDO mapping() {
