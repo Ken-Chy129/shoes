@@ -16,6 +16,8 @@ import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -149,11 +151,47 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
-    void cancellationImmediatelyPersistsEvenWhenRuntimeHandleWasLost() {
+    void cancellationPersistsImmediatelyWhenRuntimeHandleWasLost() {
         service.cancel(88L);
 
         verify(taskMapper).cancelRunningTask(88L);
         verify(taskMapper, never()).updateTaskStatus(
+                88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
+    }
+
+    @Test
+    void cancellationOfAnActiveTaskWaitsForTheWorkerToStopBeforePersistingTheTerminalState()
+            throws Exception {
+        CountDownLatch requestStarted = new CountDownLatch(1);
+        CountDownLatch releaseRequest = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            invocation.<TaskDO>getArgument(0).setId(88L);
+            return 1;
+        }).when(taskMapper).insert(any(TaskDO.class));
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(mapping()));
+        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenAnswer(invocation -> {
+            requestStarted.countDown();
+            boolean released = false;
+            while (!released) {
+                try {
+                    released = releaseRequest.await(5, TimeUnit.SECONDS);
+                } catch (InterruptedException ignored) {
+                    // 模拟一次不能被线程中断强制回滚的在途 HTTP 请求。
+                }
+            }
+            return List.of();
+        });
+
+        service.start(1, new BigDecimal("1.1"));
+        assertThat(requestStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        service.cancel(88L);
+
+        verify(taskMapper, never()).cancelRunningTask(88L);
+        verify(taskMapper, never()).updateTaskStatus(
+                88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
+
+        releaseRequest.countDown();
+        verify(taskMapper, timeout(2_000)).updateTaskStatus(
                 88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
     }
 

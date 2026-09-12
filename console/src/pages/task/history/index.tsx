@@ -860,8 +860,7 @@ const TaskPage = () => {
                         }}>Excel</Button>
                     )}
                     {(record.status === 'running' || record.status === '运行中')
-                        && record.taskType !== 'extend_shipping' && record.taskType !== 'replenishment'
-                        && record.taskType !== 'ebay_bulk_listing' && (
+                        && record.taskType !== 'extend_shipping' && record.taskType !== 'replenishment' && (
                         <Popconfirm title="确认终止此任务？" onConfirm={() => handleCancelTask(record)} okText="确定" cancelText="取消">
                             <Button type="link" size="small" style={{color: '#faad14'}}>终止</Button>
                         </Popconfirm>

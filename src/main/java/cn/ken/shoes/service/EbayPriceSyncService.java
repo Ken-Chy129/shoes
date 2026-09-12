@@ -94,24 +94,25 @@ public class EbayPriceSyncService {
                 .toJSONString());
         taskMapper.insert(task);
         RunHandle handle = new RunHandle();
-        running.put(task.getId(), handle);
-        Thread thread = Thread.ofVirtual().name("Ebay-Price-Sync-" + task.getId()).start(
+        Thread thread = Thread.ofVirtual().name("Ebay-Price-Sync-" + task.getId()).unstarted(
                 () -> runLoop(task.getId(), intervalHours, priceMultiplier, addition, handle));
         handle.thread = thread;
+        running.put(task.getId(), handle);
+        thread.start();
         return task.getId();
     }
 
-    public void cancel(Long taskId) {
-        // 先持久化取消状态：即使服务重启后内存句柄已丢失，历史 running
-        // 任务也能被正常终止；正在执行的线程随后通过取消标志收尾。
-        taskMapper.cancelRunningTask(taskId);
+    public synchronized void cancel(Long taskId) {
         RunHandle handle = running.get(taskId);
-        if (handle != null) {
-            handle.cancelled.set(true);
-            Thread thread = handle.thread;
-            if (thread != null) {
-                thread.interrupt();
-            }
+        if (handle == null) {
+            // 服务重启后运行句柄会丢失，此时直接结束遗留的 running 记录。
+            taskMapper.cancelRunningTask(taskId);
+            return;
+        }
+        handle.cancelled.set(true);
+        Thread thread = handle.thread;
+        if (thread != null) {
+            thread.interrupt();
         }
     }
 

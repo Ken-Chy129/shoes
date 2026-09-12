@@ -22,6 +22,13 @@ describe('eBay bulk listing task UI', () => {
     expect(modal).toContain("taskType === 'ebay_bulk_listing'");
   });
 
+  it('allows a running bulk listing task to be cancelled', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+
+    expect(page).toContain('handleCancelTask(record)');
+    expect(page).not.toContain("record.taskType !== 'ebay_bulk_listing'");
+  });
+
   it('starts eBay delisting through its dedicated endpoint', () => {
     const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
     const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
