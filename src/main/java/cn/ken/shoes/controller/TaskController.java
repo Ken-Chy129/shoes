@@ -128,7 +128,13 @@ public class TaskController {
         if (type == null) {
             return Result.buildError("无效的任务类型: " + taskType);
         }
-        taskExecutorManager.startTask(type);
+        if (type != TaskTypeEnum.LISTING && type != TaskTypeEnum.PRICE_DOWN) {
+            return Result.buildError("该任务类型不支持通用启动接口，请使用对应的专用接口: " + taskType);
+        }
+        Long taskId = taskExecutorManager.startTask(type);
+        if (taskId == null) {
+            return Result.buildError("任务已在运行，请等待当前任务结束: " + taskType);
+        }
         return Result.buildSuccess();
     }
 

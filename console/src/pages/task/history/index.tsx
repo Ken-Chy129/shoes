@@ -329,6 +329,16 @@ const TaskPage = () => {
                     },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_delist') {
+                doPostRequest(TASK_API.EBAY_START_DELIST, {styleIds: []}, {
+                    onSuccess: (res: any) => {
+                        message.success(`eBay下架任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    },
+                    onError: (res: any) => message.error(res.errorMsg || 'eBay下架任务创建失败'),
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'listing') {
                 const modelNoSearch = values.searchMode === 'model_no';
                 if (modelNoSearch) {

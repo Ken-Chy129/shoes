@@ -21,4 +21,14 @@ describe('eBay bulk listing task UI', () => {
     expect(modal).toContain("title: 'Offer ID'");
     expect(modal).toContain("taskType === 'ebay_bulk_listing'");
   });
+
+  it('starts eBay delisting through its dedicated endpoint', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+    const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
+
+    expect(page).toContain("createPlatform === 'ebay' && createTaskType === 'ebay_delist'");
+    expect(page).toContain('doPostRequest(TASK_API.EBAY_START_DELIST, {styleIds: []}');
+    expect(page).toContain('eBay下架任务已创建');
+    expect(service).toContain("EBAY_START_DELIST = '/api/task/ebay/startDelist'");
+  });
 });
