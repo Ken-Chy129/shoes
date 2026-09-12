@@ -198,6 +198,16 @@ public class TaskService {
                     taskExecutorManager.cancelEbayPriceSync(task.getId());
                 }
             }
+            case "ebay_bulk_listing" -> {
+                if (!clearState) {
+                    taskExecutorManager.cancelEbayBulkListing(task.getId());
+                }
+            }
+            case "ebay_delist" -> {
+                if (!clearState) {
+                    taskExecutorManager.cancelEbayDelist(task.getId());
+                }
+            }
             default -> log.info("任务类型无需处理TaskSwitch: taskType={}", taskType);
         }
     }

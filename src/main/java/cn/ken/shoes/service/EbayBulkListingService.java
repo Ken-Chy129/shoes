@@ -26,7 +26,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 @Service
 @Slf4j
@@ -43,6 +45,7 @@ public class EbayBulkListingService {
     private final EbayListingService listingService;
     private final Executor executor;
     private final EbayProperties properties;
+    private final Map<Long, AtomicBoolean> running = new ConcurrentHashMap<>();
 
     @Autowired
     public EbayBulkListingService(TaskMapper taskMapper,
@@ -104,19 +107,36 @@ public class EbayBulkListingService {
         taskMapper.insert(task);
         try {
             snapshotStore.saveEbayBulkListingInput(task.getId(), input);
-            executor.execute(() -> run(task.getId(), input));
+            AtomicBoolean cancelled = new AtomicBoolean(false);
+            running.put(task.getId(), cancelled);
+            executor.execute(() -> run(task.getId(), input, cancelled));
             return task.getId();
         } catch (RuntimeException e) {
+            running.remove(task.getId());
             taskMapper.updateTaskFailed(task.getId(), "任务输入保存或启动失败");
             throw e;
         }
     }
 
     void run(Long taskId, List<EbayListingExcel> rows) {
+        run(taskId, rows, new AtomicBoolean(false));
+    }
+
+    public void cancel(Long taskId) {
+        AtomicBoolean cancelled = running.get(taskId);
+        if (cancelled != null) {
+            cancelled.set(true);
+        }
+    }
+
+    void run(Long taskId, List<EbayListingExcel> rows, AtomicBoolean cancelled) {
         int succeeded = 0;
         int failed = 0;
         Map<String, List<RowContext>> groups = new LinkedHashMap<>();
         for (EbayListingExcel row : rows) {
+            if (cancelled.get()) {
+                break;
+            }
             TaskItemDO item = initialTaskItem(taskId, row);
             taskItemMapper.insert(item);
             String groupKey = trim(row.getStyleId()).toUpperCase(Locale.ROOT);
@@ -125,6 +145,9 @@ public class EbayBulkListingService {
         }
 
         for (Map.Entry<String, List<RowContext>> entry : groups.entrySet()) {
+            if (cancelled.get()) {
+                break;
+            }
             List<RowContext> group = entry.getValue();
             try {
                 List<EbayListingRequest> requests = new ArrayList<>(group.size());
@@ -153,16 +176,23 @@ public class EbayBulkListingService {
                 taskItemMapper.updateById(context.item());
             }
         }
-        taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
-                .fluentPut("total", rows.size())
-                .fluentPut("succeeded", succeeded)
-                .fluentPut("failed", failed)
-                .toJSONString());
-        if (failed == 0) {
-            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
-        } else {
-            taskMapper.updateTaskFailed(taskId,
-                    "批量上架完成：成功 " + succeeded + "，失败 " + failed + "，请查看任务明细");
+        try {
+            taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+                    .fluentPut("total", rows.size())
+                    .fluentPut("succeeded", succeeded)
+                    .fluentPut("failed", failed)
+                    .fluentPut("remaining", rows.size() - succeeded - failed)
+                    .toJSONString());
+            if (cancelled.get()) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            } else if (failed == 0) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            } else {
+                taskMapper.updateTaskFailed(taskId,
+                        "批量上架完成：成功 " + succeeded + "，失败 " + failed + "，请查看任务明细");
+            }
+        } finally {
+            running.remove(taskId);
         }
     }
 

@@ -160,6 +160,20 @@ class EbayDelistServiceTest {
     }
 
     @Test
+    void cancellationBeforeDiscoveryMarksTaskCancelledWithoutCallingEbay() {
+        java.util.List<Runnable> deferred = new java.util.ArrayList<>();
+        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper,
+                ebayClient, new EbayProperties(), deferred::add);
+
+        asyncService.start(List.of());
+        asyncService.cancel(7001L);
+        deferred.getFirst().run();
+
+        verify(ebayClient, never()).getInventoryItemSkus();
+        verify(taskMapper).updateTaskStatus(7001L, TaskDO.TaskStatusEnum.CANCEL.getCode());
+    }
+
+    @Test
     void failsTheTaskWhenEnumeratingActiveListingsBreaks() {
         when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
         when(ebayClient.getInventoryItemSkus())

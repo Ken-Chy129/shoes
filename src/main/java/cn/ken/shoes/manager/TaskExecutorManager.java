@@ -468,6 +468,10 @@ public class TaskExecutorManager {
         ebayDelistService.cancel(taskId);
     }
 
+    public void cancelEbayBulkListing(Long taskId) {
+        ebayBulkListingService.cancel(taskId);
+    }
+
     /**
      * 下架任务的货号参数：缺失或为空表示下架全部在架商品。
      */

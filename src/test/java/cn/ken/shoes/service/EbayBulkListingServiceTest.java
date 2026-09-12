@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -195,6 +196,25 @@ class EbayBulkListingServiceTest {
         verify(taskItemMapper).updateById(updated.capture());
         assertThat(updated.getValue().getOperateResult()).contains("上架失败", "请在Excel补充");
         verify(taskMapper).updateTaskFailed(eq(88L), org.mockito.ArgumentMatchers.contains("失败 1"));
+    }
+
+    @Test
+    void cancellationStopsBeforeTheNextStyleGroupAndMarksTaskCancelled() {
+        List<Runnable> deferred = new ArrayList<>();
+        EbayBulkListingService asyncService = new EbayBulkListingService(
+                taskMapper, taskItemMapper, snapshotStore, metadataService,
+                new EbayListingFactory(new EbayProperties(), taxonomyService), listingService,
+                deferred::add);
+        EbayListingExcel first = row();
+        EbayListingExcel second = row();
+        second.setStyleId("AH7860-139");
+
+        asyncService.start(List.of(first, second));
+        asyncService.cancel(88L);
+        deferred.getFirst().run();
+
+        verify(listingService, never()).publishGroup(any(), any());
+        verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
     }
 
     private EbayListingExcel row() {

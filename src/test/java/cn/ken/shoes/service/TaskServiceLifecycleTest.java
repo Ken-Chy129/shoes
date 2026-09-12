@@ -230,6 +230,27 @@ class TaskServiceLifecycleTest {
         }
     }
 
+    @Test
+    void cancellingEbayTasksDispatchesToTheMatchingRunner() {
+        FakeTaskExecutorManager executor = new FakeTaskExecutorManager();
+        TaskDO task = task(41L, "running");
+        task.setPlatform("ebay");
+        task.setAccountName("production");
+        TaskService taskService = new TaskService(
+                mapperReturning(task), emptyTaskItemMapper(), executor);
+
+        task.setTaskType("ebay_bulk_listing");
+        taskService.cancelTaskById(41L);
+        task.setTaskType("ebay_delist");
+        taskService.cancelTaskById(41L);
+        task.setTaskType("ebay_price_sync");
+        taskService.cancelTaskById(41L);
+
+        assertThat(executor.cancelledBulkListing).hasValue(41L);
+        assertThat(executor.cancelledDelist).hasValue(41L);
+        assertThat(executor.cancelledPriceSync).hasValue(41L);
+    }
+
     private static TaskMapper mapperReturning(TaskDO task) {
         return proxy(TaskMapper.class, (method, args) -> "selectById".equals(method) ? task : null);
     }
@@ -269,6 +290,9 @@ class TaskServiceLifecycleTest {
     private static class FakeTaskExecutorManager extends TaskExecutorManager {
         private final AtomicReference<TaskDO> resumed = new AtomicReference<>();
         private final AtomicReference<TaskDO> rerun = new AtomicReference<>();
+        private final AtomicReference<Long> cancelledBulkListing = new AtomicReference<>();
+        private final AtomicReference<Long> cancelledDelist = new AtomicReference<>();
+        private final AtomicReference<Long> cancelledPriceSync = new AtomicReference<>();
         private Long resumeResult;
         private Long rerunResult;
 
@@ -282,6 +306,21 @@ class TaskServiceLifecycleTest {
         public Long rerunTask(TaskDO task) {
             rerun.set(task);
             return rerunResult;
+        }
+
+        @Override
+        public void cancelEbayBulkListing(Long taskId) {
+            cancelledBulkListing.set(taskId);
+        }
+
+        @Override
+        public void cancelEbayDelist(Long taskId) {
+            cancelledDelist.set(taskId);
+        }
+
+        @Override
+        public void cancelEbayPriceSync(Long taskId) {
+            cancelledPriceSync.set(taskId);
         }
     }
 }

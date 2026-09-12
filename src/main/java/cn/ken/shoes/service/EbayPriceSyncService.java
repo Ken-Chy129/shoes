@@ -3,6 +3,7 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.config.PriceSwitch;
+import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.client.PoisonClient;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
@@ -118,14 +119,20 @@ public class EbayPriceSyncService {
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier) {
-        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, 0);
+        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, 0, new AtomicBoolean(false));
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier, int round) {
-        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, round);
+        runSingleRound(taskId, priceMultiplier, DEFAULT_ADDITION, round, new AtomicBoolean(false));
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier, BigDecimal priceAddition, int round) {
+        runSingleRound(taskId, priceMultiplier, priceAddition, round, new AtomicBoolean(false));
+    }
+
+    private void runSingleRound(Long taskId, BigDecimal priceMultiplier, BigDecimal priceAddition,
+                                int round, AtomicBoolean cancelled) {
+        ensureNotCancelled(cancelled);
         List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
         Map<String, TaskItemDO> byOfferId = new HashMap<>();
         Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
@@ -148,6 +155,7 @@ public class EbayPriceSyncService {
         Set<String> modelNos = new HashSet<>();
         int skipped = 0;
         for (JSONObject offer : offers) {
+            ensureNotCancelled(cancelled);
             TaskItemDO mapping = mappingFor(offer, byOfferId, bySku);
             if (mapping == null || mapping.getStyleId() == null) {
                 skipped++;
@@ -187,6 +195,7 @@ public class EbayPriceSyncService {
 
         Map<String, BigDecimal> prices = new HashMap<>();
         for (PoisonPriceDO price : poisonPrices) {
+            ensureNotCancelled(cancelled);
             if (price == null || price.getModelNo() == null || price.getEuSize() == null
                     || price.getPrice() == null || price.getPrice() <= 0) {
                 continue;
@@ -199,6 +208,7 @@ public class EbayPriceSyncService {
         int noPrice = 0;
         int failed = 0;
         for (OfferContext context : contexts) {
+            ensureNotCancelled(cancelled);
             BigDecimal poisonPrice = prices.get(priceKey(context.mapping().getStyleId(), context.euSize()));
             BigDecimal target = poisonPrice == null ? null : targetPrice(poisonPrice, priceMultiplier, priceAddition);
             int targetQuantity = poisonPrice == null ? 0 : Math.max(context.quantity(), 0);
@@ -217,6 +227,8 @@ public class EbayPriceSyncService {
                     noPrice++;
                     result = "无得物价格，库存置0";
                 }
+            } catch (TaskCancelledException e) {
+                throw e;
             } catch (Exception e) {
                 failed++;
                 result = "改价失败(" + safeError(e) + ")";
@@ -235,8 +247,10 @@ public class EbayPriceSyncService {
             while (!handle.cancelled.get()) {
                 round++;
                 try {
-                    runSingleRound(taskId, multiplier, addition, round);
+                    runSingleRound(taskId, multiplier, addition, round, handle.cancelled);
                     taskMapper.updateTaskRound(taskId, round);
+                } catch (TaskCancelledException e) {
+                    break;
                 } catch (Exception e) {
                     log.error("eBay定时改价第{}轮失败，保留现有库存和价格, taskId={}", round, taskId, e);
                     taskMapper.updateTaskFailReason(taskId, "第" + round + "轮失败：" + safeError(e));
@@ -254,6 +268,12 @@ public class EbayPriceSyncService {
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
         } finally {
             running.remove(taskId);
+        }
+    }
+
+    private void ensureNotCancelled(AtomicBoolean cancelled) {
+        if (cancelled.get() || Thread.currentThread().isInterrupted()) {
+            throw new TaskCancelledException();
         }
     }
 

@@ -114,10 +114,20 @@ public class EbayDelistService {
     void discoverAndRun(Long taskId, List<String> targets, AtomicBoolean cancelled) {
         List<DelistTarget> listings;
         try {
-            listings = resolveActiveListings(targets);
+            if (cancelled.get()) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+                running.remove(taskId);
+                return;
+            }
+            listings = resolveActiveListings(targets, cancelled);
         } catch (Exception e) {
             log.error("eBay下架任务枚举在架商品失败, taskId:{}", taskId, e);
             taskMapper.updateTaskFailed(taskId, "枚举在架商品失败：" + safeError(e));
+            running.remove(taskId);
+            return;
+        }
+        if (cancelled.get()) {
+            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             running.remove(taskId);
             return;
         }
@@ -208,11 +218,21 @@ public class EbayDelistService {
      * 无法判断货号，因此仅在全量下架时纳入。
      */
     List<DelistTarget> resolveActiveListings(List<String> styleIds) {
+        return resolveActiveListings(styleIds, new AtomicBoolean(false));
+    }
+
+    private List<DelistTarget> resolveActiveListings(List<String> styleIds, AtomicBoolean cancelled) {
         Map<String, TaskItemDO> mappingsBySku = mappingsBySku();
         Set<String> wanted = Set.copyOf(styleIds);
         Map<String, DelistTarget> byOfferId = new LinkedHashMap<>();
         for (String sku : ebayClient.getInventoryItemSkus()) {
+            if (cancelled.get()) {
+                break;
+            }
             for (JSONObject offer : ebayClient.getOffersBySku(sku)) {
+                if (cancelled.get()) {
+                    break;
+                }
                 if (offer == null || !ebayClient.isActiveOffer(offer)) {
                     continue;
                 }
