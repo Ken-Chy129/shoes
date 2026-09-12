@@ -3,9 +3,6 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
-import com.alibaba.excel.context.AnalysisContext;
-import com.alibaba.excel.event.AnalysisEventListener;
-import com.alibaba.excel.exception.ExcelAnalysisStopException;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
@@ -21,17 +18,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @RestController
 @RequestMapping("task/ebay")
 public class EbayBulkListingController {
 
     private static final long MAX_EXCEL_SIZE = 10 * 1024 * 1024L;
-    private static final int MAX_EXCEL_ROWS = 1_000;
     private final EbayBulkListingService bulkListingService;
 
     public EbayBulkListingController(EbayBulkListingService bulkListingService) {
@@ -105,29 +99,9 @@ public class EbayBulkListingController {
     }
 
     private List<EbayListingExcel> readRows(MultipartFile file) throws IOException {
-        List<EbayListingExcel> rows = new ArrayList<>(MAX_EXCEL_ROWS);
-        AtomicBoolean tooManyRows = new AtomicBoolean(false);
         try (InputStream input = file.getInputStream()) {
-            EasyExcel.read(input, EbayListingExcel.class, new AnalysisEventListener<EbayListingExcel>() {
-                @Override
-                public void invoke(EbayListingExcel row, AnalysisContext context) {
-                    if (rows.size() >= MAX_EXCEL_ROWS) {
-                        tooManyRows.set(true);
-                        throw new ExcelAnalysisStopException("row limit exceeded");
-                    }
-                    rows.add(row);
-                }
-
-                @Override
-                public void doAfterAllAnalysed(AnalysisContext context) {
-                    // No-op: rows are validated by the service after the streaming read completes.
-                }
-            }).sheet().doRead();
+            return EasyExcel.read(input).head(EbayListingExcel.class).sheet().doReadSync();
         }
-        if (tooManyRows.get()) {
-            throw new IllegalArgumentException("单次最多上架1000行商品");
-        }
-        return rows;
     }
 
     private boolean isZip(byte[] signature) {

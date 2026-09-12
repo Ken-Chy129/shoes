@@ -35,7 +35,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EbayBulkListingService {
 
     public static final String TASK_TYPE = "ebay_bulk_listing";
-    private static final int MAX_ROWS = 1_000;
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -265,9 +264,6 @@ public class EbayBulkListingService {
     private void validateInput(List<EbayListingExcel> rows) {
         if (rows.isEmpty()) {
             throw new IllegalArgumentException("Excel中没有可上架的数据");
-        }
-        if (rows.size() > MAX_ROWS) {
-            throw new IllegalArgumentException("单次最多上架1000行商品");
         }
         Set<String> skuKeys = new HashSet<>();
         for (int i = 0; i < rows.size(); i++) {

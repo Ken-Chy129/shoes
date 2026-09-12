@@ -106,8 +106,9 @@ class EbayBulkListingControllerTest {
     }
 
     @Test
-    void stopsReadingAfterTheMaximumRowCount() {
+    void acceptsMoreThanOneThousandRows() {
         EbayBulkListingService service = mock(EbayBulkListingService.class);
+        when(service.start(argThat(rows -> rows.size() == 1_001))).thenReturn(2028L);
         EbayBulkListingController controller = new EbayBulkListingController(service);
         List<EbayListingExcel> rows = java.util.stream.IntStream.rangeClosed(1, 1_001)
                 .mapToObj(index -> {
@@ -118,9 +119,8 @@ class EbayBulkListingControllerTest {
 
         Result<String> result = controller.startBulkListing(excelFile(rows));
 
-        assertThat(result.getSuccess()).isFalse();
-        assertThat(result.getErrorMsg()).contains("1000");
-        verifyNoInteractions(service);
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("2028");
     }
 
     private MockMultipartFile excelFile(List<EbayListingExcel> rows) {
