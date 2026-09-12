@@ -10,6 +10,8 @@ import cn.ken.shoes.model.ebay.EbayListingResult;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
@@ -226,6 +228,126 @@ class EbayListingServiceTest {
                 .containsOnly("listing-group-456");
         verify(pictureApiClient).uploadExternalPicture(
                 "https://example.com/shoe.jpg", "group-style-1-1");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"US Shoe Size", "US Size", "EU Shoe Size"})
+    void sortsNewGroupSizesNumericallyWithoutReorderingResultsOrOffers(String sizeAspect) {
+        EbayListingRequest size10 = requestWithSize("sku-a", sizeAspect, "10");
+        size10.setQuantity(3);
+        size10.setPrice(new BigDecimal("139.99"));
+        EbayListingRequest size9 = requestWithSize("sku-c", sizeAspect, "9");
+        EbayListingRequest size95 = requestWithSize("sku-b", sizeAspect, "9.5");
+        List<EbayListingRequest> requests = List.of(size10, size9, size95);
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenReturn("offer-10", "offer-9", "offer-9-5");
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", requests);
+
+        assertGroupSizeOrder(List.of("sku-c", "sku-b", "sku-a"), List.of("9", "9.5", "10"));
+        assertThat(requests).containsExactly(size10, size9, size95);
+        assertThat(results).extracting(EbayListingResult::getSku)
+                .containsExactly("sku-a", "sku-c", "sku-b");
+        assertThat(results).extracting(EbayListingResult::getOfferId)
+                .containsExactly("offer-10", "offer-9", "offer-9-5");
+        ArgumentCaptor<JSONObject> offers = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient, times(3)).createOffer(
+                offers.capture(), org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(offers.getAllValues()).extracting(offer -> offer.getString("sku"))
+                .containsExactly("sku-a", "sku-c", "sku-b");
+        assertThat(offers.getAllValues().getFirst().getInteger("availableQuantity")).isEqualTo(3);
+        assertThat(offers.getAllValues().getFirst().getJSONObject("pricingSummary")
+                .getJSONObject("price").getBigDecimal("value")).isEqualByComparingTo("139.99");
+    }
+
+    @Test
+    void sortsCombinedSizeLabelsByTheirNumericSizeWithoutChangingTheLabels() {
+        service.publishGroup("group-style-1", List.of(
+                requestWithSize("sku-a", "US Shoe Size", "10 Men/11.5 Women"),
+                requestWithSize("sku-b", "US Shoe Size", "9.5 Men/11 Women"),
+                requestWithSize("sku-c", "US Shoe Size", "9 Men/10.5 Women")));
+
+        assertGroupSizeOrder(List.of("sku-c", "sku-b", "sku-a"),
+                List.of("9 Men/10.5 Women", "9.5 Men/11 Women", "10 Men/11.5 Women"));
+    }
+
+    @Test
+    void insertsNewSizesBeforeBetweenAndAfterExistingSizesAndSortsTheWholeGroup() {
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("old-10", "old-8"), List.of("10", "8", "unused"))));
+        for (String size : List.of("10", "8")) {
+            when(apiClient.getOffersBySku("old-" + size))
+                    .thenReturn(List.of(publishedOffer(
+                            "offer-" + size, "old-" + size, "listing-group-456")));
+            when(apiClient.getInventoryItem("old-" + size))
+                    .thenReturn(Optional.of(inventoryItemWithSize(size)));
+        }
+
+        service.publishGroup("group-style-1", List.of(
+                requestWithSize("new-11", "US Shoe Size", "11"),
+                requestWithSize("new-9-5", "US Shoe Size", "9.5"),
+                requestWithSize("new-7", "US Shoe Size", "7"),
+                requestWithSize("new-9", "US Shoe Size", "9")));
+
+        assertGroupSizeOrder(
+                List.of("new-7", "old-8", "new-9", "new-9-5", "old-10", "new-11"),
+                List.of("7", "8", "9", "9.5", "10", "11"));
+        verify(apiClient, never()).withdrawOffer(anyString());
+    }
+
+    @Test
+    void insertsASingleNewHalfSizeBetweenExistingSizes() {
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("old-10", "old-9"), List.of("10", "9"))));
+        for (String size : List.of("10", "9")) {
+            when(apiClient.getOffersBySku("old-" + size))
+                    .thenReturn(List.of(publishedOffer(
+                            "offer-" + size, "old-" + size, "listing-group-456")));
+            when(apiClient.getInventoryItem("old-" + size))
+                    .thenReturn(Optional.of(inventoryItemWithSize(size)));
+        }
+
+        service.publishGroup("group-style-1",
+                List.of(requestWithSize("new-9-5", "US Shoe Size", "9.5")));
+
+        assertGroupSizeOrder(List.of("old-9", "new-9-5", "old-10"), List.of("9", "9.5", "10"));
+    }
+
+    @Test
+    void preservesEqualNumericAndUnrecognizedLabelsWhileSortingNumericSizesFirst() {
+        service.publishGroup("group-style-1", List.of(
+                requestWithSize("sku-custom", "US Shoe Size", "Custom"),
+                requestWithSize("sku-10", "US Shoe Size", "10"),
+                requestWithSize("sku-9-0", "US Shoe Size", "9.0"),
+                requestWithSize("sku-9", "US Shoe Size", "9"),
+                requestWithSize("sku-other", "US Shoe Size", "Other")));
+
+        assertGroupSizeOrder(
+                List.of("sku-9-0", "sku-9", "sku-10", "sku-custom", "sku-other"),
+                List.of("9.0", "9", "10", "Custom", "Other"));
+    }
+
+    private EbayListingRequest requestWithSize(String sku, String aspect, String size) {
+        EbayListingRequest request = listingRequest();
+        request.setSku(sku);
+        request.setAspects(Map.of(aspect, List.of(size)));
+        return request;
+    }
+
+    private void assertGroupSizeOrder(List<String> skus, List<String> sizes) {
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("variantSKUs")).containsExactlyElementsOf(skus);
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")
+                .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
+                .containsExactlyElementsOf(sizes);
     }
 
     @Test
@@ -637,7 +759,7 @@ class EbayListingServiceTest {
                 org.mockito.ArgumentMatchers.eq("en-US"));
         assertThat(groupPayload.getValue().getJSONObject("variesBy")
                 .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
-                .containsExactly("10", "9");
+                .containsExactly("9", "10");
     }
 
     @Test
@@ -667,7 +789,7 @@ class EbayListingServiceTest {
                 org.mockito.ArgumentMatchers.eq("en-US"));
         assertThat(groupPayload.getValue().getJSONObject("variesBy")
                 .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
-                .containsExactly("10", "11", "9");
+                .containsExactly("9", "10", "11");
     }
 
     private JSONObject inventoryItemWithSize(String size) {
@@ -811,10 +933,10 @@ class EbayListingServiceTest {
                 org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
                 org.mockito.ArgumentMatchers.eq("en-US"));
         assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
-                .containsExactly("shoe-sku-usm-6", "shoe-sku-usm-55");
+                .containsExactly("shoe-sku-usm-55", "shoe-sku-usm-6");
         assertThat(groupPayload.getValue().getJSONObject("variesBy")
                 .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
-                .containsExactly("6", "5.5");
+                .containsExactly("5.5", "6");
         verify(apiClient).createOrReplaceInventoryItem(
                 org.mockito.ArgumentMatchers.eq("shoe-sku-usm-55"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
@@ -901,10 +1023,10 @@ class EbayListingServiceTest {
                 org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
                 org.mockito.ArgumentMatchers.eq("en-US"));
         assertThat(groupPayload.getValue().getJSONArray("variantSKUs"))
-                .containsExactly("shoe-sku-10", "shoe-sku-9");
+                .containsExactly("shoe-sku-9", "shoe-sku-10");
         assertThat(groupPayload.getValue().getJSONObject("variesBy")
                 .getJSONArray("specifications").getJSONObject(0).getJSONArray("values"))
-                .containsExactly("10", "9");
+                .containsExactly("9", "10");
         verify(apiClient, never()).getInventoryItem("shoe-sku-11");
     }
 

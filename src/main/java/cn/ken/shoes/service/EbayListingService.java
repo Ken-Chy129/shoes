@@ -13,7 +13,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -31,6 +33,9 @@ public class EbayListingService {
 
     private static final int MAX_IDEMPOTENT_WRITE_ATTEMPTS = 5;
     private static final Pattern SINGLE_LISTING_SKU = Pattern.compile("SKU:\\s*([A-Za-z0-9_-]+)");
+    private static final Pattern LEADING_SIZE_NUMBER = Pattern.compile("^\\s*(\\d+(?:\\.\\d+)?)");
+    private static final Comparator<String> SIZE_ORDER = Comparator.comparing(
+            EbayListingService::numericSize, Comparator.nullsLast(Comparator.naturalOrder()));
 
     private final EbaySellApiClient apiClient;
     private final EbayProperties properties;
@@ -504,7 +509,8 @@ public class EbayListingService {
         payload.put("title", first.getTitle());
         payload.put("description", first.getDescription());
         payload.put("imageUrls", JSON.parseArray(JSON.toJSONString(hostedImageUrls)));
-        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(groupSkus)));
+        payload.put("variantSKUs", JSON.parseArray(JSON.toJSONString(
+                sortedGroupSkus(groupSkus, variants, groupAspects.varyingName(), retainedSizeValues))));
         payload.put("aspects", JSON.parseObject(JSON.toJSONString(groupAspects.common())));
         JSONObject specification = new JSONObject(true);
         specification.put("name", groupAspects.varyingName());
@@ -514,6 +520,31 @@ public class EbayListingService {
         variesBy.put("specifications", new JSONArray().fluentAdd(specification));
         payload.put("variesBy", variesBy);
         return payload;
+    }
+
+    private List<String> sortedGroupSkus(Set<String> groupSkus,
+                                        List<EbayListingRequest> variants,
+                                        String varyingName,
+                                        Map<String, String> retainedSizeValues) {
+        Map<String, String> sizeBySku = new LinkedHashMap<>(retainedSizeValues);
+        for (EbayListingRequest variant : variants) {
+            sizeBySku.put(variant.getSku(), effectiveAspects(variant).get(varyingName).getFirst());
+        }
+        // 读不到历史 SKU 的尺码时保留 SKU 顺序，不能把 values 的位置当作 SKU 映射。
+        // 尺码选项仍独立排序；这里只调整提交的 SKU 列表，不能改变 Excel 对应的结果顺序。
+        if (groupSkus.stream().anyMatch(sku -> sizeBySku.get(sku) == null)) {
+            return List.copyOf(groupSkus);
+        }
+        return groupSkus.stream().sorted(Comparator.comparing(sizeBySku::get, SIZE_ORDER)).toList();
+    }
+
+    private static BigDecimal numericSize(String size) {
+        if (size == null) {
+            return null;
+        }
+        // eBay 使用数字或 "9 Men/10.5 Women" 标签；按首个尺码排序，保留原始标签。
+        Matcher matcher = LEADING_SIZE_NUMBER.matcher(size);
+        return matcher.find() ? new BigDecimal(matcher.group(1)) : null;
     }
 
     private GroupAspects validateAndResolveGroupAspects(List<EbayListingRequest> variants,
@@ -600,7 +631,7 @@ public class EbayListingService {
                                                GroupAspects groupAspects,
                                                Map<String, String> retainedSizeValues) {
         if (existingGroup == null) {
-            return List.copyOf(new LinkedHashSet<>(groupAspects.values()));
+            return groupAspects.values().stream().distinct().sorted(SIZE_ORDER).toList();
         }
         ExistingVariation existingVariation = existingVariation(existingGroup);
         if (!groupAspects.varyingName().equals(existingVariation.name())) {
@@ -613,7 +644,7 @@ public class EbayListingService {
         LinkedHashSet<String> values = new LinkedHashSet<>(
                 variationValuesInUse(existingVariation, retainedSizeValues));
         values.addAll(groupAspects.values());
-        return List.copyOf(values);
+        return values.stream().sorted(SIZE_ORDER).toList();
     }
 
     /**
