@@ -300,7 +300,8 @@ public class TaskExecutorManager {
                 || ("ebay".equals(task.getPlatform())
                 && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
                 || taskType == TaskTypeEnum.EBAY_BULK_LISTING
-                || taskType == TaskTypeEnum.EBAY_DELIST));
+                || taskType == TaskTypeEnum.EBAY_DELIST
+                || taskType == TaskTypeEnum.EBAY_ZERO_STOCK));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -321,6 +322,9 @@ public class TaskExecutorManager {
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_DELIST) {
             return startEbayDelist(styleIds(params));
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_ZERO_STOCK) {
+            return startEbayZeroStock(styleIds(params));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
@@ -430,6 +434,7 @@ public class TaskExecutorManager {
             case EBAY_PRICE_SYNC -> startEbayPriceSync(params.getLongValue("intervalHours"),
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
+            case EBAY_ZERO_STOCK -> startEbayZeroStock(styleIds(params));
         };
     }
 
@@ -462,6 +467,10 @@ public class TaskExecutorManager {
 
     public Long startEbayDelist(java.util.List<String> styleIds) {
         return ebayDelistService.start(styleIds);
+    }
+
+    public Long startEbayZeroStock(java.util.List<String> styleIds) {
+        return ebayDelistService.startZeroStock(styleIds);
     }
 
     public void cancelEbayDelist(Long taskId) {

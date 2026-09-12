@@ -118,6 +118,43 @@ public class EbaySellApiClient {
         return Optional.ofNullable(execute(request, Set.of(200), true));
     }
 
+    /**
+     * 将一个库存项的可售数量改为指定值，同时保留 eBay 已保存的商品资料。
+     * Inventory Item 的 PUT 是整对象替换，不能只发送 quantity。
+     *
+     * @return 修改前的库存数量
+     */
+    public int updateInventoryItemQuantity(String sku, int quantity, String contentLanguage) {
+        if (quantity < 0) {
+            throw new IllegalArgumentException("inventory quantity cannot be negative");
+        }
+        JSONObject current = getInventoryItem(sku)
+                .orElseThrow(() -> new EbayApiException("eBay inventory item does not exist: " + sku));
+        JSONObject payload = new JSONObject(true);
+        for (String field : List.of("condition", "conditionDescription",
+                "packageWeightAndSize", "product")) {
+            if (current.containsKey(field)) {
+                payload.put(field, current.get(field));
+            }
+        }
+        JSONObject availability = current.getJSONObject("availability");
+        if (availability == null) {
+            availability = new JSONObject(true);
+        } else {
+            availability = JSONObject.parseObject(availability.toJSONString());
+        }
+        payload.put("availability", availability);
+        JSONObject shipAvailability = availability.getJSONObject("shipToLocationAvailability");
+        if (shipAvailability == null) {
+            shipAvailability = new JSONObject(true);
+            availability.put("shipToLocationAvailability", shipAvailability);
+        }
+        int previousQuantity = shipAvailability.getIntValue("quantity");
+        shipAvailability.put("quantity", quantity);
+        createOrReplaceInventoryItem(sku, payload, contentLanguage);
+        return previousQuantity;
+    }
+
     public String publishOffer(String offerId) {
         HttpUrl url = inventoryUrl("offer").newBuilder()
                 .addPathSegment(requireValue(offerId, "offerId"))

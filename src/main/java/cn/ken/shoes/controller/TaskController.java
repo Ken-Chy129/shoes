@@ -170,6 +170,33 @@ public class TaskController {
      */
     @PostMapping("ebay/startDelist")
     public Result<String> startEbayDelist(@RequestBody(required = false) JSONObject body) {
+        List<String> styleIds = ebayStyleIds(body);
+        try {
+            Long taskId = taskExecutorManager.startEbayDelist(styleIds);
+            if (taskId == null) {
+                return Result.buildError("eBay下架或库存清零任务已在运行，请等待当前任务结束");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
+    /** 将当前在架商品的 SKU 库存设为 0，但不撤回 offer。 */
+    @PostMapping("ebay/startZeroStock")
+    public Result<String> startEbayZeroStock(@RequestBody(required = false) JSONObject body) {
+        try {
+            Long taskId = taskExecutorManager.startEbayZeroStock(ebayStyleIds(body));
+            if (taskId == null) {
+                return Result.buildError("eBay下架或库存清零任务已在运行，请等待当前任务结束");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
+    private List<String> ebayStyleIds(JSONObject body) {
         List<String> styleIds = new ArrayList<>();
         var array = body == null ? null : body.getJSONArray("styleIds");
         if (array != null) {
@@ -180,15 +207,7 @@ public class TaskController {
                 }
             }
         }
-        try {
-            Long taskId = taskExecutorManager.startEbayDelist(styleIds);
-            if (taskId == null) {
-                return Result.buildError("eBay下架任务已在运行，请等待当前任务结束");
-            }
-            return Result.buildSuccess(String.valueOf(taskId));
-        } catch (IllegalArgumentException e) {
-            return Result.buildError(e.getMessage());
-        }
+        return styleIds;
     }
 
     @PostMapping("ebay/cancelDelist")

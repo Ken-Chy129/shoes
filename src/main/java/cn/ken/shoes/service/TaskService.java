@@ -203,7 +203,7 @@ public class TaskService {
                     taskExecutorManager.cancelEbayBulkListing(task.getId());
                 }
             }
-            case "ebay_delist" -> {
+            case "ebay_delist", "ebay_zero_stock" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayDelist(task.getId());
                 }

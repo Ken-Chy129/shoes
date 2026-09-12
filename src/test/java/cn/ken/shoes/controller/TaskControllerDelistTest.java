@@ -144,6 +144,21 @@ class TaskControllerDelistTest {
         }
     }
 
+    @Test
+    void startsEbayZeroStockWithoutCallingTheDelistOperation() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        when(manager.startEbayZeroStock(List.of())).thenReturn(7002L);
+        TaskController controller = new TaskController();
+        setField(controller, "taskExecutorManager", manager);
+
+        Result<String> result = controller.startEbayZeroStock(new JSONObject());
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("7002");
+        verify(manager).startEbayZeroStock(List.of());
+        verify(manager, never()).startEbayDelist(anyList());
+    }
+
     private static void setField(Object target, String fieldName, Object value) throws Exception {
         Field field = TaskController.class.getDeclaredField(fieldName);
         field.setAccessible(true);

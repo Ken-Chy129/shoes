@@ -81,7 +81,9 @@ public class TaskItemController {
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
 
         if (task != null && ("ebay_bulk_listing".equals(task.getTaskType())
-                || "ebay_price_sync".equals(task.getTaskType()))) {
+                || "ebay_price_sync".equals(task.getTaskType())
+                || "ebay_delist".equals(task.getTaskType())
+                || "ebay_zero_stock".equals(task.getTaskType()))) {
             SimpleDateFormat ebayDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             List<EbayListingTaskExcel> ebayRows = new ArrayList<>();
             for (TaskItemDO item : items) {

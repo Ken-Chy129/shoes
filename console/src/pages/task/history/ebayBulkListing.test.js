@@ -31,4 +31,15 @@ describe('eBay bulk listing task UI', () => {
     expect(page).toContain('eBay下架任务已创建');
     expect(service).toContain("EBAY_START_DELIST = '/api/task/ebay/startDelist'");
   });
+
+  it('offers inventory zeroing as a separate task type', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+    const options = fs.readFileSync(path.join(__dirname, 'taskOptions.ts'), 'utf8');
+    const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
+
+    expect(options).toContain("ebay_zero_stock: 'eBay库存清零'");
+    expect(page).toContain("createTaskType === 'ebay_zero_stock'");
+    expect(page).toContain('doPostRequest(TASK_API.EBAY_START_ZERO_STOCK, {styleIds: []}');
+    expect(service).toContain("EBAY_START_ZERO_STOCK = '/api/task/ebay/startZeroStock'");
+  });
 });

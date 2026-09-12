@@ -339,6 +339,16 @@ const TaskPage = () => {
                     onError: (res: any) => message.error(res.errorMsg || 'eBay下架任务创建失败'),
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_zero_stock') {
+                doPostRequest(TASK_API.EBAY_START_ZERO_STOCK, {styleIds: []}, {
+                    onSuccess: (res: any) => {
+                        message.success(`eBay库存清零任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    },
+                    onError: (res: any) => message.error(res.errorMsg || 'eBay库存清零任务创建失败'),
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'listing') {
                 const modelNoSearch = values.searchMode === 'model_no';
                 if (modelNoSearch) {

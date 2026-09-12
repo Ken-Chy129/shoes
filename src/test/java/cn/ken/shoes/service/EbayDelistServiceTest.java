@@ -245,6 +245,39 @@ class EbayDelistServiceTest {
         assertThat(item.getValue().getOfferId()).isEqualTo("offer-1");
     }
 
+    @Test
+    void zeroesInventoryWithoutWithdrawingTheOfferAndRecordsPreviousQuantity() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+                mapping("offer-1", "SKU-1", "DD1391-100")));
+        ebayHasActiveOffers("SKU-1");
+        when(ebayClient.updateInventoryItemQuantity("SKU-1", 0, "en-US")).thenReturn(4);
+
+        Long taskId = service.startZeroStock(List.of());
+
+        assertThat(taskId).isEqualTo(7001L);
+        verify(ebayClient).updateInventoryItemQuantity("SKU-1", 0, "en-US");
+        verify(ebayClient, never()).withdrawOffer(org.mockito.ArgumentMatchers.anyString());
+        ArgumentCaptor<TaskDO> task = ArgumentCaptor.forClass(TaskDO.class);
+        verify(taskMapper).insert(task.capture());
+        assertThat(task.getValue().getTaskType()).isEqualTo("ebay_zero_stock");
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getListingQuantity()).isEqualTo(4);
+        assertThat(item.getValue().getOperateResult()).isEqualTo("库存清零成功(原库存4)");
+        verify(taskMapper).updateTaskStatus(7001L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+    }
+
+    @Test
+    void doesNotRunDelistAndZeroStockAtTheSameTime() {
+        TaskDO running = new TaskDO();
+        running.setId(6002L);
+        when(taskMapper.selectRunningTask("ebay", EbayDelistService.ZERO_STOCK_TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode())).thenReturn(running);
+
+        assertThat(service.start(List.of())).isNull();
+        verify(ebayClient, never()).getInventoryItemSkus();
+    }
+
     /**
      * 让 eBay 侧返回这些 SKU 及其在架 offer。
      */

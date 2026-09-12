@@ -523,7 +523,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             : taskType === 'replenishment'
                 ? replenishmentColumns
                     : taskType === 'model_search' ? modelSearchColumns
-                        : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
+                        : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
                             ? ebayListingColumns : productColumns;
 
     const handleClose = () => {
@@ -544,7 +544,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 : taskType === 'replenishment' ? '补单明细'
                             : taskType === 'purchase' ? '购买明细'
                                 : taskType === 'purchase_guidance' ? '购买价格参考明细'
-                            : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
+                            : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
                                 ? 'eBay商品明细' : '任务明细'}
             open={visible}
             onCancel={handleClose}
@@ -614,13 +614,17 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                         })()}
-                        {(taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') && attributes && (() => {
+                        {(taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零') && attributes && (() => {
                             try {
                                 const attrs = JSON.parse(attributes);
                                 return <span style={{color: '#1677ff', fontWeight: 500}}>
                                     {(taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
                                         ? `本轮 ${attrs.total ?? 0} | 改价 ${attrs.changed ?? 0} | 无价 ${attrs.noPrice ?? 0} | 跳过 ${attrs.skipped ?? 0}`
-                                        : `总数 ${attrs.total ?? 0} | 成功 ${attrs.succeeded ?? 0} | 失败 ${attrs.failed ?? 0}`}
+                                        : (taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
+                                            ? `总数 ${attrs.total ?? 0} | 清零 ${attrs.zeroed ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`
+                                            : (taskType === 'ebay_delist' || taskType === 'eBay下架')
+                                                ? `总数 ${attrs.total ?? 0} | 下架 ${attrs.delisted ?? 0} | 已下架 ${attrs.alreadyEnded ?? 0} | 失败 ${attrs.failed ?? 0}`
+                                                : `总数 ${attrs.total ?? 0} | 成功 ${attrs.succeeded ?? 0} | 失败 ${attrs.failed ?? 0}`}
                                 </span>;
                             } catch { return null; }
                         })()}
@@ -637,7 +641,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             : taskType === 'purchase_guidance' ? 2200
                         : taskType === 'model_search' ? 1450
                             : taskType === 'replenishment' ? 1550
-                                : (taskType === 'ebay_bulk_listing' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价') ? 1700 : 1130}}
+                                : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零') ? 1700 : 1130}}
                 pagination={{
                     current: pageIndex,
                     pageSize: pageSize,

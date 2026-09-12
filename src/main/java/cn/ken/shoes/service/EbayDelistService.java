@@ -36,6 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EbayDelistService {
 
     public static final String TASK_TYPE = "ebay_delist";
+    public static final String ZERO_STOCK_TASK_TYPE = "ebay_zero_stock";
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -75,16 +76,22 @@ public class EbayDelistService {
      * @return 任务ID；已有下架任务在运行时返回 null
      */
     public synchronized Long start(List<String> styleIds) {
+        return start(styleIds, Operation.DELIST);
+    }
+
+    public synchronized Long startZeroStock(List<String> styleIds) {
+        return start(styleIds, Operation.ZERO_STOCK);
+    }
+
+    private Long start(List<String> styleIds, Operation operation) {
         List<String> targets = normalizeStyleIds(styleIds);
-        TaskDO existing = taskMapper.selectRunningTask(
-                "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode());
-        if (existing != null || !running.isEmpty()) {
+        if (hasRunningInventoryMutation()) {
             return null;
         }
 
         TaskDO task = new TaskDO();
         task.setPlatform("ebay");
-        task.setTaskType(TASK_TYPE);
+        task.setTaskType(operation.taskType);
         task.setAccountName(properties.getEnvironment());
         task.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         task.setStartTime(new Date());
@@ -92,17 +99,18 @@ public class EbayDelistService {
         task.setParams(new JSONObject(true)
                 .fluentPut("styleIds", targets)
                 .fluentPut("scope", targets.isEmpty() ? "all" : "style_ids")
+                .fluentPut("operation", operation.code)
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .toJSONString());
         taskMapper.insert(task);
         AtomicBoolean cancelled = new AtomicBoolean(false);
         running.put(task.getId(), cancelled);
         try {
-            executor.execute(() -> discoverAndRun(task.getId(), targets, cancelled));
+            executor.execute(() -> discoverAndRun(task.getId(), targets, cancelled, operation));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
-            taskMapper.updateTaskFailed(task.getId(), "下架任务启动失败");
+            taskMapper.updateTaskFailed(task.getId(), operation.label + "任务启动失败");
             throw e;
         }
     }
@@ -112,6 +120,11 @@ public class EbayDelistService {
      * 任务直接标记失败，失败原因写回任务记录。
      */
     void discoverAndRun(Long taskId, List<String> targets, AtomicBoolean cancelled) {
+        discoverAndRun(taskId, targets, cancelled, Operation.DELIST);
+    }
+
+    private void discoverAndRun(Long taskId, List<String> targets, AtomicBoolean cancelled,
+                                Operation operation) {
         List<DelistTarget> listings;
         try {
             if (cancelled.get()) {
@@ -121,7 +134,7 @@ public class EbayDelistService {
             }
             listings = resolveActiveListings(targets, cancelled);
         } catch (Exception e) {
-            log.error("eBay下架任务枚举在架商品失败, taskId:{}", taskId, e);
+            log.error("eBay{}任务枚举在架商品失败, taskId:{}", operation.label, taskId, e);
             taskMapper.updateTaskFailed(taskId, "枚举在架商品失败：" + safeError(e));
             running.remove(taskId);
             return;
@@ -138,13 +151,24 @@ public class EbayDelistService {
             running.remove(taskId);
             return;
         }
-        taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
-                .fluentPut("total", listings.size())
-                .fluentPut("delisted", 0)
-                .fluentPut("alreadyEnded", 0)
-                .fluentPut("failed", 0)
-                .toJSONString());
-        run(taskId, listings, cancelled);
+        JSONObject initialAttributes = new JSONObject(true)
+                .fluentPut("total", operation == Operation.ZERO_STOCK
+                        ? listings.stream().map(DelistTarget::sku).distinct().count()
+                        : listings.size())
+                .fluentPut("failed", 0);
+        if (operation == Operation.ZERO_STOCK) {
+            initialAttributes.put("zeroed", 0);
+            initialAttributes.put("alreadyZero", 0);
+        } else {
+            initialAttributes.put("delisted", 0);
+            initialAttributes.put("alreadyEnded", 0);
+        }
+        taskMapper.updateTaskAttributes(taskId, initialAttributes.toJSONString());
+        if (operation == Operation.ZERO_STOCK) {
+            runZeroStock(taskId, listings, cancelled);
+        } else {
+            run(taskId, listings, cancelled);
+        }
     }
 
     public void cancel(Long taskId) {
@@ -155,9 +179,72 @@ public class EbayDelistService {
     }
 
     public boolean canRun() {
-        return running.isEmpty()
-                && taskMapper.selectRunningTask(
-                "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
+        return !hasRunningInventoryMutation();
+    }
+
+    private boolean hasRunningInventoryMutation() {
+        return !running.isEmpty()
+                || taskMapper.selectRunningTask("ebay", TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode()) != null
+                || taskMapper.selectRunningTask("ebay", ZERO_STOCK_TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode()) != null;
+    }
+
+    private void runZeroStock(Long taskId, List<DelistTarget> listings, AtomicBoolean cancelled) {
+        int changed = 0;
+        int alreadyZero = 0;
+        int failed = 0;
+        Set<String> processedSkus = new java.util.HashSet<>();
+        try {
+            for (DelistTarget listing : listings) {
+                if (cancelled.get()) {
+                    break;
+                }
+                if (!processedSkus.add(listing.sku())) {
+                    continue;
+                }
+                String result;
+                Integer previousQuantity = null;
+                try {
+                    previousQuantity = ebayClient.updateInventoryItemQuantity(
+                            listing.sku(), 0, "en-US");
+                    if (previousQuantity == 0) {
+                        alreadyZero++;
+                        result = "库存已为0";
+                    } else {
+                        changed++;
+                        result = "库存清零成功(原库存" + previousQuantity + ")";
+                    }
+                } catch (Exception e) {
+                    failed++;
+                    result = "库存清零失败(" + safeError(e) + ")";
+                    log.warn("eBay库存清零失败, taskId:{}, offerId:{}, sku:{}",
+                            taskId, listing.offerId(), listing.sku(), e);
+                }
+                recordItem(taskId, listing, result, previousQuantity);
+            }
+            taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+                    .fluentPut("total", processedSkus.size())
+                    .fluentPut("zeroed", changed)
+                    .fluentPut("alreadyZero", alreadyZero)
+                    .fluentPut("failed", failed)
+                    .toJSONString());
+            if (cancelled.get()) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            } else if (failed == 0) {
+                taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            } else {
+                taskMapper.updateTaskFailed(taskId, "库存清零完成：成功 " + (changed + alreadyZero)
+                        + "，失败 " + failed + "，请查看任务明细");
+            }
+            log.info("eBay库存清零任务完成, taskId:{}, total:{}, zeroed:{}, alreadyZero:{}, failed:{}",
+                    taskId, processedSkus.size(), changed, alreadyZero, failed);
+        } catch (Exception e) {
+            log.error("eBay库存清零任务异常, taskId:{}", taskId, e);
+            taskMapper.updateTaskFailed(taskId, "库存清零任务异常：" + safeError(e));
+        } finally {
+            running.remove(taskId);
+        }
     }
 
     void run(Long taskId, List<DelistTarget> listings, AtomicBoolean cancelled) {
@@ -293,6 +380,11 @@ public class EbayDelistService {
     }
 
     private void recordItem(Long taskId, DelistTarget listing, String result) {
+        recordItem(taskId, listing, result, null);
+    }
+
+    private void recordItem(Long taskId, DelistTarget listing, String result,
+                            Integer previousQuantity) {
         TaskItemDO mapping = listing.mapping();
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
@@ -311,7 +403,7 @@ public class EbayDelistService {
                 item.setListingId(mapping.getListingId());
             }
         }
-        item.setListingQuantity(0);
+        item.setListingQuantity(previousQuantity == null ? 0 : previousQuantity);
         item.setOperateResult(result);
         item.setOperateTime(new Date());
         taskItemMapper.insert(item);
@@ -323,5 +415,20 @@ public class EbayDelistService {
             return e.getClass().getSimpleName();
         }
         return message.length() <= 120 ? message : message.substring(0, 120);
+    }
+
+    private enum Operation {
+        DELIST(TASK_TYPE, "delist", "下架"),
+        ZERO_STOCK(ZERO_STOCK_TASK_TYPE, "zero_stock", "库存清零");
+
+        private final String taskType;
+        private final String code;
+        private final String label;
+
+        Operation(String taskType, String code, String label) {
+            this.taskType = taskType;
+            this.code = code;
+            this.label = label;
+        }
     }
 }

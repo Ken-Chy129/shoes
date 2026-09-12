@@ -70,6 +70,32 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void updatesOnlyInventoryQuantityWhilePreservingTheCompleteItem() throws Exception {
+        server.enqueue(jsonResponse("""
+                {"sku":"shoe/42 blue","locale":"en_US","condition":"NEW",
+                 "product":{"title":"Keep me","aspects":{"Brand":["Nike"]}},
+                 "availability":{"shipToLocationAvailability":{"quantity":3}}}
+                """));
+        server.enqueue(new MockResponse().setResponseCode(204));
+
+        int previousQuantity = client.updateInventoryItemQuantity("shoe/42 blue", 0, "en-US");
+
+        assertThat(previousQuantity).isEqualTo(3);
+        RecordedRequest get = server.takeRequest();
+        assertThat(get.getMethod()).isEqualTo("GET");
+        assertThat(get.getPath()).isEqualTo("/sell/inventory/v1/inventory_item/shoe%2F42%20blue");
+        RecordedRequest put = server.takeRequest();
+        JSONObject payload = JSON.parseObject(put.getBody().readUtf8());
+        assertThat(put.getMethod()).isEqualTo("PUT");
+        assertThat(payload).doesNotContainKey("sku");
+        assertThat(payload).doesNotContainKey("locale");
+        assertThat(payload.getString("condition")).isEqualTo("NEW");
+        assertThat(payload.getJSONObject("product").getString("title")).isEqualTo("Keep me");
+        assertThat(payload.getJSONObject("availability")
+                .getJSONObject("shipToLocationAvailability").getIntValue("quantity")).isZero();
+    }
+
+    @Test
     void createsAndPublishesOffer() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(201)
                 .setHeader("Content-Type", "application/json")
