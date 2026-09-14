@@ -78,6 +78,17 @@ public class TaskItemDO {
     @TableField("order_number")
     private String orderNumber;
 
+    /** BUY_INTO_FLEX 来源订单号，与销售订单号分开保存。 */
+    @TableField("purchase_order_number")
+    private String purchaseOrderNumber;
+
+    /** 原购买成交价，不等同于含税费的最终成本。 */
+    @TableField("purchase_price")
+    private BigDecimal purchasePrice;
+
+    @TableField("purchase_currency_code")
+    private String purchaseCurrencyCode;
+
     /**
      * StockX订单状态（中文展示值）
      */

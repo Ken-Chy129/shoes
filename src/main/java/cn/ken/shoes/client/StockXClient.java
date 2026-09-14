@@ -1972,6 +1972,9 @@ public class StockXClient {
             }
             JSONObject item = new JSONObject(true);
             item.put("id", node.getString("id"));
+            if ("CUSTODIAL".equals(inventoryType)) {
+                item.put("purchaseOrderNumber", cn.ken.shoes.task.StockXPurchaseOrigin.orderNumber(node));
+            }
             item.put("amount", node.getInteger("amount"));
             item.put("isExpired", node.getBoolean("isExpired"));
             item.put("variantId", productVariant.getString("id"));

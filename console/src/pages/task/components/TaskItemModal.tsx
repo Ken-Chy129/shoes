@@ -33,6 +33,9 @@ interface TaskItemRecord {
     operateResult: string;
     operateTime: string;
     orderNumber: string;
+    purchaseOrderNumber?: string | null;
+    purchasePrice?: number | null;
+    purchaseCurrencyCode?: string | null;
     orderStatus: string;
     currencyCode: string;
     salePrice: number;
@@ -167,7 +170,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         window.open(`${TASK_API.TASK_ITEM_EXPORT}?${params.toString()}`, '_blank');
     }
 
-    const formatOrderMoney = (value: number, currencyCode: string) => {
+    const formatOrderMoney = (value: number | null | undefined, currencyCode?: string | null) => {
         if (value === null || value === undefined) return '-';
         const prefix = currencyCode === 'USD' ? '$' : (currencyCode ? `${currencyCode} ` : '');
         return `${prefix}${value}`;
@@ -184,6 +187,21 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const purchaseOperation = purchaseParams?.operation as
         'bids' | 'orders' | 'history' | 'create_bids' | 'update_bids' | undefined;
     const feeMonitorEnabled = Boolean(purchaseParams?.feeMonitorEnabled);
+    const isCustodialListings = useMemo(() => {
+        if (taskType !== 'fetch_listings' || !params) return false;
+        try {
+            return JSON.parse(params).inventoryType === 'CUSTODIAL';
+        } catch {
+            return false;
+        }
+    }, [taskType, params]);
+
+    const purchaseOriginColumns = [
+        {title: '原购买订单号', dataIndex: 'purchaseOrderNumber', key: 'purchaseOrderNumber', width: 170,
+            render: (value?: string | null) => value || '-'},
+        {title: '购买价格', dataIndex: 'purchasePrice', key: 'purchasePrice', width: 110,
+            render: (value: number | null | undefined, record: TaskItemRecord) => formatOrderMoney(value, record.purchaseCurrencyCode)},
+    ];
 
     const productColumns = [
         {
@@ -297,6 +315,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '尺码', dataIndex: 'size', key: 'size', width: 70},
         {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 70},
         {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150},
+        ...purchaseOriginColumns,
         {
             title: 'StockX出售价格', dataIndex: 'salePrice', key: 'salePrice', width: 120,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode),
@@ -524,7 +543,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 ? replenishmentColumns
                     : taskType === 'model_search' ? modelSearchColumns
                         : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
-                            ? ebayListingColumns : productColumns;
+                            ? ebayListingColumns : isCustodialListings ? [...productColumns, ...purchaseOriginColumns] : productColumns;
 
     const handleClose = () => {
         setPageIndex(1);
@@ -636,7 +655,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: taskType === 'fetch_orders' ? 1700
+                scroll={{x: taskType === 'fetch_orders' ? 1980
+                        : isCustodialListings ? 1410
                         : taskType === 'purchase' ? 1700
                             : taskType === 'purchase_guidance' ? 2200
                         : taskType === 'model_search' ? 1450

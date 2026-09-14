@@ -1,6 +1,7 @@
 package cn.ken.shoes.task;
 
 import cn.ken.shoes.client.StockXClient;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -50,6 +51,13 @@ public class StockXFetchListingsTaskRunner implements Runnable {
             int pageNumber = 1;
             boolean hasMore = true;
             int totalCount = 0;
+            StockXPurchaseOrigin purchaseOrigin = new StockXPurchaseOrigin(
+                    cursor -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account),
+                    () -> {
+                        if (TaskSwitch.isFetchListingsCancelled(key) || Thread.currentThread().isInterrupted()) {
+                            throw new TaskCancelledException();
+                        }
+                    });
 
             while (hasMore) {
                 if (TaskSwitch.isFetchListingsCancelled(key)) {
@@ -86,6 +94,10 @@ public class StockXFetchListingsTaskRunner implements Runnable {
                     taskItemDO.setBrand(item.getString("brand"));
                     taskItemDO.setSize(item.getString("size"));
                     taskItemDO.setEuSize(item.getString("euSize"));
+                    if ("CUSTODIAL".equals(inventoryType)) {
+                        taskItemDO.setPurchaseOrderNumber(item.getString("purchaseOrderNumber"));
+                        purchaseOrigin.enrich(taskItemDO);
+                    }
                     Integer amount = item.getInteger("amount");
                     taskItemDO.setCurrentPrice(amount != null ? BigDecimal.valueOf(amount) : null);
                     Integer lowestPrice = ShoesUtil.resolveStockxLowest(inventoryType,

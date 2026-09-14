@@ -20,6 +20,7 @@ public final class StockXOrderItemConverter {
         item.setTaskId(taskId);
         item.setRound(0);
         item.setListingId(order.getString("id"));
+        item.setPurchaseOrderNumber(StockXPurchaseOrigin.orderNumber(order));
 
         JSONObject associatedOrders = order.getJSONObject("associatedOrders");
         JSONObject standardizedSellOrder = associatedOrders != null

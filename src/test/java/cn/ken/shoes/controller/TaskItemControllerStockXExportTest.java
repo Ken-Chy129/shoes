@@ -6,6 +6,8 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
+import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
+import cn.ken.shoes.model.excel.StockXListingTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -21,6 +23,56 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TaskItemControllerStockXExportTest {
+
+    @Test
+    void exportsSalesPurchaseOriginWithIndependentCurrency() throws Exception {
+        TaskDO task = new TaskDO();
+        task.setId(93L);
+        task.setPlatform("stockx");
+        task.setTaskType("fetch_orders");
+        TaskItemDO item = purchaseOriginItem();
+        item.setOrderNumber("02-SALE");
+        item.setSalePrice(new BigDecimal("169"));
+        item.setCurrencyCode("USD");
+        List<StockXOrderTaskExcel> rows = EasyExcel.read(new ByteArrayInputStream(export(task, item).getContentAsByteArray()))
+                .head(StockXOrderTaskExcel.class).sheet().doReadSync();
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.getPurchaseOrderNumber()).isEqualTo("03-BUY");
+            assertThat(row.getPurchasePrice()).isEqualTo("HKD 141");
+            assertThat(row.getSalePrice()).isEqualTo("$169");
+            assertThat(row.getOrderNumber()).isEqualTo("02-SALE");
+        });
+    }
+
+    @Test
+    void exportsCustodialPurchaseOriginAndMissingPrice() throws Exception {
+        TaskDO task = new TaskDO();
+        task.setId(94L);
+        task.setPlatform("stockx");
+        task.setTaskType("fetch_listings");
+        task.setParams("{\"inventoryType\":\"CUSTODIAL\"}");
+        TaskItemDO item = purchaseOriginItem();
+        item.setCurrentPrice(new BigDecimal("160"));
+        List<StockXListingTaskExcel> rows = EasyExcel.read(new ByteArrayInputStream(export(task, item).getContentAsByteArray()))
+                .head(StockXListingTaskExcel.class).sheet().doReadSync();
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.getPurchaseOrderNumber()).isEqualTo("03-BUY");
+            assertThat(row.getPurchasePrice()).isEqualTo("HKD 141");
+            assertThat(row.getCurrentPrice()).isEqualTo("$160");
+        });
+        item.setPurchasePrice(null);
+        rows = EasyExcel.read(new ByteArrayInputStream(export(task, item).getContentAsByteArray()))
+                .head(StockXListingTaskExcel.class).sheet().doReadSync();
+        assertThat(rows.getFirst().getPurchasePrice()).isEqualTo("-");
+    }
+
+    private TaskItemDO purchaseOriginItem() {
+        TaskItemDO item = new TaskItemDO();
+        item.setPurchaseOrderNumber("03-BUY");
+        item.setPurchasePrice(new BigDecimal("141"));
+        item.setPurchaseCurrencyCode("HKD");
+        return item;
+    }
 
     @Test
     void exportsPurchaseHistoryWithPurchasePrice() throws Exception {

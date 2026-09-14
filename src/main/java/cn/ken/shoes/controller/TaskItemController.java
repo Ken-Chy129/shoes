@@ -12,6 +12,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.TaskItemExcel;
 import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
+import cn.ken.shoes.model.excel.StockXListingTaskExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
 import cn.ken.shoes.model.excel.EbayListingTaskExcel;
@@ -120,6 +121,8 @@ public class TaskItemController {
                 excel.setSize(item.getSize());
                 excel.setEuSize(item.getEuSize());
                 excel.setOrderNumber(item.getOrderNumber());
+                excel.setPurchaseOrderNumber(item.getPurchaseOrderNumber());
+                excel.setPurchasePrice(formatMoney(item.getPurchasePrice(), item.getPurchaseCurrencyCode()));
                 excel.setSoldOn(item.getSoldOn() != null ? orderDateFormat.format(item.getSoldOn()) : "-");
                 boolean pending = "待处理".equals(item.getOrderStatus());
                 excel.setShipByDate(pending && item.getOperateTime() != null
@@ -218,9 +221,20 @@ public class TaskItemController {
 
         // 转换为 Excel 模型
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        boolean custodialListings = task != null && TaskTypeEnum.FETCH_LISTINGS.getCode().equals(task.getTaskType())
+                && StrUtil.isNotBlank(task.getParams())
+                && "CUSTODIAL".equals(JSONObject.parseObject(task.getParams()).getString("inventoryType"));
         List<TaskItemExcel> excelList = new ArrayList<>();
         for (TaskItemDO item : items) {
-            TaskItemExcel excel = new TaskItemExcel();
+            TaskItemExcel excel;
+            if (custodialListings) {
+                StockXListingTaskExcel listing = new StockXListingTaskExcel();
+                listing.setPurchaseOrderNumber(item.getPurchaseOrderNumber());
+                listing.setPurchasePrice(formatMoney(item.getPurchasePrice(), item.getPurchaseCurrencyCode()));
+                excel = listing;
+            } else {
+                excel = new TaskItemExcel();
+            }
             excel.setListingId(item.getListingId());
             excel.setVariantId(item.getProductId());
             excel.setBrand(item.getBrand());
@@ -248,7 +262,7 @@ public class TaskItemController {
         }
 
         // 写入 Excel
-        EasyExcel.write(response.getOutputStream(), TaskItemExcel.class)
+        EasyExcel.write(response.getOutputStream(), custodialListings ? StockXListingTaskExcel.class : TaskItemExcel.class)
                 .sheet("任务明细")
                 .doWrite(excelList);
     }

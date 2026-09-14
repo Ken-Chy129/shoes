@@ -3,6 +3,7 @@ package cn.ken.shoes.task;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.common.StockXOrderCategory;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.manager.PriceManager;
@@ -38,6 +39,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     private final PriceManager priceManager;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private StockXPurchaseOrigin purchaseOrigin;
 
     public StockXFetchOrdersTaskRunner(StockXAccount account, Long taskId,
                                        List<StockXOrderCategory> categories,
@@ -59,6 +61,9 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         int totalPages = 0;
         int totalOrders = 0;
         Map<String, Integer> counts = new LinkedHashMap<>();
+        purchaseOrigin = new StockXPurchaseOrigin(cursor -> queryPageWithRetry("购买历史", 1,
+                () -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account)),
+                this::ensureNotCancelled);
         try {
             for (StockXOrderCategory category : categories) {
                 CategoryResult result = category == StockXOrderCategory.PENDING
@@ -110,6 +115,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
                 JSONObject node = edge.getJSONObject("node");
                 if (node != null) {
                     TaskItemDO item = StockXOrderItemConverter.convert(taskId, node, category);
+                    purchaseOrigin.enrich(item);
                     if (category == StockXOrderCategory.COMPLETED && StrUtil.isNotBlank(item.getListingId())) {
                         ensureNotCancelled();
                         item.setPayoutAmount(stockXClient.queryOrderPayout(item.getListingId(), account));
@@ -251,7 +257,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     }
 
     private void ensureNotCancelled() {
-        if (TaskSwitch.isFetchOrdersCancelled(account.getName())) {
+        if (TaskSwitch.isFetchOrdersCancelled(account.getName()) || Thread.currentThread().isInterrupted()) {
             throw new TaskCancelledException();
         }
     }

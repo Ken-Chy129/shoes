@@ -15,6 +15,9 @@
         <result property="size" column="size"/>
         <result property="euSize" column="eu_size"/>
         <result property="orderNumber" column="order_number"/>
+        <result property="purchaseOrderNumber" column="purchase_order_number"/>
+        <result property="purchasePrice" column="purchase_price"/>
+        <result property="purchaseCurrencyCode" column="purchase_currency_code"/>
         <result property="orderStatus" column="order_status"/>
         <result property="currencyCode" column="currency_code"/>
         <result property="salePrice" column="sale_price"/>

@@ -47,4 +47,10 @@ public class StockXOrderTaskExcel {
 
     @ExcelProperty("延期状态")
     private String extensionStatus;
+
+    @ExcelProperty("原购买订单号")
+    private String purchaseOrderNumber;
+
+    @ExcelProperty("购买价格")
+    private String purchasePrice;
 }
