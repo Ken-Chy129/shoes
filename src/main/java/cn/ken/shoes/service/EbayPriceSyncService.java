@@ -178,6 +178,11 @@ public class EbayPriceSyncService {
         }
 
         if (contexts.isEmpty()) {
+            // 空轮次不能静默成功，否则映射丢失时页面只会显示"第N轮"而没有任何原因。
+            String reason = bySku.isEmpty()
+                    ? "未找到eBay上架映射（批量上架明细为空），本轮无商品可改价"
+                    : "本轮未查到可改价的在售offer（映射" + bySku.size() + "个，跳过" + skipped + "个）";
+            taskMapper.updateTaskFailReason(taskId, reason);
             taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, skipped).toJSONString());
             return;
         }

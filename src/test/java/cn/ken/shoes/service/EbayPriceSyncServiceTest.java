@@ -141,6 +141,17 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
+    void reportsMissingListingMappingsInsteadOfSilentlyFinishingRound() {
+        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenReturn(List.of());
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        verify(taskMapper).updateTaskFailReason(eq(88L), contains("未找到eBay上架映射"));
+        verify(ebayClient, never()).updateOffer(anyString(), any(), anyString());
+    }
+
+    @Test
     void rejectsInvalidParameters() {
         assertThatThrownBy(() -> service.start(0, new BigDecimal("1.1")))
                 .isInstanceOf(IllegalArgumentException.class);

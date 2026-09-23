@@ -134,6 +134,7 @@
         FROM task
         WHERE start_time &lt; #{beforeDate}
           AND status != 'running'
+          AND task_type != 'ebay_bulk_listing'
           AND id &gt; #{afterId}
         ORDER BY id
         LIMIT #{limit}
@@ -146,6 +147,7 @@
         WHERE t.id = #{taskId}
           AND t.start_time &lt; #{beforeDate}
           AND t.status != 'running'
+          AND t.task_type != 'ebay_bulk_listing'
     </delete>
 
 </mapper>
