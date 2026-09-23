@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="cn.ken.shoes.mapper.EbayListingMapper">
+
+    <sql id="columns">
+        sku, offer_id, listing_id, style_id, size, eu_size, title, brand,
+        price, quantity, status, source_task_id, gmt_create, gmt_modified
+    </sql>
+
+    <insert id="upsert">
+        INSERT INTO ebay_listing
+            (sku, offer_id, listing_id, style_id, size, eu_size, title, brand,
+             price, quantity, status, source_task_id)
+        VALUES
+            (#{sku}, #{offerId}, #{listingId}, #{styleId}, #{size}, #{euSize}, #{title}, #{brand},
+             #{price}, #{quantity}, 'active', #{sourceTaskId})
+        ON DUPLICATE KEY UPDATE
+            offer_id = VALUES(offer_id),
+            listing_id = COALESCE(VALUES(listing_id), listing_id),
+            style_id = VALUES(style_id),
+            size = COALESCE(VALUES(size), size),
+            eu_size = COALESCE(VALUES(eu_size), eu_size),
+            title = COALESCE(VALUES(title), title),
+            brand = COALESCE(VALUES(brand), brand),
+            price = COALESCE(VALUES(price), price),
+            quantity = COALESCE(VALUES(quantity), quantity),
+            status = 'active',
+            source_task_id = VALUES(source_task_id)
+    </insert>
+
+    <select id="selectActive" resultType="cn.ken.shoes.model.entity.EbayListingDO">
+        SELECT <include refid="columns"/>
+        FROM ebay_listing
+        WHERE status = 'active'
+        ORDER BY sku
+    </select>
+
+    <select id="selectAll" resultType="cn.ken.shoes.model.entity.EbayListingDO">
+        SELECT <include refid="columns"/>
+        FROM ebay_listing
+        ORDER BY sku
+    </select>
+
+    <update id="markEnded">
+        UPDATE ebay_listing SET status = 'ended' WHERE sku = #{sku}
+    </update>
+
+    <update id="updatePriceAndQuantity">
+        UPDATE ebay_listing
+        SET price = COALESCE(#{price}, price),
+            quantity = #{quantity}
+        WHERE sku = #{sku}
+    </update>
+
+</mapper>

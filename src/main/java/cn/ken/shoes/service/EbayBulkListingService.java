@@ -3,11 +3,13 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.manager.TaskInputSnapshotStore;
+import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
 import cn.ken.shoes.model.ebay.EbayListingResult;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
+import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayListingExcel;
@@ -38,6 +40,7 @@ public class EbayBulkListingService {
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final EbayListingMapper ebayListingMapper;
     private final TaskInputSnapshotStore snapshotStore;
     private final EbayProductMetadataService metadataService;
     private final EbayListingFactory listingFactory;
@@ -49,28 +52,32 @@ public class EbayBulkListingService {
     @Autowired
     public EbayBulkListingService(TaskMapper taskMapper,
                                   TaskItemMapper taskItemMapper,
+                                  EbayListingMapper ebayListingMapper,
                                   TaskInputSnapshotStore snapshotStore,
                                   EbayProductMetadataService metadataService,
                                   EbayListingFactory listingFactory,
                                   EbayListingService listingService,
                                   EbayProperties properties) {
-        this(taskMapper, taskItemMapper, snapshotStore, metadataService, listingFactory, listingService,
+        this(taskMapper, taskItemMapper, ebayListingMapper, snapshotStore, metadataService,
+                listingFactory, listingService,
                 command -> Thread.ofVirtual().name("Ebay-Bulk-Listing").start(command), properties);
     }
 
     EbayBulkListingService(TaskMapper taskMapper,
                            TaskItemMapper taskItemMapper,
+                           EbayListingMapper ebayListingMapper,
                            TaskInputSnapshotStore snapshotStore,
                            EbayProductMetadataService metadataService,
                            EbayListingFactory listingFactory,
                            EbayListingService listingService,
                            Executor executor) {
-        this(taskMapper, taskItemMapper, snapshotStore, metadataService, listingFactory, listingService,
-                executor, new EbayProperties());
+        this(taskMapper, taskItemMapper, ebayListingMapper, snapshotStore, metadataService,
+                listingFactory, listingService, executor, new EbayProperties());
     }
 
     private EbayBulkListingService(TaskMapper taskMapper,
                                    TaskItemMapper taskItemMapper,
+                                   EbayListingMapper ebayListingMapper,
                                    TaskInputSnapshotStore snapshotStore,
                                    EbayProductMetadataService metadataService,
                                    EbayListingFactory listingFactory,
@@ -79,6 +86,7 @@ public class EbayBulkListingService {
                                    EbayProperties properties) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.ebayListingMapper = ebayListingMapper;
         this.snapshotStore = snapshotStore;
         this.metadataService = metadataService;
         this.listingFactory = listingFactory;
@@ -162,6 +170,10 @@ public class EbayBulkListingService {
                 for (int i = 0; i < group.size(); i++) {
                     markSucceeded(group.get(i).item(), requests.get(i), results.get(i));
                 }
+                // eBay 侧已经上架成功，映射写入失败不能把整组记为上架失败。
+                for (RowContext context : group) {
+                    saveListingMapping(taskId, context.item());
+                }
                 succeeded += group.size();
             } catch (Exception e) {
                 log.warn("eBay bulk listing group failed, taskId:{}, styleId:{}, sizeCount:{}, type:{}",
@@ -204,6 +216,32 @@ public class EbayBulkListingService {
         item.setListingId(result.getListingId());
         item.setEuSize(resolveEuSize(request, item.getSize()));
         item.setOperateResult("上架成功");
+    }
+
+    /**
+     * 写入长期映射表。失败时只记日志并在明细上标注，eBay 上的商品已经存在，
+     * 之后可以用 SKU 从任务明细补回映射。
+     */
+    private void saveListingMapping(Long taskId, TaskItemDO item) {
+        try {
+            EbayListingDO listing = new EbayListingDO();
+            listing.setSku(item.getSku());
+            listing.setOfferId(item.getOfferId());
+            listing.setListingId(item.getListingId());
+            listing.setStyleId(item.getStyleId());
+            listing.setSize(item.getSize());
+            listing.setEuSize(item.getEuSize());
+            listing.setTitle(item.getTitle());
+            listing.setBrand(item.getBrand());
+            listing.setPrice(item.getCurrentPrice());
+            listing.setQuantity(item.getListingQuantity());
+            listing.setSourceTaskId(taskId);
+            ebayListingMapper.upsert(listing);
+        } catch (Exception e) {
+            log.error("eBay上架映射写入失败, taskId:{}, sku:{}, offerId:{}",
+                    taskId, item.getSku(), item.getOfferId(), e);
+            item.setOperateResult("上架成功(映射写入失败，改价不会覆盖该商品)");
+        }
     }
 
     private TaskItemDO initialTaskItem(Long taskId, EbayListingExcel row) {

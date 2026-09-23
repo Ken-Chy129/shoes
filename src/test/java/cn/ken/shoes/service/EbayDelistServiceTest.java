@@ -3,8 +3,10 @@ package cn.ken.shoes.service;
 import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.config.EbayProperties;
+import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import com.alibaba.fastjson.JSONObject;
@@ -30,6 +32,7 @@ class EbayDelistServiceTest {
 
     private TaskMapper taskMapper;
     private TaskItemMapper taskItemMapper;
+    private EbayListingMapper ebayListingMapper;
     private EbaySellApiClient ebayClient;
     private EbayDelistService service;
 
@@ -37,6 +40,7 @@ class EbayDelistServiceTest {
     void setUp() {
         taskMapper = mock(TaskMapper.class);
         taskItemMapper = mock(TaskItemMapper.class);
+        ebayListingMapper = mock(EbayListingMapper.class);
         ebayClient = mock(EbaySellApiClient.class);
         // 在架判定由客户端统一实现，这里沿用真实逻辑而不是当成桩方法。
         when(ebayClient.isActiveOffer(org.mockito.ArgumentMatchers.any()))
@@ -58,13 +62,13 @@ class EbayDelistServiceTest {
             invocation.<TaskDO>getArgument(0).setId(7001L);
             return 1;
         }).when(taskMapper).insert(org.mockito.ArgumentMatchers.any(TaskDO.class));
-        service = new EbayDelistService(taskMapper, taskItemMapper, ebayClient,
+        service = new EbayDelistService(taskMapper, taskItemMapper, ebayListingMapper, ebayClient,
                 new EbayProperties(), Runnable::run);
     }
 
     @Test
     void withdrawsEveryActiveListingAndRecordsTheOutcome() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
         ebayHasActiveOffers("SKU-1", "SKU-2");
@@ -76,6 +80,8 @@ class EbayDelistServiceTest {
         assertThat(taskId).isEqualTo(7001L);
         verify(ebayClient).withdrawOffer("offer-1");
         verify(ebayClient).withdrawOffer("offer-2");
+        verify(ebayListingMapper).markEnded("SKU-1");
+        verify(ebayListingMapper).markEnded("SKU-2");
         verify(taskMapper).updateTaskStatus(7001L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
         // 枚举完成后先写一次总数，跑完再写最终结果，这里断言最终那次。
         ArgumentCaptor<String> attributes = ArgumentCaptor.forClass(String.class);
@@ -88,7 +94,7 @@ class EbayDelistServiceTest {
 
     @Test
     void onlyWithdrawsTheRequestedStyleIds() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
         ebayHasActiveOffers("SKU-1", "SKU-2");
@@ -102,7 +108,7 @@ class EbayDelistServiceTest {
 
     @Test
     void treatsAnAlreadyEndedListingAsSuccess() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100")));
         ebayHasActiveOffers("SKU-1");
         when(ebayClient.withdrawOffer("offer-1")).thenReturn(false);
@@ -117,7 +123,7 @@ class EbayDelistServiceTest {
 
     @Test
     void keepsGoingAndReportsFailuresWhenOneWithdrawFails() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100"),
                 mapping("offer-2", "SKU-2", "AH7860-139")));
         ebayHasActiveOffers("SKU-1", "SKU-2");
@@ -135,7 +141,7 @@ class EbayDelistServiceTest {
 
     @Test
     void failsTheTaskWhenNothingIsListed() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayListingMapper.selectAll()).thenReturn(List.of());
         when(ebayClient.getInventoryItemSkus()).thenReturn(List.of());
 
         assertThat(service.start(List.of())).isEqualTo(7001L);
@@ -148,7 +154,7 @@ class EbayDelistServiceTest {
     @Test
     void createsTheTaskBeforeEnumeratingSoTheCallerIsNotBlocked() {
         java.util.List<Runnable> deferred = new java.util.ArrayList<>();
-        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper,
+        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper, ebayListingMapper,
                 ebayClient, new EbayProperties(), deferred::add);
 
         Long taskId = asyncService.start(List.of());
@@ -162,7 +168,7 @@ class EbayDelistServiceTest {
     @Test
     void cancellationBeforeDiscoveryMarksTaskCancelledWithoutCallingEbay() {
         java.util.List<Runnable> deferred = new java.util.ArrayList<>();
-        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper,
+        EbayDelistService asyncService = new EbayDelistService(taskMapper, taskItemMapper, ebayListingMapper,
                 ebayClient, new EbayProperties(), deferred::add);
 
         asyncService.start(List.of());
@@ -175,7 +181,7 @@ class EbayDelistServiceTest {
 
     @Test
     void failsTheTaskWhenEnumeratingActiveListingsBreaks() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayListingMapper.selectAll()).thenReturn(List.of());
         when(ebayClient.getInventoryItemSkus())
                 .thenThrow(new EbayApiException("eBay API request failed (HTTP 500)"));
 
@@ -199,7 +205,7 @@ class EbayDelistServiceTest {
 
     @Test
     void withdrawsActiveListingsThatHaveNoLocalMapping() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100")));
         ebayHasActiveOffers("SKU-1", "SKU-ORPHAN");
         when(ebayClient.withdrawOffer("offer-1")).thenReturn(true);
@@ -213,7 +219,7 @@ class EbayDelistServiceTest {
 
     @Test
     void skipsOffersThatAreAlreadyEndedOrUnpublished() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of());
+        when(ebayListingMapper.selectAll()).thenReturn(List.of());
         when(ebayClient.getInventoryItemSkus()).thenReturn(List.of("SKU-ENDED"));
         when(ebayClient.getOffersBySku("SKU-ENDED")).thenReturn(List.of(
                 new JSONObject(true)
@@ -231,7 +237,7 @@ class EbayDelistServiceTest {
 
     @Test
     void keepsTheStyleIdAndSizeFromTheLocalMappingInTheAuditTrail() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100")));
         ebayHasActiveOffers("SKU-1");
         when(ebayClient.withdrawOffer("offer-1")).thenReturn(true);
@@ -247,7 +253,7 @@ class EbayDelistServiceTest {
 
     @Test
     void zeroesInventoryWithoutWithdrawingTheOfferAndRecordsPreviousQuantity() {
-        when(taskItemMapper.selectEbayListingMappings()).thenReturn(List.of(
+        when(ebayListingMapper.selectAll()).thenReturn(List.of(
                 mapping("offer-1", "SKU-1", "DD1391-100")));
         ebayHasActiveOffers("SKU-1");
         when(ebayClient.updateInventoryItemQuantity("SKU-1", 0, "en-US")).thenReturn(4);
@@ -303,8 +309,8 @@ class EbayDelistServiceTest {
                         .fluentPut("listingStatus", "ACTIVE"));
     }
 
-    private TaskItemDO mapping(String offerId, String sku, String styleId) {
-        TaskItemDO item = new TaskItemDO();
+    private EbayListingDO mapping(String offerId, String sku, String styleId) {
+        EbayListingDO item = new EbayListingDO();
         item.setOfferId(offerId);
         item.setSku(sku);
         item.setStyleId(styleId);

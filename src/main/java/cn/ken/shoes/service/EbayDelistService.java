@@ -2,8 +2,10 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.config.EbayProperties;
+import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import com.alibaba.fastjson.JSONObject;
@@ -40,6 +42,7 @@ public class EbayDelistService {
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final EbayListingMapper ebayListingMapper;
     private final EbaySellApiClient ebayClient;
     private final EbayProperties properties;
     private final Executor executor;
@@ -48,19 +51,22 @@ public class EbayDelistService {
     @Autowired
     public EbayDelistService(TaskMapper taskMapper,
                              TaskItemMapper taskItemMapper,
+                             EbayListingMapper ebayListingMapper,
                              EbaySellApiClient ebayClient,
                              EbayProperties properties) {
-        this(taskMapper, taskItemMapper, ebayClient, properties,
+        this(taskMapper, taskItemMapper, ebayListingMapper, ebayClient, properties,
                 command -> Thread.ofVirtual().name("Ebay-Delist").start(command));
     }
 
     EbayDelistService(TaskMapper taskMapper,
                       TaskItemMapper taskItemMapper,
+                      EbayListingMapper ebayListingMapper,
                       EbaySellApiClient ebayClient,
                       EbayProperties properties,
                       Executor executor) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.ebayListingMapper = ebayListingMapper;
         this.ebayClient = ebayClient;
         this.properties = properties;
         this.executor = executor;
@@ -259,6 +265,7 @@ public class EbayDelistService {
                 String result;
                 try {
                     boolean ended = ebayClient.withdrawOffer(listing.offerId());
+                    markListingEnded(listing.sku());
                     if (ended) {
                         delisted++;
                         result = "下架成功";
@@ -341,14 +348,38 @@ public class EbayDelistService {
     }
 
     private Map<String, TaskItemDO> mappingsBySku() {
-        List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
+        // 下架要能识别已经 ended 的映射的货号，因此读全部映射而不只是 active。
+        List<EbayListingDO> mappings = ebayListingMapper.selectAll();
         Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
-        for (TaskItemDO mapping : mappings == null ? List.<TaskItemDO>of() : mappings) {
+        for (EbayListingDO mapping : mappings == null ? List.<EbayListingDO>of() : mappings) {
             if (mapping.getSku() != null && !mapping.getSku().isBlank()) {
-                bySku.putIfAbsent(mapping.getSku(), mapping);
+                bySku.putIfAbsent(mapping.getSku(), toDisplayItem(mapping));
             }
         }
         return bySku;
+    }
+
+    private TaskItemDO toDisplayItem(EbayListingDO mapping) {
+        TaskItemDO item = new TaskItemDO();
+        item.setSku(mapping.getSku());
+        item.setOfferId(mapping.getOfferId());
+        item.setListingId(mapping.getListingId());
+        item.setStyleId(mapping.getStyleId());
+        item.setSize(mapping.getSize());
+        item.setEuSize(mapping.getEuSize());
+        item.setTitle(mapping.getTitle());
+        item.setBrand(mapping.getBrand());
+        item.setCurrentPrice(mapping.getPrice());
+        return item;
+    }
+
+    /** 下架后把映射标记为 ended，改价就不会再处理它；重新上架时 upsert 会恢复为 active。 */
+    private void markListingEnded(String sku) {
+        try {
+            ebayListingMapper.markEnded(sku);
+        } catch (Exception e) {
+            log.warn("eBay映射状态更新失败, sku:{}", sku, e);
+        }
     }
 
     private String listingId(JSONObject offer) {

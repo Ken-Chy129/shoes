@@ -5,8 +5,10 @@ import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.client.PoisonClient;
+import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
@@ -30,8 +32,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * eBay 持续改价任务。任务本身保持 running，取消后才结束；每一轮都会在
- * task_item 留一份审计明细，避免覆盖批量上架任务的原始映射。
+ * eBay 持续改价任务。任务本身保持 running，取消后才结束。
+ * 改价范围来自 ebay_listing 映射表（上架成功时写入），每一轮在
+ * task_item 留一份审计明细。
  */
 @Slf4j
 @Service
@@ -49,6 +52,7 @@ public class EbayPriceSyncService {
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final EbayListingMapper ebayListingMapper;
     private final EbaySellApiClient ebayClient;
     private final PoisonClient poisonClient;
     private final EbayProperties properties;
@@ -56,11 +60,13 @@ public class EbayPriceSyncService {
 
     public EbayPriceSyncService(TaskMapper taskMapper,
                                 TaskItemMapper taskItemMapper,
+                                EbayListingMapper ebayListingMapper,
                                 EbaySellApiClient ebayClient,
                                 PoisonClient poisonClient,
                                 EbayProperties properties) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.ebayListingMapper = ebayListingMapper;
         this.ebayClient = ebayClient;
         this.poisonClient = poisonClient;
         this.properties = properties;
@@ -137,10 +143,10 @@ public class EbayPriceSyncService {
     private void runSingleRound(Long taskId, BigDecimal priceMultiplier, BigDecimal priceAddition,
                                 int round, AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
-        List<TaskItemDO> mappings = taskItemMapper.selectEbayListingMappings();
-        Map<String, TaskItemDO> byOfferId = new HashMap<>();
-        Map<String, TaskItemDO> bySku = new LinkedHashMap<>();
-        for (TaskItemDO mapping : mappings == null ? List.<TaskItemDO>of() : mappings) {
+        List<EbayListingDO> mappings = ebayListingMapper.selectActive();
+        Map<String, EbayListingDO> byOfferId = new HashMap<>();
+        Map<String, EbayListingDO> bySku = new LinkedHashMap<>();
+        for (EbayListingDO mapping : mappings == null ? List.<EbayListingDO>of() : mappings) {
             if (mapping.getOfferId() != null) {
                 byOfferId.putIfAbsent(mapping.getOfferId(), mapping);
             }
@@ -160,7 +166,7 @@ public class EbayPriceSyncService {
         int skipped = 0;
         for (JSONObject offer : offers) {
             ensureNotCancelled(cancelled);
-            TaskItemDO mapping = mappingFor(offer, byOfferId, bySku);
+            EbayListingDO mapping = mappingFor(offer, byOfferId, bySku);
             if (mapping == null || mapping.getStyleId() == null) {
                 skipped++;
                 continue;
@@ -180,7 +186,7 @@ public class EbayPriceSyncService {
         if (contexts.isEmpty()) {
             // 空轮次不能静默成功，否则映射丢失时页面只会显示"第N轮"而没有任何原因。
             String reason = bySku.isEmpty()
-                    ? "未找到eBay上架映射（批量上架明细为空），本轮无商品可改价"
+                    ? "未找到eBay上架映射（ebay_listing为空），本轮无商品可改价"
                     : "本轮未查到可改价的在售offer（映射" + bySku.size() + "个，跳过" + skipped + "个）";
             taskMapper.updateTaskFailReason(taskId, reason);
             taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, skipped).toJSONString());
@@ -228,11 +234,13 @@ public class EbayPriceSyncService {
                     setPrice(payload, target);
                     setAvailableQuantity(payload, targetQuantity);
                     ebayClient.updateOffer(context.offerId(), payload, properties.getDefaultContentLanguage());
+                    rememberPriceAndQuantity(context, target, targetQuantity);
                     changed++;
                     result = "改价成功($" + target.toPlainString() + ")";
                 } else {
                     setAvailableQuantity(payload, 0);
                     ebayClient.updateOffer(context.offerId(), payload, properties.getDefaultContentLanguage());
+                    rememberPriceAndQuantity(context, null, 0);
                     noPrice++;
                     result = "无得物价格，库存置0";
                 }
@@ -286,6 +294,15 @@ public class EbayPriceSyncService {
         }
     }
 
+    /** 映射表里的价格/库存只是展示用快照，写失败不影响本次改价结果。 */
+    private void rememberPriceAndQuantity(OfferContext context, BigDecimal price, int quantity) {
+        try {
+            ebayListingMapper.updatePriceAndQuantity(context.mapping().getSku(), price, quantity);
+        } catch (Exception e) {
+            log.warn("eBay映射价格快照更新失败, sku:{}", context.mapping().getSku(), e);
+        }
+    }
+
     private void recordItem(Long taskId, int round, OfferContext context, BigDecimal poisonPrice,
                             BigDecimal target, int quantity, String result) {
         TaskItemDO item = new TaskItemDO();
@@ -307,10 +324,10 @@ public class EbayPriceSyncService {
         taskItemMapper.insert(item);
     }
 
-    private TaskItemDO mappingFor(JSONObject offer, Map<String, TaskItemDO> byOfferId,
-                                  Map<String, TaskItemDO> bySku) {
+    private EbayListingDO mappingFor(JSONObject offer, Map<String, EbayListingDO> byOfferId,
+                                     Map<String, EbayListingDO> bySku) {
         String offerId = offer.getString("offerId");
-        TaskItemDO mapping = offerId == null ? null : byOfferId.get(offerId);
+        EbayListingDO mapping = offerId == null ? null : byOfferId.get(offerId);
         return mapping != null ? mapping : bySku.get(offer.getString("sku"));
     }
 
@@ -424,7 +441,7 @@ public class EbayPriceSyncService {
         }
     }
 
-    private record OfferContext(JSONObject offer, TaskItemDO mapping, String euSize,
+    private record OfferContext(JSONObject offer, EbayListingDO mapping, String euSize,
                                 BigDecimal currentPrice, int quantity) {
         String offerId() {
             return offer.getString("offerId");

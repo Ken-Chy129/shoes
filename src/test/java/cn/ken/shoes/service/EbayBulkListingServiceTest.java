@@ -2,10 +2,12 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.manager.TaskInputSnapshotStore;
+import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.ebay.EbayListingResult;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
+import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.entity.SizeChartDO;
@@ -34,6 +36,7 @@ class EbayBulkListingServiceTest {
 
     private TaskMapper taskMapper;
     private TaskItemMapper taskItemMapper;
+    private EbayListingMapper ebayListingMapper;
     private TaskInputSnapshotStore snapshotStore;
     private EbayProductMetadataService metadataService;
     private EbayListingService listingService;
@@ -44,6 +47,7 @@ class EbayBulkListingServiceTest {
     void setUp() {
         taskMapper = mock(TaskMapper.class);
         taskItemMapper = mock(TaskItemMapper.class);
+        ebayListingMapper = mock(EbayListingMapper.class);
         snapshotStore = mock(TaskInputSnapshotStore.class);
         metadataService = mock(EbayProductMetadataService.class);
         listingService = mock(EbayListingService.class);
@@ -72,7 +76,7 @@ class EbayBulkListingServiceTest {
             item.setId(99L);
             return 1;
         }).when(taskItemMapper).insert(any(TaskItemDO.class));
-        service = new EbayBulkListingService(taskMapper, taskItemMapper, snapshotStore,
+        service = new EbayBulkListingService(taskMapper, taskItemMapper, ebayListingMapper, snapshotStore,
                 metadataService, factory, listingService, Runnable::run);
     }
 
@@ -103,6 +107,12 @@ class EbayBulkListingServiceTest {
         assertThat(updated.getValue().getOfferId()).isEqualTo("offer-1");
         assertThat(updated.getValue().getListingId()).isEqualTo("listing-1");
         assertThat(updated.getValue().getOperateResult()).isEqualTo("上架成功");
+        ArgumentCaptor<EbayListingDO> mapping = ArgumentCaptor.forClass(EbayListingDO.class);
+        verify(ebayListingMapper).upsert(mapping.capture());
+        assertThat(mapping.getValue().getSku()).isEqualTo("EBAY-DD1391-100-USM10-NEW");
+        assertThat(mapping.getValue().getOfferId()).isEqualTo("offer-1");
+        assertThat(mapping.getValue().getStyleId()).isEqualTo("DD1391-100");
+        assertThat(mapping.getValue().getSourceTaskId()).isEqualTo(88L);
         verify(listingService).publishGroup(any(), any());
         verify(listingService, never()).publish(any());
         verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());
@@ -202,7 +212,7 @@ class EbayBulkListingServiceTest {
     void cancellationStopsBeforeTheNextStyleGroupAndMarksTaskCancelled() {
         List<Runnable> deferred = new ArrayList<>();
         EbayBulkListingService asyncService = new EbayBulkListingService(
-                taskMapper, taskItemMapper, snapshotStore, metadataService,
+                taskMapper, taskItemMapper, ebayListingMapper, snapshotStore, metadataService,
                 new EbayListingFactory(new EbayProperties(), taxonomyService), listingService,
                 deferred::add);
         EbayListingExcel first = row();
