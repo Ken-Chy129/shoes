@@ -30,6 +30,9 @@ public class EbaySellApiClient {
 
     private static final MediaType JSON_MEDIA_TYPE = MediaType.get("application/json; charset=utf-8");
     private static final RequestBody EMPTY_JSON_BODY = RequestBody.create(JSON_MEDIA_TYPE, new byte[0]);
+    /** 只读请求遇到 eBay 偶发 5xx（多为 25001 内部错误）时的最大尝试次数。 */
+    private static final int MAX_READ_ATTEMPTS = 4;
+    private static final long READ_RETRY_BASE_DELAY_MS = 1000L;
 
     private final EbayOAuthService oauthService;
     private final OkHttpClient httpClient;
@@ -434,6 +437,40 @@ public class EbaySellApiClient {
 
     private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
                                boolean nullOnNotFound, Set<String> nullOnErrorIds) {
+        boolean readOnly = "GET".equals(request.method());
+        for (int attempt = 1; ; attempt++) {
+            try {
+                return executeOnce(request, expectedStatusCodes, nullOnNotFound, nullOnErrorIds);
+            } catch (TransientServerError e) {
+                if (!readOnly || attempt >= MAX_READ_ATTEMPTS) {
+                    throw e.failure;
+                }
+                sleepBeforeReadRetry(attempt);
+            }
+        }
+    }
+
+    private void sleepBeforeReadRetry(int attempt) {
+        try {
+            Thread.sleep(READ_RETRY_BASE_DELAY_MS * attempt);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new EbayApiException("eBay API read retry interrupted", e);
+        }
+    }
+
+    /** 包装 5xx 失败，只在 execute 内部用来区分可重试的只读请求。 */
+    private static final class TransientServerError extends RuntimeException {
+        private final EbayApiException failure;
+
+        private TransientServerError(EbayApiException failure) {
+            super(failure.getMessage(), null, false, false);
+            this.failure = failure;
+        }
+    }
+
+    private JSONObject executeOnce(Request request, Set<Integer> expectedStatusCodes,
+                                   boolean nullOnNotFound, Set<String> nullOnErrorIds) {
         try (Response response = httpClient.newCall(request).execute()) {
             String responseText = responseText(response.body());
             if (response.code() == 404 && (nullOnNotFound
@@ -441,8 +478,12 @@ public class EbaySellApiClient {
                 return null;
             }
             if (!expectedStatusCodes.contains(response.code())) {
-                throw new EbayApiException("eBay API request failed (HTTP " + response.code()
+                EbayApiException failure = new EbayApiException("eBay API request failed (HTTP " + response.code()
                         + "): " + summarizeError(responseText));
+                if (response.code() >= 500) {
+                    throw new TransientServerError(failure);
+                }
+                throw failure;
             }
             if (responseText.isBlank()) {
                 return new JSONObject();

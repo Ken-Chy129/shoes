@@ -196,8 +196,26 @@ public class EbayListingService {
                 .findFirst()
                 .orElseGet(() -> retainedGroupOffers.values().stream().findFirst().orElse(null));
 
+        // 已在架的组里若有尺码脱离了 listing，写库存项会报 25604/25013。这类尺码
+        // 先记下，等整组重新发布把它们挂回 listing 后再补写。
+        List<EbayListingRequest> detachedItems = new ArrayList<>();
+        EbayApiException detachedFailure = null;
         for (EbayListingRequest variant : variants) {
-            createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
+            if (publishedGroupOffer == null) {
+                createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
+                continue;
+            }
+            try {
+                createOrReplaceInventoryItemOnPublishedGroup(variant, hostedImageUrls);
+            } catch (EbayApiException e) {
+                if (!isDetachedInventoryFailure(e)) {
+                    throw e;
+                }
+                log.warn("商品组{}中的SKU {}库存项写入失败（尺码已脱离listing），稍后整组重新发布",
+                        inventoryItemGroupKey, variant.getSku());
+                detachedItems.add(variant);
+                detachedFailure = e;
+            }
         }
         JSONObject groupPayload = inventoryGroupPayload(
                 variants, groupAspects, hostedImageUrls, existingGroup,
@@ -212,7 +230,6 @@ public class EbayListingService {
         Map<String, String> listingIds = new LinkedHashMap<>();
         List<PendingOffer> pendingOffers = new ArrayList<>();
         Map<String, EbayListingRequest> detachedOffers = new LinkedHashMap<>();
-        EbayApiException detachedFailure = null;
         for (EbayListingRequest variant : variants) {
             OfferSnapshot existing = existingOffers.get(variant.getSku());
             String offerId;
@@ -245,9 +262,9 @@ public class EbayListingService {
             }
             offerIds.put(variant.getSku(), offerId);
         }
-        if (!detachedOffers.isEmpty()) {
+        if (!detachedOffers.isEmpty() || !detachedItems.isEmpty()) {
             reattachDetachedOffers(inventoryItemGroupKey, groupPayload, first,
-                    detachedOffers, detachedFailure);
+                    detachedItems, hostedImageUrls, detachedOffers, detachedFailure);
         }
 
         try {
@@ -383,11 +400,25 @@ public class EbayListingService {
     private void reattachDetachedOffers(String inventoryItemGroupKey,
                                         JSONObject groupPayload,
                                         EbayListingRequest first,
+                                        List<EbayListingRequest> detachedItems,
+                                        List<String> hostedImageUrls,
                                         Map<String, EbayListingRequest> detachedOffers,
                                         EbayApiException originalFailure) {
-        log.warn("商品组{}有{}个尺码已脱离listing，整组重新发布", inventoryItemGroupKey,
-                detachedOffers.size());
+        log.warn("商品组{}有{}个库存项、{}个offer已脱离listing，整组重新发布",
+                inventoryItemGroupKey, detachedItems.size(), detachedOffers.size());
         publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
+        for (EbayListingRequest variant : detachedItems) {
+            try {
+                createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
+            } catch (EbayApiException e) {
+                EbayApiException failure = new EbayApiException(
+                        "尺码" + variant.getSku() + "重新发布后库存项仍写入失败: " + e.getMessage());
+                if (originalFailure != null) {
+                    failure.addSuppressed(originalFailure);
+                }
+                throw failure;
+            }
+        }
         for (Map.Entry<String, EbayListingRequest> entry : detachedOffers.entrySet()) {
             EbayListingRequest variant = entry.getValue();
             try {
@@ -399,10 +430,29 @@ public class EbayListingService {
                 }
                 EbayApiException failure = new EbayApiException(
                         "尺码" + variant.getSku() + "重新发布后仍未回到listing: " + e.getMessage());
-                failure.addSuppressed(originalFailure);
+                if (originalFailure != null) {
+                    failure.addSuppressed(originalFailure);
+                }
                 throw failure;
             }
         }
+    }
+
+    /**
+     * 已在架商品组的库存项写入：25604/25013 说明尺码脱离了 listing，重试无用，
+     * 直接交给调用方在整组重新发布后补写；其余临时错误照常重试。
+     */
+    private void createOrReplaceInventoryItemOnPublishedGroup(
+            EbayListingRequest request, List<String> hostedImageUrls) {
+        retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItem(
+                request.getSku(), inventoryPayload(request, hostedImageUrls),
+                request.getContentLanguage()), this::isDetachedInventoryFailure);
+    }
+
+    private boolean isDetachedInventoryFailure(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && (message.contains("25604:")
+                || isDetachedVariationFailure(error));
     }
 
     private String conflictingSku(EbayApiException error) {
@@ -463,13 +513,18 @@ public class EbayListingService {
     }
 
     private void retryIdempotentWrite(Runnable operation) {
+        retryIdempotentWrite(operation, ignored -> false);
+    }
+
+    private void retryIdempotentWrite(Runnable operation,
+                                      java.util.function.Predicate<EbayApiException> stopRetrying) {
         for (int attempt = 1; attempt <= MAX_IDEMPOTENT_WRITE_ATTEMPTS; attempt++) {
             try {
                 operation.run();
                 return;
             } catch (EbayApiException e) {
                 if (attempt == MAX_IDEMPOTENT_WRITE_ATTEMPTS
-                        || !isRetryablePublishFailure(e)) {
+                        || !isRetryablePublishFailure(e) || stopRetrying.test(e)) {
                     throw e;
                 }
                 retrySleeper.accept(750L * attempt);

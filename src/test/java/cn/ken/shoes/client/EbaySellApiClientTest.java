@@ -223,6 +223,33 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void retriesReadOnlyRequestsOnTransientServerErrors() {
+        server.enqueue(jsonResponse(
+                "{\"errors\":[{\"errorId\":25001,\"message\":\"system error\"}]}")
+                .setResponseCode(500));
+        server.enqueue(jsonResponse("""
+                {"offers":[{"offerId":"offer-1","sku":"SKU-1"}],"total":1}
+                """));
+
+        assertThat(client.getOffersBySku("SKU-1"))
+                .extracting(offer -> offer.getString("offerId"))
+                .containsExactly("offer-1");
+        assertThat(server.getRequestCount()).isEqualTo(2);
+    }
+
+    @Test
+    void doesNotRetryWritesOnServerErrors() {
+        server.enqueue(jsonResponse(
+                "{\"errors\":[{\"errorId\":25001,\"message\":\"system error\"}]}")
+                .setResponseCode(500));
+
+        assertThatThrownBy(() -> client.publishOffer("offer-1"))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("HTTP 500");
+        assertThat(server.getRequestCount()).isEqualTo(1);
+    }
+
+    @Test
     void readsActiveOffersBySkuAndUpdatesAnOffer() throws Exception {
         server.enqueue(jsonResponse("""
                 {"offers":[{"offerId":"offer-1","sku":"SKU-1",
