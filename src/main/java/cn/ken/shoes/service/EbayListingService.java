@@ -230,8 +230,27 @@ public class EbayListingService {
         JSONObject groupPayload = inventoryGroupPayload(
                 variants, groupAspects, hostedImageUrls, existingGroup,
                 allGroupSkus, retainedSizeValues);
-        createOrReplaceInventoryItemGroupWithRetry(
-                inventoryItemGroupKey, groupPayload, first.getContentLanguage());
+        boolean groupWriteDeferred = false;
+        if (publishedGroupOffer == null) {
+            createOrReplaceInventoryItemGroupWithRetry(
+                    inventoryItemGroupKey, groupPayload, first.getContentLanguage());
+        } else {
+            try {
+                retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItemGroup(
+                        inventoryItemGroupKey, groupPayload, first.getContentLanguage()),
+                        this::isDetachedInventoryFailure);
+            } catch (EbayApiException e) {
+                if (!isDetachedInventoryFailure(e)) {
+                    throw e;
+                }
+                // 整组 offer 数量都被清零时 eBay 连商品组也拒绝写入（25004），
+                // 先写回 offer 数量、整组重新发布后再补写。
+                log.warn("商品组{}写入失败（listing尺码已全部脱离），稍后整组重新发布",
+                        inventoryItemGroupKey);
+                groupWriteDeferred = true;
+                detachedFailure = e;
+            }
+        }
 
         boolean listingAlreadyPublished = publishedGroupOffer != null;
         String existingListingId = publishedGroupOffer == null
@@ -272,9 +291,10 @@ public class EbayListingService {
             }
             offerIds.put(variant.getSku(), offerId);
         }
-        if (!detachedOffers.isEmpty() || !detachedItems.isEmpty()) {
+        if (!detachedOffers.isEmpty() || !detachedItems.isEmpty() || groupWriteDeferred) {
             reattachDetachedOffers(inventoryItemGroupKey, groupPayload, first,
-                    detachedItems, hostedImageUrls, detachedOffers, detachedFailure);
+                    detachedItems, hostedImageUrls, detachedOffers, groupWriteDeferred,
+                    detachedFailure);
         }
 
         try {
@@ -413,10 +433,15 @@ public class EbayListingService {
                                         List<EbayListingRequest> detachedItems,
                                         List<String> hostedImageUrls,
                                         Map<String, EbayListingRequest> detachedOffers,
+                                        boolean groupWriteDeferred,
                                         EbayApiException originalFailure) {
         log.warn("商品组{}有{}个库存项、{}个offer已脱离listing，整组重新发布",
                 inventoryItemGroupKey, detachedItems.size(), detachedOffers.size());
         publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
+        if (groupWriteDeferred) {
+            createOrReplaceInventoryItemGroupWithRetry(
+                    inventoryItemGroupKey, groupPayload, first.getContentLanguage());
+        }
         for (EbayListingRequest variant : detachedItems) {
             try {
                 createOrReplaceInventoryItemWithRetry(variant, hostedImageUrls);
@@ -428,6 +453,10 @@ public class EbayListingService {
                 }
                 throw failure;
             }
+        }
+        if (groupWriteDeferred) {
+            // 商品组的最新内容（新尺码、图片等）要再发布一次才会落到 listing 上。
+            publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
         }
         for (Map.Entry<String, EbayListingRequest> entry : detachedOffers.entrySet()) {
             EbayListingRequest variant = entry.getValue();
