@@ -211,6 +211,7 @@ public class EbayListingService {
         Map<String, String> offerIds = new LinkedHashMap<>();
         Map<String, String> listingIds = new LinkedHashMap<>();
         List<PendingOffer> pendingOffers = new ArrayList<>();
+        boolean groupRepublished = false;
         for (EbayListingRequest variant : variants) {
             OfferSnapshot existing = existingOffers.get(variant.getSku());
             String offerId;
@@ -220,8 +221,24 @@ public class EbayListingService {
                 pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
             } else {
                 offerId = existing.offerId();
-                updateOfferWithRetry(
-                        offerId, offerPayload(variant), variant.getContentLanguage());
+                try {
+                    updateOfferWithRetry(
+                            offerId, offerPayload(variant), variant.getContentLanguage());
+                } catch (EbayApiException e) {
+                    if (groupRepublished || !existing.published()
+                            || !isDetachedVariationFailure(e)) {
+                        throw e;
+                    }
+                    // 库存曾被清零的尺码会被 eBay 从 listing 上静默移除，offer 却仍是
+                    // PUBLISHED；此时单独更新 offer 会报 25013。整组重新发布能把库存
+                    // 已恢复的尺码挂回 listing，之后再更新这条 offer 即可。
+                    log.warn("商品组{}中的SKU {}已脱离listing，整组重新发布后重试更新offer",
+                            inventoryItemGroupKey, variant.getSku());
+                    publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
+                    groupRepublished = true;
+                    updateOfferWithRetry(
+                            offerId, offerPayload(variant), variant.getContentLanguage());
+                }
                 if (existing.published()) {
                     listingIds.put(variant.getSku(), existing.listingId());
                 } else {
@@ -348,6 +365,12 @@ public class EbayListingService {
     private boolean isSingleSkuListingConflict(EbayApiException error) {
         String message = error.getMessage();
         return message != null && message.contains("25704:");
+    }
+
+    private boolean isDetachedVariationFailure(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && message.contains("25013:")
+                && message.contains("Missing name in the variation specifics");
     }
 
     private String conflictingSku(EbayApiException error) {
