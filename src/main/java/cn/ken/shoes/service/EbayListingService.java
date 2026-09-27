@@ -99,6 +99,16 @@ public class EbayListingService {
         throw new IllegalStateException("eBay发布重试未返回结果");
     }
 
+    /**
+     * 幂等写（PUT 库存项/商品组、更新已有 offer）：eBay 高峰期会对确实存在的资源
+     * 偶发返回 25710（404），重试即可恢复。
+     */
+    private boolean isRetryableIdempotentWriteFailure(EbayApiException error) {
+        String message = error.getMessage();
+        return isRetryablePublishFailure(error)
+                || (message != null && message.contains("25710:"));
+    }
+
     private boolean isRetryablePublishFailure(EbayApiException error) {
         String message = error.getMessage();
         return message != null && (message.contains("25001:")
@@ -532,7 +542,7 @@ public class EbayListingService {
                 return;
             } catch (EbayApiException e) {
                 if (attempt == MAX_IDEMPOTENT_WRITE_ATTEMPTS
-                        || !isRetryablePublishFailure(e) || stopRetrying.test(e)) {
+                        || !isRetryableIdempotentWriteFailure(e) || stopRetrying.test(e)) {
                     throw e;
                 }
                 retrySleeper.accept(750L * attempt);

@@ -411,6 +411,31 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void retriesSpuriousNotFoundWhenUpdatingAnExistingOffer() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(List.of("shoe-sku-9"), List.of("9"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        doThrow(new EbayApiException("eBay API request failed (HTTP 404): 25710: "
+                + "We didn't find the resource/entity you are requesting."))
+                .doNothing()
+                .when(apiClient).updateOffer(
+                        org.mockito.ArgumentMatchers.eq("offer-9"),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
+
+        verify(apiClient, times(2)).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
     void retriesTransientInventoryWritesBeforePublishingAGroup() {
         EbayListingRequest size9 = listingRequest();
         size9.setSku("shoe-sku-9");
