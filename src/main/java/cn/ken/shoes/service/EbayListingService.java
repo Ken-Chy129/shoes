@@ -261,10 +261,24 @@ public class EbayListingService {
         Map<String, EbayListingRequest> detachedOffers = new LinkedHashMap<>();
         for (EbayListingRequest variant : variants) {
             OfferSnapshot existing = existingOffers.get(variant.getSku());
-            String offerId;
+            String offerId = null;
             if (existing == null) {
-                offerId = apiClient.createOffer(
-                        offerPayload(variant), variant.getContentLanguage());
+                try {
+                    offerId = apiClient.createOffer(
+                            offerPayload(variant), variant.getContentLanguage());
+                } catch (EbayApiException e) {
+                    // 查询 offer 偶发返回空（eBay 索引延迟/临时故障），offer 实际已存在：
+                    // 重新查到后按已有 offer 更新。
+                    existing = isOfferAlreadyExists(e)
+                            ? findOffer(variant.getSku(), variant.getMarketplaceId()) : null;
+                    if (existing == null) {
+                        throw e;
+                    }
+                    log.warn("商品组{}中的SKU {}的offer已存在但先前未查到，改为更新",
+                            inventoryItemGroupKey, variant.getSku());
+                }
+            }
+            if (existing == null) {
                 pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
             } else {
                 offerId = existing.offerId();
@@ -414,6 +428,12 @@ public class EbayListingService {
     private boolean isSingleSkuListingConflict(EbayApiException error) {
         String message = error.getMessage();
         return message != null && message.contains("25704:");
+    }
+
+    private boolean isOfferAlreadyExists(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && message.contains("25002:")
+                && message.contains("Offer entity already exists");
     }
 
     private boolean isDetachedVariationFailure(EbayApiException error) {

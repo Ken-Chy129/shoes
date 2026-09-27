@@ -436,6 +436,29 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void reusesAnOfferThatEbayReportsAsAlreadyExistingAfterAnEmptyLookup() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of())
+                .thenReturn(List.of(unpublishedOffer("offer-9", "shoe-sku-9")));
+        when(apiClient.createOffer(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US")))
+                .thenThrow(new EbayApiException("eBay API request failed (HTTP 400): 25002: "
+                        + "A user error has occurred. Offer entity already exists."));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
+
+        verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
     void retriesTransientInventoryWritesBeforePublishingAGroup() {
         EbayListingRequest size9 = listingRequest();
         size9.setSku("shoe-sku-9");
