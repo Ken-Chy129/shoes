@@ -545,12 +545,16 @@ class EbayListingServiceTest {
         when(apiClient.getOffersBySku("shoe-sku-10"))
                 .thenReturn(List.of(publishedOffer(
                         "offer-10", "shoe-sku-10", "listing-group-456")));
-        doThrow(new EbayApiException("eBay API request failed (HTTP 400): 25013: Invalid data in "
-                + "the Inventory Item Group. Missing name in the variation specifics or "
-                + "variation specifics set."))
-                .doNothing()
+        EbayApiException detached = new EbayApiException("eBay API request failed (HTTP 400): "
+                + "25013: Invalid data in the Inventory Item Group. Missing name in the "
+                + "variation specifics or variation specifics set.");
+        doThrow(detached).doNothing()
                 .when(apiClient).updateOffer(
                         org.mockito.ArgumentMatchers.eq("offer-9"),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        doThrow(detached).doNothing()
+                .when(apiClient).updateOffer(
+                        org.mockito.ArgumentMatchers.eq("offer-10"),
                         org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
                 .thenReturn("listing-group-456");
@@ -562,9 +566,15 @@ class EbayListingServiceTest {
         order.verify(apiClient).updateOffer(
                 org.mockito.ArgumentMatchers.eq("offer-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-10"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
         order.verify(apiClient).updateOffer(
                 org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-10"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
         verify(apiClient, never()).createOffer(

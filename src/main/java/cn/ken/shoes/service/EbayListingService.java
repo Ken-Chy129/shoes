@@ -211,7 +211,8 @@ public class EbayListingService {
         Map<String, String> offerIds = new LinkedHashMap<>();
         Map<String, String> listingIds = new LinkedHashMap<>();
         List<PendingOffer> pendingOffers = new ArrayList<>();
-        boolean groupRepublished = false;
+        Map<String, EbayListingRequest> detachedOffers = new LinkedHashMap<>();
+        EbayApiException detachedFailure = null;
         for (EbayListingRequest variant : variants) {
             OfferSnapshot existing = existingOffers.get(variant.getSku());
             String offerId;
@@ -225,19 +226,16 @@ public class EbayListingService {
                     updateOfferWithRetry(
                             offerId, offerPayload(variant), variant.getContentLanguage());
                 } catch (EbayApiException e) {
-                    if (groupRepublished || !existing.published()
-                            || !isDetachedVariationFailure(e)) {
+                    if (!existing.published() || !isDetachedVariationFailure(e)) {
                         throw e;
                     }
                     // 库存曾被清零的尺码会被 eBay 从 listing 上静默移除，offer 却仍是
-                    // PUBLISHED；此时单独更新 offer 会报 25013。整组重新发布能把库存
-                    // 已恢复的尺码挂回 listing，之后再更新这条 offer 即可。
-                    log.warn("商品组{}中的SKU {}已脱离listing，整组重新发布后重试更新offer",
+                    // PUBLISHED；此时单独更新 offer 会报 25013（但新数量已写入 offer）。
+                    // 先收集起来，所有尺码处理完后整组重新发布一次把它们挂回 listing。
+                    log.warn("商品组{}中的SKU {}已脱离listing，稍后整组重新发布",
                             inventoryItemGroupKey, variant.getSku());
-                    publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
-                    groupRepublished = true;
-                    updateOfferWithRetry(
-                            offerId, offerPayload(variant), variant.getContentLanguage());
+                    detachedOffers.put(offerId, variant);
+                    detachedFailure = e;
                 }
                 if (existing.published()) {
                     listingIds.put(variant.getSku(), existing.listingId());
@@ -246,6 +244,10 @@ public class EbayListingService {
                 }
             }
             offerIds.put(variant.getSku(), offerId);
+        }
+        if (!detachedOffers.isEmpty()) {
+            reattachDetachedOffers(inventoryItemGroupKey, groupPayload, first,
+                    detachedOffers, detachedFailure);
         }
 
         try {
@@ -371,6 +373,36 @@ public class EbayListingService {
         String message = error.getMessage();
         return message != null && message.contains("25013:")
                 && message.contains("Missing name in the variation specifics");
+    }
+
+    /**
+     * 把脱离 listing 的已发布尺码挂回去：eBay 只在整组发布时才会重新纳入库存
+     * 已恢复的变体，所以所有 offer 数量写好后整组发布一次，再补一次 offer 更新
+     * 确认价格和数量都已落到 listing 上。
+     */
+    private void reattachDetachedOffers(String inventoryItemGroupKey,
+                                        JSONObject groupPayload,
+                                        EbayListingRequest first,
+                                        Map<String, EbayListingRequest> detachedOffers,
+                                        EbayApiException originalFailure) {
+        log.warn("商品组{}有{}个尺码已脱离listing，整组重新发布", inventoryItemGroupKey,
+                detachedOffers.size());
+        publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
+        for (Map.Entry<String, EbayListingRequest> entry : detachedOffers.entrySet()) {
+            EbayListingRequest variant = entry.getValue();
+            try {
+                updateOfferWithRetry(entry.getKey(), offerPayload(variant),
+                        variant.getContentLanguage());
+            } catch (EbayApiException e) {
+                if (!isDetachedVariationFailure(e)) {
+                    throw e;
+                }
+                EbayApiException failure = new EbayApiException(
+                        "尺码" + variant.getSku() + "重新发布后仍未回到listing: " + e.getMessage());
+                failure.addSuppressed(originalFailure);
+                throw failure;
+            }
+        }
     }
 
     private String conflictingSku(EbayApiException error) {
