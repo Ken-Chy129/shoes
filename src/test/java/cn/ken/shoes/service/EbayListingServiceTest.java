@@ -665,16 +665,65 @@ class EbayListingServiceTest {
         order.verify(apiClient).createOrReplaceInventoryItem(
                 org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        // 重新发布前必须先把 offer 数量写回，否则全组数量为 0 时发布会失败
+        order.verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
         order.verify(apiClient).createOrReplaceInventoryItem(
                 org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
-        // 库存项补写之后才更新 offer，避免 eBay 报 25710
+        // 25604 不再在原地重试 5 次
+        verify(apiClient, times(2)).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
+    void rewritesInventoryItemsAfterRepublishingWhenEveryOfferQuantityWasZeroed() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(
+                        List.of("shoe-sku-9", "shoe-sku-10"), List.of("9", "10"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.getOffersBySku("shoe-sku-10"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-10", "shoe-sku-10", "listing-group-456")));
+        doThrow(new EbayApiException("eBay API request failed (HTTP 400): 25004: The eBay listing associated with "
+                + "the inventory item has an invalid quantity."))
+                .doNothing()
+                .when(apiClient).createOrReplaceInventoryItem(
+                        org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        InOrder order = inOrder(apiClient);
+        order.verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        // 重新发布前必须先把 offer 数量写回，否则全组数量为 0 时发布会失败
         order.verify(apiClient).updateOffer(
                 org.mockito.ArgumentMatchers.eq("offer-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
-        verify(apiClient, times(1)).updateOffer(
-                org.mockito.ArgumentMatchers.eq("offer-9"),
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        order.verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         // 25604 不再在原地重试 5 次
         verify(apiClient, times(2)).createOrReplaceInventoryItem(

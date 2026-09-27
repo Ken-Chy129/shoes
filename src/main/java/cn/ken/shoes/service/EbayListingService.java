@@ -249,14 +249,6 @@ public class EbayListingService {
                 pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
             } else {
                 offerId = existing.offerId();
-                if (existing.published() && detachedItems.contains(variant)) {
-                    // 库存项还没写进去，此时更新 offer 会被 eBay 报 25710（404），
-                    // 等整组重新发布、库存项补写后再更新。
-                    detachedOffers.put(offerId, variant);
-                    listingIds.put(variant.getSku(), existing.listingId());
-                    offerIds.put(variant.getSku(), offerId);
-                    continue;
-                }
                 try {
                     updateOfferWithRetry(
                             offerId, offerPayload(variant), variant.getContentLanguage());
@@ -457,7 +449,7 @@ public class EbayListingService {
     }
 
     /**
-     * 已在架商品组的库存项写入：25604/25013 说明尺码脱离了 listing，重试无用，
+     * 已在架商品组的库存项写入：25604/25004/25013 说明尺码脱离了 listing，重试无用，
      * 直接交给调用方在整组重新发布后补写；其余临时错误照常重试。
      */
     private void createOrReplaceInventoryItemOnPublishedGroup(
@@ -469,7 +461,10 @@ public class EbayListingService {
 
     private boolean isDetachedInventoryFailure(EbayApiException error) {
         String message = error.getMessage();
+        // 25004：整组 offer 数量都被清零，eBay 拒绝写库存项，同样需要先把 offer
+        // 数量写回再整组重新发布。
         return message != null && (message.contains("25604:")
+                || message.contains("25004:")
                 || isDetachedVariationFailure(error));
     }
 
