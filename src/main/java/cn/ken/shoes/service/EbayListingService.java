@@ -239,6 +239,14 @@ public class EbayListingService {
                 pendingOffers.add(new PendingOffer(variant.getSku(), offerId));
             } else {
                 offerId = existing.offerId();
+                if (existing.published() && detachedItems.contains(variant)) {
+                    // 库存项还没写进去，此时更新 offer 会被 eBay 报 25710（404），
+                    // 等整组重新发布、库存项补写后再更新。
+                    detachedOffers.put(offerId, variant);
+                    listingIds.put(variant.getSku(), existing.listingId());
+                    offerIds.put(variant.getSku(), offerId);
+                    continue;
+                }
                 try {
                     updateOfferWithRetry(
                             offerId, offerPayload(variant), variant.getContentLanguage());

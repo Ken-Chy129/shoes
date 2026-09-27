@@ -644,6 +644,13 @@ class EbayListingServiceTest {
         order.verify(apiClient).createOrReplaceInventoryItem(
                 org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        // 库存项补写之后才更新 offer，避免 eBay 报 25710
+        order.verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, times(1)).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         // 25604 不再在原地重试 5 次
         verify(apiClient, times(2)).createOrReplaceInventoryItem(
                 org.mockito.ArgumentMatchers.eq("shoe-sku-9"),
