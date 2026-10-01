@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayApiException;
+import cn.ken.shoes.client.EbayQuotaExceededException;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.manager.TaskInputSnapshotStore;
 import cn.ken.shoes.mapper.EbayListingMapper;
@@ -151,11 +152,23 @@ public class EbayBulkListingService {
                     .add(new RowContext(row, item));
         }
 
+        String quotaExhausted = null;
         for (Map.Entry<String, List<RowContext>> entry : groups.entrySet()) {
             if (cancelled.get()) {
                 break;
             }
             List<RowContext> group = entry.getValue();
+            if (quotaExhausted != null) {
+                // 额度重置前继续调用必然失败，剩下的货号直接标记，不再请求 eBay。
+                String error = "未上架(" + quotaExhausted + ")";
+                for (RowContext context : group) {
+                    context.item().setOperateResult(error);
+                    context.item().setOperateTime(new Date());
+                    taskItemMapper.updateById(context.item());
+                }
+                failed += group.size();
+                continue;
+            }
             try {
                 List<EbayListingRequest> requests = new ArrayList<>(group.size());
                 for (RowContext context : group) {
@@ -178,6 +191,9 @@ public class EbayBulkListingService {
             } catch (Exception e) {
                 log.warn("eBay bulk listing group failed, taskId:{}, styleId:{}, sizeCount:{}, type:{}",
                         taskId, entry.getKey(), group.size(), e.getClass().getSimpleName(), e);
+                if (e instanceof EbayQuotaExceededException) {
+                    quotaExhausted = safeError(e);
+                }
                 String error = "上架失败(" + safeError(e) + ")";
                 group.forEach(context -> context.item().setOperateResult(error));
                 failed += group.size();

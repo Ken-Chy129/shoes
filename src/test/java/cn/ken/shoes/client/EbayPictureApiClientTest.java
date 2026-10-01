@@ -121,6 +121,51 @@ class EbayPictureApiClientTest {
                 .hasMessageNotContaining("/etc/passwd");
     }
 
+    @Test
+    void reportsTheDailyUploadQuotaAsAQuotaFailure() {
+        server.enqueue(xmlResponse("""
+                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors>
+                    <ShortMessage>Call usage limit has been reached.</ShortMessage>
+                    <ErrorCode>518</ErrorCode>
+                    <SeverityCode>Error</SeverityCode>
+                  </Errors>
+                </UploadSiteHostedPicturesResponse>
+                """));
+
+        assertThatThrownBy(() -> client.uploadExternalPicture(
+                "https://cdn.example.com/shoe.jpg", "STYLE-1"))
+                .isInstanceOf(EbayQuotaExceededException.class)
+                .hasMessageContaining("额度已用完")
+                .hasMessageContaining("518");
+    }
+
+    @Test
+    void surfacesEbayErrorCodeAndMessageWhenHostingFails() {
+        server.enqueue(xmlResponse("""
+                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors>
+                    <ShortMessage>Dimensions are smaller than recommended.</ShortMessage>
+                    <ErrorCode>21916790</ErrorCode>
+                    <SeverityCode>Warning</SeverityCode>
+                  </Errors>
+                  <Errors>
+                    <ShortMessage>Picture could not be downloaded.</ShortMessage>
+                    <ErrorCode>21916638</ErrorCode>
+                    <SeverityCode>Error</SeverityCode>
+                  </Errors>
+                </UploadSiteHostedPicturesResponse>
+                """));
+
+        assertThatThrownBy(() -> client.uploadExternalPicture(
+                "https://cdn.example.com/shoe.jpg", "STYLE-1"))
+                .isInstanceOf(EbayApiException.class)
+                .isNotInstanceOf(EbayQuotaExceededException.class)
+                .hasMessage("eBay图片托管失败：21916638 Picture could not be downloaded.");
+    }
+
     private MockResponse xmlResponse(String body) {
         return new MockResponse().setResponseCode(200)
                 .setHeader("Content-Type", "text/xml; charset=utf-8")

@@ -10,6 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -57,6 +58,42 @@ class EbayPictureServiceTest {
 
     @Test
     void rejectsUnsafeOrNonHttpsImageUrlsBeforeCallingEbay() {
+        rejectsUnsafeUrls();
+    }
+
+    @Test
+    void reusesHostedUrlsForImagesAlreadyUploadedToSaveTheDailyQuota() {
+        EbayPictureApiClient client = mock(EbayPictureApiClient.class);
+        when(client.uploadExternalPicture(
+                "https://cdn.example.com/shoe.jpg", "SKU-1-1"))
+                .thenReturn(Optional.of(
+                        "https://i.ebayimg.com/images/g/new/s-l1600.jpg"));
+        when(client.uploadExternalPicture(
+                "https://cdn.example.com/small.jpg", "SKU-1-2"))
+                .thenReturn(Optional.empty());
+        when(client.uploadExternalPicture(
+                "https://cdn.example.com/other.jpg", "SKU-2-3"))
+                .thenReturn(Optional.of(
+                        "https://i.ebayimg.com/images/g/other/s-l1600.jpg"));
+        EbayPictureService service = new EbayPictureService(client);
+
+        service.hostImages(List.of(
+                "https://cdn.example.com/shoe.jpg",
+                "https://cdn.example.com/small.jpg"), "SKU-1");
+        List<String> second = service.hostImages(List.of(
+                "https://cdn.example.com/shoe.jpg",
+                "https://cdn.example.com/small.jpg",
+                "https://cdn.example.com/other.jpg"), "SKU-2");
+
+        assertThat(second).containsExactly(
+                "https://i.ebayimg.com/images/g/new/s-l1600.jpg",
+                "https://i.ebayimg.com/images/g/other/s-l1600.jpg");
+        verify(client, times(3)).uploadExternalPicture(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString());
+    }
+
+    private void rejectsUnsafeUrls() {
         EbayPictureApiClient client = mock(EbayPictureApiClient.class);
         EbayPictureService service = new EbayPictureService(client);
 

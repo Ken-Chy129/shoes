@@ -197,8 +197,10 @@ public class EbayListingService {
         // 单尺码也统一走商品组：先前单尺码直接发单品 listing，之后再补尺码时
         // eBay 会报 25704（SKU 已是单品 listing），同一货号就散成多个 listing。
         GroupAspects groupAspects = validateAndResolveGroupAspects(variants, existingGroup);
-        List<String> hostedImageUrls = pictureService.hostImages(
-                first.getImageUrls(), inventoryItemGroupKey);
+        List<String> liveImages = liveGroupImages(existingGroup);
+        List<String> hostedImageUrls = liveImages.isEmpty()
+                ? pictureService.hostImages(first.getImageUrls(), inventoryItemGroupKey)
+                : liveImages;
         Set<String> allGroupSkus = new LinkedHashSet<>(retainedGroupOffers.keySet());
         allGroupSkus.addAll(incomingSkus);
         OfferSnapshot publishedGroupOffer = existingOffers.values().stream()
@@ -859,6 +861,19 @@ public class EbayListingService {
         }
         return new ExistingVariation(
                 name, stringValues(specification.getJSONArray("values")));
+    }
+
+    /**
+     * 仍在架的商品组已经带着 eBay 托管图片，直接沿用，避免每次补尺码/改库存
+     * 都重新调用 UploadSiteHostedPictures 消耗每日额度。整组已下架时
+     * existingGroup 已被置空，会重新托管。
+     */
+    private List<String> liveGroupImages(JSONObject existingGroup) {
+        if (existingGroup == null) {
+            return List.of();
+        }
+        List<String> images = stringValues(existingGroup.getJSONArray("imageUrls"));
+        return pictureService.allEbayHosted(images) ? images : List.of();
     }
 
     private List<String> stringValues(JSONArray values) {

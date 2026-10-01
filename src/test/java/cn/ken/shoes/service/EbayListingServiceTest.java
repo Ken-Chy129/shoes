@@ -319,6 +319,28 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void reusesEbayHostedImagesOfALiveGroupInsteadOfUploadingAgain() {
+        JSONObject group = inventoryGroup(List.of("old-9"), List.of("9"));
+        group.put("imageUrls", List.of("https://i.ebayimg.com/images/g/live/s-l1600.jpg"));
+        when(apiClient.getInventoryItemGroup("group-style-1")).thenReturn(Optional.of(group));
+        when(apiClient.getOffersBySku("old-9"))
+                .thenReturn(List.of(publishedOffer("offer-9", "old-9", "listing-group-456")));
+        when(apiClient.getInventoryItem("old-9"))
+                .thenReturn(Optional.of(inventoryItemWithSize("9")));
+
+        service.publishGroup("group-style-1",
+                List.of(requestWithSize("new-10", "US Shoe Size", "10")));
+
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("imageUrls"))
+                .containsExactly("https://i.ebayimg.com/images/g/live/s-l1600.jpg");
+        verify(pictureApiClient, never()).uploadExternalPicture(anyString(), anyString());
+    }
+
+    @Test
     void preservesEqualNumericAndUnrecognizedLabelsWhileSortingNumericSizesFirst() {
         service.publishGroup("group-style-1", List.of(
                 requestWithSize("sku-custom", "US Shoe Size", "Custom"),

@@ -12,6 +12,7 @@ import okhttp3.ResponseBody;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
@@ -32,6 +33,9 @@ public class EbayPictureApiClient {
     private static final MediaType XML_MEDIA_TYPE =
             MediaType.get("text/xml; charset=utf-8");
     private static final Set<String> SUCCESS_ACKS = Set.of("Success", "Warning");
+    /** 518: Call usage limit has been reached；21919144/21920201/21920202: Maximum Call Limit Exceeded。 */
+    private static final Set<String> QUOTA_ERROR_CODES =
+            Set.of("518", "21919144", "21920201", "21920202");
 
     private final EbayOAuthService oauthService;
     private final OkHttpClient httpClient;
@@ -85,7 +89,7 @@ public class EbayPictureApiClient {
             String ack = firstText(document, "Ack");
             String fullUrl = firstText(document, "FullURL");
             if (!SUCCESS_ACKS.contains(ack) || fullUrl == null || fullUrl.isBlank()) {
-                throw new EbayApiException("eBay图片托管失败：未返回托管地址");
+                throw uploadFailure(document);
             }
             int maxDimension = maxPictureDimension(document);
             if (maxDimension > 0 && maxDimension < 500) {
@@ -95,6 +99,49 @@ public class EbayPictureApiClient {
         } catch (IOException e) {
             throw new EbayApiException("eBay图片托管失败：网络异常", e);
         }
+    }
+
+    private EbayApiException uploadFailure(Document document) {
+        NodeList errors = document.getElementsByTagNameNS("*", "Errors");
+        for (int i = 0; i < errors.getLength(); i++) {
+            Element error = (Element) errors.item(i);
+            String code = childText(error, "ErrorCode");
+            if (code != null && QUOTA_ERROR_CODES.contains(code.trim())) {
+                return new EbayQuotaExceededException(
+                        "eBay图片托管失败：今日图片上传额度已用完(" + code.trim()
+                                + ")，额度每天北京时间15:00重置，请重置后重试");
+            }
+        }
+        for (int i = 0; i < errors.getLength(); i++) {
+            Element error = (Element) errors.item(i);
+            if (!"Error".equals(trimmed(childText(error, "SeverityCode")))) {
+                continue;
+            }
+            String code = trimmed(childText(error, "ErrorCode"));
+            String message = trimmed(childText(error, "ShortMessage"));
+            if (message == null) {
+                message = trimmed(childText(error, "LongMessage"));
+            }
+            if (code != null || message != null) {
+                return new EbayApiException("eBay图片托管失败："
+                        + (code == null ? "" : code + " ")
+                        + (message == null ? "" : truncate(message, 120)));
+            }
+        }
+        return new EbayApiException("eBay图片托管失败：未返回托管地址");
+    }
+
+    private String childText(Element parent, String localName) {
+        NodeList nodes = parent.getElementsByTagNameNS("*", localName);
+        return nodes.getLength() == 0 ? null : nodes.item(0).getTextContent();
+    }
+
+    private String trimmed(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private String truncate(String value, int maxLength) {
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 
     private int maxPictureDimension(Document document) {

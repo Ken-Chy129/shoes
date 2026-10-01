@@ -228,12 +228,42 @@ class EbayBulkListingServiceTest {
     }
 
     private EbayListingExcel row() {
+        return row("DD1391-100");
+    }
+
+    private EbayListingExcel row(String styleId) {
         EbayListingExcel row = new EbayListingExcel();
-        row.setStyleId("DD1391-100");
+        row.setStyleId(styleId);
         row.setSize("USM10");
         row.setQuantity(1);
         row.setPrice(new BigDecimal("129.99"));
         return row;
+    }
+
+    @Test
+    void stopsCallingEbayForRemainingStylesOnceTheDailyPictureQuotaIsExhausted() {
+        EbayListingExcel first = row("DD1391-100");
+        EbayListingExcel second = row("DD1391-200");
+        EbayListingExcel third = row("DD1391-300");
+        when(metadataService.resolve(any(EbayListingExcel.class))).thenReturn(metadata());
+        when(listingService.publishGroup(any(), any()))
+                .thenReturn(List.of(new EbayListingResult("sku-1", "offer-1", "listing-1", "production")))
+                .thenThrow(new cn.ken.shoes.client.EbayQuotaExceededException(
+                        "eBay图片托管失败：今日图片上传额度已用完(518)"));
+        List<TaskItemDO> items = new ArrayList<>();
+        doAnswer(invocation -> {
+            TaskItemDO item = invocation.getArgument(0);
+            items.add(item);
+            return 1;
+        }).when(taskItemMapper).updateById(any(TaskItemDO.class));
+
+        service.start(List.of(first, second, third));
+
+        verify(listingService, times(2)).publishGroup(any(), any());
+        assertThat(items).extracting(TaskItemDO::getOperateResult).containsExactly(
+                "上架成功",
+                "上架失败(eBay图片托管失败：今日图片上传额度已用完(518))",
+                "未上架(eBay图片托管失败：今日图片上传额度已用完(518))");
     }
 
     private EbayProductMetadata metadata() {
