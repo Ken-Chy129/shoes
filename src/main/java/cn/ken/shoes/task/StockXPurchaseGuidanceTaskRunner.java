@@ -17,8 +17,10 @@ import cn.ken.shoes.model.stockx.StockXPurchaseGuidanceCalculator;
 import cn.ken.shoes.model.stockx.StockXSaleWindow;
 import cn.ken.shoes.model.stockx.StockXSale;
 import cn.ken.shoes.model.stockx.StockXSaleStatistics;
+import cn.ken.shoes.exception.StockXRateLimitException;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.config.TaskSwitch;
+import cn.ken.shoes.util.StockXRateLimitGuard;
 import cn.ken.shoes.util.TimeUtil;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +48,8 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
     private final TaskItemMapper taskItemMapper;
     private final StockXPurchaseGuidanceCalculator calculator = new StockXPurchaseGuidanceCalculator();
     private final KeywordQuery keywordQuery;
+    /** 暂停后继续执行时已写入明细的 variantId，关键词模式跳过它们以复用已完成进度。 */
+    private Set<String> resumedVariantIds = Set.of();
 
     /** 关键词搜索模式参数：与「搜索 / 搜索上架」相同，按 关键词 × 排序 × 页码 遍历 StockX 搜索结果。 */
     public record KeywordQuery(List<String> keywords, List<String> sorts, int pageCount, String searchType) {
@@ -89,70 +93,33 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         this.taskItemMapper = taskItemMapper;
     }
 
+    public StockXPurchaseGuidanceTaskRunner withResumedVariantIds(java.util.Collection<String> variantIds) {
+        this.resumedVariantIds = variantIds != null ? Set.copyOf(variantIds) : Set.of();
+        return this;
+    }
+
+    /** 关键词模式连续单尺码查询失败达到该次数即终止，避免 Token 失效等系统性错误时白白请求全部尺码。 */
+    public static final int MAX_CONSECUTIVE_FAILURES = 5;
+
     @Override
     public void run() {
         long start = System.currentTimeMillis();
-        int processed = 0;
-        int succeeded = 0;
-        int fallbackVariants = 0;
-        Map<String, List<StockXSale>> salesCache = new HashMap<>();
-        if (keywordQuery != null) {
-            runKeywordSearch(start, salesCache);
-            return;
-        }
+        StockXRateLimitGuard.beginTaskContext(account,
+                () -> TaskSwitch.isSearchListCancelled(taskId),
+                reason -> taskMapper.updateTaskFailReason(taskId, reason),
+                () -> taskMapper.updateTaskFailReason(taskId, null));
         try {
-            Map<String, List<ModelNoSearchExcel>> grouped = new LinkedHashMap<>();
-            for (ModelNoSearchExcel row : inputRows) {
-                grouped.computeIfAbsent(row.getModelNo().trim().toUpperCase(Locale.ROOT), ignored -> new java.util.ArrayList<>())
-                        .add(row);
-            }
-            for (List<ModelNoSearchExcel> rows : grouped.values()) {
-                ensureNotCancelled();
-                String modelNo = rows.getFirst().getModelNo().trim();
-                List<StockXPriceExcel> candidates = stockXClient.searchExactItemWithPrice(
-                        modelNo, "shoes", StrUtil.blankToDefault(account.getCountry(), "US"), account);
-                if (candidates == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
-                Set<String> returnedVariantIds = new HashSet<>();
-                boolean hasUnmatchedSize = false;
-                for (ModelNoSearchExcel row : rows) {
-                    ensureNotCancelled();
-                    StockXPriceExcel matched = findVariant(row, candidates);
-                    if (matched == null) {
-                        if (candidates.isEmpty()) {
-                            insertFailure(row, "未找到对应货号");
-                        } else {
-                            hasUnmatchedSize = true;
-                        }
-                    } else {
-                        taskItemMapper.insert(toTaskItem(row, matched, salesCache));
-                        returnedVariantIds.add(matched.getId());
-                        succeeded++;
-                    }
-                    processed++;
-                    publishProgress(processed, succeeded);
-                }
-                // 服饰等尺码体系与输入不一致时不再判失败：返回该货号其余全部尺码及 variantId，供按 variantId 出价。
-                if (hasUnmatchedSize) {
-                    for (StockXPriceExcel candidate : candidates) {
-                        ensureNotCancelled();
-                        if (StrUtil.isBlank(candidate.getId()) || !returnedVariantIds.add(candidate.getId())) {
-                            continue;
-                        }
-                        TaskItemDO item = toTaskItem(rows.getFirst(), candidate, salesCache);
-                        item.setSize(StrUtil.blankToDefault(candidate.getSizeLabel(), displaySize(null, candidate)));
-                        item.setOperateResult("尺码未匹配-已返回该货号全部尺码，可按variantId出价；"
-                                + StrUtil.blankToDefault(item.getOperateResult(), ""));
-                        taskItemMapper.insert(item);
-                        fallbackVariants++;
-                    }
-                }
-            }
+            Map<String, List<StockXSale>> salesCache = new HashMap<>();
+            String summary = keywordQuery != null ? runKeywordSearch(salesCache) : runExcel(salesCache);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-            taskMapper.updateTaskFailReason(taskId, "已处理" + processed + "条，成功" + succeeded + "条"
-                    + (fallbackVariants > 0 ? "，尺码未匹配补充返回" + fallbackVariants + "个尺码" : ""));
+            taskMapper.updateTaskFailReason(taskId, summary);
         } catch (TaskCancelledException e) {
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
+        } catch (StockXRateLimitException e) {
+            log.warn("[{}] 购买价格参考任务因持续限流暂停, taskId:{}, reason:{}", account.getName(), taskId, e.getMessage());
+            taskMapper.updateTaskPaused(taskId, e.getMessage());
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
         } catch (Exception e) {
             String reason = StrUtil.blankToDefault(e.getMessage(), "购买价格参考任务异常");
@@ -160,81 +127,159 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
             log.error("[{}] 购买价格参考任务异常, taskId:{}", account.getName(), taskId, e);
         } finally {
+            StockXRateLimitGuard.endTaskContext();
             TaskSwitch.clearSearchListRunState(taskId);
         }
     }
 
-    private void runKeywordSearch(long start, Map<String, List<StockXSale>> salesCache) {
+    private String runExcel(Map<String, List<StockXSale>> salesCache) {
+        int processed = 0;
+        int succeeded = 0;
+        int fallbackVariants = 0;
+        Map<String, List<ModelNoSearchExcel>> grouped = new LinkedHashMap<>();
+        for (ModelNoSearchExcel row : inputRows) {
+            grouped.computeIfAbsent(row.getModelNo().trim().toUpperCase(Locale.ROOT), ignored -> new java.util.ArrayList<>())
+                    .add(row);
+        }
+        preloadPoisonPrices(grouped.values().stream().map(rows -> rows.getFirst().getModelNo().trim()).toList());
+        for (List<ModelNoSearchExcel> rows : grouped.values()) {
+            ensureNotCancelled();
+            String modelNo = rows.getFirst().getModelNo().trim();
+            List<StockXPriceExcel> candidates = stockXClient.searchExactItemWithPrice(
+                    modelNo, "shoes", StrUtil.blankToDefault(account.getCountry(), "US"), account);
+            if (candidates == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
+            Set<String> returnedVariantIds = new HashSet<>();
+            boolean hasUnmatchedSize = false;
+            for (ModelNoSearchExcel row : rows) {
+                ensureNotCancelled();
+                StockXPriceExcel matched = findVariant(row, candidates);
+                if (matched == null) {
+                    if (candidates.isEmpty()) {
+                        insertFailure(row, "未找到对应货号");
+                    } else {
+                        hasUnmatchedSize = true;
+                    }
+                } else {
+                    taskItemMapper.insert(toTaskItem(row, matched, salesCache));
+                    returnedVariantIds.add(matched.getId());
+                    succeeded++;
+                }
+                processed++;
+                publishProgress(processed, succeeded, "货号: " + modelNo);
+            }
+            // 服饰等尺码体系与输入不一致时不再判失败：返回该货号其余全部尺码及 variantId，供按 variantId 出价。
+            if (hasUnmatchedSize) {
+                for (StockXPriceExcel candidate : candidates) {
+                    ensureNotCancelled();
+                    if (StrUtil.isBlank(candidate.getId()) || !returnedVariantIds.add(candidate.getId())) {
+                        continue;
+                    }
+                    TaskItemDO item = toTaskItem(rows.getFirst(), candidate, salesCache);
+                    item.setSize(StrUtil.blankToDefault(candidate.getSizeLabel(), displaySize(null, candidate)));
+                    item.setOperateResult("尺码未匹配-已返回该货号全部尺码，可按variantId出价；"
+                            + StrUtil.blankToDefault(item.getOperateResult(), ""));
+                    taskItemMapper.insert(item);
+                    fallbackVariants++;
+                }
+            }
+        }
+        publishProgress(processed, succeeded, null);
+        return "已处理" + processed + "条，成功" + succeeded + "条"
+                + (fallbackVariants > 0 ? "，尺码未匹配补充返回" + fallbackVariants + "个尺码" : "");
+    }
+
+    private String runKeywordSearch(Map<String, List<StockXSale>> salesCache) {
         String country = StrUtil.blankToDefault(account.getCountry(), "US");
         int totalSteps = keywordQuery.keywords().size() * keywordQuery.sorts().size() * keywordQuery.pageCount();
         int step = 0;
         int succeeded = 0;
         int failed = 0;
-        Set<String> seenVariantIds = new HashSet<>();
-        try {
-            for (String keyword : keywordQuery.keywords()) {
-                for (String sort : keywordQuery.sorts()) {
-                    for (int page = 1; page <= keywordQuery.pageCount(); page++) {
+        int consecutiveFailures = 0;
+        List<String> emptyCombos = new java.util.ArrayList<>();
+        Set<String> seenVariantIds = new HashSet<>(resumedVariantIds);
+        int resumed = seenVariantIds.size();
+        for (String keyword : keywordQuery.keywords()) {
+            for (String sort : keywordQuery.sorts()) {
+                for (int page = 1; page <= keywordQuery.pageCount(); page++) {
+                    ensureNotCancelled();
+                    step++;
+                    publishKeywordProgress(keyword, sort, page, step, totalSteps, succeeded);
+                    Pair<Integer, List<StockXPriceExcel>> result = stockXClient.searchItemWithPrice(
+                            keyword, page, sort, keywordQuery.searchType(), country, account);
+                    if (result == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
+                    List<StockXPriceExcel> items = result.getValue();
+                    if (items == null || items.isEmpty()) {
+                        // 与搜索上架一致：某页无结果即视为该排序已到底，剩余页数计入进度。
+                        // 第一页就为空可能是无结果也可能是请求抖动，记录下来在任务结果中提示。
+                        if (page == 1) emptyCombos.add(keyword + "/" + sort);
+                        step += keywordQuery.pageCount() - page;
+                        break;
+                    }
+                    preloadPoisonPrices(items.stream().map(StockXPriceExcel::getModelNo).toList());
+                    for (StockXPriceExcel item : items) {
                         ensureNotCancelled();
-                        step++;
-                        publishKeywordProgress(keyword, sort, page, step, totalSteps, succeeded);
-                        Pair<Integer, List<StockXPriceExcel>> result = stockXClient.searchItemWithPrice(
-                                keyword, page, sort, keywordQuery.searchType(), country, account);
-                        if (result == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
-                        List<StockXPriceExcel> items = result.getValue();
-                        if (items == null || items.isEmpty()) {
-                            // 与搜索上架一致：某页无结果即视为该排序已到底，剩余页数计入进度。
-                            step += keywordQuery.pageCount() - page;
-                            break;
+                        if (StrUtil.isBlank(item.getId()) || !seenVariantIds.add(item.getId())) {
+                            continue;
                         }
-                        for (StockXPriceExcel item : items) {
-                            ensureNotCancelled();
-                            if (StrUtil.isBlank(item.getId()) || !seenVariantIds.add(item.getId())) {
-                                continue;
-                            }
-                            try {
-                                ModelNoSearchExcel source = new ModelNoSearchExcel();
-                                source.setModelNo(item.getModelNo());
-                                TaskItemDO taskItem = toTaskItem(source, item, salesCache);
-                                taskItem.setSize(StrUtil.blankToDefault(displaySize(null, item), item.getSizeLabel()));
-                                taskItemMapper.insert(taskItem);
-                                succeeded++;
-                            } catch (TaskCancelledException | cn.ken.shoes.exception.StockXRateLimitException e) {
-                                throw e;
-                            } catch (RuntimeException e) {
-                                // 单个尺码的成交记录查询失败不应中断整个关键词任务。
-                                log.warn("[{}] 购买价格参考单尺码查询失败, taskId:{}, variantId:{}",
-                                        account.getName(), taskId, item.getId(), e);
-                                insertKeywordFailure(item, StrUtil.blankToDefault(e.getMessage(), "查询成交记录失败"));
-                                failed++;
+                        try {
+                            ModelNoSearchExcel source = new ModelNoSearchExcel();
+                            source.setModelNo(item.getModelNo());
+                            TaskItemDO taskItem = toTaskItem(source, item, salesCache);
+                            taskItem.setSize(StrUtil.blankToDefault(displaySize(null, item), item.getSizeLabel()));
+                            taskItemMapper.insert(taskItem);
+                            succeeded++;
+                            consecutiveFailures = 0;
+                        } catch (TaskCancelledException | StockXRateLimitException e) {
+                            throw e;
+                        } catch (RuntimeException e) {
+                            // 单个尺码的成交记录查询失败不应中断整个关键词任务；但连续失败说明是系统性问题，及时终止。
+                            log.warn("[{}] 购买价格参考单尺码查询失败, taskId:{}, variantId:{}",
+                                    account.getName(), taskId, item.getId(), e);
+                            String reason = StrUtil.blankToDefault(e.getMessage(), "查询成交记录失败");
+                            insertKeywordFailure(item, reason);
+                            failed++;
+                            if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                                throw new IllegalStateException("连续" + consecutiveFailures
+                                        + "个尺码查询失败，已终止(成功" + succeeded + "条)：" + reason, e);
                             }
                         }
-                        Integer totalPage = result.getKey();
-                        if (totalPage != null && totalPage > 0 && page >= totalPage) {
-                            step += keywordQuery.pageCount() - page;
-                            break;
-                        }
+                    }
+                    Integer totalPage = result.getKey();
+                    if (totalPage != null && totalPage > 0 && page >= totalPage) {
+                        step += keywordQuery.pageCount() - page;
+                        break;
                     }
                 }
             }
-            if (seenVariantIds.isEmpty()) {
-                throw new IllegalStateException("StockX搜索未返回任何商品，可能被上游拦截或限流，请稍后重试");
-            }
-            publishKeywordProgress(null, null, 0, totalSteps, totalSteps, succeeded);
-            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
-            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-            taskMapper.updateTaskFailReason(taskId, "搜索到" + seenVariantIds.size() + "个尺码，成功" + succeeded
-                    + "条" + (failed > 0 ? "，失败" + failed + "条" : ""));
-        } catch (TaskCancelledException e) {
-            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
-            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-        } catch (Exception e) {
-            String reason = StrUtil.blankToDefault(e.getMessage(), "购买价格参考任务异常");
-            taskMapper.updateTaskFailed(taskId, reason.substring(0, Math.min(reason.length(), 200)));
-            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-            log.error("[{}] 关键词购买价格参考任务异常, taskId:{}", account.getName(), taskId, e);
-        } finally {
-            TaskSwitch.clearSearchListRunState(taskId);
+        }
+        if (seenVariantIds.isEmpty()) {
+            throw new IllegalStateException("StockX搜索未返回任何商品，可能被上游拦截或限流，请稍后重试");
+        }
+        publishKeywordProgress(null, null, 0, totalSteps, totalSteps, succeeded);
+        String summary = "搜索到" + seenVariantIds.size() + "个尺码，成功" + succeeded
+                + "条" + (failed > 0 ? "，失败" + failed + "条" : "")
+                + (resumed > 0 ? "，暂停前已完成" + resumed + "个" : "");
+        if (!emptyCombos.isEmpty()) {
+            String combos = String.join("、", emptyCombos);
+            summary += "；首页无结果: " + (combos.length() > 80 ? combos.substring(0, 80) + "…" : combos);
+        }
+        return summary.length() > 200 ? summary.substring(0, 200) : summary;
+    }
+
+    /** 与搜索上架一致：按页批量预加载得物价格，避免逐尺码查询。预加载失败不影响主流程。 */
+    private void preloadPoisonPrices(List<String> modelNos) {
+        if (priceManager == null || modelNos == null || modelNos.isEmpty()) {
+            return;
+        }
+        Set<String> keys = new HashSet<>();
+        for (String modelNo : modelNos) {
+            if (StrUtil.isNotBlank(modelNo)) keys.add(modelNo.trim());
+        }
+        if (keys.isEmpty()) return;
+        try {
+            priceManager.batchLoadPrices(keys);
+        } catch (RuntimeException e) {
+            log.warn("[{}] 批量预加载得物价格失败, taskId:{}", account.getName(), taskId, e);
         }
     }
 
@@ -350,10 +395,12 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         taskItemMapper.insert(item);
     }
 
-    private void publishProgress(int processed, int succeeded) {
-        taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+    private void publishProgress(int processed, int succeeded, String detail) {
+        JSONObject attributes = new JSONObject(true)
                 .fluentPut("processed", processed).fluentPut("total", inputRows.size())
-                .fluentPut("succeeded", succeeded).toJSONString());
+                .fluentPut("succeeded", succeeded);
+        if (detail != null) attributes.put("detail", detail);
+        taskMapper.updateTaskAttributes(taskId, attributes.toJSONString());
     }
 
     private static StockXSaleWindow window(int days, BigDecimal average, BigDecimal median, Integer count) {

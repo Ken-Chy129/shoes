@@ -292,8 +292,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         if (inserted != 1 || taskItem.getId() == null) {
             throw new IllegalStateException("保存待提交出价明细失败，已停止创建出价");
         }
-        String sizeType = match.useStockXSizeType() && StrUtil.isNotBlank(matched.getSizeType())
-                ? matched.getSizeType() : localizedSizeType(input.size());
+        String sizeType = resolveSizeType(match, input.size());
         progress.pendingBids.add(new PreparedBid(taskItem, new StockXBidCreateItem(
                 variantId, input.price().stripTrailingZeros(), sizeType)));
     }
@@ -528,6 +527,27 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         return null;
     }
 
+    /**
+     * 出价的 localizedSizeType 优先使用 StockX 返回的尺码类型（服饰/童鞋/腰围等为 "us" 等非 "us m" 类型）；
+     * 仅在按数字尺码命中且 StockX 未返回类型时，才按 Excel 输入推导。
+     * 例外：鞋类 StockX 默认类型为 "us m"，用户明确填写了女码/EU 时保留用户输入的体系。
+     */
+    static String resolveSizeType(VariantMatch match, String inputSize) {
+        String stockXType = match.variant().getSizeType();
+        if (StrUtil.isBlank(stockXType)) {
+            return localizedSizeType(inputSize);
+        }
+        if (match.useStockXSizeType()) {
+            return stockXType;
+        }
+        String normalizedType = stockXType.trim().toLowerCase(Locale.ROOT);
+        if (normalizedType.equals("us m") || normalizedType.equals("us w") || normalizedType.equals("eu")) {
+            // 鞋类：StockX 支持同一 variant 用 us m / us w / eu 出价，沿用用户输入的尺码体系。
+            return localizedSizeType(inputSize);
+        }
+        return stockXType;
+    }
+
     public static String localizedSizeType(String size) {
         String normalized = ShoesUtil.normalizeUnicodeFraction(
                         StrUtil.blankToDefault(size, "").trim().toUpperCase(Locale.ROOT))
@@ -553,7 +573,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     private record BidInput(String modelNo, String size, String variantId, BigDecimal price) {
     }
 
-    private record VariantMatch(StockXPriceExcel variant, boolean useStockXSizeType) {
+    record VariantMatch(StockXPriceExcel variant, boolean useStockXSizeType) {
     }
 
     private record SearchJob(List<BidInput> rows, Future<List<StockXPriceExcel>> future) {

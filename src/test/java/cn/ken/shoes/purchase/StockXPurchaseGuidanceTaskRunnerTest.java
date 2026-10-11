@@ -263,6 +263,109 @@ class StockXPurchaseGuidanceTaskRunnerTest {
         assertThat(failure.get()).contains("未返回任何商品");
     }
 
+    @Test
+    void pausesInsteadOfFailingWhenRateLimited() {
+        java.util.concurrent.atomic.AtomicReference<String> state = new java.util.concurrent.atomic.AtomicReference<>();
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> {
+            if ("updateTaskPaused".equals(method)) state.set("paused:" + args[1]);
+            if ("updateTaskFailed".equals(method)) state.set("failed:" + args[1]);
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public cn.hutool.core.lang.Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(
+                    String query, Integer pageIndex, String sort, String searchType, String country,
+                    StockXAccount account) {
+                throw new cn.ken.shoes.exception.StockXRateLimitException("account-a", 1000L, "限流中");
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 18L,
+                new StockXPurchaseGuidanceTaskRunner.KeywordQuery(List.of("hoodie"), List.of("featured"), 1, "clothes"),
+                client, null, taskMapper, mapper(TaskItemMapper.class, (method, args) -> null)).run();
+
+        assertThat(state.get()).isEqualTo("paused:限流中");
+    }
+
+    @Test
+    void stopsAfterConsecutiveVariantFailures() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<String> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger salesCalls = new java.util.concurrent.atomic.AtomicInteger();
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> {
+            if ("updateTaskFailed".equals(method)) failure.set((String) args[1]);
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public cn.hutool.core.lang.Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(
+                    String query, Integer pageIndex, String sort, String searchType, String country,
+                    StockXAccount account) {
+                List<StockXPriceExcel> rows = new ArrayList<>();
+                for (int i = 0; i < 20; i++) rows.add(apparel("variant-" + i, "S"));
+                return cn.hutool.core.lang.Pair.of(1, rows);
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                salesCalls.incrementAndGet();
+                throw new IllegalStateException("StockX成交记录接口无响应");
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 19L,
+                new StockXPurchaseGuidanceTaskRunner.KeywordQuery(List.of("hoodie"), List.of("featured"), 1, "clothes"),
+                client, null, taskMapper, mapper(TaskItemMapper.class, (method, args) -> {
+                    if ("insert".equals(method)) inserted.add((TaskItemDO) args[0]);
+                    return null;
+                })).run();
+
+        assertThat(salesCalls.get()).isEqualTo(StockXPurchaseGuidanceTaskRunner.MAX_CONSECUTIVE_FAILURES);
+        assertThat(inserted).hasSize(StockXPurchaseGuidanceTaskRunner.MAX_CONSECUTIVE_FAILURES);
+        assertThat(failure.get()).contains("连续5个尺码查询失败");
+    }
+
+    @Test
+    void reportsEmptyFirstPagesAndSkipsResumedVariants() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<String> reason = new java.util.concurrent.atomic.AtomicReference<>();
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> {
+            if ("updateTaskFailReason".equals(method)) reason.set((String) args[1]);
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public cn.hutool.core.lang.Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(
+                    String query, Integer pageIndex, String sort, String searchType, String country,
+                    StockXAccount account) {
+                if ("most-active".equals(sort)) return cn.hutool.core.lang.Pair.of(0, List.of());
+                return cn.hutool.core.lang.Pair.of(1, List.of(apparel("variant-s", "S"), apparel("variant-m", "M")));
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                return List.of();
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 20L,
+                new StockXPurchaseGuidanceTaskRunner.KeywordQuery(List.of("hoodie"),
+                        List.of("featured", "most-active"), 1, "clothes"),
+                client, null, taskMapper, mapper(TaskItemMapper.class, (method, args) -> {
+                    if ("insert".equals(method)) inserted.add((TaskItemDO) args[0]);
+                    return null;
+                })).withResumedVariantIds(List.of("variant-s")).run();
+
+        assertThat(inserted).extracting(TaskItemDO::getProductId).containsExactly("variant-m");
+        assertThat(reason.get()).contains("暂停前已完成1个").contains("首页无结果: hoodie/most-active");
+    }
+
     private static StockXPriceExcel apparel(String variantId, String label) {
         StockXPriceExcel row = new StockXPriceExcel();
         row.setId(variantId);

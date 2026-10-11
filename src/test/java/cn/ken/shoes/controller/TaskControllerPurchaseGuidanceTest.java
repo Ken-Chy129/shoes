@@ -52,6 +52,22 @@ class TaskControllerPurchaseGuidanceTest {
         verifyNoInteractions(manager);
     }
 
+    @Test
+    void rejectsKeywordGuidanceWithInvalidSearchTypeOrSort() throws Exception {
+        TaskExecutorManager manager = mock(TaskExecutorManager.class);
+        TaskController controller = controller(manager);
+
+        Result<String> badType = controller.startKeywordPurchaseGuidance(new com.alibaba.fastjson.JSONObject()
+                .fluentPut("accountId", "account-1").fluentPut("keywords", "hoodie").fluentPut("searchType", "bags"));
+        Result<String> badSort = controller.startKeywordPurchaseGuidance(new com.alibaba.fastjson.JSONObject()
+                .fluentPut("accountId", "account-1").fluentPut("keywords", "hoodie")
+                .fluentPut("searchType", "clothes").fluentPut("sorts", "featured,cheapest"));
+
+        assertThat(badType.getSuccess()).isFalse();
+        assertThat(badSort.getSuccess()).isFalse();
+        verifyNoInteractions(manager);
+    }
+
     private static TaskController controller(TaskExecutorManager manager) throws Exception {
         TaskController controller = new TaskController();
         Field field = TaskController.class.getDeclaredField("taskExecutorManager");

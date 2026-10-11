@@ -9,6 +9,8 @@ import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.common.DelistMode;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.TaskTypeEnum;
+import cn.ken.shoes.common.SearchTypeEnum;
+import cn.ken.shoes.common.StockXSortEnum;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.manager.ConfigManager;
@@ -427,8 +429,21 @@ public class TaskController {
         if (pageCount != null && (pageCount < 1 || pageCount > 50)) {
             return Result.buildError("查询页数必须在1到50之间");
         }
+        String searchType = body.getString("searchType");
+        if (StrUtil.isNotBlank(searchType) && SearchTypeEnum.from(searchType.trim()) == null) {
+            return Result.buildError("搜索类型无效: " + searchType + "（仅支持 shoes / clothes）");
+        }
+        String sorts = body.getString("sorts");
+        if (StrUtil.isNotBlank(sorts)) {
+            List<String> invalidSorts = java.util.Arrays.stream(sorts.split("[,\\n]"))
+                    .map(String::trim).filter(StrUtil::isNotBlank)
+                    .filter(sort -> StockXSortEnum.from(sort) == null).toList();
+            if (!invalidSorts.isEmpty()) {
+                return Result.buildError("排序方式无效: " + String.join(",", invalidSorts));
+            }
+        }
         Long taskId = taskExecutorManager.startKeywordPurchaseGuidance(accountId, keywords,
-                body.getString("sorts"), pageCount != null ? pageCount : 3, body.getString("searchType"));
+                sorts, pageCount != null ? pageCount : 3, StrUtil.trim(searchType));
         return taskId != null ? Result.buildSuccess(String.valueOf(taskId)) : Result.buildError("账号不存在或关键词为空");
     }
 

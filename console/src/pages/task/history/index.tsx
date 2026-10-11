@@ -751,6 +751,20 @@ const TaskPage = () => {
                         }
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'purchase_guidance' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        let keywordMode = false;
+                        try { keywordMode = JSON.parse(record.params || '{}').searchMode === 'keyword'; } catch { /* 默认货号模式 */ }
+                        const tip = attrs.detail || (keywordMode ? '关键字搜索' : '货号Excel');
+                        return <Tooltip title={tip}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                {keywordMode ? '搜索' : '已处理'} {attrs.processed ?? 0}/{attrs.total ?? 0}{keywordMode ? ' 页' : ''}<br/>
+                                成功 {attrs.succeeded ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'listing' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);

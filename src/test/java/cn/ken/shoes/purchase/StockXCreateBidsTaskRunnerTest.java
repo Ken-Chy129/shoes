@@ -371,6 +371,39 @@ class StockXCreateBidsTaskRunnerTest {
     }
 
     @Test
+    void usesStockXSizeTypeForNumericApparelSizes() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel waist = priceRow("variant-30", "PANTS-1", "30", null, null);
+        waist.setSizeLabel("30");
+        waist.setSizeType("us");
+        client.searchRows = List.of(waist);
+
+        new StockXCreateBidsTaskRunner(account(), 214L, List.of(input("PANTS-1", "30", "60")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()), itemMapper(new ArrayList<>())).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item -> {
+                    assertThat(item.variantId()).isEqualTo("variant-30");
+                    assertThat(item.localizedSizeType()).isEqualTo("us");
+                }));
+    }
+
+    @Test
+    void keepsUserShoeSizeSystemWhenStockXReportsShoeType() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel shoe = priceRow("variant-w", "DD1391-100", "4.5", "6", "37.5");
+        shoe.setSizeType("us m");
+        client.searchRows = List.of(shoe);
+
+        new StockXCreateBidsTaskRunner(account(), 215L, List.of(input("DD1391-100", "US W 6", "60")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()), itemMapper(new ArrayList<>())).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item ->
+                        assertThat(item.localizedSizeType()).isEqualTo("us w")));
+    }
+
+    @Test
     void failsVariantIdThatDoesNotBelongToTheStyle() {
         FakeStockXClient client = new FakeStockXClient();
         client.searchRows = List.of(priceRow("variant-1", "HOODIE-1", null, null, null));

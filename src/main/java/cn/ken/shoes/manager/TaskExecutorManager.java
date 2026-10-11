@@ -277,6 +277,7 @@ public class TaskExecutorManager {
                     ? resumeModelSearch(task, params)
                     : resumeSearchList(task, params, true);
             case EXCEL_DELIST -> resumeExcelDelist(task, params);
+            case PURCHASE_GUIDANCE -> resumePurchaseGuidance(task, params);
             default -> null;
         };
     }
@@ -478,11 +479,9 @@ public class TaskExecutorManager {
                                              int pageCount, String searchType) {
         StockXAccount account = StockXConfig.getAccount(accountId);
         if (account == null || keywords == null) return null;
-        List<String> keywordList = keywords.lines().map(String::trim).filter(k -> !k.isEmpty()).distinct().toList();
+        List<String> keywordList = splitLines(keywords);
         if (keywordList.isEmpty()) return null;
-        List<String> sortList = defaultIfBlank(sorts, "featured").lines()
-                .flatMap(line -> java.util.Arrays.stream(line.split(",")))
-                .map(String::trim).filter(v -> !v.isEmpty()).distinct().toList();
+        List<String> sortList = splitSorts(sorts);
         StockXPurchaseGuidanceTaskRunner.KeywordQuery query = new StockXPurchaseGuidanceTaskRunner.KeywordQuery(
                 keywordList, sortList, pageCount > 0 ? pageCount : 3, defaultIfBlank(searchType, "shoes"));
         String params = new JSONObject(true)
@@ -1160,6 +1159,66 @@ public class TaskExecutorManager {
             TaskSwitch.clearExcelDelistState(key);
             throw e;
         }
+    }
+
+    /**
+     * 购买价格参考因限流暂停后继续：关键词模式跳过已写入明细的 variantId；
+     * 货号Excel模式按原始输入重新执行（先清空旧明细，避免重复行）。
+     */
+    private Long resumePurchaseGuidance(TaskDO task, JSONObject params) {
+        StockXAccount account = StockXConfig.getAccount(task.getAccountName());
+        if (account == null || TaskSwitch.isSearchListRunning(task.getId())) {
+            return null;
+        }
+        boolean keywordMode = "keyword".equals(params.getString("searchMode"));
+        StockXPurchaseGuidanceTaskRunner runner;
+        if (keywordMode) {
+            StockXPurchaseGuidanceTaskRunner.KeywordQuery query = new StockXPurchaseGuidanceTaskRunner.KeywordQuery(
+                    splitLines(params.getString("keywords")), splitSorts(params.getString("sorts")),
+                    params.getIntValue("pageCount") > 0 ? params.getIntValue("pageCount") : 3,
+                    defaultIfBlank(params.getString("searchType"), "shoes"));
+            if (query.keywords().isEmpty()) {
+                return null;
+            }
+            runner = new StockXPurchaseGuidanceTaskRunner(account, task.getId(), query, stockXClient,
+                    priceManager, taskMapper, taskItemMapper);
+        } else {
+            var snapshot = taskInputSnapshotStore.loadPurchaseGuidanceInput(task.getId());
+            if (snapshot.isEmpty() || snapshot.get().isEmpty()) {
+                return null;
+            }
+            runner = new StockXPurchaseGuidanceTaskRunner(account, task.getId(), snapshot.get(), stockXClient,
+                    priceManager, taskMapper, taskItemMapper);
+        }
+        if (taskMapper.resumeTask(task.getId()) == 0) {
+            return null;
+        }
+        try {
+            if (keywordMode) {
+                runner.withResumedVariantIds(taskItemMapper.selectProcessedProductIdsByTaskId(task.getId()));
+            } else {
+                taskItemMapper.deleteByTaskId(task.getId());
+            }
+            TaskSwitch.markSearchListRunning(task.getId());
+            TaskSwitch.resetSearchListCancel(task.getId());
+            new Thread(runner, "StockX-Purchase-Guidance-" + task.getId()).start();
+            return task.getId();
+        } catch (RuntimeException e) {
+            taskMapper.updateTaskPaused(task.getId(), "任务恢复启动失败: " + e.getMessage());
+            TaskSwitch.clearSearchListRunState(task.getId());
+            throw e;
+        }
+    }
+
+    private static List<String> splitLines(String value) {
+        return value == null ? List.of()
+                : value.lines().map(String::trim).filter(v -> !v.isEmpty()).distinct().toList();
+    }
+
+    private List<String> splitSorts(String value) {
+        return defaultIfBlank(value, "featured").lines()
+                .flatMap(line -> java.util.Arrays.stream(line.split(",")))
+                .map(String::trim).filter(v -> !v.isEmpty()).distinct().toList();
     }
 
     private Long resumeExcelDelist(TaskDO task, JSONObject params) {
