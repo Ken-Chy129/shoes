@@ -185,6 +185,84 @@ class StockXPurchaseGuidanceTaskRunnerTest {
         });
     }
 
+    @Test
+    void keywordModeWalksSortsAndPagesAndDeduplicatesVariants() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        List<String> calls = new ArrayList<>();
+        java.util.concurrent.atomic.AtomicReference<String> status = new java.util.concurrent.atomic.AtomicReference<>();
+        TaskItemMapper itemMapper = mapper(TaskItemMapper.class, (method, args) -> {
+            if ("insert".equals(method)) {
+                inserted.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> {
+            if ("updateTaskStatus".equals(method)) status.set((String) args[1]);
+            if ("updateTaskFailed".equals(method)) status.set("failed:" + args[1]);
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public cn.hutool.core.lang.Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(
+                    String query, Integer pageIndex, String sort, String searchType, String country,
+                    StockXAccount account) {
+                calls.add(query + "|" + sort + "|" + pageIndex + "|" + searchType);
+                if (pageIndex == 1) {
+                    return cn.hutool.core.lang.Pair.of(2, List.of(apparel("variant-s", "S"), apparel("variant-m", "M")));
+                }
+                // 第2页与第1页有重复尺码，应去重；第3页不应再请求（总页数=2）。
+                return cn.hutool.core.lang.Pair.of(2, List.of(apparel("variant-m", "M"), apparel("variant-l", "L")));
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                return List.of();
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 16L,
+                new StockXPurchaseGuidanceTaskRunner.KeywordQuery(List.of("hoodie"),
+                        List.of("featured", "most-active"), 5, "clothes"),
+                client, null, taskMapper, itemMapper).run();
+
+        assertThat(calls).containsExactly(
+                "hoodie|featured|1|clothes", "hoodie|featured|2|clothes",
+                "hoodie|most-active|1|clothes", "hoodie|most-active|2|clothes");
+        assertThat(inserted).extracting(TaskItemDO::getProductId)
+                .containsExactly("variant-s", "variant-m", "variant-l");
+        assertThat(inserted).extracting(TaskItemDO::getSize).containsExactly("S", "M", "L");
+        assertThat(inserted).extracting(TaskItemDO::getStyleId).containsOnly("HOODIE-1");
+        assertThat(status.get()).isEqualTo("success");
+    }
+
+    @Test
+    void keywordModeFailsWhenSearchReturnsNothing() {
+        java.util.concurrent.atomic.AtomicReference<String> failure = new java.util.concurrent.atomic.AtomicReference<>();
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> {
+            if ("updateTaskFailed".equals(method)) failure.set((String) args[1]);
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public cn.hutool.core.lang.Pair<Integer, List<StockXPriceExcel>> searchItemWithPrice(
+                    String query, Integer pageIndex, String sort, String searchType, String country,
+                    StockXAccount account) {
+                return cn.hutool.core.lang.Pair.of(0, List.of());
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 17L,
+                new StockXPurchaseGuidanceTaskRunner.KeywordQuery(List.of("nothing"), List.of("featured"), 3, "shoes"),
+                client, null, taskMapper, mapper(TaskItemMapper.class, (method, args) -> null)).run();
+
+        assertThat(failure.get()).contains("未返回任何商品");
+    }
+
     private static StockXPriceExcel apparel(String variantId, String label) {
         StockXPriceExcel row = new StockXPriceExcel();
         row.setId(variantId);

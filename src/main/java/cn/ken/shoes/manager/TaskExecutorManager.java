@@ -424,6 +424,11 @@ public class TaskExecutorManager {
                 yield operation != null ? startPurchase(account, operation) : null;
             }
             case PURCHASE_GUIDANCE -> {
+                if ("keyword".equals(params.getString("searchMode"))) {
+                    yield startKeywordPurchaseGuidance(account, params.getString("keywords"),
+                            params.getString("sorts"), params.getIntValue("pageCount"),
+                            params.getString("searchType"));
+                }
                 var snapshot = taskInputSnapshotStore.loadPurchaseGuidanceInput(source.getId());
                 yield snapshot.isPresent() && !snapshot.get().isEmpty()
                         ? startPurchaseGuidance(account, snapshot.get()) : null;
@@ -462,6 +467,42 @@ public class TaskExecutorManager {
         TaskSwitch.resetSearchListCancel(taskId);
         new Thread(new StockXPurchaseGuidanceTaskRunner(account, taskId, snapshot, stockXClient,
                 priceManager, taskMapper, taskItemMapper), "StockX-Purchase-Guidance-" + taskId).start();
+        return taskId;
+    }
+
+    /**
+     * 按关键词搜索获取购买价格参考：沿用搜索上架的 关键词 × 排序 × 页码 遍历方式，
+     * 对搜索到的每个尺码计算建议出价，结果附带 variantId 可直接用于创建出价。
+     */
+    public Long startKeywordPurchaseGuidance(String accountId, String keywords, String sorts,
+                                             int pageCount, String searchType) {
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null || keywords == null) return null;
+        List<String> keywordList = keywords.lines().map(String::trim).filter(k -> !k.isEmpty()).distinct().toList();
+        if (keywordList.isEmpty()) return null;
+        List<String> sortList = defaultIfBlank(sorts, "featured").lines()
+                .flatMap(line -> java.util.Arrays.stream(line.split(",")))
+                .map(String::trim).filter(v -> !v.isEmpty()).distinct().toList();
+        StockXPurchaseGuidanceTaskRunner.KeywordQuery query = new StockXPurchaseGuidanceTaskRunner.KeywordQuery(
+                keywordList, sortList, pageCount > 0 ? pageCount : 3, defaultIfBlank(searchType, "shoes"));
+        String params = new JSONObject(true)
+                .fluentPut("searchMode", "keyword")
+                .fluentPut("keywords", String.join("\n", query.keywords()))
+                .fluentPut("sorts", String.join(",", query.sorts()))
+                .fluentPut("pageCount", query.pageCount())
+                .fluentPut("searchType", query.searchType())
+                .toJSONString();
+        Long taskId = createTask("stockx", TaskTypeEnum.PURCHASE_GUIDANCE.getCode(), account.getName(), params);
+        TaskSwitch.markSearchListRunning(taskId);
+        TaskSwitch.resetSearchListCancel(taskId);
+        try {
+            new Thread(new StockXPurchaseGuidanceTaskRunner(account, taskId, query, stockXClient,
+                    priceManager, taskMapper, taskItemMapper), "StockX-Purchase-Guidance-" + taskId).start();
+        } catch (RuntimeException e) {
+            taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
+            TaskSwitch.clearSearchListRunState(taskId);
+            throw e;
+        }
         return taskId;
     }
 

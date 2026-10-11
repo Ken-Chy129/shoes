@@ -1,5 +1,6 @@
 package cn.ken.shoes.task;
 
+import cn.hutool.core.lang.Pair;
 import cn.hutool.core.util.StrUtil;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.manager.PriceManager;
@@ -44,6 +45,17 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
     private final StockXPurchaseGuidanceCalculator calculator = new StockXPurchaseGuidanceCalculator();
+    private final KeywordQuery keywordQuery;
+
+    /** 关键词搜索模式参数：与「搜索 / 搜索上架」相同，按 关键词 × 排序 × 页码 遍历 StockX 搜索结果。 */
+    public record KeywordQuery(List<String> keywords, List<String> sorts, int pageCount, String searchType) {
+        public KeywordQuery {
+            keywords = keywords != null ? List.copyOf(keywords) : List.of();
+            sorts = sorts != null && !sorts.isEmpty() ? List.copyOf(sorts) : List.of("featured");
+            pageCount = Math.max(pageCount, 1);
+            searchType = StrUtil.blankToDefault(searchType, "shoes");
+        }
+    }
 
     public StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, List<ModelNoSearchExcel> inputRows,
                                             StockXClient stockXClient, TaskMapper taskMapper,
@@ -54,9 +66,23 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
     public StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, List<ModelNoSearchExcel> inputRows,
                                             StockXClient stockXClient, PriceManager priceManager,
                                             TaskMapper taskMapper, TaskItemMapper taskItemMapper) {
+        this(account, taskId, inputRows, null, stockXClient, priceManager, taskMapper, taskItemMapper);
+    }
+
+    public StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, KeywordQuery keywordQuery,
+                                            StockXClient stockXClient, PriceManager priceManager,
+                                            TaskMapper taskMapper, TaskItemMapper taskItemMapper) {
+        this(account, taskId, null, keywordQuery, stockXClient, priceManager, taskMapper, taskItemMapper);
+    }
+
+    private StockXPurchaseGuidanceTaskRunner(StockXAccount account, Long taskId, List<ModelNoSearchExcel> inputRows,
+                                             KeywordQuery keywordQuery, StockXClient stockXClient,
+                                             PriceManager priceManager, TaskMapper taskMapper,
+                                             TaskItemMapper taskItemMapper) {
         this.account = account;
         this.taskId = taskId;
         this.inputRows = inputRows != null ? List.copyOf(inputRows) : List.of();
+        this.keywordQuery = keywordQuery;
         this.stockXClient = stockXClient;
         this.priceManager = priceManager;
         this.taskMapper = taskMapper;
@@ -70,6 +96,10 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         int succeeded = 0;
         int fallbackVariants = 0;
         Map<String, List<StockXSale>> salesCache = new HashMap<>();
+        if (keywordQuery != null) {
+            runKeywordSearch(start, salesCache);
+            return;
+        }
         try {
             Map<String, List<ModelNoSearchExcel>> grouped = new LinkedHashMap<>();
             for (ModelNoSearchExcel row : inputRows) {
@@ -132,6 +162,107 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         } finally {
             TaskSwitch.clearSearchListRunState(taskId);
         }
+    }
+
+    private void runKeywordSearch(long start, Map<String, List<StockXSale>> salesCache) {
+        String country = StrUtil.blankToDefault(account.getCountry(), "US");
+        int totalSteps = keywordQuery.keywords().size() * keywordQuery.sorts().size() * keywordQuery.pageCount();
+        int step = 0;
+        int succeeded = 0;
+        int failed = 0;
+        Set<String> seenVariantIds = new HashSet<>();
+        try {
+            for (String keyword : keywordQuery.keywords()) {
+                for (String sort : keywordQuery.sorts()) {
+                    for (int page = 1; page <= keywordQuery.pageCount(); page++) {
+                        ensureNotCancelled();
+                        step++;
+                        publishKeywordProgress(keyword, sort, page, step, totalSteps, succeeded);
+                        Pair<Integer, List<StockXPriceExcel>> result = stockXClient.searchItemWithPrice(
+                                keyword, page, sort, keywordQuery.searchType(), country, account);
+                        if (result == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
+                        List<StockXPriceExcel> items = result.getValue();
+                        if (items == null || items.isEmpty()) {
+                            // 与搜索上架一致：某页无结果即视为该排序已到底，剩余页数计入进度。
+                            step += keywordQuery.pageCount() - page;
+                            break;
+                        }
+                        for (StockXPriceExcel item : items) {
+                            ensureNotCancelled();
+                            if (StrUtil.isBlank(item.getId()) || !seenVariantIds.add(item.getId())) {
+                                continue;
+                            }
+                            try {
+                                ModelNoSearchExcel source = new ModelNoSearchExcel();
+                                source.setModelNo(item.getModelNo());
+                                TaskItemDO taskItem = toTaskItem(source, item, salesCache);
+                                taskItem.setSize(StrUtil.blankToDefault(displaySize(null, item), item.getSizeLabel()));
+                                taskItemMapper.insert(taskItem);
+                                succeeded++;
+                            } catch (TaskCancelledException | cn.ken.shoes.exception.StockXRateLimitException e) {
+                                throw e;
+                            } catch (RuntimeException e) {
+                                // 单个尺码的成交记录查询失败不应中断整个关键词任务。
+                                log.warn("[{}] 购买价格参考单尺码查询失败, taskId:{}, variantId:{}",
+                                        account.getName(), taskId, item.getId(), e);
+                                insertKeywordFailure(item, StrUtil.blankToDefault(e.getMessage(), "查询成交记录失败"));
+                                failed++;
+                            }
+                        }
+                        Integer totalPage = result.getKey();
+                        if (totalPage != null && totalPage > 0 && page >= totalPage) {
+                            step += keywordQuery.pageCount() - page;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (seenVariantIds.isEmpty()) {
+                throw new IllegalStateException("StockX搜索未返回任何商品，可能被上游拦截或限流，请稍后重试");
+            }
+            publishKeywordProgress(null, null, 0, totalSteps, totalSteps, succeeded);
+            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
+            taskMapper.updateTaskFailReason(taskId, "搜索到" + seenVariantIds.size() + "个尺码，成功" + succeeded
+                    + "条" + (failed > 0 ? "，失败" + failed + "条" : ""));
+        } catch (TaskCancelledException e) {
+            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
+        } catch (Exception e) {
+            String reason = StrUtil.blankToDefault(e.getMessage(), "购买价格参考任务异常");
+            taskMapper.updateTaskFailed(taskId, reason.substring(0, Math.min(reason.length(), 200)));
+            taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
+            log.error("[{}] 关键词购买价格参考任务异常, taskId:{}", account.getName(), taskId, e);
+        } finally {
+            TaskSwitch.clearSearchListRunState(taskId);
+        }
+    }
+
+    private void insertKeywordFailure(StockXPriceExcel price, String reason) {
+        TaskItemDO item = new TaskItemDO();
+        item.setTaskId(taskId);
+        item.setRound(1);
+        item.setProductId(price.getId());
+        item.setBrand(price.getBrand());
+        item.setTitle(price.getTitle());
+        item.setStyleId(price.getModelNo());
+        item.setSize(StrUtil.blankToDefault(displaySize(null, price), price.getSizeLabel()));
+        item.setEuSize(price.getEuSize());
+        item.setCurrencyCode("USD");
+        item.setOperateResult("查询失败-" + reason.substring(0, Math.min(reason.length(), 100)));
+        item.setOperateTime(new Date());
+        taskItemMapper.insert(item);
+    }
+
+    private void publishKeywordProgress(String keyword, String sort, int page, int step, int total, int succeeded) {
+        JSONObject attributes = new JSONObject(true)
+                .fluentPut("processed", Math.min(step, total)).fluentPut("total", total)
+                .fluentPut("succeeded", succeeded);
+        if (keyword != null) {
+            attributes.put("detail", "关键词: " + keyword + " | 排序: " + sort + " | 页码: " + page
+                    + "/" + keywordQuery.pageCount());
+        }
+        taskMapper.updateTaskAttributes(taskId, attributes.toJSONString());
     }
 
     private StockXPriceExcel findVariant(ModelNoSearchExcel input, List<StockXPriceExcel> candidates) {

@@ -578,6 +578,18 @@ const TaskPage = () => {
                         onFinally: () => setCreating(false),
                     });
                 }
+            } else if (createPlatform === 'stockx' && createTaskType === 'purchase_guidance'
+                && values.guidanceSearchMode === 'keyword') {
+                doPostRequest(TASK_API.START_KEYWORD_PURCHASE_GUIDANCE, {
+                    accountId: values.accountId,
+                    keywords: values.guidanceKeywords,
+                    sorts: (values.guidanceSorts || ['featured']).join(','),
+                    pageCount: values.guidancePageCount || 3,
+                    searchType: values.guidanceSearchType || 'shoes',
+                }, {
+                    onSuccess: () => { message.success('购买价格参考任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'purchase_guidance') {
                 const file = values.purchaseGuidanceExcel?.[0]?.originFileObj;
                 if (!file) { message.error('请上传购买价格参考Excel'); setCreating(false); return; }
@@ -1050,15 +1062,45 @@ const TaskPage = () => {
         }
 
         if (createPlatform === 'stockx' && createTaskType === 'purchase_guidance') {
-            return <Form.Item name="purchaseGuidanceExcel" label="价格参考Excel"
-                              valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
-                              rules={[{required: true, message: '请上传Excel'}]}
-                              extra={<ExcelFieldHint requiredFields={['货号', '尺码']}
-                                  note="只查询行情，不会创建真实出价；展示7/30/90天成交情况，缺失数据会显示暂无数据。"/>}>
-                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
-                    <Button icon={<UploadOutlined/>}>选择 Excel</Button>
-                </Upload>
-            </Form.Item>;
+            return <>
+                <Form.Item name="guidanceSearchMode" label="查询方式" initialValue="excel">
+                    <Radio.Group>
+                        <Radio.Button value="excel">货号Excel</Radio.Button>
+                        <Radio.Button value="keyword">关键字搜索</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.guidanceSearchMode !== cur.guidanceSearchMode}>
+                    {({getFieldValue}) => getFieldValue('guidanceSearchMode') === 'keyword' ? <>
+                        <Form.Item name="guidanceKeywords" label="关键词"
+                                   rules={[{required: true, whitespace: true, message: '请输入关键词'}]}
+                                   extra="每行一个关键词；返回搜索结果中每个商品的全部尺码及 variantId，只查询行情不会出价。">
+                            <Input.TextArea rows={3} placeholder={"onitsuka tiger\nfear of god essentials hoodie"}/>
+                        </Form.Item>
+                        <Form.Item name="guidanceSorts" label="排序方式" initialValue={['featured']}
+                                   rules={[{required: true, type: 'array', min: 1, message: '请选择排序方式'}]}>
+                            <Select mode="multiple" placeholder="选择排序方式" options={SORT_OPTIONS}/>
+                        </Form.Item>
+                        <Form.Item name="guidancePageCount" label="查询页数" initialValue={3}
+                                   extra="每页约40个商品，每个商品的每个尺码都会查询成交记录，页数越多耗时越长。">
+                            <InputNumber min={1} max={50} style={{width: 120}}/>
+                        </Form.Item>
+                        <Form.Item name="guidanceSearchType" label="搜索类型" initialValue="shoes">
+                            <Radio.Group>
+                                <Radio.Button value="shoes">鞋类</Radio.Button>
+                                <Radio.Button value="clothes">服饰</Radio.Button>
+                            </Radio.Group>
+                        </Form.Item>
+                    </> : <Form.Item name="purchaseGuidanceExcel" label="价格参考Excel"
+                                     valuePropName="fileList" getValueFromEvent={(e: any) => e?.fileList}
+                                     rules={[{required: true, message: '请上传Excel'}]}
+                                     extra={<ExcelFieldHint requiredFields={['货号', '尺码']}
+                                         note="只查询行情，不会创建真实出价；展示7/30/90天成交情况，缺失数据会显示暂无数据。"/>}>
+                        <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                            <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                        </Upload>
+                    </Form.Item>}
+                </Form.Item>
+            </>;
         }
 
         if (createPlatform === 'stockx' && createTaskType === 'price_down') {

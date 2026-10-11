@@ -55,6 +55,7 @@ enum TASK_API {
     // StockX 按指定货号撤销出价（Excel：货号）
     START_DELETE_BIDS = '/api/task/stockx/startDeleteBids',
     START_PURCHASE_GUIDANCE = '/api/task/stockx/startPurchaseGuidance',
+    START_KEYWORD_PURCHASE_GUIDANCE = '/api/task/stockx/startKeywordPurchaseGuidance',
     // StockX 订单延期（手动触发，定时任务复用同一类型）
     START_SHIPPING_EXTENSION = '/api/task/stockx/startShippingExtension',
     // StockX 补单（按售出时间范围）

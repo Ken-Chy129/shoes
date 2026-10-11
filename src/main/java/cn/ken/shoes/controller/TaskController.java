@@ -416,6 +416,22 @@ public class TaskController {
         return taskId != null ? Result.buildSuccess(String.valueOf(taskId)) : Result.buildError("账号不存在或输入为空");
     }
 
+    @PostMapping("stockx/startKeywordPurchaseGuidance")
+    public Result<String> startKeywordPurchaseGuidance(@RequestBody JSONObject body) {
+        String accountId = body.getString("accountId");
+        String keywords = body.getString("keywords");
+        if (StrUtil.isBlank(accountId) || StrUtil.isBlank(keywords)) {
+            return Result.buildError("accountId和keywords不能为空");
+        }
+        Integer pageCount = body.getInteger("pageCount");
+        if (pageCount != null && (pageCount < 1 || pageCount > 50)) {
+            return Result.buildError("查询页数必须在1到50之间");
+        }
+        Long taskId = taskExecutorManager.startKeywordPurchaseGuidance(accountId, keywords,
+                body.getString("sorts"), pageCount != null ? pageCount : 3, body.getString("searchType"));
+        return taskId != null ? Result.buildSuccess(String.valueOf(taskId)) : Result.buildError("账号不存在或关键词为空");
+    }
+
     @PostMapping("stockx/startFetchListings")
     public Result<String> startFetchListings(@RequestBody JSONObject body) {
         String accountId = body.getString("accountId");
