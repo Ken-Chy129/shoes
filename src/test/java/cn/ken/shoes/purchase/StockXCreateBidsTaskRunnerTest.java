@@ -324,6 +324,69 @@ class StockXCreateBidsTaskRunnerTest {
     }
 
     @Test
+    void submitsBidByVariantIdWithoutSizeUsingStockXSizeType() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel small = priceRow("variant-s", "HOODIE-1", null, null, null);
+        small.setSizeLabel("S");
+        small.setSizeType("us");
+        StockXPriceExcel large = priceRow("variant-l", "HOODIE-1", null, null, null);
+        large.setSizeLabel("L");
+        large.setSizeType("us");
+        client.searchRows = List.of(small, large);
+        List<TaskItemDO> stored = new ArrayList<>();
+        StockXBidInputExcel row = input("HOODIE-1", null, "80");
+        row.setVariantId("VARIANT-L");
+
+        new StockXCreateBidsTaskRunner(account(), 211L, List.of(row), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()), itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item -> {
+                    assertThat(item.variantId()).isEqualTo("variant-l");
+                    assertThat(item.localizedSizeType()).isEqualTo("us");
+                }));
+        assertThat(stored).singleElement().satisfies(item -> {
+            assertThat(item.getSize()).isEqualTo("L");
+            assertThat(item.getOperateResult()).isEqualTo("出价已提交");
+        });
+    }
+
+    @Test
+    void matchesApparelLetterSizeAgainstStockXSizeLabel() {
+        FakeStockXClient client = new FakeStockXClient();
+        StockXPriceExcel medium = priceRow("variant-m", "HOODIE-1", null, null, null);
+        medium.setSizeLabel("M");
+        medium.setSizeType("us");
+        client.searchRows = List.of(medium);
+        List<TaskItemDO> stored = new ArrayList<>();
+
+        new StockXCreateBidsTaskRunner(account(), 212L, List.of(input("HOODIE-1", "US M", "70")), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()), itemMapper(stored)).run();
+
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).singleElement().satisfies(item -> {
+                    assertThat(item.variantId()).isEqualTo("variant-m");
+                    assertThat(item.localizedSizeType()).isEqualTo("us");
+                }));
+    }
+
+    @Test
+    void failsVariantIdThatDoesNotBelongToTheStyle() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.searchRows = List.of(priceRow("variant-1", "HOODIE-1", null, null, null));
+        List<TaskItemDO> stored = new ArrayList<>();
+        StockXBidInputExcel row = input("HOODIE-1", null, "80");
+        row.setVariantId("other-variant");
+
+        new StockXCreateBidsTaskRunner(account(), 213L, List.of(row), client,
+                taskMapper(new AtomicReference<>(), new AtomicReference<>()), itemMapper(stored)).run();
+
+        assertThat(client.submitted).isEmpty();
+        assertThat(stored).singleElement().satisfies(item ->
+                assertThat(item.getOperateResult()).contains("未找到variantId other-variant"));
+    }
+
+    @Test
     void derivesStockXLocalizedSizeTypeFromExcelSize() {
         assertThat(StockXCreateBidsTaskRunner.localizedSizeType("4.5")).isEqualTo("us m");
         assertThat(StockXCreateBidsTaskRunner.localizedSizeType("US M 4.5")).isEqualTo("us m");

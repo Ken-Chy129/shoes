@@ -74,6 +74,24 @@ public final class ModelNoSearchSizeFilter {
         });
     }
 
+    /**
+     * 服饰（S/M/XL）等非数字尺码按 StockX 原始尺码文本精确匹配，忽略大小写、空格和 US 前缀。
+     */
+    public static boolean matchesSizeLabel(String requestedSize, String sizeLabel) {
+        if (StrUtil.isBlank(requestedSize) || StrUtil.isBlank(sizeLabel)) {
+            return false;
+        }
+        return normalizeLabel(requestedSize).equals(normalizeLabel(sizeLabel));
+    }
+
+    private static String normalizeLabel(String size) {
+        String normalized = size.trim().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
+        if (normalized.startsWith("US") && normalized.length() > 2) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
+    }
+
     public static boolean isWomenSize(String size) {
         String normalized = normalizeRequestedSize(size);
         return normalized != null && normalized.startsWith(US_W_PREFIX);

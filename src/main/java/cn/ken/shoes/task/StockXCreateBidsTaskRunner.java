@@ -199,8 +199,10 @@ public class StockXCreateBidsTaskRunner implements Runnable {
             ensureNotCancelled();
             String modelNo = input != null ? StrUtil.trim(input.getStyleId()) : null;
             String requestedSize = input != null ? StrUtil.trim(input.getSize()) : null;
+            String variantId = input != null && StrUtil.isNotBlank(input.getVariantId())
+                    ? input.getVariantId().trim() : null;
             BigDecimal price = input != null ? input.getPrice() : null;
-            String invalidReason = validateInput(modelNo, requestedSize, price);
+            String invalidReason = validateInput(modelNo, requestedSize, variantId, price);
             if (invalidReason != null) {
                 insertFailure(modelNo, requestedSize, price, invalidReason);
                 progress.failed++;
@@ -209,7 +211,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
             }
             String cacheKey = modelNo.toUpperCase(Locale.ROOT);
             rowsByModel.computeIfAbsent(cacheKey, ignored -> new ArrayList<>())
-                    .add(new BidInput(modelNo, requestedSize, price));
+                    .add(new BidInput(modelNo, requestedSize, variantId, price));
         }
         return rowsByModel;
     }
@@ -237,9 +239,13 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     private void prepareBid(BidInput input, List<StockXPriceExcel> candidates,
                             Set<String> activeVariantIds, Set<String> scheduledVariantIds,
                             ProgressState progress) {
-        StockXPriceExcel matched = findVariant(input.modelNo(), input.size(), candidates);
+        VariantMatch match = input.variantId() != null
+                ? findVariantById(input.variantId(), candidates)
+                : findVariant(input.modelNo(), input.size(), candidates);
+        StockXPriceExcel matched = match != null ? match.variant() : null;
         if (matched == null || StrUtil.isBlank(matched.getId())) {
-            insertFailure(input.modelNo(), input.size(), input.price(), "未找到对应货号尺码");
+            insertFailure(input.modelNo(), input.size(), input.price(),
+                    input.variantId() != null ? "该货号下未找到variantId " + input.variantId() : "未找到对应货号尺码");
             progress.failed++;
             return;
         }
@@ -286,8 +292,10 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         if (inserted != 1 || taskItem.getId() == null) {
             throw new IllegalStateException("保存待提交出价明细失败，已停止创建出价");
         }
+        String sizeType = match.useStockXSizeType() && StrUtil.isNotBlank(matched.getSizeType())
+                ? matched.getSizeType() : localizedSizeType(input.size());
         progress.pendingBids.add(new PreparedBid(taskItem, new StockXBidCreateItem(
-                variantId, input.price().stripTrailingZeros(), localizedSizeType(input.size()))));
+                variantId, input.price().stripTrailingZeros(), sizeType)));
     }
 
     private void submitNextBatch(ProgressState progress, int size) {
@@ -431,16 +439,33 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         }
     }
 
-    private StockXPriceExcel findVariant(String modelNo, String requestedSize,
-                                          List<StockXPriceExcel> candidates) {
+    private VariantMatch findVariantById(String variantId, List<StockXPriceExcel> candidates) {
+        return candidates.stream()
+                .filter(item -> item.getId() != null && item.getId().trim().equalsIgnoreCase(variantId))
+                .findFirst()
+                .map(item -> new VariantMatch(item, true))
+                .orElse(null);
+    }
+
+    private VariantMatch findVariant(String modelNo, String requestedSize,
+                                     List<StockXPriceExcel> candidates) {
         ModelNoSearchExcel filterRow = new ModelNoSearchExcel();
         filterRow.setModelNo(candidates.stream().map(StockXPriceExcel::getModelNo)
                 .filter(StrUtil::isNotBlank).findFirst().orElse(modelNo));
         filterRow.setSize(requestedSize);
         Map<String, Set<String>> filters = ModelNoSearchSizeFilter.build(List.of(filterRow));
-        return candidates.stream().filter(item -> ModelNoSearchSizeFilter.matches(
+        StockXPriceExcel matched = candidates.stream().filter(item -> ModelNoSearchSizeFilter.matches(
                         filters, item.getModelNo(), item.getUsmSize(), item.getUswSize(), item.getEuSize()))
                 .findFirst().orElse(null);
+        if (matched != null) {
+            return new VariantMatch(matched, false);
+        }
+        // 服饰 S/M/XL 等字母尺码无法解析为数字，按 StockX 原始尺码文本匹配，并沿用 StockX 的尺码类型。
+        return candidates.stream()
+                .filter(item -> ModelNoSearchSizeFilter.matchesSizeLabel(requestedSize, item.getSizeLabel()))
+                .findFirst()
+                .map(item -> new VariantMatch(item, true))
+                .orElse(null);
     }
 
     private TaskItemDO buildTaskItem(String modelNo, String requestedSize, BigDecimal price,
@@ -477,19 +502,22 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         if (ModelNoSearchSizeFilter.isWomenSize(requestedSize) && StrUtil.isNotBlank(matched.getUswSize())) {
             return matched.getUswSize();
         }
-        return StrUtil.blankToDefault(matched.getUsmSize(), requestedSize);
+        if (StrUtil.isNotBlank(matched.getUsmSize())) {
+            return matched.getUsmSize();
+        }
+        return StrUtil.blankToDefault(matched.getSizeLabel(), requestedSize);
     }
 
     private String money(BigDecimal value) {
         return value.stripTrailingZeros().toPlainString();
     }
 
-    private String validateInput(String modelNo, String size, BigDecimal price) {
+    private String validateInput(String modelNo, String size, String variantId, BigDecimal price) {
         if (StrUtil.isBlank(modelNo)) {
             return "货号必填";
         }
-        if (StrUtil.isBlank(size)) {
-            return "尺码必填";
+        if (StrUtil.isBlank(size) && StrUtil.isBlank(variantId)) {
+            return "尺码和variantId至少填写一个";
         }
         if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
             return "价格必须大于0";
@@ -522,7 +550,10 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     private record PreparedBid(TaskItemDO taskItem, StockXBidCreateItem request) {
     }
 
-    private record BidInput(String modelNo, String size, BigDecimal price) {
+    private record BidInput(String modelNo, String size, String variantId, BigDecimal price) {
+    }
+
+    private record VariantMatch(StockXPriceExcel variant, boolean useStockXSizeType) {
     }
 
     private record SearchJob(List<BidInput> rows, Future<List<StockXPriceExcel>> future) {

@@ -1,5 +1,6 @@
 package cn.ken.shoes.model.excel;
 
+import com.alibaba.excel.annotation.ExcelIgnore;
 import com.alibaba.excel.annotation.ExcelProperty;
 import lombok.Data;
 
@@ -72,5 +73,13 @@ public class StockXPriceExcel {
 
     @ExcelProperty("得物价格")
     private Integer poisonPrice;
+
+    /** StockX 原始尺码展示值（如 S、XL、5W），服饰等无法解析为数字尺码时用于展示和匹配。 */
+    @ExcelIgnore
+    private String sizeLabel;
+
+    /** StockX 默认尺码类型（如 us、us m、us w），创建出价时作为 localizedSizeType。 */
+    @ExcelIgnore
+    private String sizeType;
 
 }

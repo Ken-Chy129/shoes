@@ -772,8 +772,11 @@ public class TaskController {
         for (int index = 0; index < rows.size(); index++) {
             StockXBidInputExcel row = rows.get(index);
             int excelRow = index + 2;
-            if (row == null || StrUtil.isBlank(row.getStyleId()) || StrUtil.isBlank(row.getSize())) {
-                return "出价Excel第" + excelRow + "行的货号和尺码均为必填";
+            if (row == null || StrUtil.isBlank(row.getStyleId())) {
+                return "出价Excel第" + excelRow + "行的货号必填";
+            }
+            if (StrUtil.isBlank(row.getSize()) && StrUtil.isBlank(row.getVariantId())) {
+                return "出价Excel第" + excelRow + "行的尺码和variantId至少填写一个";
             }
             BigDecimal price = row.getPrice();
             if (price == null || price.compareTo(BigDecimal.ZERO) <= 0) {
@@ -783,12 +786,17 @@ public class TaskController {
                 return "出价Excel第" + excelRow + "行的价格必须为整数美元";
             }
             row.setStyleId(row.getStyleId().trim());
-            row.setSize(row.getSize().trim());
+            row.setSize(StrUtil.isBlank(row.getSize()) ? null : row.getSize().trim());
+            row.setVariantId(StrUtil.isBlank(row.getVariantId()) ? null : row.getVariantId().trim());
             row.setPrice(price.stripTrailingZeros());
-            String duplicateKey = row.getStyleId().toUpperCase(Locale.ROOT) + "\u0000"
+            String duplicateKey = row.getVariantId() != null
+                    ? "variant\u0000" + row.getVariantId().toLowerCase(Locale.ROOT)
+                    : row.getStyleId().toUpperCase(Locale.ROOT) + "\u0000"
                     + row.getSize().toUpperCase(Locale.ROOT).replaceAll("\\s+", "");
             if (!seen.add(duplicateKey)) {
-                return "出价Excel第" + excelRow + "行的货号和尺码重复";
+                return row.getVariantId() != null
+                        ? "出价Excel第" + excelRow + "行的variantId重复"
+                        : "出价Excel第" + excelRow + "行的货号和尺码重复";
             }
         }
         return null;

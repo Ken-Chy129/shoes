@@ -16,4 +16,8 @@ public class StockXBidInputExcel {
 
     @ExcelProperty("价格")
     private BigDecimal price;
+
+    /** 可选：直接指定 StockX variantId（服饰等无法按尺码匹配时使用），填写后尺码可留空。 */
+    @ExcelProperty("variantId")
+    private String variantId;
 }

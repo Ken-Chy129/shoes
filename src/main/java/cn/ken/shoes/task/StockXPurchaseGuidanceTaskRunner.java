@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.HashSet;
 
 @Slf4j
 public class StockXPurchaseGuidanceTaskRunner implements Runnable {
@@ -67,6 +68,7 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         long start = System.currentTimeMillis();
         int processed = 0;
         int succeeded = 0;
+        int fallbackVariants = 0;
         Map<String, List<StockXSale>> salesCache = new HashMap<>();
         try {
             Map<String, List<ModelNoSearchExcel>> grouped = new LinkedHashMap<>();
@@ -80,22 +82,45 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
                 List<StockXPriceExcel> candidates = stockXClient.searchExactItemWithPrice(
                         modelNo, "shoes", StrUtil.blankToDefault(account.getCountry(), "US"), account);
                 if (candidates == null) throw new IllegalStateException("StockX Token已过期，请更新Token");
+                Set<String> returnedVariantIds = new HashSet<>();
+                boolean hasUnmatchedSize = false;
                 for (ModelNoSearchExcel row : rows) {
                     ensureNotCancelled();
                     StockXPriceExcel matched = findVariant(row, candidates);
                     if (matched == null) {
-                        insertFailure(row, "未找到对应货号尺码");
+                        if (candidates.isEmpty()) {
+                            insertFailure(row, "未找到对应货号");
+                        } else {
+                            hasUnmatchedSize = true;
+                        }
                     } else {
                         taskItemMapper.insert(toTaskItem(row, matched, salesCache));
+                        returnedVariantIds.add(matched.getId());
                         succeeded++;
                     }
                     processed++;
                     publishProgress(processed, succeeded);
                 }
+                // 服饰等尺码体系与输入不一致时不再判失败：返回该货号其余全部尺码及 variantId，供按 variantId 出价。
+                if (hasUnmatchedSize) {
+                    for (StockXPriceExcel candidate : candidates) {
+                        ensureNotCancelled();
+                        if (StrUtil.isBlank(candidate.getId()) || !returnedVariantIds.add(candidate.getId())) {
+                            continue;
+                        }
+                        TaskItemDO item = toTaskItem(rows.getFirst(), candidate, salesCache);
+                        item.setSize(StrUtil.blankToDefault(candidate.getSizeLabel(), displaySize(null, candidate)));
+                        item.setOperateResult("尺码未匹配-已返回该货号全部尺码，可按variantId出价；"
+                                + StrUtil.blankToDefault(item.getOperateResult(), ""));
+                        taskItemMapper.insert(item);
+                        fallbackVariants++;
+                    }
+                }
             }
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
-            taskMapper.updateTaskFailReason(taskId, "已处理" + processed + "条，成功" + succeeded + "条");
+            taskMapper.updateTaskFailReason(taskId, "已处理" + processed + "条，成功" + succeeded + "条"
+                    + (fallbackVariants > 0 ? "，尺码未匹配补充返回" + fallbackVariants + "个尺码" : ""));
         } catch (TaskCancelledException e) {
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
@@ -114,7 +139,11 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         Map<String, Set<String>> filters = ModelNoSearchSizeFilter.build(List.of(input));
         return candidates.stream().filter(item -> ModelNoSearchSizeFilter.matches(filters,
                         item.getModelNo(), item.getUsmSize(), item.getUswSize(), item.getEuSize()))
-                .findFirst().orElse(null);
+                .findFirst()
+                .or(() -> candidates.stream()
+                        .filter(item -> ModelNoSearchSizeFilter.matchesSizeLabel(input.getSize(), item.getSizeLabel()))
+                        .findFirst())
+                .orElse(null);
     }
 
     private TaskItemDO toTaskItem(ModelNoSearchExcel input, StockXPriceExcel price,
@@ -137,7 +166,7 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         item.setBrand(price.getBrand());
         item.setTitle(price.getTitle());
         item.setStyleId(StrUtil.blankToDefault(price.getModelNo(), input.getModelNo()));
-        item.setSize(resolveUsSize(input.getSize(), price));
+        item.setSize(displaySize(input.getSize(), price));
         item.setEuSize(price.getEuSize());
         item.setCurrencyCode("USD");
         StockXSale latest = StockXSaleStatistics.latest(sales);
@@ -205,11 +234,14 @@ public class StockXPurchaseGuidanceTaskRunner implements Runnable {
         return value != null && value > 0 ? BigDecimal.valueOf(value) : null;
     }
 
-    private static String resolveUsSize(String requested, StockXPriceExcel price) {
+    private static String displaySize(String requested, StockXPriceExcel price) {
         if (ModelNoSearchSizeFilter.isWomenSize(requested) && StrUtil.isNotBlank(price.getUswSize())) {
             return price.getUswSize();
         }
-        return StrUtil.blankToDefault(price.getUsmSize(), requested);
+        if (StrUtil.isNotBlank(price.getUsmSize())) {
+            return price.getUsmSize();
+        }
+        return StrUtil.blankToDefault(price.getSizeLabel(), requested);
     }
 
     private void ensureNotCancelled() {

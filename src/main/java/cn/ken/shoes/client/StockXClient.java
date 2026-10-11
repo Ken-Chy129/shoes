@@ -1192,6 +1192,10 @@ public class StockXClient {
             row.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
             row.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
             row.setUswSize(getUsWomenSize(searchTypeEnum, sizeMap));
+            JSONObject defaultConversion = sizeChart.getJSONObject("defaultConversion");
+            row.setSizeLabel(StrUtil.blankToDefault(variant.getString("variantValue"),
+                    defaultConversion != null ? defaultConversion.getString("size") : null));
+            row.setSizeType(defaultConversion != null ? defaultConversion.getString("type") : null);
             row.setPrice(marketData.getInteger("lowestAskAmount"));
             row.setStandardPrice(marketData.getInteger("lowestAskAmount"));
             row.setFlexPrice(marketData.getInteger("flexLowestAskAmount"));
@@ -1498,6 +1502,7 @@ public class StockXClient {
             excel.setModelNo(modelNo);
             Map<String, String> sizeMap = sizeChart.getJSONArray("displayOptions").toJavaList(JSONObject.class)
                     .stream().collect(Collectors.toMap(o -> o.getString("type"), o -> o.getString("size")));
+            applyDisplaySizeLabel(excel, sizeChart.getJSONArray("displayOptions"));
             excel.setEuSize(ShoesUtil.getShoesSizeFrom(sizeMap.get("eu")));
             excel.setUsmSize(getUsSize(searchTypeEnum, sizeMap));
             excel.setUswSize(getUsWomenSize(searchTypeEnum, sizeMap));
@@ -1535,6 +1540,27 @@ public class StockXClient {
             itemResult.add(excel);
         }
         return itemResult;
+    }
+
+    /** 网页 GraphQL 没有 defaultConversion，优先取 us 类型的展示尺码作为原始尺码。 */
+    static void applyDisplaySizeLabel(StockXPriceExcel excel, JSONArray displayOptions) {
+        if (displayOptions == null || displayOptions.isEmpty()) {
+            return;
+        }
+        List<JSONObject> options = displayOptions.toJavaList(JSONObject.class);
+        JSONObject chosen = options.stream()
+                .filter(option -> option != null && StrUtil.isNotBlank(option.getString("size")))
+                .filter(option -> StrUtil.startWithIgnoreCase(option.getString("type"), "us"))
+                .findFirst()
+                .orElseGet(() -> options.stream()
+                        .filter(option -> option != null && StrUtil.isNotBlank(option.getString("size")))
+                        .findFirst().orElse(null));
+        if (chosen == null) {
+            return;
+        }
+        String size = chosen.getString("size").trim();
+        excel.setSizeLabel(size.replaceFirst("(?i)^(US\\s*[MW]?|EU|UK)\\s+", ""));
+        excel.setSizeType(chosen.getString("type"));
     }
 
     private static void applySaleWindow(StockXPriceExcel excel, JSONObject statistics, int days) {

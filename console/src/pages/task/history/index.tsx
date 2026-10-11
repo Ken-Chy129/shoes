@@ -1187,8 +1187,8 @@ const TaskPage = () => {
                                    getValueFromEvent={(e: any) => e?.fileList}
                                    rules={[{required: true, message: '请上传创建出价Excel'}]}
                                    extra={<ExcelFieldHint
-                                       requirement="填写「货号」「尺码」「价格」三列"
-                                       note="价格为整数美元；尺码支持 US M、US W、EU 前缀。任务会跳过已有有效出价。"
+                                       requirement="填写「货号」「尺码」「价格」三列；可选「variantId」列"
+                                       note="价格为整数美元；尺码支持 US M、US W、EU 前缀及 S/M/XL 等服饰尺码。填写 variantId 时按 variantId 精确出价，尺码可留空（可直接使用购买价格参考导出的 variantId）。任务会跳过已有有效出价。"
                                    />}>
                             <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
                                 <Button icon={<UploadOutlined/>}>选择文件</Button>

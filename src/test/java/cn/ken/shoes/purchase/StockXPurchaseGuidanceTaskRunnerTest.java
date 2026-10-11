@@ -117,6 +117,83 @@ class StockXPurchaseGuidanceTaskRunnerTest {
                 assertThat(item.getPoisonPrice()).isEqualByComparingTo("699"));
     }
 
+    @Test
+    void returnsAllVariantsWithIdsWhenRequestedSizeCannotBeMatched() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        TaskItemMapper itemMapper = mapper(TaskItemMapper.class, (method, args) -> {
+            if ("insert".equals(method)) {
+                inserted.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        TaskMapper taskMapper = mapper(TaskMapper.class, (method, args) -> null);
+        StockXClient client = new StockXClient() {
+            @Override
+            public List<StockXPriceExcel> searchExactItemWithPrice(String modelNo, String type,
+                                                                   String country, StockXAccount account) {
+                return List.of(apparel("variant-s", "S"), apparel("variant-m", "M"));
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                return List.of();
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 14L,
+                List.of(input("HOODIE-1", "EU36"), input("HOODIE-1", "EU37")), client, taskMapper, itemMapper).run();
+
+        assertThat(inserted).extracting(TaskItemDO::getProductId).containsExactly("variant-s", "variant-m");
+        assertThat(inserted).extracting(TaskItemDO::getSize).containsExactly("S", "M");
+        assertThat(inserted).allSatisfy(item -> assertThat(item.getOperateResult()).startsWith("尺码未匹配"));
+    }
+
+    @Test
+    void matchesApparelLetterSizeByStockXLabel() {
+        List<TaskItemDO> inserted = new ArrayList<>();
+        TaskItemMapper itemMapper = mapper(TaskItemMapper.class, (method, args) -> {
+            if ("insert".equals(method)) {
+                inserted.add((TaskItemDO) args[0]);
+                return 1;
+            }
+            return null;
+        });
+        StockXClient client = new StockXClient() {
+            @Override
+            public List<StockXPriceExcel> searchExactItemWithPrice(String modelNo, String type,
+                                                                   String country, StockXAccount account) {
+                return List.of(apparel("variant-s", "S"), apparel("variant-xl", "XL"));
+            }
+
+            @Override
+            public List<StockXSale> queryVariantSales(String variantId, StockXAccount account) {
+                return List.of();
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("account-a");
+
+        new StockXPurchaseGuidanceTaskRunner(account, 15L, List.of(input("HOODIE-1", "xl")), client,
+                mapper(TaskMapper.class, (method, args) -> null), itemMapper).run();
+
+        assertThat(inserted).singleElement().satisfies(item -> {
+            assertThat(item.getProductId()).isEqualTo("variant-xl");
+            assertThat(item.getSize()).isEqualTo("XL");
+        });
+    }
+
+    private static StockXPriceExcel apparel(String variantId, String label) {
+        StockXPriceExcel row = new StockXPriceExcel();
+        row.setId(variantId);
+        row.setModelNo("HOODIE-1");
+        row.setSizeLabel(label);
+        row.setSizeType("us");
+        return row;
+    }
+
     private static ModelNoSearchExcel input(String modelNo, String size) {
         ModelNoSearchExcel row = new ModelNoSearchExcel();
         row.setModelNo(modelNo);
