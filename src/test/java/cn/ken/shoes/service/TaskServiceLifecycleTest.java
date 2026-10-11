@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.ListingFetchMode;
 import cn.ken.shoes.config.TaskSwitch;
@@ -214,19 +215,21 @@ class TaskServiceLifecycleTest {
     void cancellingPurchaseTaskSignalsOnlyTheSelectedAccount() {
         TaskDO running = task(31L, "running");
         running.setTaskType("purchase");
+        running.setParams("{\"operation\":\"update_bids\"}");
         TaskService taskService = new TaskService(
                 mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
-        TaskSwitch.resetPurchaseCancel("account-a");
-        TaskSwitch.resetPurchaseCancel("account-b");
+        TaskSwitch.clearAllPurchaseStates("account-a");
+        TaskSwitch.clearAllPurchaseStates("account-b");
 
         try {
             taskService.cancelTaskById(31L);
 
-            assertThat(TaskSwitch.isPurchaseCancelled("account-a")).isTrue();
-            assertThat(TaskSwitch.isPurchaseCancelled("account-b")).isFalse();
+            assertThat(TaskSwitch.isPurchaseCancelled("account-a", StockXPurchaseOperation.UPDATE_BIDS)).isTrue();
+            assertThat(TaskSwitch.isPurchaseCancelled("account-a", StockXPurchaseOperation.BIDS)).isFalse();
+            assertThat(TaskSwitch.isPurchaseCancelled("account-b", StockXPurchaseOperation.UPDATE_BIDS)).isFalse();
         } finally {
-            TaskSwitch.clearPurchaseState("account-a");
-            TaskSwitch.clearPurchaseState("account-b");
+            TaskSwitch.clearAllPurchaseStates("account-a");
+            TaskSwitch.clearAllPurchaseStates("account-b");
         }
     }
 

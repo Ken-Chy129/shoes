@@ -1,5 +1,6 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.common.ListingFetchMode;
 import org.junit.jupiter.api.Test;
 
@@ -40,15 +41,21 @@ class TaskSwitchConcurrencyTest {
     }
 
     @Test
-    void onlyOnePurchaseTaskCanRunPerAccount() {
+    void purchaseOperationsRunIndependentlyButEachOperationOnlyOncePerAccount() {
         String account = "purchase-account";
-        TaskSwitch.clearPurchaseState(account);
+        TaskSwitch.clearAllPurchaseStates(account);
 
         try {
-            assertThat(TaskSwitch.tryStartPurchase(account)).isTrue();
-            assertThat(TaskSwitch.tryStartPurchase(account)).isFalse();
+            for (StockXPurchaseOperation operation : StockXPurchaseOperation.values()) {
+                assertThat(TaskSwitch.tryStartPurchase(account, operation)).isTrue();
+            }
+            for (StockXPurchaseOperation operation : StockXPurchaseOperation.values()) {
+                assertThat(TaskSwitch.tryStartPurchase(account, operation)).isFalse();
+            }
+            assertThat(TaskSwitch.tryStartPurchase("other-" + account, StockXPurchaseOperation.BIDS)).isTrue();
         } finally {
-            TaskSwitch.clearPurchaseState(account);
+            TaskSwitch.clearAllPurchaseStates(account);
+            TaskSwitch.clearAllPurchaseStates("other-" + account);
         }
     }
 }

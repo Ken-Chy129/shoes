@@ -87,7 +87,7 @@ class TaskExecutorManagerCreateBidsTest {
                     assertThat(rows).singleElement().satisfies(row ->
                             assertThat(row.getPrice()).isEqualByComparingTo("1")));
         } finally {
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.CREATE_BIDS);
             StockXConfig.setAccounts(originalAccounts);
         }
     }
@@ -155,7 +155,7 @@ class TaskExecutorManagerCreateBidsTest {
             assertThat(submitted.await(2, TimeUnit.SECONDS)).isTrue();
             assertThat(submittedAmount.get()).isEqualByComparingTo("88");
         } finally {
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.CREATE_BIDS);
             StockXConfig.setAccounts(originalAccounts);
         }
     }

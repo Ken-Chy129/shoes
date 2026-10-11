@@ -108,7 +108,7 @@ class StockXDeleteBidsTaskRunnerTest {
         FakeStockXClient client = new FakeStockXClient();
         AtomicReference<String> status = new AtomicReference<>();
         AtomicReference<String> attributes = new AtomicReference<>();
-        TaskSwitch.cancelPurchase(account().getName());
+        TaskSwitch.cancelPurchase(account().getName(), StockXPurchaseOperation.DELETE_BIDS);
 
         try {
             runner(204L, client, taskMapper(status, attributes, new AtomicInteger()),
@@ -118,7 +118,7 @@ class StockXDeleteBidsTaskRunnerTest {
             assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.CANCEL.getCode());
             assertThat(attributes.get()).contains("\"stage\":\"已取消\"");
         } finally {
-            TaskSwitch.clearPurchaseState(account().getName());
+            TaskSwitch.clearPurchaseState(account().getName(), StockXPurchaseOperation.DELETE_BIDS);
         }
     }
 

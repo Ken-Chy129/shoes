@@ -49,7 +49,7 @@ public class StockXPurchaseTaskRunner implements Runnable {
 
     @Override
     public void run() {
-        TaskSwitch.setPurchaseRunning(account.getName(), true);
+        TaskSwitch.setPurchaseRunning(account.getName(), operation, true);
         long startTime = System.currentTimeMillis();
         int pages = 0;
         int total = 0;
@@ -124,7 +124,7 @@ public class StockXPurchaseTaskRunner implements Runnable {
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
             taskMapper.updateTaskFailed(taskId, reason.substring(0, Math.min(reason.length(), 200)));
         } finally {
-            TaskSwitch.clearPurchaseState(account.getName());
+            TaskSwitch.clearPurchaseState(account.getName(), operation);
         }
     }
 
@@ -216,7 +216,7 @@ public class StockXPurchaseTaskRunner implements Runnable {
     }
 
     private void ensureNotCancelled() {
-        if (TaskSwitch.isPurchaseCancelled(account.getName())) {
+        if (TaskSwitch.isPurchaseCancelled(account.getName(), operation)) {
             throw new TaskCancelledException();
         }
     }

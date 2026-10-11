@@ -99,9 +99,9 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     @Override
     public void run() {
         String accountName = account.getName();
-        TaskSwitch.setPurchaseRunning(accountName, true);
+        TaskSwitch.setPurchaseRunning(accountName, StockXPurchaseOperation.CREATE_BIDS, true);
         StockXRateLimitGuard.beginTaskContext(account,
-                () -> TaskSwitch.isPurchaseCancelled(accountName),
+                () -> TaskSwitch.isPurchaseCancelled(accountName, StockXPurchaseOperation.CREATE_BIDS),
                 reason -> taskMapper.updateTaskFailReason(taskId, reason),
                 () -> taskMapper.updateTaskFailReason(taskId, null));
         long start = System.currentTimeMillis();
@@ -134,7 +134,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
             log.error("[{}] 创建出价任务异常, taskId:{}", accountName, taskId, e);
         } finally {
             StockXRateLimitGuard.endTaskContext();
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.CREATE_BIDS);
         }
     }
 
@@ -514,7 +514,7 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     }
 
     private void ensureNotCancelled() {
-        if (TaskSwitch.isPurchaseCancelled(account.getName()) || Thread.currentThread().isInterrupted()) {
+        if (TaskSwitch.isPurchaseCancelled(account.getName(), StockXPurchaseOperation.CREATE_BIDS) || Thread.currentThread().isInterrupted()) {
             throw new TaskCancelledException();
         }
     }

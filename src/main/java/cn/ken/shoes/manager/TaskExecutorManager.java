@@ -1210,7 +1210,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartPurchase(accountId)) {
+        if (!TaskSwitch.tryStartPurchase(accountId, operation)) {
             log.info("购买任务已在运行: {}", accountId);
             return null;
         }
@@ -1220,7 +1220,7 @@ public class TaskExecutorManager {
         Long taskId = null;
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
-            TaskSwitch.resetPurchaseCancel(accountId);
+            TaskSwitch.resetPurchaseCancel(accountId, operation);
             Runnable runner = new StockXPurchaseTaskRunner(
                     account, taskId, operation, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-" + operation.getCode() + "-" + account.getName()).start();
@@ -1230,7 +1230,7 @@ public class TaskExecutorManager {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
             }
-            TaskSwitch.clearPurchaseState(accountId);
+            TaskSwitch.clearPurchaseState(accountId, operation);
             throw e;
         }
     }
@@ -1256,7 +1256,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartPurchase(accountId)) {
+        if (!TaskSwitch.tryStartPurchase(accountId, StockXPurchaseOperation.DELETE_BIDS)) {
             log.info("购买任务已在运行: {}", accountId);
             return null;
         }
@@ -1275,7 +1275,7 @@ public class TaskExecutorManager {
             if (targeted) {
                 taskInputSnapshotStore.saveDeleteBidsInput(taskId, snapshot);
             }
-            TaskSwitch.resetPurchaseCancel(accountId);
+            TaskSwitch.resetPurchaseCancel(accountId, StockXPurchaseOperation.DELETE_BIDS);
             Set<String> targetStyleIds = snapshot.stream()
                     .map(StockXBidDeleteInputExcel::getStyleId)
                     .collect(Collectors.toCollection(LinkedHashSet::new));
@@ -1290,7 +1290,7 @@ public class TaskExecutorManager {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
-            TaskSwitch.clearPurchaseState(accountId);
+            TaskSwitch.clearPurchaseState(accountId, StockXPurchaseOperation.DELETE_BIDS);
             throw e;
         }
     }
@@ -1310,7 +1310,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartPurchase(accountId)) {
+        if (!TaskSwitch.tryStartPurchase(accountId, StockXPurchaseOperation.CREATE_BIDS)) {
             log.info("购买任务已在运行: {}", accountId);
             return null;
         }
@@ -1324,7 +1324,7 @@ public class TaskExecutorManager {
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             taskInputSnapshotStore.saveCreateBidsInput(taskId, snapshot);
-            TaskSwitch.resetPurchaseCancel(accountId);
+            TaskSwitch.resetPurchaseCancel(accountId, StockXPurchaseOperation.CREATE_BIDS);
             StockXCreateBidsTaskRunner runner = new StockXCreateBidsTaskRunner(
                     account, taskId, snapshot, feePolicy, stockXClient, taskMapper, taskItemMapper);
             new Thread(runner, "StockX-Purchase-create-bids-" + account.getName()).start();
@@ -1334,7 +1334,7 @@ public class TaskExecutorManager {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
-            TaskSwitch.clearPurchaseState(accountId);
+            TaskSwitch.clearPurchaseState(accountId, StockXPurchaseOperation.CREATE_BIDS);
             throw e;
         }
     }
@@ -1358,7 +1358,7 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartPurchase(accountId)) {
+        if (!TaskSwitch.tryStartPurchase(accountId, StockXPurchaseOperation.UPDATE_BIDS)) {
             log.info("购买任务已在运行: {}", accountId);
             return null;
         }
@@ -1373,7 +1373,7 @@ public class TaskExecutorManager {
         try {
             taskId = createTask("stockx", TaskTypeEnum.PURCHASE.getCode(), account.getName(), params);
             taskInputSnapshotStore.saveUpdateBidsInput(taskId, snapshot);
-            TaskSwitch.resetPurchaseCancel(accountId);
+            TaskSwitch.resetPurchaseCancel(accountId, StockXPurchaseOperation.UPDATE_BIDS);
             StockXUpdateBidsTaskRunner runner = new StockXUpdateBidsTaskRunner(
                     account, taskId, snapshot, intervalSeconds, feePolicy,
                     stockXClient, taskMapper, taskItemMapper);
@@ -1384,7 +1384,7 @@ public class TaskExecutorManager {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务输入保存或启动失败: " + e.getMessage());
             }
-            TaskSwitch.clearPurchaseState(accountId);
+            TaskSwitch.clearPurchaseState(accountId, StockXPurchaseOperation.UPDATE_BIDS);
             throw e;
         }
     }

@@ -72,7 +72,7 @@ class TaskExecutorManagerUpdateBidsTest {
                         assertThat(row.getFeeConfigEnabled()).isEqualTo("是");
                     }));
         } finally {
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.UPDATE_BIDS);
             StockXConfig.setAccounts(originalAccounts);
         }
     }
@@ -115,7 +115,7 @@ class TaskExecutorManagerUpdateBidsTest {
                     assertThat(rows).singleElement().satisfies(row ->
                             assertThat(row.getFeeConfigEnabled()).isEqualTo("是")));
         } finally {
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.UPDATE_BIDS);
             StockXConfig.setAccounts(originalAccounts);
         }
     }
@@ -164,7 +164,7 @@ class TaskExecutorManagerUpdateBidsTest {
             public StockXBidBatch updateBids(List<StockXBidUpdateItem> items,
                                              StockXAccount ignored) {
                 submittedAmount.set(items.get(0).amount());
-                TaskSwitch.cancelPurchase(accountName);
+                TaskSwitch.cancelPurchase(accountName, StockXPurchaseOperation.UPDATE_BIDS);
                 submitted.countDown();
                 return new StockXBidBatch("update-batch-1", "QUEUED");
             }

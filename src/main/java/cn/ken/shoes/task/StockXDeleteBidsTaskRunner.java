@@ -75,9 +75,9 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     @Override
     public void run() {
         String accountName = account.getName();
-        TaskSwitch.setPurchaseRunning(accountName, true);
+        TaskSwitch.setPurchaseRunning(accountName, StockXPurchaseOperation.DELETE_BIDS, true);
         StockXRateLimitGuard.beginTaskContext(account,
-                () -> TaskSwitch.isPurchaseCancelled(accountName),
+                () -> TaskSwitch.isPurchaseCancelled(accountName, StockXPurchaseOperation.DELETE_BIDS),
                 reason -> taskMapper.updateTaskFailReason(taskId, reason),
                 () -> taskMapper.updateTaskFailReason(taskId, null));
         long start = System.currentTimeMillis();
@@ -203,7 +203,7 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
             log.error("[{}] 撤销出价任务异常, taskId:{}", accountName, taskId, e);
         } finally {
             StockXRateLimitGuard.endTaskContext();
-            TaskSwitch.clearPurchaseState(accountName);
+            TaskSwitch.clearPurchaseState(accountName, StockXPurchaseOperation.DELETE_BIDS);
         }
     }
 
@@ -359,7 +359,7 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     }
 
     private void ensureNotCancelled() {
-        if (TaskSwitch.isPurchaseCancelled(account.getName()) || Thread.currentThread().isInterrupted()) {
+        if (TaskSwitch.isPurchaseCancelled(account.getName(), StockXPurchaseOperation.DELETE_BIDS) || Thread.currentThread().isInterrupted()) {
             throw new TaskCancelledException();
         }
     }

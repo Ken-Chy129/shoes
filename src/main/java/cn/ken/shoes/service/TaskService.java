@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.hutool.json.JSONUtil;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.config.TaskSwitch;
 import cn.ken.shoes.mapper.TaskItemMapper;
@@ -164,11 +165,13 @@ public class TaskService {
         }
         String inventoryType = "STANDARD";
         ListingFetchMode fetchMode = ListingFetchMode.ALL;
+        StockXPurchaseOperation purchaseOperation = null;
         try {
             if (task.getParams() != null) {
                 var params = JSONUtil.parseObj(task.getParams());
                 inventoryType = params.getStr("inventoryType", "STANDARD");
                 fetchMode = ListingFetchMode.fromCode(params.getStr("listingFetchMode"));
+                purchaseOperation = StockXPurchaseOperation.fromCode(params.getStr("operation"));
             }
         } catch (Exception ignored) {}
 
@@ -192,7 +195,15 @@ public class TaskService {
             case "fetch_listings" -> { if (clearState) TaskSwitch.clearFetchListingsState(key); else TaskSwitch.cancelFetchListings(key); }
             case "excel_delist" -> { if (clearState) TaskSwitch.clearExcelDelistState(key); else TaskSwitch.cancelExcelDelist(key); }
             case "fetch_orders" -> { if (clearState) TaskSwitch.clearFetchOrdersState(accountName); else TaskSwitch.cancelFetchOrders(accountName); }
-            case "purchase" -> { if (clearState) TaskSwitch.clearPurchaseState(accountName); else TaskSwitch.cancelPurchase(accountName); }
+            case "purchase" -> {
+                if (purchaseOperation == null) {
+                    if (clearState) TaskSwitch.clearAllPurchaseStates(accountName); else TaskSwitch.cancelAllPurchases(accountName);
+                } else if (clearState) {
+                    TaskSwitch.clearPurchaseState(accountName, purchaseOperation);
+                } else {
+                    TaskSwitch.cancelPurchase(accountName, purchaseOperation);
+                }
+            }
             case "ebay_price_sync" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayPriceSync(task.getId());

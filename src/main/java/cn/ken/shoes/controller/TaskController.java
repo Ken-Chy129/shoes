@@ -588,7 +588,7 @@ public class TaskController {
         }
         Long taskId = taskExecutorManager.startPurchase(accountId, operation);
         if (taskId == null) {
-            return Result.buildError("任务已在运行或账号不存在");
+            return Result.buildError("该账号的「" + operation.getLabel() + "」任务已在运行，或账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
     }

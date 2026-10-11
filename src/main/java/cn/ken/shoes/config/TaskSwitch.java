@@ -2,6 +2,7 @@ package cn.ken.shoes.config;
 
 import cn.ken.shoes.ShoesContext;
 import cn.ken.shoes.common.ListingFetchMode;
+import cn.ken.shoes.common.StockXPurchaseOperation;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -438,33 +439,51 @@ public class TaskSwitch {
         FETCH_ORDERS_RUNNING_MAP.remove(accountId);
     }
 
-    // ==================== StockX 购买任务 ====================
+    // ==================== StockX 购买任务（按账号 + 操作隔离） ====================
     private static final ConcurrentHashMap<String, Boolean> PURCHASE_CANCELLED_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> PURCHASE_RUNNING_MAP = new ConcurrentHashMap<>();
 
-    public static boolean isPurchaseCancelled(String accountId) {
-        return Boolean.TRUE.equals(PURCHASE_CANCELLED_MAP.get(accountId));
+    public static String buildPurchaseKey(String accountId, StockXPurchaseOperation operation) {
+        return accountId + ":" + (operation != null ? operation.getCode() : "");
     }
 
-    public static void cancelPurchase(String accountId) {
-        PURCHASE_CANCELLED_MAP.put(accountId, true);
+    public static boolean isPurchaseCancelled(String accountId, StockXPurchaseOperation operation) {
+        return Boolean.TRUE.equals(PURCHASE_CANCELLED_MAP.get(buildPurchaseKey(accountId, operation)));
     }
 
-    public static void resetPurchaseCancel(String accountId) {
-        PURCHASE_CANCELLED_MAP.remove(accountId);
+    public static void cancelPurchase(String accountId, StockXPurchaseOperation operation) {
+        PURCHASE_CANCELLED_MAP.put(buildPurchaseKey(accountId, operation), true);
     }
 
-    public static boolean tryStartPurchase(String accountId) {
-        return tryStart(PURCHASE_RUNNING_MAP, accountId);
+    /** 取消账号下所有购买操作（用于缺少 operation 参数的历史任务）。 */
+    public static void cancelAllPurchases(String accountId) {
+        for (StockXPurchaseOperation operation : StockXPurchaseOperation.values()) {
+            cancelPurchase(accountId, operation);
+        }
     }
 
-    public static void setPurchaseRunning(String accountId, boolean running) {
-        PURCHASE_RUNNING_MAP.put(accountId, running);
+    public static void resetPurchaseCancel(String accountId, StockXPurchaseOperation operation) {
+        PURCHASE_CANCELLED_MAP.remove(buildPurchaseKey(accountId, operation));
     }
 
-    public static void clearPurchaseState(String accountId) {
-        PURCHASE_CANCELLED_MAP.remove(accountId);
-        PURCHASE_RUNNING_MAP.remove(accountId);
+    public static boolean tryStartPurchase(String accountId, StockXPurchaseOperation operation) {
+        return tryStart(PURCHASE_RUNNING_MAP, buildPurchaseKey(accountId, operation));
+    }
+
+    public static void setPurchaseRunning(String accountId, StockXPurchaseOperation operation, boolean running) {
+        PURCHASE_RUNNING_MAP.put(buildPurchaseKey(accountId, operation), running);
+    }
+
+    public static void clearPurchaseState(String accountId, StockXPurchaseOperation operation) {
+        String key = buildPurchaseKey(accountId, operation);
+        PURCHASE_CANCELLED_MAP.remove(key);
+        PURCHASE_RUNNING_MAP.remove(key);
+    }
+
+    public static void clearAllPurchaseStates(String accountId) {
+        for (StockXPurchaseOperation operation : StockXPurchaseOperation.values()) {
+            clearPurchaseState(accountId, operation);
+        }
     }
 
     private static boolean tryStart(ConcurrentHashMap<String, Boolean> runningMap, String key) {

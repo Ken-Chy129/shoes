@@ -231,7 +231,7 @@ class StockXCreateBidsTaskRunnerTest {
         assertThat(client.searchesStarted.await(2, TimeUnit.SECONDS)).isTrue();
 
         try {
-            TaskSwitch.cancelPurchase(account().getName());
+            TaskSwitch.cancelPurchase(account().getName(), StockXPurchaseOperation.CREATE_BIDS);
             taskThread.join(2_000);
 
             assertThat(taskThread.isAlive()).isFalse();
@@ -240,7 +240,7 @@ class StockXCreateBidsTaskRunnerTest {
             assertThat(attributes.get()).contains("\"stage\":\"已取消\"");
         } finally {
             client.releaseSearches.countDown();
-            TaskSwitch.clearPurchaseState(account().getName());
+            TaskSwitch.clearPurchaseState(account().getName(), StockXPurchaseOperation.CREATE_BIDS);
         }
     }
 
