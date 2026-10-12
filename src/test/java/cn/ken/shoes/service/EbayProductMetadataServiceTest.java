@@ -239,6 +239,51 @@ class EbayProductMetadataServiceTest {
     }
 
     @Test
+    void listingRowKeepsStockXSourceWhenFallbackSuppliesMetadata() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(cacheMapper.selectById("FALLBACK-2")).thenReturn(null);
+        when(itemMapper.selectHandleByModelNo("FALLBACK-2")).thenReturn(null);
+        EbayProductMetadata stockx = new EbayProductMetadata();
+        stockx.setTitle("StockX title");
+        stockx.setImageUrls(List.of("https://images.stockx.com/2.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("FALLBACK-2")).thenReturn(stockx);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("FALLBACK-2");
+
+        service.resolve(row);
+
+        ArgumentCaptor<ProductCatalogDO> listing = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromListing(listing.capture());
+        assertThat(listing.getValue().getSource()).isEqualTo("stockx");
+    }
+
+    @Test
+    void cachedStockXSourceIsPreservedOnListingWriteBack() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        ProductCatalogDO cached = new ProductCatalogDO();
+        cached.setModelNo("CACHED-SX");
+        cached.setTitle("Cached");
+        cached.setSource("stockx");
+        cached.setImageUrls("[\"https://images.stockx.com/3.jpg\"]");
+        when(cacheMapper.selectById("CACHED-SX")).thenReturn(cached);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, mock(KickScrewItemMapper.class), mock(KickScrewClient.class));
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("CACHED-SX");
+
+        service.resolve(row);
+
+        ArgumentCaptor<ProductCatalogDO> listing = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromListing(listing.capture());
+        assertThat(listing.getValue().getSource()).isEqualTo("stockx");
+    }
+
+    @Test
     void completeExcelOverridesAvoidCacheAndExternalLookup() {
         ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);

@@ -20,5 +20,7 @@ public class EbayProductMetadata {
     private String colorway;
     private String upperMaterial;
     private boolean manualTitle;
+    /** 资料来源(kickscrew/stockx/manual)，写回资料库时保留，避免被统一标成 kickscrew。 */
+    private String source;
     private List<String> imageUrls = new ArrayList<>();
 }

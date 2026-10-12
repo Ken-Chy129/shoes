@@ -21,6 +21,9 @@ import java.util.Locale;
 @Slf4j
 public class EbayProductMetadataService {
 
+    private static final String SOURCE_KICKSCREW = "kickscrew";
+    private static final String SOURCE_STOCKX = "stockx";
+
     private final ProductCatalogMapper catalogMapper;
     private final KickScrewItemMapper kickScrewItemMapper;
     private final KickScrewClient kickScrewClient;
@@ -58,6 +61,7 @@ public class EbayProductMetadataService {
             EbayProductMetadata fetched = kickScrewClient.queryProductMetadata(handle);
             fillMissingKickScrewColor(fetched);
             fillMissingKickScrewGender(modelNo, fetched);
+            fetched.setSource(SOURCE_KICKSCREW);
             validate(fetched);
             catalogMapper.upsertFromSource(toCatalog(modelNo, fetched));
             return fetched;
@@ -72,9 +76,8 @@ public class EbayProductMetadataService {
             }
             EbayProductMetadata fallback = stockXClient.queryProductMetadataByModelNo(modelNo);
             validate(fallback);
-            ProductCatalogDO catalog = toCatalog(modelNo, fallback);
-            catalog.setSource("stockx");
-            catalogMapper.upsertFromSource(catalog);
+            fallback.setSource(SOURCE_STOCKX);
+            catalogMapper.upsertFromSource(toCatalog(modelNo, fallback));
             return fallback;
         } catch (RuntimeException stockxFailure) {
             log.warn("StockX商品资料兜底失败，modelNo:{}, reason:{}", modelNo, stockxFailure.getMessage());
@@ -142,6 +145,7 @@ public class EbayProductMetadataService {
         metadata.setColorway(cache.getColorway());
         metadata.setUpperMaterial(cache.getUpperMaterial());
         metadata.setManualTitle(Boolean.TRUE.equals(cache.getManualOverride()));
+        metadata.setSource(cache.getSource());
         if ("kickscrew".equalsIgnoreCase(cache.getSource())) {
             fillMissingKickScrewColor(metadata);
         }
@@ -192,7 +196,7 @@ public class EbayProductMetadataService {
         cache.setColorway(metadata.getColorway());
         cache.setUpperMaterial(metadata.getUpperMaterial());
         cache.setImageUrls(JSON.toJSONString(metadata.getImageUrls()));
-        cache.setSource("kickscrew");
+        cache.setSource(present(metadata.getSource()) ? metadata.getSource() : SOURCE_KICKSCREW);
         cache.setSourceUpdatedAt(new Date());
         cache.setManualOverride(false);
         return cache;
