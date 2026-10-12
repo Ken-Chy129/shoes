@@ -638,7 +638,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                                 const attrs = JSON.parse(attributes);
                                 return <span style={{color: '#1677ff', fontWeight: 500}}>
                                     {(taskType === 'ebay_price_sync' || taskType === 'eBay定时改价')
-                                        ? `本轮 ${attrs.total ?? 0} | 改价 ${attrs.changed ?? 0} | 无价 ${attrs.noPrice ?? 0} | 跳过 ${attrs.skipped ?? 0}`
+                                        ? `本轮 ${attrs.total ?? 0} | 改价 ${attrs.changed ?? 0} | 无价 ${attrs.noPrice ?? 0} | 跳过 ${attrs.skipped ?? 0}${attrs.skippedUsRegion ? ` | 美区不改价 ${attrs.skippedUsRegion}` : ''}`
                                         : (taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
                                             ? `总数 ${attrs.total ?? 0} | 清零 ${attrs.zeroed ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`
                                             : (taskType === 'ebay_delist' || taskType === 'eBay下架')

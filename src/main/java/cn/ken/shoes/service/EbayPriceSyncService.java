@@ -2,6 +2,7 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.config.EbayProperties;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.config.PriceSwitch;
 import cn.ken.shoes.exception.TaskCancelledException;
 import cn.ken.shoes.client.PoisonClient;
@@ -164,8 +165,14 @@ public class EbayPriceSyncService {
         List<OfferContext> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
         int skipped = 0;
+        int skippedUsRegion = 0;
         for (JSONObject offer : offers) {
             ensureNotCancelled(cancelled);
+            if (isUsRegionOffer(offer)) {
+                // 改价只覆盖港区商品；美区的价格和库存由人工/美区上架维护。
+                skippedUsRegion++;
+                continue;
+            }
             EbayListingDO mapping = mappingFor(offer, byOfferId, bySku);
             if (mapping == null || mapping.getStyleId() == null) {
                 skipped++;
@@ -187,9 +194,11 @@ public class EbayPriceSyncService {
             // 空轮次不能静默成功，否则映射丢失时页面只会显示"第N轮"而没有任何原因。
             String reason = bySku.isEmpty()
                     ? "未找到eBay上架映射（ebay_listing为空），本轮无商品可改价"
-                    : "本轮未查到可改价的在售offer（映射" + bySku.size() + "个，跳过" + skipped + "个）";
+                    : "本轮未查到可改价的港区在售offer（映射" + bySku.size() + "个，跳过" + skipped
+                    + "个，美区不改价" + skippedUsRegion + "个）";
             taskMapper.updateTaskFailReason(taskId, reason);
-            taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, skipped).toJSONString());
+            taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, skipped)
+                    .fluentPut("skippedUsRegion", skippedUsRegion).toJSONString());
             return;
         }
 
@@ -204,6 +213,7 @@ public class EbayPriceSyncService {
         if (poisonPrices == null || poisonPrices.isEmpty()) {
             taskMapper.updateTaskFailReason(taskId, "本轮得物查价未返回可确认结果，已跳过改价和清库存");
             taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), 0, 0, skipped)
+                    .fluentPut("skippedUsRegion", skippedUsRegion)
                     .fluentPut("skippedForPoisonFailure", contexts.size()).toJSONString());
             return;
         }
@@ -254,7 +264,17 @@ public class EbayPriceSyncService {
         }
         taskMapper.updateTaskFailReason(taskId, failed == 0 ? null : "本轮有 " + failed + " 个商品处理失败");
         taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), changed, noPrice, skipped)
+                .fluentPut("skippedUsRegion", skippedUsRegion)
                 .fluentPut("failed", failed).toJSONString());
+    }
+
+    /** 以 offer 实际的发货地点为准判断美区，不依赖本地映射，历史数据也不会误判。 */
+    private boolean isUsRegionOffer(JSONObject offer) {
+        EbayProperties.ListingSettings us = properties.listingSettings(EbayListingRegion.US);
+        String usLocation = us.merchantLocationKey();
+        String offerLocation = offer.getString("merchantLocationKey");
+        return usLocation != null && !usLocation.isBlank() && offerLocation != null
+                && usLocation.trim().equalsIgnoreCase(offerLocation.trim());
     }
 
     private void runLoop(Long taskId, long intervalHours, BigDecimal multiplier,

@@ -34,6 +34,7 @@ class EbayPriceSyncServiceTest {
     private EbaySellApiClient ebayClient;
     private PoisonClient poisonClient;
     private EbayPriceSyncService service;
+    private EbayProperties properties;
 
     @BeforeEach
     void setUp() {
@@ -42,7 +43,7 @@ class EbayPriceSyncServiceTest {
         ebayListingMapper = mock(EbayListingMapper.class);
         ebayClient = mock(EbaySellApiClient.class);
         poisonClient = mock(PoisonClient.class);
-        EbayProperties properties = new EbayProperties();
+        properties = new EbayProperties();
         properties.setDefaultMarketplaceId("EBAY_US");
         properties.setDefaultCurrency("USD");
         properties.setDefaultContentLanguage("en-US");
@@ -239,6 +240,35 @@ class EbayPriceSyncServiceTest {
                 ArgumentCaptor.forClass(java.util.Collection.class);
         verify(ebayClient).getActiveOffersBySkus(skus.capture());
         assertThat(skus.getValue()).containsExactly("SKU-1", "SKU-2");
+    }
+
+    @Test
+    void onlyRepricesHongKongOffersAndLeavesUsOffersUntouched() {
+        properties.getUs().setMerchantLocationKey("united_states");
+        properties.getUs().setFulfillmentPolicyId("263162428010");
+        EbayListingDO hk = mapping();
+        EbayListingDO us = mapping();
+        us.setSku("SKU-US");
+        us.setOfferId("offer-us");
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(hk, us));
+        when(ebayClient.getActiveOffersBySkus(any())).thenReturn(List.of(
+                offer("offer-1", "SKU-1", "100.00", 1)
+                        .fluentPut("merchantLocationKey", "hong_kong_mong_kok"),
+                offer("offer-us", "SKU-US", "150.00", 1)
+                        .fluentPut("merchantLocationKey", "united_states")));
+        PoisonPriceDO price = new PoisonPriceDO();
+        price.setModelNo("DD1391-100");
+        price.setEuSize("42");
+        price.setPrice(730);
+        when(poisonClient.batchQueryPrice(any())).thenReturn(List.of(price));
+
+        service.runSingleRound(77L, new BigDecimal("1.1"), new BigDecimal("250"), 1);
+
+        verify(ebayClient).updateOffer(org.mockito.ArgumentMatchers.eq("offer-1"), any(), any());
+        verify(ebayClient, org.mockito.Mockito.never())
+                .updateOffer(org.mockito.ArgumentMatchers.eq("offer-us"), any(), any());
+        verify(taskMapper).updateTaskAttributes(org.mockito.ArgumentMatchers.eq(77L),
+                org.mockito.ArgumentMatchers.contains("\"skippedUsRegion\":1"));
     }
 
     private JSONObject offer(String offerId, String sku, String price, int quantity) {
