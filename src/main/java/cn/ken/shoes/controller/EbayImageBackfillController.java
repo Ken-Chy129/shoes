@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 @RestController
@@ -23,8 +24,9 @@ public class EbayImageBackfillController {
     @PostMapping("start")
     public Result<Boolean> start(@RequestParam(defaultValue = "true") boolean refreshCatalog,
                                  @RequestParam(defaultValue = "false") boolean replaceListing,
-                                 @RequestParam(defaultValue = "0") int limit) {
-        if (!service.start(refreshCatalog, replaceListing, limit)) {
+                                 @RequestParam(defaultValue = "0") int limit,
+                                 @RequestParam(required = false) List<String> styleIds) {
+        if (!service.start(refreshCatalog, replaceListing, limit, styleIds)) {
             return Result.buildError("图片补数据任务正在运行");
         }
         return Result.buildSuccess(true);

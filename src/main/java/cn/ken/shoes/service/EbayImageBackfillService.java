@@ -80,6 +80,16 @@ public class EbayImageBackfillService {
      * @param limit          第 2 步最多处理多少个货号，<=0 表示不限
      */
     public boolean start(boolean refreshCatalog, boolean replaceListing, int limit) {
+        return start(refreshCatalog, replaceListing, limit, List.of());
+    }
+
+    /**
+     * @param onlyStyleIds 非空时只处理这些货号（用于小批量验证），并且不受"已处理"状态限制
+     */
+    public boolean start(boolean refreshCatalog, boolean replaceListing, int limit,
+                         List<String> onlyStyleIds) {
+        List<String> only = onlyStyleIds == null ? List.of() : onlyStyleIds.stream()
+                .map(EbayImageBackfillService::normalize).filter(java.util.Objects::nonNull).distinct().toList();
         if (!running.compareAndSet(false, true)) {
             return false;
         }
@@ -87,10 +97,10 @@ public class EbayImageBackfillService {
         Thread.ofVirtual().name("Ebay-Image-Backfill").start(() -> {
             try {
                 if (refreshCatalog) {
-                    refreshCatalog();
+                    refreshCatalog(only);
                 }
                 if (replaceListing && !cancelled.get()) {
-                    replaceListingImages(limit);
+                    replaceListingImages(limit, only);
                 }
                 phase.set(cancelled.get() ? "cancelled" : "finished");
             } catch (Exception e) {
@@ -144,8 +154,8 @@ public class EbayImageBackfillService {
         return new ArrayList<>(targets);
     }
 
-    private void refreshCatalog() {
-        List<String> targets = catalogTargets();
+    private void refreshCatalog(List<String> only) {
+        List<String> targets = only.isEmpty() ? catalogTargets() : only;
         resetCounters("refreshCatalog", targets.size());
         log.info("eBay图片补数据-重抓资料开始，货号数:{}", targets.size());
         for (String modelNo : targets) {
@@ -187,7 +197,7 @@ public class EbayImageBackfillService {
         }
     }
 
-    private void replaceListingImages(int limit) {
+    private void replaceListingImages(int limit, List<String> only) {
         Map<String, ProductCatalogDO> catalog = new LinkedHashMap<>();
         for (ProductCatalogDO row : catalogMapper.selectList(new QueryWrapper<>())) {
             catalog.put(row.getModelNo().toUpperCase(Locale.ROOT), row);
@@ -200,7 +210,7 @@ public class EbayImageBackfillService {
             }
         }
         // 只处理记录为 KC 图片的货号；替换成功后标记为 stockx，重跑时自动跳过。
-        List<String> styles = imageStateMapper.selectPendingStyleIds().stream()
+        List<String> styles = (only.isEmpty() ? imageStateMapper.selectPendingStyleIds() : only).stream()
                 .map(EbayImageBackfillService::normalize)
                 .filter(activeStyles::contains)
                 .toList();
