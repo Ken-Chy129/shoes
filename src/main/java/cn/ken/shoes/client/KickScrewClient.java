@@ -406,6 +406,47 @@ public class KickScrewClient {
         return metadata;
     }
 
+    /**
+     * 本地 KC 商品表里没有的货号，用 Storefront 搜索找 handle。搜索是模糊匹配，
+     * 只接受 handle 以该货号结尾的结果（KC 的 handle 格式为 "...-货号"），避免拿到相近货号的图。
+     */
+    public String findHandleByModelNo(String modelNo) {
+        if (StrUtil.isBlank(modelNo)) {
+            return null;
+        }
+        String query = """
+                query FindByModelNo($query: String!) {
+                  products(first: 10, query: $query) { edges { node { handle } } }
+                }
+                """;
+        String raw = HttpUtil.doPost(KickScrewApiConstant.SEARCH_ITEM_SIZE_PRICE,
+                JSON.toJSONString(Map.of("query", query, "variables", Map.of("query", modelNo.trim()))),
+                getStorefrontHeaders());
+        List<String> handles = Optional.ofNullable(raw)
+                .filter(StrUtil::isNotBlank)
+                .map(JSON::parseObject)
+                .map(json -> json.getJSONObject("data"))
+                .map(json -> json.getJSONObject("products"))
+                .map(json -> json.getJSONArray("edges"))
+                .map(array -> array.toJavaList(JSONObject.class))
+                .orElse(List.of())
+                .stream()
+                .map(edge -> edge.getJSONObject("node"))
+                .filter(Objects::nonNull)
+                .map(node -> node.getString("handle"))
+                .filter(StrUtil::isNotBlank)
+                .toList();
+        return matchHandle(modelNo, handles);
+    }
+
+    static String matchHandle(String modelNo, List<String> handles) {
+        String suffix = "-" + modelNo.trim().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
+        return handles.stream()
+                .filter(handle -> handle.toLowerCase(Locale.ROOT).endsWith(suffix))
+                .findFirst()
+                .orElse(null);
+    }
+
     private String cleanMetafield(String value) {
         if (value == null) {
             return null;

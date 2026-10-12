@@ -99,7 +99,10 @@ public class EbayProductMetadataService {
         try {
             String handle = kickScrewItemMapper.selectHandleByModelNo(modelNo);
             if (handle == null || handle.isBlank()) {
-                throw new IllegalArgumentException("本地没有该货号的KC资料");
+                handle = kickScrewClient.findHandleByModelNo(modelNo);
+            }
+            if (handle == null || handle.isBlank()) {
+                throw new IllegalArgumentException("KC没有该货号的商品");
             }
             kc = kickScrewClient.queryProductMetadata(handle);
             if (kc == null || !present(kc.getTitle())) {
