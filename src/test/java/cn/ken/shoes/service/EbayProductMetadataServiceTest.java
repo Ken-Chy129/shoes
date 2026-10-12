@@ -283,6 +283,112 @@ class EbayProductMetadataServiceTest {
         assertThat(listing.getValue().getSource()).isEqualTo("stockx");
     }
 
+    private static EbayProductMetadata kcMetadata(String... images) {
+        EbayProductMetadata kc = new EbayProductMetadata();
+        kc.setTitle("KC title");
+        kc.setColor("Black");
+        kc.setUpperMaterial("Leather");
+        kc.setImageUrls(List.of(images));
+        return kc;
+    }
+
+    private static EbayProductMetadata stockxMetadata(String... images) {
+        EbayProductMetadata stockx = new EbayProductMetadata();
+        stockx.setTitle("StockX title");
+        stockx.setImageUrls(List.of(images));
+        return stockx;
+    }
+
+    @Test
+    void prefersStockXImagesWhileKeepingKickScrewAttributes() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("PREF-1")).thenReturn("pref-handle");
+        when(kickScrewClient.queryProductMetadata("pref-handle"))
+                .thenReturn(kcMetadata("https://cdn.shopify.com/kc1.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("PREF-1")).thenReturn(stockxMetadata(
+                "https://images.stockx.com/1.jpg", "https://images.stockx.com/2.jpg",
+                "https://images.stockx.com/3.jpg", "https://images.stockx.com/4.jpg",
+                "https://images.stockx.com/5.jpg"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+
+        EbayProductMetadata result = service.resolve("PREF-1");
+
+        assertThat(result.getTitle()).isEqualTo("KC title");
+        assertThat(result.getUpperMaterial()).isEqualTo("Leather");
+        assertThat(result.getImageUrls()).hasSize(5).allMatch(url -> url.contains("images.stockx.com"));
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
+        assertThat(cache.getValue().getSource()).isEqualTo("stockx");
+    }
+
+    @Test
+    void topsUpWithKickScrewImagesWhenStockXHasFewerThanFive() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("PREF-2")).thenReturn("pref-handle");
+        when(kickScrewClient.queryProductMetadata("pref-handle")).thenReturn(kcMetadata(
+                "https://cdn.shopify.com/kc1.jpg", "https://cdn.shopify.com/kc2.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("PREF-2"))
+                .thenReturn(stockxMetadata("https://images.stockx.com/1.jpg"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+
+        EbayProductMetadata result = service.resolve("PREF-2");
+
+        assertThat(result.getImageUrls()).containsExactly("https://images.stockx.com/1.jpg",
+                "https://cdn.shopify.com/kc1.jpg", "https://cdn.shopify.com/kc2.jpg");
+    }
+
+    @Test
+    void usesKickScrewImagesWhenStockXHasNoProduct() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("PREF-3")).thenReturn("pref-handle");
+        when(kickScrewClient.queryProductMetadata("pref-handle"))
+                .thenReturn(kcMetadata("https://cdn.shopify.com/kc1.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("PREF-3")).thenReturn(null);
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+
+        EbayProductMetadata result = service.resolve("PREF-3");
+
+        assertThat(result.getImageUrls()).containsExactly("https://cdn.shopify.com/kc1.jpg");
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
+        assertThat(cache.getValue().getSource()).isEqualTo("kickscrew");
+    }
+
+    @Test
+    void doesNotCacheKickScrewOnlyImagesWhenStockXLookupFailsTemporarily() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("PREF-4")).thenReturn("pref-handle");
+        when(kickScrewClient.queryProductMetadata("pref-handle"))
+                .thenReturn(kcMetadata("https://cdn.shopify.com/kc1.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("PREF-4"))
+                .thenThrow(new IllegalStateException("StockX账号池耗尽"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+        EbayListingExcel row = new EbayListingExcel();
+        row.setStyleId("PREF-4");
+
+        EbayProductMetadata result = service.resolve(row);
+
+        assertThat(result.getImageUrls()).containsExactly("https://cdn.shopify.com/kc1.jpg");
+        verify(cacheMapper, never()).upsertFromSource(org.mockito.ArgumentMatchers.any());
+        verify(cacheMapper, never()).upsertFromListing(org.mockito.ArgumentMatchers.any());
+    }
+
     @Test
     void completeExcelOverridesAvoidCacheAndExternalLookup() {
         ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);

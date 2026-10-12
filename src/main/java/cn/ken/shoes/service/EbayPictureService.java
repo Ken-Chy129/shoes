@@ -2,6 +2,8 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbayPictureApiClient;
+import cn.ken.shoes.client.EbayQuotaExceededException;
+import lombok.extern.slf4j.Slf4j;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import org.springframework.stereotype.Service;
@@ -15,6 +17,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
+@Slf4j
 @Service
 public class EbayPictureService {
 
@@ -45,16 +48,28 @@ public class EbayPictureService {
         }
         List<String> uniqueUrls = new ArrayList<>(new LinkedHashSet<>(imageUrls));
         List<String> hostedUrls = new ArrayList<>(uniqueUrls.size());
+        EbayApiException lastFailure = null;
         for (int i = 0; i < uniqueUrls.size(); i++) {
-            String sourceUrl = validateImageUrl(uniqueUrls.get(i));
+            String sourceUrl = normalizeSourceUrl(validateImageUrl(uniqueUrls.get(i)));
             if (isEbayHosted(sourceUrl)) {
                 hostedUrls.add(sourceUrl);
                 continue;
             }
             String cached = hostedCache.getIfPresent(sourceUrl);
             if (cached == null) {
-                Optional<String> hosted = apiClient.uploadExternalPicture(
-                        sourceUrl, pictureName(pictureNamePrefix, i + 1));
+                Optional<String> hosted;
+                try {
+                    hosted = apiClient.uploadExternalPicture(
+                            sourceUrl, pictureName(pictureNamePrefix, i + 1));
+                } catch (EbayQuotaExceededException e) {
+                    throw e;
+                } catch (EbayApiException e) {
+                    // 单张图失败(源站404、格式不支持等)只跳过这一张，不拖垮整组上架；
+                    // 不缓存失败结果，临时错误下次还能重试。
+                    lastFailure = e;
+                    log.warn("eBay图片托管跳过单张图片, url:{}, reason:{}", sourceUrl, e.getMessage());
+                    continue;
+                }
                 if (hosted.isPresent()
                         && !isEbayHosted(validateImageUrl(hosted.get()))) {
                     throw new EbayApiException("eBay图片托管返回了无效地址");
@@ -68,6 +83,9 @@ public class EbayPictureService {
             hostedUrls.add(cached);
         }
         if (hostedUrls.isEmpty()) {
+            if (lastFailure != null) {
+                throw lastFailure;
+            }
             throw new IllegalArgumentException(
                     "图片分辨率不足，至少一张图片的最长边需达到500像素");
         }
@@ -97,6 +115,22 @@ public class EbayPictureService {
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("图片链接(image URL)无效", e);
         }
+    }
+
+    /**
+     * StockX 图库链接带 fm=webp 时 eBay 会报 "unsupported file format"，统一换成 jpg。
+     */
+    static String normalizeSourceUrl(String imageUrl) {
+        try {
+            String host = new URI(imageUrl).getHost();
+            if (host == null || !host.toLowerCase(Locale.ROOT).endsWith("stockx.com")
+                    && !host.toLowerCase(Locale.ROOT).endsWith("stockx-assets.imgix.net")) {
+                return imageUrl;
+            }
+        } catch (URISyntaxException e) {
+            return imageUrl;
+        }
+        return imageUrl.replaceAll("([?&])fm=webp(?=&|$)", "$1fm=jpg");
     }
 
     private boolean isEbayHosted(String imageUrl) {

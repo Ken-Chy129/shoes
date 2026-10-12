@@ -22,5 +22,7 @@ public class EbayProductMetadata {
     private boolean manualTitle;
     /** 资料来源(kickscrew/stockx/manual)，写回资料库时保留，避免被统一标成 kickscrew。 */
     private String source;
+    /** 是否可以写入资料库；StockX 临时查询失败时为 false，下次重新查。 */
+    private boolean cacheable = true;
     private List<String> imageUrls = new ArrayList<>();
 }

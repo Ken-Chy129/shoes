@@ -49,7 +49,7 @@ CREATE INDEX kick_screw_item_brand_index ON kick_screw_item (brand);
 -- -------------------------------------------
 CREATE TABLE product_catalog
 (
-    model_no          VARCHAR(64)  NOT NULL PRIMARY KEY COMMENT '商品货号',
+    model_no          VARCHAR(255) NOT NULL PRIMARY KEY COMMENT '商品货号',
     title             VARCHAR(255) NOT NULL COMMENT '商品标题',
     brand             VARCHAR(65)  NULL COMMENT '品牌',
     description       TEXT         NULL COMMENT '商品描述',

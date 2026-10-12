@@ -117,4 +117,43 @@ class EbayPictureServiceTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString());
     }
+
+    @Test
+    void skipsSingleFailedImageAndConvertsStockXWebpToJpg() {
+        EbayPictureApiClient client = mock(EbayPictureApiClient.class);
+        when(client.uploadExternalPicture(
+                "https://images.stockx.com/360/a/img07.jpg?fm=jpg&w=559", "SKU-1-1"))
+                .thenThrow(new cn.ken.shoes.client.EbayApiException(
+                        "eBay图片托管失败：21916544 ExternalPictureURL not found"));
+        when(client.uploadExternalPicture(
+                "https://images.stockx.com/images/a.jpg?fm=jpg&q=90", "SKU-1-2"))
+                .thenReturn(Optional.of("https://i.ebayimg.com/images/g/a/s-l1600.jpg"));
+        EbayPictureService service = new EbayPictureService(client);
+
+        List<String> result = service.hostImages(List.of(
+                "https://images.stockx.com/360/a/img07.jpg?fm=webp&w=559",
+                "https://images.stockx.com/images/a.jpg?fm=webp&q=90"), "SKU-1");
+
+        assertThat(result).containsExactly("https://i.ebayimg.com/images/g/a/s-l1600.jpg");
+    }
+
+    @Test
+    void stillFailsWhenEveryImageFailsAndStopsOnQuotaExhaustion() {
+        EbayPictureApiClient client = mock(EbayPictureApiClient.class);
+        when(client.uploadExternalPicture("https://cdn.example.com/missing.jpg", "SKU-1-1"))
+                .thenThrow(new cn.ken.shoes.client.EbayApiException("eBay图片托管失败：not found"));
+        EbayPictureService service = new EbayPictureService(client);
+        assertThatThrownBy(() -> service.hostImages(
+                List.of("https://cdn.example.com/missing.jpg"), "SKU-1"))
+                .hasMessageContaining("not found");
+
+        EbayPictureApiClient quotaClient = mock(EbayPictureApiClient.class);
+        when(quotaClient.uploadExternalPicture("https://cdn.example.com/a.jpg", "SKU-2-1"))
+                .thenThrow(new cn.ken.shoes.client.EbayQuotaExceededException("额度已用完"));
+        EbayPictureService quotaService = new EbayPictureService(quotaClient);
+        assertThatThrownBy(() -> quotaService.hostImages(List.of(
+                "https://cdn.example.com/a.jpg", "https://cdn.example.com/b.jpg"), "SKU-2"))
+                .isInstanceOf(cn.ken.shoes.client.EbayQuotaExceededException.class);
+        verify(quotaClient, never()).uploadExternalPicture("https://cdn.example.com/b.jpg", "SKU-2-2");
+    }
 }
