@@ -429,6 +429,31 @@ class EbayProductMetadataServiceTest {
     }
 
     @Test
+    void dropsUnreachableStockXFramesAndTopsUpWithReachableKcImages() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        KickScrewClient kickScrewClient = mock(KickScrewClient.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("DEAD-1")).thenReturn("dead-handle");
+        when(kickScrewClient.queryProductMetadata("dead-handle")).thenReturn(kcMetadata(
+                "https://cdn.shopify.com/kc1.jpg", "https://cdn.shopify.com/kc-dead.jpg",
+                "https://cdn.shopify.com/kc2.jpg", "https://cdn.shopify.com/kc3.jpg"));
+        when(stockXClient.queryProductMetadataByModelNo("DEAD-1")).thenReturn(stockxMetadata(
+                "https://images.stockx.com/main.jpg", "https://images.stockx.com/360/img42.jpg",
+                "https://images.stockx.com/360/img01.jpg"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, kickScrewClient, stockXClient);
+        service.setImageReachable(url -> !url.contains("img42") && !url.contains("kc-dead"));
+
+        EbayProductMetadata result = service.resolve("DEAD-1");
+
+        assertThat(result.getImageUrls()).containsExactly(
+                "https://images.stockx.com/main.jpg", "https://images.stockx.com/360/img01.jpg",
+                "https://cdn.shopify.com/kc1.jpg", "https://cdn.shopify.com/kc2.jpg",
+                "https://cdn.shopify.com/kc3.jpg");
+    }
+
+    @Test
     void completeExcelOverridesAvoidCacheAndExternalLookup() {
         ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);

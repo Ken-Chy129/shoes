@@ -31,6 +31,8 @@ public class EbayProductMetadataService {
     private final KickScrewItemMapper kickScrewItemMapper;
     private final KickScrewClient kickScrewClient;
     private final StockXClient stockXClient;
+    /** 图片可访问性检查；StockX 环拍列表偶尔会包含已失效(404)的帧。为空表示不检查(单测)。 */
+    private java.util.function.Predicate<String> imageReachable = url -> true;
 
     public EbayProductMetadataService(ProductCatalogMapper catalogMapper,
                                       KickScrewItemMapper kickScrewItemMapper,
@@ -47,6 +49,40 @@ public class EbayProductMetadataService {
         this.kickScrewItemMapper = kickScrewItemMapper;
         this.kickScrewClient = kickScrewClient;
         this.stockXClient = stockXClient;
+    }
+
+    /** 生产环境开启图片可访问性检查；单测里不发真实网络请求。 */
+    @jakarta.annotation.PostConstruct
+    void enableImageCheck() {
+        this.imageReachable = EbayProductMetadataService::isImageReachable;
+    }
+
+    void setImageReachable(java.util.function.Predicate<String> imageReachable) {
+        this.imageReachable = imageReachable;
+    }
+
+    private static final okhttp3.OkHttpClient IMAGE_CHECK_CLIENT = new okhttp3.OkHttpClient.Builder()
+            .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
+
+    /** HEAD 请求确认图片存在且是图片；StockX 的 webp 链接按 jpg 检查，和上传 eBay 时一致。 */
+    static boolean isImageReachable(String url) {
+        String checkUrl = EbayPictureService.normalizeSourceUrl(url);
+        okhttp3.Request request = new okhttp3.Request.Builder().url(checkUrl).head()
+                .header("User-Agent", "Mozilla/5.0").build();
+        try (okhttp3.Response response = IMAGE_CHECK_CLIENT.newCall(request).execute()) {
+            String type = response.header("Content-Type", "");
+            return response.code() == 200 && type != null && type.toLowerCase(Locale.ROOT).startsWith("image/");
+        } catch (Exception e) {
+            log.warn("图片检查失败, url:{}, reason:{}", checkUrl, e.getMessage());
+            return false;
+        }
+    }
+
+    private List<String> reachable(List<String> urls) {
+        return urls.stream().filter(url -> url != null && !url.isBlank())
+                .filter(imageReachable).toList();
     }
 
     public EbayProductMetadata resolve(String rawModelNo) {
@@ -92,7 +128,7 @@ public class EbayProductMetadataService {
                     modelNo, e.getMessage());
         }
         List<String> stockxImages = stockx != null && stockx.getImageUrls() != null
-                ? stockx.getImageUrls() : List.of();
+                ? reachable(stockx.getImageUrls()) : List.of();
 
         EbayProductMetadata kc = null;
         RuntimeException kcFailure = null;
@@ -120,7 +156,15 @@ public class EbayProductMetadataService {
         if (kc != null) {
             result = kc;
             List<String> kcImages = kc.getImageUrls() != null ? kc.getImageUrls() : List.of();
-            result.setImageUrls(mergeImages(stockxImages, kcImages));
+            // KC 图只检查真正用来补位的那几张，避免多余请求。
+            List<String> merged = mergeImages(stockxImages, kcImages);
+            List<String> checkedKc = reachable(merged.subList(Math.min(stockxImages.size(), merged.size()), merged.size()));
+            List<String> remainingKc = kcImages.stream().filter(url -> !merged.contains(url)).toList();
+            List<String> extraKc = checkedKc.size() + stockxImages.size() < MIN_PREFERRED_IMAGES
+                    ? reachable(remainingKc) : List.of();
+            List<String> kcUsable = new java.util.ArrayList<>(checkedKc);
+            kcUsable.addAll(extraKc);
+            result.setImageUrls(mergeImages(stockxImages, kcUsable));
             result.setSource(stockxImages.isEmpty() ? SOURCE_KICKSCREW : SOURCE_STOCKX);
         } else if (stockx != null && present(stockx.getTitle()) && !stockxImages.isEmpty()) {
             result = stockx;
