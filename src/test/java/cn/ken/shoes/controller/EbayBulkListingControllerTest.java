@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
 import com.alibaba.excel.EasyExcel;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -49,7 +51,8 @@ class EbayBulkListingControllerTest {
         when(service.start(argThat(rows -> rows.size() == 1
                 && "DD1391-100".equals(rows.getFirst().getStyleId())
                 && "USM10".equals(rows.getFirst().getSize())
-                && rows.getFirst().getPrice().compareTo(new BigDecimal("129.99")) == 0)))
+                && rows.getFirst().getPrice().compareTo(new BigDecimal("129.99")) == 0),
+                eq(EbayListingRegion.HK)))
                 .thenReturn(2026L);
         EbayBulkListingController controller = new EbayBulkListingController(service);
 
@@ -60,12 +63,38 @@ class EbayBulkListingControllerTest {
     }
 
     @Test
+    void passesTheSelectedUsRegionToTheService() throws Exception {
+        EbayBulkListingService service = mock(EbayBulkListingService.class);
+        when(service.start(argThat(rows -> rows.size() == 1), eq(EbayListingRegion.US)))
+                .thenReturn(2030L);
+        EbayBulkListingController controller = new EbayBulkListingController(service);
+
+        Result<String> result = controller.startBulkListing(excelFile(List.of(row())), "US");
+
+        assertThat(result.getSuccess()).isTrue();
+        assertThat(result.getData()).isEqualTo("2030");
+    }
+
+    @Test
+    void rejectsUnknownRegionsBeforeStartingATask() throws Exception {
+        EbayBulkListingService service = mock(EbayBulkListingService.class);
+        EbayBulkListingController controller = new EbayBulkListingController(service);
+
+        Result<String> result = controller.startBulkListing(excelFile(List.of(row())), "eu");
+
+        assertThat(result.getSuccess()).isFalse();
+        assertThat(result.getErrorMsg()).contains("发货区域");
+        verifyNoInteractions(service);
+    }
+
+    @Test
     void importsThePreviousTemplateHeadersByStableColumnPosition() {
         EbayBulkListingService service = mock(EbayBulkListingService.class);
         when(service.start(argThat(rows -> rows.size() == 1
                 && "DD1391-100".equals(rows.getFirst().getStyleId())
                 && "USM10".equals(rows.getFirst().getSize())
-                && rows.getFirst().getPrice().compareTo(new BigDecimal("129.99")) == 0)))
+                && rows.getFirst().getPrice().compareTo(new BigDecimal("129.99")) == 0),
+                eq(EbayListingRegion.HK)))
                 .thenReturn(2027L);
         EbayBulkListingController controller = new EbayBulkListingController(service);
 
@@ -108,7 +137,8 @@ class EbayBulkListingControllerTest {
     @Test
     void acceptsMoreThanOneThousandRows() {
         EbayBulkListingService service = mock(EbayBulkListingService.class);
-        when(service.start(argThat(rows -> rows.size() == 1_001))).thenReturn(2028L);
+        when(service.start(argThat(rows -> rows.size() == 1_001), eq(EbayListingRegion.HK)))
+                .thenReturn(2028L);
         EbayBulkListingController controller = new EbayBulkListingController(service);
         List<EbayListingExcel> rows = java.util.stream.IntStream.rangeClosed(1, 1_001)
                 .mapToObj(index -> {

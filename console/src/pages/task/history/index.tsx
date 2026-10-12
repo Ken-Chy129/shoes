@@ -298,14 +298,15 @@ const TaskPage = () => {
             if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
                 const file = values.ebayListingExcel?.[0]?.originFileObj;
                 if (!file) { message.error('请上传eBay批量上架Excel'); setCreating(false); return; }
-                doUploadRequestWithParams(TASK_API.EBAY_START_BULK_LISTING, file, {}, {
+                const region = values.ebayRegion || 'hk';
+                doUploadRequestWithParams(TASK_API.EBAY_START_BULK_LISTING, file, {region}, {
                     onSuccess: (res: any) => {
                         if (!res.success) {
                             message.error(res.errorMsg || 'eBay批量上架任务创建失败');
                             setCreating(false);
                             return;
                         }
-                        message.success(`eBay批量上架任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        message.success(`eBay${region === 'us' ? '美区' : '港区'}批量上架任务已创建${res.data ? ` #${res.data}` : ''}`);
                         setCreateModalVisible(false);
                         queryTaskList();
                         setCreating(false);
@@ -925,6 +926,13 @@ const TaskPage = () => {
         if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
             return <>
                 {/* 已按产品要求移除独立说明行，避免配置区出现右侧悬空文本块。 */}
+                <Form.Item name="ebayRegion" label="发货区域" initialValue="hk"
+                           extra="港区与美区使用不同的发货地址和运输政策；两个区域的SKU互相独立，不会覆盖对方的商品">
+                    <Radio.Group>
+                        <Radio.Button value="hk">港区</Radio.Button>
+                        <Radio.Button value="us">美区</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
                 <Form.Item name="ebayListingExcel" label="上架Excel" valuePropName="fileList"
                            getValueFromEvent={(e: any) => e?.fileList}
                            rules={[{required: true, message: '请上传eBay批量上架Excel'}]}
@@ -1328,6 +1336,7 @@ const TaskPage = () => {
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
+        region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
         trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价',
     };
 
@@ -1347,6 +1356,7 @@ const TaskPage = () => {
             };
             return labels[v] || String(v);
         }
+        if (k === 'region') return v === 'us' ? '美区' : '港区';
         if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
         if (k === 'deleteMode') return v === 'style_ids' ? '指定货号' : '全部撤销';
         if (k === 'inputCount') return `${v}行`;

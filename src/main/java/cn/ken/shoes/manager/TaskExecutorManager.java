@@ -330,7 +330,8 @@ public class TaskExecutorManager {
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
             return snapshot.isEmpty() || snapshot.get().isEmpty()
-                    ? null : ebayBulkListingService.start(snapshot.get());
+                    ? null : ebayBulkListingService.start(snapshot.get(),
+                    cn.ken.shoes.model.ebay.EbayListingRegion.fromCode(params.getString("region")));
         }
         if (!"stockx".equals(source.getPlatform())) {
             return null;

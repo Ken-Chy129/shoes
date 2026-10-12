@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.config.EbayProperties;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.excel.EbayListingExcel;
@@ -39,6 +40,12 @@ public class EbayListingFactory {
     }
 
     public EbayListingRequest create(EbayListingExcel row, EbayProductMetadata metadata) {
+        return create(row, metadata, EbayListingRegion.HK);
+    }
+
+    public EbayListingRequest create(EbayListingExcel row, EbayProductMetadata metadata,
+                                     EbayListingRegion region) {
+        EbayListingRegion effectiveRegion = region == null ? EbayListingRegion.HK : region;
         if (row == null) {
             throw new IllegalArgumentException("Excel行不能为空");
         }
@@ -55,7 +62,7 @@ public class EbayListingFactory {
         }
 
         EbayListingRequest request = new EbayListingRequest();
-        request.setSku(sku(styleId, size.normalized()));
+        request.setSku(sku(styleId, size.normalized(), effectiveRegion));
         request.setTitle(titleService.generate(styleId, size.system(), metadata));
         request.setDescription(required(metadata.getDescription(), "描述"));
         request.setImageUrls(metadata.getImageUrls().stream().limit(12).toList());
@@ -67,10 +74,12 @@ public class EbayListingFactory {
         request.setMarketplaceId(properties.getDefaultMarketplaceId());
         request.setCurrency(properties.getDefaultCurrency());
         request.setPrice(row.getPrice());
-        request.setMerchantLocationKey(required(properties.getDefaultMerchantLocationKey(), "默认仓库"));
-        request.setFulfillmentPolicyId(required(properties.getDefaultFulfillmentPolicyId(), "物流政策"));
-        request.setPaymentPolicyId(required(properties.getDefaultPaymentPolicyId(), "付款政策"));
-        request.setReturnPolicyId(required(properties.getDefaultReturnPolicyId(), "退货政策"));
+        EbayProperties.ListingSettings settings = properties.listingSettings(effectiveRegion);
+        String label = effectiveRegion.getLabel();
+        request.setMerchantLocationKey(required(settings.merchantLocationKey(), label + "发货地点"));
+        request.setFulfillmentPolicyId(required(settings.fulfillmentPolicyId(), label + "物流政策"));
+        request.setPaymentPolicyId(required(settings.paymentPolicyId(), label + "付款政策"));
+        request.setReturnPolicyId(required(settings.returnPolicyId(), label + "退货政策"));
         request.setBrand(metadata.getBrand());
         request.setMpn(styleId);
         request.setAspects(taxonomy.aspects());
@@ -89,15 +98,30 @@ public class EbayListingFactory {
     }
 
     String sku(String styleId, String normalizedSize) {
-        String source = String.join("|", "EBAY", styleId, normalizedSize, "NEW")
-                .toUpperCase(Locale.ROOT);
-        return stableKey(source);
+        return sku(styleId, normalizedSize, EbayListingRegion.HK);
+    }
+
+    /**
+     * 港区沿用历史 SKU，保证已上架商品继续被更新；美区单独一套 SKU，
+     * 因为同一 listing 的所有尺码只能共用一个发货地点和物流政策。
+     */
+    String sku(String styleId, String normalizedSize, EbayListingRegion region) {
+        String source = region == EbayListingRegion.US
+                ? String.join("|", "EBAY", "US", styleId, normalizedSize, "NEW")
+                : String.join("|", "EBAY", styleId, normalizedSize, "NEW");
+        return stableKey(source.toUpperCase(Locale.ROOT));
     }
 
     String groupKey(String styleId) {
-        String source = String.join("|", "EBAYGROUP", required(styleId, "货号"), "NEW")
-                .toUpperCase(Locale.ROOT);
-        return stableKey(source);
+        return groupKey(styleId, EbayListingRegion.HK);
+    }
+
+    String groupKey(String styleId, EbayListingRegion region) {
+        String style = required(styleId, "货号");
+        String source = region == EbayListingRegion.US
+                ? String.join("|", "EBAYGROUP", "US", style, "NEW")
+                : String.join("|", "EBAYGROUP", style, "NEW");
+        return stableKey(source.toUpperCase(Locale.ROOT));
     }
 
     private String stableKey(String source) {

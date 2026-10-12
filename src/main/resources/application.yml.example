@@ -69,6 +69,12 @@ ebay:
   defaultWomensCategoryId: "95672"
   defaultKidsCategoryId: "155202"
   defaultBabyCategoryId: "147285"
+  # 美区上架（前端选择“美区”时使用）：发货地点和物流政策必填；付款/退货政策留空则沿用上面的默认值
+  us:
+    merchantLocationKey: your_us_location_key
+    fulfillmentPolicyId: your_us_fulfillment_policy_id
+    paymentPolicyId: ""
+    returnPolicyId: ""
   defaultMarketplaceId: EBAY_US
   defaultCurrency: USD
   defaultContentLanguage: en-US

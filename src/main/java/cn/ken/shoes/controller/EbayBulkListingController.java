@@ -1,6 +1,7 @@
 package cn.ken.shoes.controller;
 
 import cn.ken.shoes.common.Result;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
 import com.alibaba.excel.EasyExcel;
@@ -32,12 +33,19 @@ public class EbayBulkListingController {
         this.bulkListingService = bulkListingService;
     }
 
+    public Result<String> startBulkListing(MultipartFile file) {
+        return startBulkListing(file, null);
+    }
+
+    /** region: hk(默认，港区) / us(美区)。 */
     @PostMapping("startBulkListing")
-    public Result<String> startBulkListing(@RequestParam("file") MultipartFile file) {
+    public Result<String> startBulkListing(@RequestParam("file") MultipartFile file,
+                                           @RequestParam(value = "region", required = false) String region) {
         try {
+            EbayListingRegion listingRegion = EbayListingRegion.fromCode(region);
             validateFile(file);
             List<EbayListingExcel> rows = readRows(file);
-            return Result.buildSuccess(String.valueOf(bulkListingService.start(rows)));
+            return Result.buildSuccess(String.valueOf(bulkListingService.start(rows, listingRegion)));
         } catch (IllegalArgumentException e) {
             return Result.buildError(e.getMessage());
         } catch (Exception e) {
@@ -67,7 +75,8 @@ public class EbayBulkListingController {
                     List.of("商品状态", "无需填写；第一版统一按全新 NEW 上架"),
                     List.of("SKU", "无需填写；系统按货号、尺码和NEW状态稳定生成"),
                     List.of("多尺码", "同一货号的多行尺码会合并成一条eBay商品；每个尺码保留独立价格、库存、SKU和Offer"),
-                    List.of("处理时间", "无需填写；统一使用物流政策：收到全部款项后6个工作日内发货"),
+                    List.of("发货区域", "无需填写；创建任务时在页面选择港区或美区，两者使用不同的发货地址和运输政策，SKU互不覆盖"),
+                    List.of("处理时间", "无需填写；按所选发货区域的物流政策执行"),
                     List.of("退货", "无需填写；统一设置为不接受退货")
             );
             WriteSheet guideSheet = EasyExcel.writerSheet(1, "填写说明").build();

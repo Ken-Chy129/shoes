@@ -14,6 +14,15 @@ describe('eBay bulk listing task UI', () => {
     expect(service).toContain("EBAY_START_BULK_LISTING = '/api/task/ebay/startBulkListing'");
   });
 
+  it('lets the user choose the HK or US shipping region', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+
+    expect(page).toContain('name="ebayRegion" label="发货区域" initialValue="hk"');
+    expect(page).toContain('<Radio.Button value="hk">港区</Radio.Button>');
+    expect(page).toContain('<Radio.Button value="us">美区</Radio.Button>');
+    expect(page).toContain('doUploadRequestWithParams(TASK_API.EBAY_START_BULK_LISTING, file, {region}');
+  });
+
   it('shows eBay identifiers in task details', () => {
     const modal = fs.readFileSync(path.join(__dirname, '../components/TaskItemModal.tsx'), 'utf8');
 

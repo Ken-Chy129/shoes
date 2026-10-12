@@ -20,11 +20,12 @@ import static org.mockito.Mockito.when;
 class EbayListingFactoryTest {
 
     private EbayListingFactory factory;
+    private EbayProperties properties;
     private EbayListingTaxonomyService taxonomyService;
 
     @BeforeEach
     void setUp() {
-        EbayProperties properties = new EbayProperties();
+        properties = new EbayProperties();
         properties.setDefaultMerchantLocationKey("shantou_chenghai");
         properties.setDefaultFulfillmentPolicyId("6246174000");
         properties.setDefaultPaymentPolicyId("6246171000");
@@ -96,6 +97,38 @@ class EbayListingFactoryTest {
         assertThat(request.getAspects()).containsEntry("Style Code", List.of("STYLE-1"));
         org.mockito.Mockito.verify(taxonomyService).resolve(
                 eq("12345"), eq("STYLE-1"), any(), eq("USM"), eq("9"));
+    }
+
+    @Test
+    void usRegionUsesUsLocationAndShippingPolicyWithSeparateSkuAndGroup() {
+        properties.getUs().setMerchantLocationKey("us_warehouse");
+        properties.getUs().setFulfillmentPolicyId("263162428010");
+        EbayListingExcel row = row("DD1391-100", "USM10", "129.99");
+
+        EbayListingRequest hk = factory.create(row, metadata());
+        EbayListingRequest us = factory.create(row, metadata(),
+                cn.ken.shoes.model.ebay.EbayListingRegion.US);
+
+        assertThat(hk.getMerchantLocationKey()).isEqualTo("shantou_chenghai");
+        assertThat(hk.getFulfillmentPolicyId()).isEqualTo("6246174000");
+        assertThat(hk.getSku()).isEqualTo(factory.sku("DD1391-100", "USM10"));
+        assertThat(us.getMerchantLocationKey()).isEqualTo("us_warehouse");
+        assertThat(us.getFulfillmentPolicyId()).isEqualTo("263162428010");
+        assertThat(us.getPaymentPolicyId()).isEqualTo("6246171000");
+        assertThat(us.getReturnPolicyId()).isEqualTo("6246169000");
+        assertThat(us.getSku()).isNotEqualTo(hk.getSku()).hasSizeLessThanOrEqualTo(50);
+        assertThat(factory.groupKey("DD1391-100", cn.ken.shoes.model.ebay.EbayListingRegion.US))
+                .isNotEqualTo(factory.groupKey("DD1391-100"));
+        assertThat(factory.groupKey("DD1391-100", cn.ken.shoes.model.ebay.EbayListingRegion.HK))
+                .isEqualTo(factory.groupKey("DD1391-100"));
+    }
+
+    @Test
+    void usRegionFailsClearlyWhenNotConfigured() {
+        assertThatThrownBy(() -> factory.create(row("STYLE-1", "USM10", "99"), metadata(),
+                cn.ken.shoes.model.ebay.EbayListingRegion.US))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("美区发货地点");
     }
 
     @Test

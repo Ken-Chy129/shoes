@@ -7,6 +7,7 @@ import cn.ken.shoes.manager.TaskInputSnapshotStore;
 import cn.ken.shoes.mapper.EbayListingMapper;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.ebay.EbayListingRequest;
 import cn.ken.shoes.model.ebay.EbayListingResult;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
@@ -76,7 +77,7 @@ public class EbayBulkListingService {
                 listingFactory, listingService, executor, new EbayProperties());
     }
 
-    private EbayBulkListingService(TaskMapper taskMapper,
+    EbayBulkListingService(TaskMapper taskMapper,
                                    TaskItemMapper taskItemMapper,
                                    EbayListingMapper ebayListingMapper,
                                    TaskInputSnapshotStore snapshotStore,
@@ -97,6 +98,16 @@ public class EbayBulkListingService {
     }
 
     public Long start(List<EbayListingExcel> rows) {
+        return start(rows, EbayListingRegion.HK);
+    }
+
+    public Long start(List<EbayListingExcel> rows, EbayListingRegion region) {
+        EbayListingRegion effectiveRegion = region == null ? EbayListingRegion.HK : region;
+        if (!properties.isRegionConfigured(effectiveRegion)) {
+            throw new IllegalArgumentException(effectiveRegion.getLabel()
+                    + "上架未配置发货地点或运输政策，请联系管理员配置后再试");
+        }
+        EbayProperties.ListingSettings settings = properties.listingSettings(effectiveRegion);
         List<EbayListingExcel> input = rows == null ? List.of() : List.copyOf(rows);
         validateInput(input);
         TaskDO task = new TaskDO();
@@ -110,14 +121,16 @@ public class EbayBulkListingService {
                 .fluentPut("inputCount", input.size())
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .fluentPut("currency", properties.getDefaultCurrency())
-                .fluentPut("merchantLocationKey", properties.getDefaultMerchantLocationKey())
+                .fluentPut("region", effectiveRegion.getCode())
+                .fluentPut("merchantLocationKey", settings.merchantLocationKey())
+                .fluentPut("fulfillmentPolicyId", settings.fulfillmentPolicyId())
                 .toJSONString());
         taskMapper.insert(task);
         try {
             snapshotStore.saveEbayBulkListingInput(task.getId(), input);
             AtomicBoolean cancelled = new AtomicBoolean(false);
             running.put(task.getId(), cancelled);
-            executor.execute(() -> run(task.getId(), input, cancelled));
+            executor.execute(() -> run(task.getId(), input, cancelled, effectiveRegion));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
@@ -138,6 +151,11 @@ public class EbayBulkListingService {
     }
 
     void run(Long taskId, List<EbayListingExcel> rows, AtomicBoolean cancelled) {
+        run(taskId, rows, cancelled, EbayListingRegion.HK);
+    }
+
+    void run(Long taskId, List<EbayListingExcel> rows, AtomicBoolean cancelled,
+             EbayListingRegion region) {
         int succeeded = 0;
         int failed = 0;
         Map<String, List<RowContext>> groups = new LinkedHashMap<>();
@@ -173,10 +191,10 @@ public class EbayBulkListingService {
                 List<EbayListingRequest> requests = new ArrayList<>(group.size());
                 for (RowContext context : group) {
                     EbayProductMetadata metadata = metadataService.resolve(context.row());
-                    requests.add(listingFactory.create(context.row(), metadata));
+                    requests.add(listingFactory.create(context.row(), metadata, region));
                 }
                 List<EbayListingResult> results = listingService.publishGroup(
-                        listingFactory.groupKey(entry.getKey()), requests);
+                        listingFactory.groupKey(entry.getKey(), region), requests);
                 if (results.size() != group.size()) {
                     throw new IllegalStateException("eBay返回的尺码结果数量不一致");
                 }

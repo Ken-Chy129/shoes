@@ -1,5 +1,6 @@
 package cn.ken.shoes.config;
 
+import cn.ken.shoes.model.ebay.EbayListingRegion;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
@@ -41,6 +42,40 @@ public class EbayProperties {
     private String defaultContentLanguage = "en-US";
     private String notificationEndpoint = "";
     private String notificationVerificationToken = "";
+    /** 美区上架：发货地点与物流政策必须单独配置；付款/退货政策未配置时沿用默认值。 */
+    private RegionSettings us = new RegionSettings();
+
+    @Data
+    public static class RegionSettings {
+        private String merchantLocationKey = "";
+        private String fulfillmentPolicyId = "";
+        private String paymentPolicyId = "";
+        private String returnPolicyId = "";
+    }
+
+    public record ListingSettings(String merchantLocationKey, String fulfillmentPolicyId,
+                                  String paymentPolicyId, String returnPolicyId) {
+    }
+
+    public ListingSettings listingSettings(EbayListingRegion region) {
+        if (region == null || region == EbayListingRegion.HK) {
+            return new ListingSettings(defaultMerchantLocationKey, defaultFulfillmentPolicyId,
+                    defaultPaymentPolicyId, defaultReturnPolicyId);
+        }
+        RegionSettings settings = us == null ? new RegionSettings() : us;
+        return new ListingSettings(settings.getMerchantLocationKey(),
+                settings.getFulfillmentPolicyId(),
+                isPresent(settings.getPaymentPolicyId())
+                        ? settings.getPaymentPolicyId() : defaultPaymentPolicyId,
+                isPresent(settings.getReturnPolicyId())
+                        ? settings.getReturnPolicyId() : defaultReturnPolicyId);
+    }
+
+    public boolean isRegionConfigured(EbayListingRegion region) {
+        ListingSettings settings = listingSettings(region);
+        return isPresent(settings.merchantLocationKey()) && isPresent(settings.fulfillmentPolicyId())
+                && isPresent(settings.paymentPolicyId()) && isPresent(settings.returnPolicyId());
+    }
 
     public boolean isSandbox() {
         return !"production".equalsIgnoreCase(environment);

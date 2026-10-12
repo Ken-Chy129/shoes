@@ -42,6 +42,8 @@ class EbayBulkListingServiceTest {
     private EbayListingService listingService;
     private EbayListingTaxonomyService taxonomyService;
     private EbayBulkListingService service;
+    private EbayProperties properties;
+    private EbayListingFactory factory;
 
     @BeforeEach
     void setUp() {
@@ -51,7 +53,7 @@ class EbayBulkListingServiceTest {
         snapshotStore = mock(TaskInputSnapshotStore.class);
         metadataService = mock(EbayProductMetadataService.class);
         listingService = mock(EbayListingService.class);
-        EbayProperties properties = new EbayProperties();
+        properties = new EbayProperties();
         properties.setDefaultMerchantLocationKey("shantou_chenghai");
         properties.setDefaultFulfillmentPolicyId("6246174000");
         properties.setDefaultPaymentPolicyId("6246171000");
@@ -65,7 +67,7 @@ class EbayBulkListingServiceTest {
                                 "Department", List.of("Men"),
                                 "US Shoe Size", List.of("10"),
                                 "Style Code", List.of("DD1391-100"))));
-        EbayListingFactory factory = new EbayListingFactory(properties, taxonomyService);
+        factory = new EbayListingFactory(properties, taxonomyService);
         doAnswer(invocation -> {
             TaskDO task = invocation.getArgument(0);
             task.setId(88L);
@@ -193,6 +195,49 @@ class EbayBulkListingServiceTest {
         ArgumentCaptor<TaskItemDO> updated = ArgumentCaptor.forClass(TaskItemDO.class);
         verify(taskItemMapper).updateById(updated.capture());
         assertThat(updated.getValue().getEuSize()).isEqualTo("42.5");
+    }
+
+    @Test
+    void usRegionPublishesWithUsSettingsAndRecordsRegionInTaskParams() {
+        properties.getUs().setMerchantLocationKey("us_warehouse");
+        properties.getUs().setFulfillmentPolicyId("263162428010");
+        EbayBulkListingService usService = new EbayBulkListingService(taskMapper, taskItemMapper,
+                ebayListingMapper, snapshotStore, metadataService, factory, listingService,
+                Runnable::run, properties);
+        EbayListingExcel row = row();
+        when(metadataService.resolve(row)).thenReturn(metadata());
+        when(listingService.publishGroup(any(), any())).thenAnswer(invocation -> {
+            List<cn.ken.shoes.model.ebay.EbayListingRequest> requests = invocation.getArgument(1);
+            return List.of(new EbayListingResult(requests.getFirst().getSku(), "offer-us", "listing-us", "production"));
+        });
+
+        usService.start(List.of(row), cn.ken.shoes.model.ebay.EbayListingRegion.US);
+
+        ArgumentCaptor<TaskDO> task = ArgumentCaptor.forClass(TaskDO.class);
+        verify(taskMapper).insert(task.capture());
+        assertThat(task.getValue().getParams()).contains("\"region\":\"us\"", "us_warehouse");
+        ArgumentCaptor<String> groupKey = ArgumentCaptor.forClass(String.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<cn.ken.shoes.model.ebay.EbayListingRequest>> requests =
+                ArgumentCaptor.forClass(List.class);
+        verify(listingService).publishGroup(groupKey.capture(), requests.capture());
+        assertThat(groupKey.getValue()).isEqualTo(factory.groupKey("DD1391-100",
+                cn.ken.shoes.model.ebay.EbayListingRegion.US));
+        assertThat(requests.getValue().getFirst().getMerchantLocationKey()).isEqualTo("us_warehouse");
+        assertThat(requests.getValue().getFirst().getFulfillmentPolicyId()).isEqualTo("263162428010");
+    }
+
+    @Test
+    void rejectsUsRegionBeforeCreatingATaskWhenNotConfigured() {
+        EbayBulkListingService usService = new EbayBulkListingService(taskMapper, taskItemMapper,
+                ebayListingMapper, snapshotStore, metadataService, factory, listingService,
+                Runnable::run, properties);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> usService.start(List.of(row()),
+                        cn.ken.shoes.model.ebay.EbayListingRegion.US))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("美区");
+        verify(taskMapper, never()).insert(any(TaskDO.class));
     }
 
     @Test
