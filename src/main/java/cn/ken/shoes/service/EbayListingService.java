@@ -596,6 +596,53 @@ public class EbayListingService {
         }
     }
 
+    /**
+     * 只替换已在架商品组的图片：组和组内每个库存项都改成新的 eBay 托管图，其它字段保持 eBay 上的原值。
+     *
+     * @return 实际更新的库存项数量；商品组不存在或已无库存项时返回 -1
+     */
+    public int replaceGroupImages(String inventoryItemGroupKey, List<String> sourceImageUrls,
+                                  String contentLanguage) {
+        JSONObject group = apiClient.getInventoryItemGroup(inventoryItemGroupKey).orElse(null);
+        if (group == null) {
+            return -1;
+        }
+        List<String> skus = stringValues(group.getJSONArray("variantSKUs"));
+        if (skus.isEmpty()) {
+            return -1;
+        }
+        List<String> hosted = pictureService.hostImages(sourceImageUrls, inventoryItemGroupKey);
+        JSONArray hostedArray = JSON.parseArray(JSON.toJSONString(hosted));
+        int updated = 0;
+        for (String sku : skus) {
+            JSONObject item = apiClient.getInventoryItem(sku).orElse(null);
+            if (item == null || item.getJSONObject("product") == null) {
+                continue;
+            }
+            JSONObject payload = new JSONObject(true);
+            for (String field : List.of("availability", "condition", "conditionDescription",
+                    "packageWeightAndSize", "product")) {
+                if (item.containsKey(field)) {
+                    payload.put(field, item.get(field));
+                }
+            }
+            payload.getJSONObject("product").put("imageUrls", hostedArray);
+            retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItem(
+                    sku, payload, contentLanguage));
+            updated++;
+        }
+        JSONObject groupPayload = new JSONObject(true);
+        for (String field : List.of("title", "subtitle", "description", "aspects",
+                "variantSKUs", "variesBy", "videoIds")) {
+            if (group.containsKey(field)) {
+                groupPayload.put(field, group.get(field));
+            }
+        }
+        groupPayload.put("imageUrls", hostedArray);
+        createOrReplaceInventoryItemGroupWithRetry(inventoryItemGroupKey, groupPayload, contentLanguage);
+        return updated;
+    }
+
     public JSONObject getPrerequisites(String marketplaceId) {
         JSONObject result = new JSONObject(true);
         result.put("environment", properties.getEnvironment());

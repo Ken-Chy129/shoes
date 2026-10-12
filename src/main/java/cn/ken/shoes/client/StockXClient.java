@@ -58,6 +58,7 @@ import static java.lang.StringTemplate.STR;
 @Component
 public class StockXClient {
 
+    private static final int MAX_METADATA_IMAGES = 8;
     private static final List<String> REPRESENTATIVE_ROTATION_FRAMES =
             List.of("01", "07", "13", "19", "25", "31");
     private final StockXReadAccountPool readAccountPool = new StockXReadAccountPool();
@@ -1286,10 +1287,11 @@ public class StockXClient {
                         product.getString("description"), metadata, traits));
                 LinkedHashSet<String> images = new LinkedHashSet<>();
                 appendMediaUrls(product.get("media"), images);
-                if (summary != null) {
+                if (images.isEmpty() && summary != null) {
+                    // 详情没有图时才用搜索结果的缩略图；两者通常是同一张图的不同尺寸，不能叠加。
                     appendMediaUrls(summary.get("media"), images);
                 }
-                metadata.setImageUrls(images.stream().limit(8).toList());
+                metadata.setImageUrls(distinctByPath(images).stream().limit(MAX_METADATA_IMAGES).toList());
                 if (StrUtil.isNotBlank(metadata.getTitle()) && !metadata.getImageUrls().isEmpty()) {
                     return metadata;
                 }
@@ -1374,15 +1376,47 @@ public class StockXClient {
         }
         JSONArray rotation = media.getJSONArray("all360Images");
         if (rotation != null && !rotation.isEmpty()) {
-            String firstFrame = rotation.getString(0);
-            if (isRotationFrame(firstFrame)) {
-                addRepresentativeFrames(firstFrame, images);
-                return;
-            }
+            // 以接口返回的真实帧列表为准：有的商品只有 24/26 帧，按固定帧号拼接会拿到不存在的图。
+            List<String> frames = rotation.toJavaList(String.class).stream()
+                    .filter(StrUtil::isNotBlank).toList();
+            images.addAll(evenlySpacedFrames(frames, MAX_METADATA_IMAGES - images.size()));
+            return;
         }
         if (StrUtil.isNotBlank(mainImage) && isRotationFrame(mainImage)) {
             addRepresentativeFrames(mainImage, images);
         }
+    }
+
+    /** 从环拍帧里均匀取 count 帧（含第 1 帧），覆盖不同角度。 */
+    static List<String> evenlySpacedFrames(List<String> frames, int count) {
+        if (frames == null || frames.isEmpty() || count <= 0) {
+            return List.of();
+        }
+        if (frames.size() <= count) {
+            return frames;
+        }
+        List<String> picked = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            picked.add(frames.get((int) ((long) i * frames.size() / count)));
+        }
+        return picked;
+    }
+
+    /** 同一路径只保留第一张（主图 imageUrl 和 smallImageUrl 只是尺寸参数不同）。 */
+    static List<String> distinctByPath(Collection<String> urls) {
+        Set<String> paths = new HashSet<>();
+        List<String> result = new ArrayList<>();
+        for (String url : urls) {
+            if (StrUtil.isBlank(url)) {
+                continue;
+            }
+            int query = url.indexOf('?');
+            String path = (query >= 0 ? url.substring(0, query) : url).toLowerCase(Locale.ROOT);
+            if (paths.add(path)) {
+                result.add(url);
+            }
+        }
+        return result;
     }
 
     private static boolean isRotationFrame(String url) {

@@ -116,7 +116,7 @@ public class EbayListingFactory {
         return groupKey(styleId, EbayListingRegion.HK);
     }
 
-    String groupKey(String styleId, EbayListingRegion region) {
+    public String groupKey(String styleId, EbayListingRegion region) {
         String style = required(styleId, "货号");
         String source = region == EbayListingRegion.US
                 ? String.join("|", "EBAYGROUP", "US", style, "NEW")

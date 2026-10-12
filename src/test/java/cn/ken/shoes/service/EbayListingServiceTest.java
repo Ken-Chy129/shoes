@@ -1332,4 +1332,51 @@ class EbayListingServiceTest {
                         .fluentPut("listingId", listingId)
                         .fluentPut("listingStatus", "ENDED"));
     }
+
+    @Test
+    void replaceGroupImagesOnlySwapsImagesAndKeepsEverythingElse() {
+        JSONObject group = JSONObject.parseObject("""
+                {"title":"T","description":"D","aspects":{"Brand":["Nike"]},
+                 "imageUrls":["https://i.ebayimg.com/old.jpg"],
+                 "variantSKUs":["SKU-A"],
+                 "variesBy":{"specifications":[{"name":"US Shoe Size","values":["9"]}]}}
+                """);
+        JSONObject item = JSONObject.parseObject("""
+                {"sku":"SKU-A","locale":"en_US","condition":"NEW",
+                 "availability":{"shipToLocationAvailability":{"quantity":3}},
+                 "product":{"title":"T","aspects":{"US Shoe Size":["9"]},
+                            "imageUrls":["https://i.ebayimg.com/old.jpg"]}}
+                """);
+        when(apiClient.getInventoryItemGroup("GROUP-1")).thenReturn(Optional.of(group));
+        when(apiClient.getInventoryItem("SKU-A")).thenReturn(Optional.of(item));
+
+        int updated = service.replaceGroupImages("GROUP-1",
+                List.of("https://images.stockx.com/new.jpg"), "en-US");
+
+        assertThat(updated).isEqualTo(1);
+        ArgumentCaptor<JSONObject> itemPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItem(
+                org.mockito.ArgumentMatchers.eq("SKU-A"), itemPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(itemPayload.getValue().getJSONObject("product").getJSONArray("imageUrls"))
+                .containsExactly("https://i.ebayimg.com/images/g/test/s-l1600.jpg");
+        assertThat(itemPayload.getValue().getJSONObject("availability")
+                .getJSONObject("shipToLocationAvailability").getIntValue("quantity")).isEqualTo(3);
+        assertThat(itemPayload.getValue()).doesNotContainKeys("sku", "locale");
+        ArgumentCaptor<JSONObject> groupPayload = ArgumentCaptor.forClass(JSONObject.class);
+        verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("GROUP-1"), groupPayload.capture(),
+                org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(groupPayload.getValue().getJSONArray("imageUrls"))
+                .containsExactly("https://i.ebayimg.com/images/g/test/s-l1600.jpg");
+        assertThat(groupPayload.getValue().getString("title")).isEqualTo("T");
+        assertThat(groupPayload.getValue().getJSONObject("variesBy")).isNotNull();
+    }
+
+    @Test
+    void replaceGroupImagesSkipsMissingGroupsWithoutUploading() {
+        assertThat(service.replaceGroupImages("MISSING",
+                List.of("https://images.stockx.com/new.jpg"), "en-US")).isEqualTo(-1);
+        verify(pictureApiClient, never()).uploadExternalPicture(anyString(), anyString());
+    }
 }

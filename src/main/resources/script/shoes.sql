@@ -278,3 +278,11 @@ CREATE TABLE task_item
     operate_time   DATETIME     NULL     COMMENT '操作时间',
     INDEX idx_task_id (task_id)
 ) COMMENT '任务明细表';
+
+CREATE TABLE IF NOT EXISTS ebay_listing_image_state
+(
+    style_id     VARCHAR(255) NOT NULL PRIMARY KEY COMMENT '货号',
+    image_source VARCHAR(32)  NOT NULL COMMENT '已上架商品组当前图片来源(kickscrew/stockx)',
+    gmt_create   DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    gmt_modified DATETIME DEFAULT CURRENT_TIMESTAMP NOT NULL ON UPDATE CURRENT_TIMESTAMP
+) COMMENT 'eBay已上架商品图片来源，供图片替换补数据使用';

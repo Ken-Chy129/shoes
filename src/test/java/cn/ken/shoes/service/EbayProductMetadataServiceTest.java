@@ -390,6 +390,45 @@ class EbayProductMetadataServiceTest {
     }
 
     @Test
+    void topsUpOnlyToFiveImagesAndRefreshOverwritesManualRows() {
+        assertThat(EbayProductMetadataService.mergeImages(
+                List.of("https://images.stockx.com/1.jpg"),
+                List.of("k1", "k2", "k3", "k4", "k5", "k6"))).hasSize(5)
+                .startsWith("https://images.stockx.com/1.jpg");
+
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(itemMapper.selectHandleByModelNo("MANUAL-SX")).thenReturn(null);
+        when(stockXClient.queryProductMetadataByModelNo("MANUAL-SX")).thenReturn(stockxMetadata(
+                "https://images.stockx.com/1.jpg"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, itemMapper, mock(KickScrewClient.class), stockXClient);
+
+        service.refresh("manual-sx");
+
+        verify(cacheMapper).deleteById("MANUAL-SX");
+        ArgumentCaptor<ProductCatalogDO> cache = ArgumentCaptor.forClass(ProductCatalogDO.class);
+        verify(cacheMapper).upsertFromSource(cache.capture());
+        assertThat(cache.getValue().getSource()).isEqualTo("stockx");
+        assertThat(cache.getValue().getManualOverride()).isFalse();
+    }
+
+    @Test
+    void refreshPropagatesStockXFailuresInsteadOfFallingBackToKcImages() {
+        ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
+        StockXClient stockXClient = mock(StockXClient.class);
+        when(stockXClient.queryProductMetadataByModelNo("RL-1"))
+                .thenThrow(new IllegalStateException("限流"));
+        EbayProductMetadataService service = new EbayProductMetadataService(
+                cacheMapper, mock(KickScrewItemMapper.class), mock(KickScrewClient.class), stockXClient);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.refresh("RL-1"))
+                .hasMessageContaining("限流");
+        verify(cacheMapper, never()).deleteById(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
     void completeExcelOverridesAvoidCacheAndExternalLookup() {
         ProductCatalogMapper cacheMapper = mock(ProductCatalogMapper.class);
         KickScrewItemMapper itemMapper = mock(KickScrewItemMapper.class);

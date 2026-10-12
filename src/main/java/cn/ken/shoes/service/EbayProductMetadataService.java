@@ -55,6 +55,27 @@ public class EbayProductMetadataService {
         if (cached != null) {
             return fromCache(cached);
         }
+        EbayProductMetadata result = fetch(modelNo, false);
+        if (result.isCacheable()) {
+            catalogMapper.upsertFromSource(toCatalog(modelNo, result));
+        }
+        return result;
+    }
+
+    /**
+     * 忽略缓存重新抓取并覆盖资料库（包括人工维护的记录），供批量补数据使用。
+     * StockX 临时失败(限流/账号池不可用)时直接抛出，由调用方稍后重试，不会退回只用 KC 图片。
+     */
+    public EbayProductMetadata refresh(String rawModelNo) {
+        String modelNo = required(rawModelNo, "货号").toUpperCase(Locale.ROOT);
+        EbayProductMetadata result = fetch(modelNo, true);
+        ProductCatalogDO catalog = toCatalog(modelNo, result);
+        catalogMapper.deleteById(modelNo);
+        catalogMapper.upsertFromSource(catalog);
+        return result;
+    }
+
+    private EbayProductMetadata fetch(String modelNo, boolean failOnStockXError) {
         // 图片优先用 StockX（官方图库，背景统一），文字资料优先用 KC（颜色、材质等字段更全）。
         EbayProductMetadata stockx = null;
         boolean stockxTransientFailure = false;
@@ -63,6 +84,9 @@ public class EbayProductMetadataService {
                 stockx = stockXClient.queryProductMetadataByModelNo(modelNo);
             }
         } catch (RuntimeException e) {
+            if (failOnStockXError) {
+                throw e;
+            }
             stockxTransientFailure = true;
             log.warn("StockX商品资料查询失败，本次改用KC图片且不写入资料库，modelNo:{}, reason:{}",
                     modelNo, e.getMessage());
@@ -103,16 +127,14 @@ public class EbayProductMetadataService {
             throw new IllegalArgumentException("KC和StockX均未获取到可用商品资料，请在Excel补充标题和图片链接", kcFailure);
         }
         validate(result);
-        // StockX 临时失败(限流/账号池耗尽)时不缓存，避免把只有 KC 图片的资料永久固化下来。
+        // StockX 临时失败时不缓存，避免把只有 KC 图片的资料永久固化下来。
         result.setCacheable(!stockxTransientFailure);
-        if (result.isCacheable()) {
-            catalogMapper.upsertFromSource(toCatalog(modelNo, result));
-        }
         return result;
     }
 
     /**
-     * StockX 图片够 {@value #MIN_PREFERRED_IMAGES} 张就只用 StockX；不够时先放 StockX，再用 KC 补齐。
+     * StockX 图片够 {@value #MIN_PREFERRED_IMAGES} 张就只用 StockX；不够时先放 StockX，再用 KC 补到
+     * {@value #MIN_PREFERRED_IMAGES} 张。
      */
     static List<String> mergeImages(List<String> stockxImages, List<String> kcImages) {
         LinkedHashSet<String> merged = new LinkedHashSet<>();
@@ -120,7 +142,7 @@ public class EbayProductMetadataService {
                 .limit(MAX_MERGED_IMAGES).forEach(merged::add);
         if (merged.size() < MIN_PREFERRED_IMAGES) {
             for (String url : kcImages) {
-                if (merged.size() >= MAX_MERGED_IMAGES) {
+                if (merged.size() >= MIN_PREFERRED_IMAGES) {
                     break;
                 }
                 if (url != null && !url.isBlank()) {

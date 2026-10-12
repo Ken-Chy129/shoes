@@ -192,11 +192,11 @@ class StockXClientExactModelSearchTest {
                 .contains("Style code: FV4921-600")
                 .contains("Released 2023-12-15")
                 .doesNotContain("耐克");
-        assertThat(result.getImageUrls()).startsWith(
+        // 只用接口真实返回的环拍帧，不再按固定帧号拼出可能不存在的图；同一主图的小图不重复加入。
+        assertThat(result.getImageUrls()).containsExactly(
                 "https://images.stockx.com/images/Kobe-Product.jpg?w=700",
                 "https://images.stockx.com/360/Kobe/Lv2/img01.jpg?w=559",
-                "https://images.stockx.com/360/Kobe/Lv2/img07.jpg?w=559");
-        assertThat(result.getImageUrls()).hasSize(7);
+                "https://images.stockx.com/360/Kobe/Lv2/img02.jpg?w=559");
     }
 
     @Test
@@ -381,5 +381,17 @@ class StockXClientExactModelSearchTest {
         protected JSONObject queryPro(String body, Headers headers, String accountName) {
             throw new AssertionError("账号无关搜索必须经过同区域只读账号池");
         }
+    }
+
+    @Test
+    void picksEvenlySpacedRealRotationFrames() {
+        List<String> frames = new java.util.ArrayList<>();
+        for (int i = 1; i <= 26; i++) {
+            frames.add(String.format("https://images.stockx.com/360/x/Lv2/img%02d.jpg", i));
+        }
+        List<String> picked = StockXClient.evenlySpacedFrames(frames, 7);
+        assertThat(picked).hasSize(7).allMatch(frames::contains).doesNotHaveDuplicates();
+        assertThat(picked.getFirst()).endsWith("img01.jpg");
+        assertThat(StockXClient.evenlySpacedFrames(frames.subList(0, 3), 7)).hasSize(3);
     }
 }
