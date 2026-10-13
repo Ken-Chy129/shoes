@@ -4,16 +4,16 @@
 
     <sql id="columns">
         sku, offer_id, listing_id, style_id, size, eu_size, title, brand,
-        price, quantity, status, source_task_id, gmt_create, gmt_modified
+        price, quantity, status, source_task_id, region, gmt_create, gmt_modified
     </sql>
 
     <insert id="upsert">
         INSERT INTO ebay_listing
             (sku, offer_id, listing_id, style_id, size, eu_size, title, brand,
-             price, quantity, status, source_task_id)
+             price, quantity, status, source_task_id, region)
         VALUES
             (#{sku}, #{offerId}, #{listingId}, #{styleId}, #{size}, #{euSize}, #{title}, #{brand},
-             #{price}, #{quantity}, 'active', #{sourceTaskId})
+             #{price}, #{quantity}, 'active', #{sourceTaskId}, COALESCE(#{region}, 'hk'))
         ON DUPLICATE KEY UPDATE
             offer_id = VALUES(offer_id),
             listing_id = COALESCE(VALUES(listing_id), listing_id),
@@ -25,7 +25,8 @@
             price = COALESCE(VALUES(price), price),
             quantity = COALESCE(VALUES(quantity), quantity),
             status = 'active',
-            source_task_id = VALUES(source_task_id)
+            source_task_id = VALUES(source_task_id),
+            region = COALESCE(#{region}, region)
     </insert>
 
     <select id="selectActive" resultType="cn.ken.shoes.model.entity.EbayListingDO">

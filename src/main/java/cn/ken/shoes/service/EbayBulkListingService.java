@@ -203,7 +203,7 @@ public class EbayBulkListingService {
                 }
                 // eBay 侧已经上架成功，映射写入失败不能把整组记为上架失败。
                 for (RowContext context : group) {
-                    saveListingMapping(taskId, context.item());
+                    saveListingMapping(taskId, context.item(), region);
                 }
                 succeeded += group.size();
             } catch (Exception e) {
@@ -256,7 +256,7 @@ public class EbayBulkListingService {
      * 写入长期映射表。失败时只记日志并在明细上标注，eBay 上的商品已经存在，
      * 之后可以用 SKU 从任务明细补回映射。
      */
-    private void saveListingMapping(Long taskId, TaskItemDO item) {
+    private void saveListingMapping(Long taskId, TaskItemDO item, EbayListingRegion region) {
         try {
             EbayListingDO listing = new EbayListingDO();
             listing.setSku(item.getSku());
@@ -270,6 +270,7 @@ public class EbayBulkListingService {
             listing.setPrice(item.getCurrentPrice());
             listing.setQuantity(item.getListingQuantity());
             listing.setSourceTaskId(taskId);
+            listing.setRegion((region == null ? EbayListingRegion.HK : region).getCode());
             ebayListingMapper.upsert(listing);
         } catch (Exception e) {
             log.error("eBay上架映射写入失败, taskId:{}, sku:{}, offerId:{}",

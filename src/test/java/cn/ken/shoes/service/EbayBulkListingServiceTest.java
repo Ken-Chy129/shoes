@@ -115,6 +115,7 @@ class EbayBulkListingServiceTest {
         assertThat(mapping.getValue().getOfferId()).isEqualTo("offer-1");
         assertThat(mapping.getValue().getStyleId()).isEqualTo("DD1391-100");
         assertThat(mapping.getValue().getSourceTaskId()).isEqualTo(88L);
+        assertThat(mapping.getValue().getRegion()).isEqualTo("hk");
         verify(listingService).publishGroup(any(), any());
         verify(listingService, never()).publish(any());
         verify(taskMapper).updateTaskStatus(88L, TaskDO.TaskStatusEnum.SUCCESS.getCode());

@@ -32,6 +32,8 @@ public class EbayListingDO {
     private Integer quantity;
     private String status;
     private Long sourceTaskId;
+    /** 发货区域 hk/us（{@link cn.ken.shoes.model.ebay.EbayListingRegion}），历史数据为 hk。 */
+    private String region;
     private Date gmtCreate;
     private Date gmtModified;
 }

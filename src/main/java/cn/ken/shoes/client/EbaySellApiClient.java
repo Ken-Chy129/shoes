@@ -3,6 +3,7 @@ package cn.ken.shoes.client;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.service.EbayOAuthService;
 import com.alibaba.fastjson.JSON;
+import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONException;
 import com.alibaba.fastjson.JSONObject;
 import okhttp3.HttpUrl;
@@ -16,8 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -308,6 +311,94 @@ public class EbaySellApiClient {
         execute(request, Set.of(200, 204));
     }
 
+    /** bulkUpdatePriceQuantity 单次请求最多 25 个 offer。 */
+    public static final int BULK_PRICE_QUANTITY_LIMIT = 25;
+
+    /** 单个 offer 的价格/库存改动；price 或 availableQuantity 为 null 表示不改该字段。 */
+    public record OfferPriceQuantity(String sku, String offerId, BigDecimal price,
+                                     String currency, Integer availableQuantity) {
+    }
+
+    /** 单个 offer 的批量改价结果；error 为 null 表示成功。 */
+    public record OfferUpdateResult(String sku, String offerId, int statusCode, String error) {
+        public boolean success() {
+            return error == null;
+        }
+    }
+
+    /**
+     * 按 offerId 直接批量改价格/库存（每次最多 25 个），无需先读取 offer。
+     *
+     * <p>eBay 对整批返回 200 或 207（部分成功），逐个 offer 的结果在
+     * {@code responses[]} 里。写入的是目标绝对值，请求可安全重试，
+     * 因此 5xx 会像只读请求一样退避重试。
+     */
+    public List<OfferUpdateResult> bulkUpdatePriceQuantity(List<OfferPriceQuantity> updates) {
+        if (updates == null || updates.isEmpty()) {
+            return List.of();
+        }
+        if (updates.size() > BULK_PRICE_QUANTITY_LIMIT) {
+            throw new IllegalArgumentException("bulkUpdatePriceQuantity accepts at most "
+                    + BULK_PRICE_QUANTITY_LIMIT + " offers per request");
+        }
+        JSONArray requests = new JSONArray();
+        for (OfferPriceQuantity update : updates) {
+            if (update.price() == null && update.availableQuantity() == null) {
+                throw new IllegalArgumentException("price or availableQuantity is required");
+            }
+            JSONObject offer = new JSONObject(true);
+            offer.put("offerId", requireValue(update.offerId(), "offerId"));
+            if (update.price() != null) {
+                offer.put("price", new JSONObject(true)
+                        .fluentPut("currency", requireValue(update.currency(), "currency"))
+                        .fluentPut("value", update.price().toPlainString()));
+            }
+            if (update.availableQuantity() != null) {
+                offer.put("availableQuantity", update.availableQuantity());
+            }
+            JSONArray offers = new JSONArray();
+            offers.add(offer);
+            requests.add(new JSONObject(true)
+                    .fluentPut("sku", requireValue(update.sku(), "sku"))
+                    .fluentPut("offers", offers));
+        }
+        Request request = request(inventoryUrl("bulk_update_price_quantity"), null)
+                .post(jsonBody(new JSONObject(true).fluentPut("requests", requests)))
+                .build();
+        JSONObject response = execute(request, Set.of(200, 207), false, Set.of(), true);
+        return bulkUpdateResults(updates, response);
+    }
+
+    private List<OfferUpdateResult> bulkUpdateResults(List<OfferPriceQuantity> updates,
+                                                      JSONObject response) {
+        Map<String, JSONObject> byOfferId = new HashMap<>();
+        JSONArray responses = response == null ? null : response.getJSONArray("responses");
+        for (int i = 0; responses != null && i < responses.size(); i++) {
+            JSONObject item = responses.getJSONObject(i);
+            if (item != null && item.getString("offerId") != null) {
+                byOfferId.putIfAbsent(item.getString("offerId"), item);
+            }
+        }
+        List<OfferUpdateResult> results = new ArrayList<>(updates.size());
+        for (OfferPriceQuantity update : updates) {
+            JSONObject item = byOfferId.get(update.offerId());
+            if (item == null) {
+                results.add(new OfferUpdateResult(update.sku(), update.offerId(), 0,
+                        "eBay未返回该offer的处理结果"));
+                continue;
+            }
+            int statusCode = item.getIntValue("statusCode");
+            String error = statusCode >= 200 && statusCode < 300
+                    ? null : summarizeError(new JSONObject(true)
+                    .fluentPut("errors", item.getJSONArray("errors")).toJSONString());
+            if (error != null && statusCode > 0) {
+                error = "HTTP " + statusCode + ": " + error;
+            }
+            results.add(new OfferUpdateResult(update.sku(), update.offerId(), statusCode, error));
+        }
+        return List.copyOf(results);
+    }
+
     /**
      * 分页读取账号下所有库存项的 SKU。
      *
@@ -437,12 +528,18 @@ public class EbaySellApiClient {
 
     private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
                                boolean nullOnNotFound, Set<String> nullOnErrorIds) {
-        boolean readOnly = "GET".equals(request.method());
+        return execute(request, expectedStatusCodes, nullOnNotFound, nullOnErrorIds,
+                "GET".equals(request.method()));
+    }
+
+    private JSONObject execute(Request request, Set<Integer> expectedStatusCodes,
+                               boolean nullOnNotFound, Set<String> nullOnErrorIds,
+                               boolean retryTransient) {
         for (int attempt = 1; ; attempt++) {
             try {
                 return executeOnce(request, expectedStatusCodes, nullOnNotFound, nullOnErrorIds);
             } catch (TransientServerError e) {
-                if (!readOnly || attempt >= MAX_READ_ATTEMPTS) {
+                if (!retryTransient || attempt >= MAX_READ_ATTEMPTS) {
                     throw e.failure;
                 }
                 sleepBeforeReadRetry(attempt);

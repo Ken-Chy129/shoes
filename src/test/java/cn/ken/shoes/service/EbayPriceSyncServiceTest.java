@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -52,96 +53,120 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
-    void calculatesPriceAndUpdatesOffer() {
-        EbayListingDO mapping = mapping();
-        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping));
-        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
-        PoisonPriceDO price = new PoisonPriceDO();
-        price.setModelNo("DD1391-100");
-        price.setEuSize("42");
-        price.setPrice(100);
-        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
+    void calculatesPriceAndBulkUpdatesOfferWithoutReadingOffers() {
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));
+        succeedAllBulkUpdates();
 
         // (100 * 1.1 + 250) / 7.3 = 49.315 -> 49.32
         service.runSingleRound(88L, new BigDecimal("1.1"), new BigDecimal("250"), 3);
 
-        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
-        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
-        assertThat(payload.getValue().getJSONObject("pricingSummary")
-                .getJSONObject("price").getString("value")).isEqualTo("49.32");
+        List<EbaySellApiClient.OfferPriceQuantity> sent = singleBulkRequest();
+        assertThat(sent).hasSize(1);
+        assertThat(sent.get(0).offerId()).isEqualTo("offer-1");
+        assertThat(sent.get(0).sku()).isEqualTo("SKU-1");
+        assertThat(sent.get(0).price()).isEqualByComparingTo("49.32");
+        assertThat(sent.get(0).currency()).isEqualTo("USD");
+        // 有价只改价格，不覆盖 eBay 上随成交变化的库存。
+        assertThat(sent.get(0).availableQuantity()).isNull();
+        verify(ebayClient, never()).getActiveOffersBySkus(any());
+        verify(ebayClient, never()).updateOffer(anyString(), any(), anyString());
         ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
         verify(taskItemMapper).insert(item.capture());
         assertThat(item.getValue().getRound()).isEqualTo(3);
         assertThat(item.getValue().getTargetPrice()).isEqualByComparingTo("49.32");
         assertThat(item.getValue().getOperateResult()).startsWith("改价成功");
-        verify(ebayListingMapper).updatePriceAndQuantity("SKU-1", new BigDecimal("49.32"), 1);
+        verify(ebayListingMapper).updatePriceAndQuantity("SKU-1", new BigDecimal("49.32"), null);
     }
 
     @Test
     void defaultsAdditionTo250WhenNotProvided() {
         when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
-        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
-        PoisonPriceDO price = new PoisonPriceDO();
-        price.setModelNo("DD1391-100");
-        price.setEuSize("42");
-        price.setPrice(100);
-        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));
+        succeedAllBulkUpdates();
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
-        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
-        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
-        assertThat(payload.getValue().getJSONObject("pricingSummary")
-                .getJSONObject("price").getString("value")).isEqualTo("49.32");
+        assertThat(singleBulkRequest().get(0).price()).isEqualByComparingTo("49.32");
     }
 
     @Test
     void zeroAdditionKeepsPureMultiplierPrice() {
         when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
-        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
-        PoisonPriceDO price = new PoisonPriceDO();
-        price.setModelNo("DD1391-100");
-        price.setEuSize("42");
-        price.setPrice(100);
-        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));
+        succeedAllBulkUpdates();
 
         service.runSingleRound(88L, new BigDecimal("1.1"), BigDecimal.ZERO, 1);
 
-        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
-        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
-        assertThat(payload.getValue().getJSONObject("pricingSummary")
-                .getJSONObject("price").getString("value")).isEqualTo("15.07");
+        assertThat(singleBulkRequest().get(0).price()).isEqualByComparingTo("15.07");
     }
 
     @Test
     void setsQuantityToZeroWhenSizeHasNoPoisonPrice() {
-        EbayListingDO mapping = mapping();
-        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping));
-        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 2)));
-        PoisonPriceDO other = new PoisonPriceDO();
-        other.setModelNo("OTHER");
-        other.setEuSize("42");
-        other.setPrice(100);
-        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(other));
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("OTHER", 100)));
+        succeedAllBulkUpdates();
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
-        ArgumentCaptor<JSONObject> payload = ArgumentCaptor.forClass(JSONObject.class);
-        verify(ebayClient).updateOffer(eq("offer-1"), payload.capture(), eq("en-US"));
-        assertThat(payload.getValue().getInteger("availableQuantity")).isZero();
-        assertThat(payload.getValue().getJSONObject("pricingSummary")
-                .getJSONObject("price").getString("value")).isEqualTo("100.00");
+        EbaySellApiClient.OfferPriceQuantity sent = singleBulkRequest().get(0);
+        assertThat(sent.availableQuantity()).isZero();
+        assertThat(sent.price()).isNull();
+        verify(ebayListingMapper).updatePriceAndQuantity("SKU-1", null, 0);
+    }
+
+    @Test
+    void sendsOffersInBatchesOf25AndRecordsPerOfferFailures() {
+        List<EbayListingDO> mappings = new ArrayList<>();
+        for (int i = 0; i < 60; i++) {
+            EbayListingDO m = mapping();
+            m.setSku("SKU-" + i);
+            m.setOfferId("offer-" + i);
+            mappings.add(m);
+        }
+        when(ebayListingMapper.selectActive()).thenReturn(mappings);
+        when(poisonClient.batchQueryPrice(any())).thenReturn(List.of(price("DD1391-100", 100)));
+        when(ebayClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(),
+                    "offer-7".equals(u.offerId()) ? 400 : 200,
+                    "offer-7".equals(u.offerId()) ? "HTTP 400: 25713: offer not found" : null)).toList();
+        });
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        ArgumentCaptor<List<EbaySellApiClient.OfferPriceQuantity>> requests = ArgumentCaptor.forClass(List.class);
+        verify(ebayClient, times(3)).bulkUpdatePriceQuantity(requests.capture());
+        assertThat(requests.getAllValues()).extracting(List::size).containsExactlyInAnyOrder(25, 25, 10);
+        verify(taskItemMapper, times(60)).insert(any(TaskItemDO.class));
+        verify(taskItemMapper).insert(argThat((TaskItemDO item) -> "offer-7".equals(item.getOfferId())
+                && item.getOperateResult().startsWith("改价失败") && item.getOperateResult().contains("25713")));
+        verify(taskMapper).updateTaskFailReason(88L, "本轮有 1 个商品处理失败");
+    }
+
+    @Test
+    void wholeBatchFailureOnlyFailsThatBatch() {
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
+        when(poisonClient.batchQueryPrice(any())).thenReturn(List.of(price("DD1391-100", 100)));
+        when(ebayClient.bulkUpdatePriceQuantity(anyList()))
+                .thenThrow(new cn.ken.shoes.client.EbayApiException("eBay API request failed due to a network error"));
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        verify(taskItemMapper).insert(argThat((TaskItemDO item) ->
+                item.getOperateResult().startsWith("改价失败") && item.getOperateResult().contains("network")));
+        verify(ebayListingMapper, never()).updatePriceAndQuantity(any(), any(), any());
+        verify(taskMapper).updateTaskFailReason(88L, "本轮有 1 个商品处理失败");
     }
 
     @Test
     void skipsAllUpdatesWhenPoisonReturnsEmpty() {
         when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
-        when(ebayClient.getActiveOffersBySkus(java.util.Set.of("SKU-1"))).thenReturn(List.of(offer("offer-1", "SKU-1", "100.00", 1)));
         when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of());
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
-        verify(ebayClient, never()).updateOffer(anyString(), any(), anyString());
+        verify(ebayClient, never()).bulkUpdatePriceQuantity(any());
         verify(taskItemMapper, never()).insert(any(TaskItemDO.class));
         verify(taskMapper).updateTaskFailReason(eq(88L), contains("跳过"));
     }
@@ -149,12 +174,24 @@ class EbayPriceSyncServiceTest {
     @Test
     void reportsMissingListingMappingsInsteadOfSilentlyFinishingRound() {
         when(ebayListingMapper.selectActive()).thenReturn(List.of());
-        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenReturn(List.of());
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
         verify(taskMapper).updateTaskFailReason(eq(88L), contains("未找到eBay上架映射"));
-        verify(ebayClient, never()).updateOffer(anyString(), any(), anyString());
+        verify(ebayClient, never()).bulkUpdatePriceQuantity(any());
+    }
+
+    @Test
+    void skipsMappingsWithoutOfferId() {
+        EbayListingDO mapping = mapping();
+        mapping.setOfferId(null);
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping));
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        verify(poisonClient, never()).batchQueryPrice(any());
+        verify(ebayClient, never()).bulkUpdatePriceQuantity(any());
+        verify(taskMapper).updateTaskAttributes(eq(88L), contains("\"skipped\":1"));
     }
 
     @Test
@@ -177,26 +214,24 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
-    void cancellationOfAnActiveTaskWaitsForTheWorkerToStopBeforePersistingTheTerminalState()
+    void cancellationLetsTheInFlightBatchFinishThenPersistsCancelWithoutInterrupting()
             throws Exception {
         CountDownLatch requestStarted = new CountDownLatch(1);
         CountDownLatch releaseRequest = new CountDownLatch(1);
+        java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
         doAnswer(invocation -> {
             invocation.<TaskDO>getArgument(0).setId(88L);
             return 1;
         }).when(taskMapper).insert(any(TaskDO.class));
         when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
-        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenAnswer(invocation -> {
+        when(poisonClient.batchQueryPrice(any())).thenAnswer(invocation -> {
             requestStarted.countDown();
-            boolean released = false;
-            while (!released) {
-                try {
-                    released = releaseRequest.await(5, TimeUnit.SECONDS);
-                } catch (InterruptedException ignored) {
-                    // 模拟一次不能被线程中断强制回滚的在途 HTTP 请求。
-                }
+            try {
+                releaseRequest.await(5, TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                interrupted.set(true);
             }
-            return List.of();
+            return List.of(price("DD1391-100", 100));
         });
 
         service.start(1, new BigDecimal("1.1"));
@@ -210,6 +245,78 @@ class EbayPriceSyncServiceTest {
         releaseRequest.countDown();
         verify(taskMapper, timeout(2_000)).updateTaskStatus(
                 88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
+        assertThat(interrupted).isFalse();
+        verify(ebayClient, never()).bulkUpdatePriceQuantity(any());
+    }
+
+    @Test
+    void roundFailureWhoseReasonCannotBeSavedDoesNotKillTheLoop() throws Exception {
+        doAnswer(invocation -> {
+            invocation.<TaskDO>getArgument(0).setId(88L);
+            return 1;
+        }).when(taskMapper).insert(any(TaskDO.class));
+        CountDownLatch roundFailed = new CountDownLatch(1);
+        when(ebayListingMapper.selectActive()).thenThrow(new RuntimeException("Communications link failure"));
+        doAnswer(invocation -> {
+            roundFailed.countDown();
+            throw new RuntimeException("Communications link failure");
+        }).when(taskMapper).updateTaskFailReason(eq(88L), anyString());
+
+        service.start(1, new BigDecimal("1.1"));
+        assertThat(roundFailed.await(2, TimeUnit.SECONDS)).isTrue();
+        // 线程没有因为写失败原因异常而退出：仍可被正常取消并写入终态。
+        Thread.sleep(100);
+        verify(taskMapper, never()).updateTaskStatus(eq(88L), anyString());
+        service.cancel(88L);
+        verify(taskMapper, timeout(2_000)).updateTaskStatus(
+                88L, TaskDO.TaskStatusEnum.CANCEL.getCode());
+    }
+
+    @Test
+    void onlyRepricesHongKongMappingsAndLeavesUsMappingsUntouched() {
+        EbayListingDO hk = mapping();
+        EbayListingDO legacy = mapping();
+        legacy.setSku("SKU-LEGACY");
+        legacy.setOfferId("offer-legacy");
+        legacy.setRegion(null);
+        EbayListingDO us = mapping();
+        us.setSku("SKU-US");
+        us.setOfferId("offer-us");
+        us.setRegion("us");
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(hk, legacy, us));
+        when(poisonClient.batchQueryPrice(any())).thenReturn(List.of(price("DD1391-100", 730)));
+        succeedAllBulkUpdates();
+
+        service.runSingleRound(77L, new BigDecimal("1.1"), new BigDecimal("250"), 1);
+
+        assertThat(singleBulkRequest()).extracting(EbaySellApiClient.OfferPriceQuantity::offerId)
+                .containsExactly("offer-1", "offer-legacy");
+        ArgumentCaptor<String> attributes = ArgumentCaptor.forClass(String.class);
+        verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(77L), attributes.capture());
+        assertThat(attributes.getValue()).contains("\"skippedUsRegion\":1").contains("\"changed\":2");
+    }
+
+    private void succeedAllBulkUpdates() {
+        when(ebayClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
+                    u.sku(), u.offerId(), 200, null)).toList();
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<EbaySellApiClient.OfferPriceQuantity> singleBulkRequest() {
+        ArgumentCaptor<List<EbaySellApiClient.OfferPriceQuantity>> captor = ArgumentCaptor.forClass(List.class);
+        verify(ebayClient).bulkUpdatePriceQuantity(captor.capture());
+        return captor.getValue();
+    }
+
+    private PoisonPriceDO price(String modelNo, int value) {
+        PoisonPriceDO price = new PoisonPriceDO();
+        price.setModelNo(modelNo);
+        price.setEuSize("42");
+        price.setPrice(value);
+        return price;
     }
 
     private EbayListingDO mapping() {
@@ -221,65 +328,9 @@ class EbayPriceSyncServiceTest {
         mapping.setSize("EU42");
         mapping.setEuSize("42");
         mapping.setTitle("Nike Dunk Low");
+        mapping.setRegion("hk");
+        mapping.setPrice(new BigDecimal("100.00"));
+        mapping.setQuantity(1);
         return mapping;
-    }
-
-    @Test
-    void readsOffersByMappedSkuBecauseEbayRejectsAccountWideOfferListing() {
-        EbayListingDO first = mapping();
-        EbayListingDO second = mapping();
-        second.setSku("SKU-2");
-        second.setOfferId("offer-2");
-        when(ebayListingMapper.selectActive())
-                .thenReturn(List.of(first, second));
-        when(ebayClient.getActiveOffersBySkus(anyCollection())).thenReturn(List.of());
-
-        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
-
-        ArgumentCaptor<java.util.Collection<String>> skus =
-                ArgumentCaptor.forClass(java.util.Collection.class);
-        verify(ebayClient).getActiveOffersBySkus(skus.capture());
-        assertThat(skus.getValue()).containsExactly("SKU-1", "SKU-2");
-    }
-
-    @Test
-    void onlyRepricesHongKongOffersAndLeavesUsOffersUntouched() {
-        properties.getUs().setMerchantLocationKey("united_states");
-        properties.getUs().setFulfillmentPolicyId("263162428010");
-        EbayListingDO hk = mapping();
-        EbayListingDO us = mapping();
-        us.setSku("SKU-US");
-        us.setOfferId("offer-us");
-        when(ebayListingMapper.selectActive()).thenReturn(List.of(hk, us));
-        when(ebayClient.getActiveOffersBySkus(any())).thenReturn(List.of(
-                offer("offer-1", "SKU-1", "100.00", 1)
-                        .fluentPut("merchantLocationKey", "hong_kong_mong_kok"),
-                offer("offer-us", "SKU-US", "150.00", 1)
-                        .fluentPut("merchantLocationKey", "united_states")));
-        PoisonPriceDO price = new PoisonPriceDO();
-        price.setModelNo("DD1391-100");
-        price.setEuSize("42");
-        price.setPrice(730);
-        when(poisonClient.batchQueryPrice(any())).thenReturn(List.of(price));
-
-        service.runSingleRound(77L, new BigDecimal("1.1"), new BigDecimal("250"), 1);
-
-        verify(ebayClient).updateOffer(org.mockito.ArgumentMatchers.eq("offer-1"), any(), any());
-        verify(ebayClient, org.mockito.Mockito.never())
-                .updateOffer(org.mockito.ArgumentMatchers.eq("offer-us"), any(), any());
-        verify(taskMapper).updateTaskAttributes(org.mockito.ArgumentMatchers.eq(77L),
-                org.mockito.ArgumentMatchers.contains("\"skippedUsRegion\":1"));
-    }
-
-    private JSONObject offer(String offerId, String sku, String price, int quantity) {
-        return new JSONObject(true)
-                .fluentPut("offerId", offerId)
-                .fluentPut("sku", sku)
-                .fluentPut("availableQuantity", quantity)
-                .fluentPut("pricingSummary", new JSONObject(true)
-                        .fluentPut("price", new JSONObject(true)
-                                .fluentPut("currency", "USD").fluentPut("value", price)))
-                .fluentPut("listingPolicies", new JSONObject(true)
-                        .fluentPut("fulfillmentPolicyId", "fulfill"));
     }
 }

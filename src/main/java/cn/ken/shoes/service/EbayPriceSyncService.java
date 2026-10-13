@@ -30,6 +30,12 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -50,6 +56,10 @@ public class EbayPriceSyncService {
     public static final BigDecimal DEFAULT_ADDITION = new BigDecimal("250");
     private static final BigDecimal MIN_ADDITION = BigDecimal.ZERO;
     private static final BigDecimal MAX_ADDITION = new BigDecimal("100000");
+    /** 同时在途的 bulkUpdatePriceQuantity 请求数（每个请求 25 个 offer）。 */
+    private static final int PARALLEL_BATCHES = 4;
+    /** 每处理多少波刷新一次任务进度，避免页面长时间看不到进展。 */
+    private static final int PROGRESS_EVERY_WAVES = 10;
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -58,6 +68,7 @@ public class EbayPriceSyncService {
     private final PoisonClient poisonClient;
     private final EbayProperties properties;
     private final Map<Long, RunHandle> running = new ConcurrentHashMap<>();
+    private final ExecutorService updateExecutor = Executors.newVirtualThreadPerTaskExecutor();
 
     public EbayPriceSyncService(TaskMapper taskMapper,
                                 TaskItemMapper taskItemMapper,
@@ -116,11 +127,10 @@ public class EbayPriceSyncService {
             taskMapper.cancelRunningTask(taskId);
             return;
         }
+        // 不中断线程：中断会打断在途的 HTTP/JDBC 请求并让连接失效（曾导致线程异常退出、
+        // 任务卡在 running）。工作线程在批次之间检查取消标记，间隔等待由 stop 信号唤醒。
         handle.cancelled.set(true);
-        Thread thread = handle.thread;
-        if (thread != null) {
-            thread.interrupt();
-        }
+        handle.stop.countDown();
     }
 
     public boolean canRun() {
@@ -145,36 +155,30 @@ public class EbayPriceSyncService {
                                 int round, AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
         List<EbayListingDO> mappings = ebayListingMapper.selectActive();
-        Map<String, EbayListingDO> byOfferId = new HashMap<>();
+        /*
+         * 直接以 ebay_listing 映射（SKU + offerId + 区域）为改价范围，不再逐个
+         * SKU 调 GET /offer：8 万多个 SKU 单线程读取要十几个小时，而改价只需要
+         * offerId，价格/库存用 bulkUpdatePriceQuantity 每 25 个一批写入。
+         */
         Map<String, EbayListingDO> bySku = new LinkedHashMap<>();
         for (EbayListingDO mapping : mappings == null ? List.<EbayListingDO>of() : mappings) {
-            if (mapping.getOfferId() != null) {
-                byOfferId.putIfAbsent(mapping.getOfferId(), mapping);
-            }
-            if (mapping.getSku() != null) {
+            if (mapping.getSku() != null && !mapping.getSku().isBlank()) {
                 bySku.putIfAbsent(mapping.getSku(), mapping);
             }
         }
-        /*
-         * 只按已上架映射的 SKU 查 offer。eBay 不允许按站点直接列出全部
-         * offer（错误码 25707），而改价本来也只处理有映射的商品，
-         * 因此按 SKU 查询既是唯一可行方式，也避免了扫描无关库存。
-         */
-        List<JSONObject> offers = ebayClient.getActiveOffersBySkus(bySku.keySet());
 
         List<OfferContext> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
         int skipped = 0;
         int skippedUsRegion = 0;
-        for (JSONObject offer : offers) {
+        for (EbayListingDO mapping : bySku.values()) {
             ensureNotCancelled(cancelled);
-            if (isUsRegionOffer(offer)) {
+            if (isUsRegion(mapping)) {
                 // 改价只覆盖港区商品；美区的价格和库存由人工/美区上架维护。
                 skippedUsRegion++;
                 continue;
             }
-            EbayListingDO mapping = mappingFor(offer, byOfferId, bySku);
-            if (mapping == null || mapping.getStyleId() == null) {
+            if (isBlank(mapping.getOfferId()) || isBlank(mapping.getStyleId())) {
                 skipped++;
                 continue;
             }
@@ -183,10 +187,7 @@ public class EbayPriceSyncService {
                 skipped++;
                 continue;
             }
-            OfferContext context = new OfferContext(offer, mapping, euSize,
-                    decimalAt(offer, "pricingSummary", "price", "value"),
-                    integerAt(offer, "availableQuantity"));
-            contexts.add(context);
+            contexts.add(new OfferContext(mapping, euSize));
             modelNos.add(mapping.getStyleId().trim());
         }
 
@@ -194,7 +195,7 @@ public class EbayPriceSyncService {
             // 空轮次不能静默成功，否则映射丢失时页面只会显示"第N轮"而没有任何原因。
             String reason = bySku.isEmpty()
                     ? "未找到eBay上架映射（ebay_listing为空），本轮无商品可改价"
-                    : "本轮未查到可改价的港区在售offer（映射" + bySku.size() + "个，跳过" + skipped
+                    : "本轮没有可改价的港区商品（映射" + bySku.size() + "个，跳过" + skipped
                     + "个，美区不改价" + skippedUsRegion + "个）";
             taskMapper.updateTaskFailReason(taskId, reason);
             taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, skipped)
@@ -210,6 +211,7 @@ public class EbayPriceSyncService {
          * results when the batch contains other valid prices.
          */
         List<PoisonPriceDO> poisonPrices = poisonClient.batchQueryPrice(new ArrayList<>(modelNos));
+        ensureNotCancelled(cancelled);
         if (poisonPrices == null || poisonPrices.isEmpty()) {
             taskMapper.updateTaskFailReason(taskId, "本轮得物查价未返回可确认结果，已跳过改价和清库存");
             taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), 0, 0, skipped)
@@ -220,7 +222,6 @@ public class EbayPriceSyncService {
 
         Map<String, BigDecimal> prices = new HashMap<>();
         for (PoisonPriceDO price : poisonPrices) {
-            ensureNotCancelled(cancelled);
             if (price == null || price.getModelNo() == null || price.getEuSize() == null
                     || price.getPrice() == null || price.getPrice() <= 0) {
                 continue;
@@ -229,57 +230,130 @@ public class EbayPriceSyncService {
                     BigDecimal.valueOf(price.getPrice()));
         }
 
-        int changed = 0;
-        int noPrice = 0;
-        int failed = 0;
+        List<PlannedUpdate> planned = new ArrayList<>(contexts.size());
         for (OfferContext context : contexts) {
-            ensureNotCancelled(cancelled);
             BigDecimal poisonPrice = prices.get(priceKey(context.mapping().getStyleId(), context.euSize()));
-            BigDecimal target = poisonPrice == null ? null : targetPrice(poisonPrice, priceMultiplier, priceAddition);
-            int targetQuantity = poisonPrice == null ? 0 : Math.max(context.quantity(), 0);
-            String result;
-            try {
-                JSONObject payload = editableOfferPayload(context.offer());
-                if (target != null) {
-                    setPrice(payload, target);
-                    setAvailableQuantity(payload, targetQuantity);
-                    ebayClient.updateOffer(context.offerId(), payload, properties.getDefaultContentLanguage());
-                    rememberPriceAndQuantity(context, target, targetQuantity);
-                    changed++;
-                    result = "改价成功($" + target.toPlainString() + ")";
-                } else {
-                    setAvailableQuantity(payload, 0);
-                    ebayClient.updateOffer(context.offerId(), payload, properties.getDefaultContentLanguage());
-                    rememberPriceAndQuantity(context, null, 0);
-                    noPrice++;
-                    result = "无得物价格，库存置0";
-                }
-            } catch (TaskCancelledException e) {
-                throw e;
-            } catch (Exception e) {
-                failed++;
-                result = "改价失败(" + safeError(e) + ")";
-            }
-            recordItem(taskId, round, context, poisonPrice, target, targetQuantity, result);
+            BigDecimal target = poisonPrice == null ? null
+                    : targetPrice(poisonPrice, priceMultiplier, priceAddition);
+            /*
+             * 有价只改价格、不碰库存：eBay 上的库存会随成交减少，本地快照不可靠，
+             * 回写快照会把已卖出的数量加回去。无价则把库存置 0。
+             */
+            EbaySellApiClient.OfferPriceQuantity update = new EbaySellApiClient.OfferPriceQuantity(
+                    context.mapping().getSku(), context.offerId(), target,
+                    properties.getDefaultCurrency(), target == null ? 0 : null);
+            planned.add(new PlannedUpdate(context, poisonPrice, target, update));
         }
+
+        int[] counters = new int[3]; // changed, noPrice, failed
+        List<List<PlannedUpdate>> batches = partition(planned, EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT);
+        for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
+            ensureNotCancelled(cancelled);
+            List<List<PlannedUpdate>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
+            List<List<EbaySellApiClient.OfferUpdateResult>> results = submitWave(wave);
+            for (int b = 0; b < wave.size(); b++) {
+                recordBatch(taskId, round, wave.get(b), results.get(b), counters);
+            }
+            if ((i / PARALLEL_BATCHES) % PROGRESS_EVERY_WAVES == 0) {
+                taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), counters[0], counters[1], skipped)
+                        .fluentPut("skippedUsRegion", skippedUsRegion)
+                        .fluentPut("failed", counters[2])
+                        .fluentPut("processed", Math.min((i + wave.size()) * EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT,
+                                planned.size()))
+                        .toJSONString());
+            }
+        }
+        int failed = counters[2];
         taskMapper.updateTaskFailReason(taskId, failed == 0 ? null : "本轮有 " + failed + " 个商品处理失败");
-        taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), changed, noPrice, skipped)
+        taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), counters[0], counters[1], skipped)
                 .fluentPut("skippedUsRegion", skippedUsRegion)
                 .fluentPut("failed", failed).toJSONString());
     }
 
-    /** 以 offer 实际的发货地点为准判断美区，不依赖本地映射，历史数据也不会误判。 */
-    private boolean isUsRegionOffer(JSONObject offer) {
-        EbayProperties.ListingSettings us = properties.listingSettings(EbayListingRegion.US);
-        String usLocation = us.merchantLocationKey();
-        String offerLocation = offer.getString("merchantLocationKey");
-        return usLocation != null && !usLocation.isBlank() && offerLocation != null
-                && usLocation.trim().equalsIgnoreCase(offerLocation.trim());
+    /**
+     * 并发发出一波批量改价请求并等待全部返回。整批请求失败只记为该批商品失败，
+     * 不影响同一波的其它批次；等待期间不响应中断，保证在途写入有确定结果。
+     */
+    private List<List<EbaySellApiClient.OfferUpdateResult>> submitWave(List<List<PlannedUpdate>> wave) {
+        List<Future<List<EbaySellApiClient.OfferUpdateResult>>> futures = new ArrayList<>(wave.size());
+        for (List<PlannedUpdate> batch : wave) {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = batch.stream().map(PlannedUpdate::update).toList();
+            futures.add(updateExecutor.submit(() -> {
+                try {
+                    return ebayClient.bulkUpdatePriceQuantity(updates);
+                } catch (Exception e) {
+                    String error = safeError(e);
+                    return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
+                            u.sku(), u.offerId(), 0, error)).toList();
+                }
+            }));
+        }
+        List<List<EbaySellApiClient.OfferUpdateResult>> results = new ArrayList<>(futures.size());
+        for (int i = 0; i < futures.size(); i++) {
+            results.add(awaitUninterruptibly(futures.get(i), wave.get(i)));
+        }
+        return results;
+    }
+
+    private List<EbaySellApiClient.OfferUpdateResult> awaitUninterruptibly(
+            Future<List<EbaySellApiClient.OfferUpdateResult>> future, List<PlannedUpdate> batch) {
+        boolean interrupted = false;
+        try {
+            while (true) {
+                try {
+                    return future.get();
+                } catch (InterruptedException e) {
+                    interrupted = true;
+                } catch (ExecutionException e) {
+                    String error = e.getCause() instanceof Exception cause ? safeError(cause) : "系统异常";
+                    return batch.stream().map(p -> new EbaySellApiClient.OfferUpdateResult(
+                            p.update().sku(), p.update().offerId(), 0, error)).toList();
+                }
+            }
+        } finally {
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void recordBatch(Long taskId, int round, List<PlannedUpdate> batch,
+                             List<EbaySellApiClient.OfferUpdateResult> results, int[] counters) {
+        Map<String, EbaySellApiClient.OfferUpdateResult> byOfferId = new HashMap<>();
+        for (EbaySellApiClient.OfferUpdateResult result : results) {
+            byOfferId.putIfAbsent(result.offerId(), result);
+        }
+        for (PlannedUpdate plan : batch) {
+            EbaySellApiClient.OfferUpdateResult result = byOfferId.get(plan.context().offerId());
+            String operateResult;
+            Integer recordedQuantity = plan.target() == null ? Integer.valueOf(0) : plan.context().mapping().getQuantity();
+            if (result == null || !result.success()) {
+                counters[2]++;
+                operateResult = "改价失败(" + (result == null ? "eBay未返回该offer的处理结果" : result.error()) + ")";
+            } else if (plan.target() != null) {
+                counters[0]++;
+                rememberPriceAndQuantity(plan.context(), plan.target(), null);
+                operateResult = "改价成功($" + plan.target().toPlainString() + ")";
+            } else {
+                counters[1]++;
+                rememberPriceAndQuantity(plan.context(), null, 0);
+                operateResult = "无得物价格，库存置0";
+            }
+            recordItem(taskId, round, plan.context(), plan.poisonPrice(), plan.target(),
+                    recordedQuantity, truncate(operateResult, 250));
+        }
+    }
+
+    /** 区域以上架时写入映射的 region 为准；历史数据为空视为港区。 */
+    private boolean isUsRegion(EbayListingDO mapping) {
+        return mapping.getRegion() != null
+                && EbayListingRegion.US.getCode().equalsIgnoreCase(mapping.getRegion().trim());
     }
 
     private void runLoop(Long taskId, long intervalHours, BigDecimal multiplier,
                          BigDecimal addition, RunHandle handle) {
         int round = 0;
+        boolean cancelled = false;
         try {
             while (!handle.cancelled.get()) {
                 round++;
@@ -289,33 +363,72 @@ public class EbayPriceSyncService {
                 } catch (TaskCancelledException e) {
                     break;
                 } catch (Exception e) {
+                    if (handle.cancelled.get()) {
+                        // 取消时在途请求抛出的异常属于取消，不能记成本轮失败。
+                        break;
+                    }
                     log.error("eBay定时改价第{}轮失败，保留现有库存和价格, taskId={}", round, taskId, e);
-                    taskMapper.updateTaskFailReason(taskId, "第" + round + "轮失败：" + safeError(e));
-                    taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, 0)
-                            .fluentPut("roundFailed", true).toJSONString());
+                    recordRoundFailure(taskId, round, e);
                 }
-                if (handle.cancelled.get()) {
+                if (handle.stop.await(intervalHours, TimeUnit.HOURS)) {
                     break;
                 }
-                Thread.sleep(intervalHours * 60L * 60L * 1000L);
             }
-            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            cancelled = true;
         } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
+            // 只有 JVM 关闭等外部原因会中断该线程；取消走 stop 信号，不再中断在途请求。
+            cancelled = true;
+        } catch (Throwable e) {
+            log.error("eBay定时改价线程异常退出, taskId={}", taskId, e);
         } finally {
             running.remove(taskId);
+            // 清掉中断标记，否则终态写库会因为 JDBC 套接字被中断而失败，任务一直停在 running。
+            boolean interrupted = Thread.interrupted();
+            String status = cancelled || handle.cancelled.get()
+                    ? TaskDO.TaskStatusEnum.CANCEL.getCode() : TaskDO.TaskStatusEnum.FAILED.getCode();
+            persistTerminalStatus(taskId, status);
+            if (interrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
+    private void recordRoundFailure(Long taskId, int round, Exception e) {
+        try {
+            taskMapper.updateTaskFailReason(taskId, "第" + round + "轮失败：" + safeError(e));
+            taskMapper.updateTaskAttributes(taskId, attributes(0, 0, 0, 0)
+                    .fluentPut("roundFailed", true).toJSONString());
+        } catch (Exception writeFailure) {
+            // 记录失败原因不能让改价线程退出，下一轮会继续执行。
+            log.warn("eBay定时改价失败原因写入失败, taskId={}", taskId, writeFailure);
+        }
+    }
+
+    private void persistTerminalStatus(Long taskId, String status) {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                taskMapper.updateTaskStatus(taskId, status);
+                return;
+            } catch (Exception e) {
+                log.warn("eBay定时改价终态写入失败(第{}次), taskId={}, status={}", attempt, taskId, status, e);
+                try {
+                    Thread.sleep(1000L * attempt);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+            }
         }
     }
 
     private void ensureNotCancelled(AtomicBoolean cancelled) {
-        if (cancelled.get() || Thread.currentThread().isInterrupted()) {
+        if (cancelled.get()) {
             throw new TaskCancelledException();
         }
     }
 
     /** 映射表里的价格/库存只是展示用快照，写失败不影响本次改价结果。 */
-    private void rememberPriceAndQuantity(OfferContext context, BigDecimal price, int quantity) {
+    private void rememberPriceAndQuantity(OfferContext context, BigDecimal price, Integer quantity) {
         try {
             ebayListingMapper.updatePriceAndQuantity(context.mapping().getSku(), price, quantity);
         } catch (Exception e) {
@@ -324,7 +437,7 @@ public class EbayPriceSyncService {
     }
 
     private void recordItem(Long taskId, int round, OfferContext context, BigDecimal poisonPrice,
-                            BigDecimal target, int quantity, String result) {
+                            BigDecimal target, Integer quantity, String result) {
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(round);
@@ -335,48 +448,13 @@ public class EbayPriceSyncService {
         item.setStyleId(context.mapping().getStyleId());
         item.setSize(context.mapping().getSize());
         item.setEuSize(context.euSize());
-        item.setCurrentPrice(context.currentPrice());
+        item.setCurrentPrice(context.mapping().getPrice());
         item.setTargetPrice(target);
         item.setListingQuantity(quantity);
         item.setPoisonPrice(poisonPrice);
         item.setOperateResult(result);
         item.setOperateTime(new Date());
         taskItemMapper.insert(item);
-    }
-
-    private EbayListingDO mappingFor(JSONObject offer, Map<String, EbayListingDO> byOfferId,
-                                     Map<String, EbayListingDO> bySku) {
-        String offerId = offer.getString("offerId");
-        EbayListingDO mapping = offerId == null ? null : byOfferId.get(offerId);
-        return mapping != null ? mapping : bySku.get(offer.getString("sku"));
-    }
-
-    private JSONObject editableOfferPayload(JSONObject offer) {
-        JSONObject payload = JSONObject.parseObject(offer.toJSONString());
-        for (String field : List.of("offerId", "status", "listing", "listingId",
-                "createdDate", "lastModifiedDate", "marketplace", "listingStatus")) {
-            payload.remove(field);
-        }
-        return payload;
-    }
-
-    private void setPrice(JSONObject payload, BigDecimal target) {
-        JSONObject summary = payload.getJSONObject("pricingSummary");
-        if (summary == null) {
-            summary = new JSONObject(true);
-            payload.put("pricingSummary", summary);
-        }
-        JSONObject price = summary.getJSONObject("price");
-        if (price == null) {
-            price = new JSONObject(true);
-            summary.put("price", price);
-        }
-        price.put("currency", properties.getDefaultCurrency());
-        price.put("value", target.toPlainString());
-    }
-
-    private void setAvailableQuantity(JSONObject payload, int quantity) {
-        payload.put("availableQuantity", quantity);
     }
 
     /** 目标美元价 = (得物人民币价 × 系数 + 固定加价) ÷ 汇率。 */
@@ -405,29 +483,6 @@ public class EbayPriceSyncService {
         }
         return ShoesUtil.getShoesSizeFrom(
                 ShoesUtil.normalizeUnicodeFraction(size).toUpperCase(Locale.ROOT));
-    }
-
-    private BigDecimal decimalAt(JSONObject object, String... path) {
-        Object current = object;
-        for (String part : path) {
-            if (!(current instanceof JSONObject json)) {
-                return null;
-            }
-            current = json.get(part);
-        }
-        if (current == null) {
-            return null;
-        }
-        try {
-            return new BigDecimal(String.valueOf(current));
-        } catch (NumberFormatException ignored) {
-            return null;
-        }
-    }
-
-    private int integerAt(JSONObject object, String key) {
-        Integer value = object.getInteger(key);
-        return value == null ? 0 : Math.max(value, 0);
     }
 
     private String priceKey(String modelNo, String euSize) {
@@ -461,15 +516,36 @@ public class EbayPriceSyncService {
         }
     }
 
-    private record OfferContext(JSONObject offer, EbayListingDO mapping, String euSize,
-                                BigDecimal currentPrice, int quantity) {
-        String offerId() {
-            return offer.getString("offerId");
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
+    }
+
+    private String truncate(String value, int max) {
+        return value == null || value.length() <= max ? value : value.substring(0, max);
+    }
+
+    private static <T> List<List<T>> partition(List<T> items, int size) {
+        List<List<T>> batches = new ArrayList<>();
+        for (int i = 0; i < items.size(); i += size) {
+            batches.add(items.subList(i, Math.min(i + size, items.size())));
         }
+        return batches;
+    }
+
+    private record OfferContext(EbayListingDO mapping, String euSize) {
+        String offerId() {
+            return mapping.getOfferId();
+        }
+    }
+
+    private record PlannedUpdate(OfferContext context, BigDecimal poisonPrice, BigDecimal target,
+                                 EbaySellApiClient.OfferPriceQuantity update) {
     }
 
     private static final class RunHandle {
         private final AtomicBoolean cancelled = new AtomicBoolean();
+        /** 取消信号：唤醒轮次间隔等待，替代线程中断。 */
+        private final CountDownLatch stop = new CountDownLatch(1);
         private volatile Thread thread;
 
         private RunHandle() {}

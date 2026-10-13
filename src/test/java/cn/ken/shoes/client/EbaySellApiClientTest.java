@@ -51,6 +51,63 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void bulkUpdatesPriceAndQuantityAndMapsPartialResults() throws Exception {
+        server.enqueue(jsonResponse("""
+                {"responses":[
+                  {"statusCode":200,"sku":"SKU-1","offerId":"offer-1"},
+                  {"statusCode":400,"sku":"SKU-2","offerId":"offer-2",
+                   "errors":[{"errorId":25713,"message":"This Offer is not available."}]}]}
+                """).setResponseCode(207));
+
+        List<EbaySellApiClient.OfferUpdateResult> results = client.bulkUpdatePriceQuantity(List.of(
+                new EbaySellApiClient.OfferPriceQuantity("SKU-1", "offer-1",
+                        new java.math.BigDecimal("49.32"), "USD", null),
+                new EbaySellApiClient.OfferPriceQuantity("SKU-2", "offer-2", null, "USD", 0)));
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getPath()).isEqualTo("/sell/inventory/v1/bulk_update_price_quantity");
+        JSONObject body = JSON.parseObject(request.getBody().readUtf8());
+        JSONObject first = body.getJSONArray("requests").getJSONObject(0);
+        assertThat(first.getString("sku")).isEqualTo("SKU-1");
+        JSONObject firstOffer = first.getJSONArray("offers").getJSONObject(0);
+        assertThat(firstOffer.getString("offerId")).isEqualTo("offer-1");
+        assertThat(firstOffer.getJSONObject("price").getString("value")).isEqualTo("49.32");
+        assertThat(firstOffer.getJSONObject("price").getString("currency")).isEqualTo("USD");
+        assertThat(firstOffer).doesNotContainKey("availableQuantity");
+        JSONObject secondOffer = body.getJSONArray("requests").getJSONObject(1)
+                .getJSONArray("offers").getJSONObject(0);
+        assertThat(secondOffer).doesNotContainKey("price");
+        assertThat(secondOffer.getInteger("availableQuantity")).isZero();
+
+        assertThat(results).hasSize(2);
+        assertThat(results.get(0).success()).isTrue();
+        assertThat(results.get(1).success()).isFalse();
+        assertThat(results.get(1).error()).contains("400").contains("25713");
+    }
+
+    @Test
+    void bulkUpdateRetriesTransientServerErrorsAndRejectsOversizedBatches() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(500).setBody("{\"errors\":[{\"errorId\":25001}]}"));
+        server.enqueue(jsonResponse("""
+                {"responses":[{"statusCode":200,"sku":"SKU-1","offerId":"offer-1"}]}"""));
+
+        List<EbaySellApiClient.OfferUpdateResult> results = client.bulkUpdatePriceQuantity(List.of(
+                new EbaySellApiClient.OfferPriceQuantity("SKU-1", "offer-1",
+                        new java.math.BigDecimal("10"), "USD", null)));
+
+        assertThat(server.getRequestCount()).isEqualTo(2);
+        assertThat(results.get(0).success()).isTrue();
+
+        List<EbaySellApiClient.OfferPriceQuantity> tooMany = new java.util.ArrayList<>();
+        for (int i = 0; i < 26; i++) {
+            tooMany.add(new EbaySellApiClient.OfferPriceQuantity("S" + i, "o" + i, null, "USD", 0));
+        }
+        assertThatThrownBy(() -> client.bulkUpdatePriceQuantity(tooMany))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void replacesInventoryItemWithEncodedSkuAndRequiredHeaders() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(204));
         JSONObject payload = JSON.parseObject("""
