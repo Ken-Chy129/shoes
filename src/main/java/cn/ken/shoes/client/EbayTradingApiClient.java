@@ -37,8 +37,8 @@ import java.util.concurrent.TimeUnit;
 /**
  * eBay Trading API（XML）只读调用：订单、留下的信用评价、运送服务名称。
  *
- * <p>订单走 Trading API 而不是 Fulfillment API，是因为现有卖家授权只包含
- * Trading API 通用 scope，Fulfillment API 需要额外的 sell.fulfillment 授权。
+ * <p>订单主体走 Trading API（只需通用 scope）；买家/课税地址、促销标记与发货时间
+ * 由 {@link EbayFulfillmentApiClient} 补充（需要 sell.fulfillment.readonly 授权）。
  */
 @Component
 public class EbayTradingApiClient {

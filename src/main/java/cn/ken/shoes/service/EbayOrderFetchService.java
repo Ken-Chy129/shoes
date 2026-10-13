@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.client.EbayFulfillmentApiClient;
 import cn.ken.shoes.client.EbayTradingApiClient;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.mapper.EbayListingMapper;
@@ -59,6 +60,7 @@ public class EbayOrderFetchService {
     private final TaskItemMapper taskItemMapper;
     private final EbayListingMapper ebayListingMapper;
     private final EbayTradingApiClient tradingClient;
+    private final EbayFulfillmentApiClient fulfillmentClient;
     private final EbayProperties properties;
     private final Executor executor;
     private final Clock clock;
@@ -68,19 +70,21 @@ public class EbayOrderFetchService {
     @Autowired
     public EbayOrderFetchService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                                  EbayListingMapper ebayListingMapper, EbayTradingApiClient tradingClient,
-                                 EbayProperties properties) {
-        this(taskMapper, taskItemMapper, ebayListingMapper, tradingClient, properties,
+                                 EbayFulfillmentApiClient fulfillmentClient, EbayProperties properties) {
+        this(taskMapper, taskItemMapper, ebayListingMapper, tradingClient, fulfillmentClient, properties,
                 command -> Thread.ofVirtual().name("Ebay-Fetch-Orders").start(command),
                 Clock.systemUTC(), Paths.get("files/task-input"));
     }
 
     EbayOrderFetchService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                           EbayListingMapper ebayListingMapper, EbayTradingApiClient tradingClient,
+                          EbayFulfillmentApiClient fulfillmentClient,
                           EbayProperties properties, Executor executor, Clock clock, Path reportRoot) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
         this.ebayListingMapper = ebayListingMapper;
         this.tradingClient = tradingClient;
+        this.fulfillmentClient = fulfillmentClient;
         this.properties = properties;
         this.executor = executor;
         this.clock = clock;
@@ -148,11 +152,14 @@ public class EbayOrderFetchService {
                     break;
                 }
             }
+            Instant fetchFrom = from;
             Set<String> feedbackLeft = optional("信用评价", tradingClient::getFeedbackLeftLineItemIds, Set.of());
             Map<String, String> shippingNames = optional("运送服务名称",
                     tradingClient::getShippingServiceDescriptions, Map.of());
+            EbayOrderReportBuilder.Enrichment enrichment = optional("Fulfillment API补充数据",
+                    () -> enrichment(fetchFrom, to, cancelled), EbayOrderReportBuilder.Enrichment.NONE);
             EbayOrderReportBuilder builder = new EbayOrderReportBuilder(feedbackLeft, shippingNames,
-                    mappingLookup(orders));
+                    mappingLookup(orders), enrichment);
             List<EbayOrderReportBuilder.Line> lines = new ArrayList<>();
             for (Element order : orders) {
                 lines.addAll(builder.build(order));
@@ -171,7 +178,8 @@ public class EbayOrderFetchService {
             JSONObject attributes = new JSONObject(true)
                     .fluentPut("orders", orders.size())
                     .fluentPut("lines", lines.size())
-                    .fluentPut("days", days);
+                    .fluentPut("days", days)
+                    .fluentPut("fulfillmentApi", !enrichment.ordersById().isEmpty());
             statusCounts.forEach(attributes::put);
             taskMapper.updateTaskAttributes(taskId, attributes.toJSONString());
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
@@ -246,6 +254,52 @@ public class EbayOrderFetchService {
         item.setOrderStatus(line.status());
         item.setOperateResult(line.status());
         return item;
+    }
+
+    /** Fulfillment API：订单 JSON + 每个已发货订单的实际发货时间（按 lineItemId）。 */
+    private EbayOrderReportBuilder.Enrichment enrichment(Instant from, Instant to, AtomicBoolean cancelled) {
+        if (fulfillmentClient == null) {
+            return EbayOrderReportBuilder.Enrichment.NONE;
+        }
+        Map<String, JSONObject> ordersById = new HashMap<>();
+        Map<String, Instant> shipped = new HashMap<>();
+        for (JSONObject order : fulfillmentClient.getOrders(from, to)) {
+            String orderId = order.getString("orderId");
+            if (orderId == null) {
+                continue;
+            }
+            ordersById.put(orderId, order);
+            JSONArray hrefs = order.getJSONArray("fulfillmentHrefs");
+            if (hrefs == null || hrefs.isEmpty() || cancelled.get()) {
+                continue;
+            }
+            try {
+                for (JSONObject fulfillment : fulfillmentClient.getShippingFulfillments(orderId)) {
+                    Instant shippedDate = parseInstant(fulfillment.getString("shippedDate"));
+                    JSONArray items = fulfillment.getJSONArray("lineItems");
+                    if (shippedDate == null || items == null) {
+                        continue;
+                    }
+                    for (int i = 0; i < items.size(); i++) {
+                        String lineItemId = items.getJSONObject(i).getString("lineItemId");
+                        if (lineItemId != null) {
+                            shipped.merge(lineItemId, shippedDate, (a, b) -> a.isBefore(b) ? a : b);
+                        }
+                    }
+                }
+            } catch (RuntimeException e) {
+                log.warn("eBay获取订单：读取发货记录失败, orderId:{}, {}", orderId, safeError(e));
+            }
+        }
+        return new EbayOrderReportBuilder.Enrichment(ordersById, shipped);
+    }
+
+    private static Instant parseInstant(String value) {
+        try {
+            return value == null ? null : Instant.parse(value);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     private EbayOrderReportBuilder.MappingLookup mappingLookup(List<Element> orders) {

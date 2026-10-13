@@ -2,12 +2,14 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayTradingApiClient;
 import cn.ken.shoes.model.entity.EbayListingDO;
+import com.alibaba.fastjson.JSON;
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Element;
 import org.xml.sax.InputSource;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.StringReader;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -127,8 +129,58 @@ class EbayOrderReportBuilderTest {
         var line = new EbayOrderReportBuilder(Set.of(), Map.of(), lookup(Map.of())).build(order(cancelled)).get(0);
 
         assertThat(line.columns().get("总价")).isEqualTo("US $0.00");
-        assertThat(line.columns().get("总额包含 eBay 收取的税费和费用")).isEqualTo("否");
+        assertThat(line.columns().get("总额包含 eBay 收取的税费和费用")).isEqualTo("是");
         assertThat(line.status()).isEqualTo("已取消");
+    }
+
+    @Test
+    void fillsBuyerAndTaxAddressesPromotionTotalAndShippedDateFromTheFulfillmentApi() throws Exception {
+        var ffOrder = JSON.parseObject("""
+                {"orderId":"07-15295-85293","orderPaymentStatus":"PAID",
+                 "cancelStatus":{"cancelState":"NONE_REQUESTED"},
+                 "buyer":{"taxAddress":{"city":"Brooklyn","stateOrProvince":"NY","postalCode":"11235-4227","countryCode":"US"},
+                   "buyerRegistrationAddress":{"fullName":"Jhoan Garcia","contactAddress":{"addressLine1":"1230 Avenue X",
+                     "city":"Brooklyn","stateOrProvince":"NY","postalCode":"11235","countryCode":"US"}}},
+                 "lineItems":[{"lineItemId":"10089705601807","total":{"value":"247.01"},
+                   "ebayCollectAndRemitTaxes":[{"amount":{"value":"21.92"}}],
+                   "properties":{"buyerProtection":true,"soldViaAdCampaign":true}}]}
+                """);
+        var enrichment = new EbayOrderReportBuilder.Enrichment(Map.of("07-15295-85293", ffOrder),
+                Map.of("10089705601807", Instant.parse("2026-10-14T02:00:00Z")));
+        var line = new EbayOrderReportBuilder(Set.of(), Map.of(), lookup(Map.of()), enrichment)
+                .build(order(ORDER)).get(0);
+        var row = line.columns();
+
+        assertThat(row.get("买家地址 1")).isEqualTo("1230 Avenue X");
+        assertThat(row.get("买家所在县/市")).isEqualTo("Brooklyn");
+        assertThat(row.get("买家邮政编码")).isEqualTo("11235-4227");
+        assertThat(row.get("买家所在国家/地区")).isEqualTo("United States");
+        assertThat(row.get("课税州/省")).isEqualTo("NY");
+        assertThat(row.get("课税国家/地区")).isEqualTo("United States");
+        assertThat(row.get("通过促销刊登售出")).isEqualTo("是");
+        assertThat(row.get("总价")).isEqualTo("US $268.93");
+        assertThat(row.get("发货日期")).isEqualTo("Oct-13-26");
+        assertThat(line.status()).isEqualTo("已发货");
+    }
+
+    @Test
+    void leavesTheBuyerStreetBlankWhenTheRegistrationAddressIsElsewhereAndZeroesRefundedOrders() throws Exception {
+        var ffOrder = JSON.parseObject("""
+                {"orderId":"07-15295-85293","orderPaymentStatus":"FULLY_REFUNDED",
+                 "cancelStatus":{"cancelState":"NONE_REQUESTED"},
+                 "buyer":{"taxAddress":{"stateOrProvince":"MT","postalCode":"59808-9190","countryCode":"US"},
+                   "buyerRegistrationAddress":{"contactAddress":{"addressLine1":"9 Other St","city":"Missoula",
+                     "stateOrProvince":"MT","postalCode":"59801-8548","countryCode":"US"}}},
+                 "lineItems":[{"lineItemId":"10089705601807","total":{"value":"247.01"},"properties":{}}]}
+                """);
+        var enrichment = new EbayOrderReportBuilder.Enrichment(Map.of("07-15295-85293", ffOrder), Map.of());
+        var row = new EbayOrderReportBuilder(Set.of(), Map.of(), lookup(Map.of()), enrichment)
+                .build(order(ORDER)).get(0).columns();
+
+        assertThat(row.get("买家地址 1")).isEmpty();
+        assertThat(row.get("买家所在县/市")).isEqualTo("Missoula");
+        assertThat(row.get("通过促销刊登售出")).isEqualTo("否");
+        assertThat(row.get("总价")).isEqualTo("US $0.00");
     }
 
     @Test

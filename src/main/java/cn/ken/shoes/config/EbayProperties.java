@@ -111,6 +111,10 @@ public class EbayProperties {
         return apiRoot() + "/commerce/notification/v1/";
     }
 
+    public String getFulfillmentApiEndpoint() {
+        return apiRoot() + "/sell/fulfillment/v1/";
+    }
+
     public String getTradingApiEndpoint() {
         return apiRoot() + "/ws/api.dll";
     }

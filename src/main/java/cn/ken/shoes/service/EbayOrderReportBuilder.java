@@ -1,6 +1,8 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.model.entity.EbayListingDO;
+import com.alibaba.fastjson.JSONArray;
+import com.alibaba.fastjson.JSONObject;
 import cn.ken.shoes.util.SizeConvertUtil;
 import org.w3c.dom.Element;
 
@@ -92,13 +94,34 @@ public class EbayOrderReportBuilder {
         Collection<EbayListingDO> byListingId(String listingId);
     }
 
+    /**
+     * Fulfillment API 补充数据：按订单号索引的订单 JSON，以及按 lineItemId（即 TransactionID）索引的实际发货时间。
+     * 没有 sell.fulfillment 授权或调用失败时为空，相关列沿用 Trading API 的结果或留空。
+     */
+    public record Enrichment(Map<String, JSONObject> ordersById, Map<String, Instant> shippedByLineItemId) {
+        public static final Enrichment NONE = new Enrichment(Map.of(), Map.of());
+
+        public Enrichment {
+            ordersById = ordersById == null ? Map.of() : ordersById;
+            shippedByLineItemId = shippedByLineItemId == null ? Map.of() : shippedByLineItemId;
+        }
+    }
+
     private final Set<String> feedbackLeftLineItemIds;
     private final Map<String, String> shippingServiceNames;
     private final MappingLookup mappingLookup;
+    private final Enrichment enrichment;
 
     public EbayOrderReportBuilder(Set<String> feedbackLeftLineItemIds,
                                   Map<String, String> shippingServiceNames,
                                   MappingLookup mappingLookup) {
+        this(feedbackLeftLineItemIds, shippingServiceNames, mappingLookup, Enrichment.NONE);
+    }
+
+    public EbayOrderReportBuilder(Set<String> feedbackLeftLineItemIds,
+                                  Map<String, String> shippingServiceNames,
+                                  MappingLookup mappingLookup, Enrichment enrichment) {
+        this.enrichment = enrichment == null ? Enrichment.NONE : enrichment;
         this.feedbackLeftLineItemIds = feedbackLeftLineItemIds == null ? Set.of() : feedbackLeftLineItemIds;
         this.shippingServiceNames = shippingServiceNames == null ? Map.of() : shippingServiceNames;
         this.mappingLookup = mappingLookup;
@@ -169,13 +192,23 @@ public class EbayOrderReportBuilder {
                 "其他费用", "木材费", "预付无线网络费", "道路改造及送餐费", "eBay 收取的费用")) {
             row.put(fee, ZERO);
         }
-        row.put("总价", money(total(order, singleLineOrder, cancelled, price, quantity, shipping, salesTax)));
-        row.put("总额包含 eBay 收取的税费和费用", cancelled ? "否" : "是");
+        String transactionId = text(tx, "TransactionID");
+        String returnStatus = text(tx, "Status/ReturnStatus");
+        JSONObject ffOrder = enrichment.ordersById().get(orderId);
+        JSONObject ffLine = lineItem(ffOrder, transactionId);
+        BigDecimal ffTotal = fulfillmentTotal(ffOrder, ffLine, returnOpen(returnStatus));
+        row.put("总价", money(ffTotal != null ? ffTotal
+                : total(order, singleLineOrder, cancelled, price, quantity, shipping, salesTax)));
+        // 报告中该列取决于 eBay 是否代收代缴税费，与订单是否取消无关。
+        row.put("总额包含 eBay 收取的税费和费用", collectAndRemit ? "是" : "否");
 
         Instant created = instant(firstNonBlank(text(order, "CreatedTime"), text(tx, "CreatedDate")));
         Instant paid = instant(text(order, "PaidTime"));
         Instant shipBy = instant(text(tx, "ShippingServiceSelected/ShippingPackageInfo/HandleByTime"));
-        Instant shipped = instant(firstNonBlank(text(tx, "ShippedTime"), text(order, "ShippedTime")));
+        Instant shipped = enrichment.shippedByLineItemId().get(transactionId);
+        if (shipped == null) {
+            shipped = instant(firstNonBlank(text(tx, "ShippedTime"), text(order, "ShippedTime")));
+        }
         row.put("出售日期", reportDate(created));
         row.put("付款日期", reportDate(paid));
         row.put("发货截止日期", reportDate(shipBy));
@@ -217,6 +250,12 @@ public class EbayOrderReportBuilder {
         row.put("PSA 保险箱方案", "否");
         row.put("eBay 履单服务方案", "否");
         row.put("eBay 跨国运送", "否");
+
+        applyBuyerAddresses(row, ffOrder);
+        if (ffLine != null) {
+            JSONObject properties = ffLine.getJSONObject("properties");
+            row.put("通过促销刊登售出", properties != null && properties.getBooleanValue("soldViaAdCampaign") ? "是" : "否");
+        }
 
         Resolved resolved = resolveProduct(sku, itemId, title, usSize);
         row.put(COL_STYLE_ID, nz(resolved.styleId()));
@@ -301,10 +340,117 @@ public class EbayOrderReportBuilder {
         } else {
             base = "待发货";
         }
-        if (returnStatus != null && returnStatus.startsWith("Return") && !"ReturnClosed".equals(returnStatus)) {
+        if (returnOpen(returnStatus)) {
             base += "(退货中)";
         }
         return base;
+    }
+
+    private static boolean returnOpen(String returnStatus) {
+        return returnStatus != null && returnStatus.startsWith("Return") && !"ReturnClosed".equals(returnStatus);
+    }
+
+    private static JSONObject lineItem(JSONObject ffOrder, String lineItemId) {
+        JSONArray items = ffOrder == null ? null : ffOrder.getJSONArray("lineItems");
+        if (items == null || lineItemId == null) {
+            return null;
+        }
+        for (int i = 0; i < items.size(); i++) {
+            JSONObject item = items.getJSONObject(i);
+            if (lineItemId.equals(item.getString("lineItemId"))) {
+                return item;
+            }
+        }
+        return items.size() == 1 ? items.getJSONObject(0) : null;
+    }
+
+    /**
+     * 与报告一致的总价：已取消、或已全额退款且没有进行中的退货时为 0；
+     * 否则为该行的 total（成交价+运费）加 eBay 代收的税费。
+     */
+    private static BigDecimal fulfillmentTotal(JSONObject ffOrder, JSONObject ffLine, boolean returnOpen) {
+        if (ffOrder == null || ffLine == null) {
+            return null;
+        }
+        JSONObject cancel = ffOrder.getJSONObject("cancelStatus");
+        boolean cancelled = cancel != null && "CANCELED".equals(cancel.getString("cancelState"));
+        boolean refunded = "FULLY_REFUNDED".equals(ffOrder.getString("orderPaymentStatus"));
+        if (cancelled || (refunded && !returnOpen)) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal sum = amount(ffLine.getJSONObject("total"));
+        if (sum == null) {
+            return null;
+        }
+        JSONArray taxes = ffLine.getJSONArray("ebayCollectAndRemitTaxes");
+        if (taxes != null) {
+            for (int i = 0; i < taxes.size(); i++) {
+                BigDecimal tax = amount(taxes.getJSONObject(i).getJSONObject("amount"));
+                if (tax != null) {
+                    sum = sum.add(tax);
+                }
+            }
+        }
+        return sum;
+    }
+
+    private static BigDecimal amount(JSONObject money) {
+        return money == null ? null : decimal(money.getString("value"));
+    }
+
+    /**
+     * 报告里的「买家地址」所在城市/州/邮编与课税地址一致；街道只在注册地址与课税地址邮编相同时可信，否则留空。
+     */
+    private static void applyBuyerAddresses(Map<String, String> row, JSONObject ffOrder) {
+        JSONObject buyer = ffOrder == null ? null : ffOrder.getJSONObject("buyer");
+        if (buyer == null) {
+            return;
+        }
+        JSONObject tax = buyer.getJSONObject("taxAddress");
+        JSONObject registration = buyer.getJSONObject("buyerRegistrationAddress");
+        JSONObject contact = registration == null ? null : registration.getJSONObject("contactAddress");
+        if (tax == null) {
+            tax = contact;
+        }
+        if (tax == null) {
+            return;
+        }
+        String state = tax.getString("stateOrProvince");
+        String postal = tax.getString("postalCode");
+        String city = tax.getString("city");
+        if ((city == null || city.isBlank()) && contact != null
+                && state != null && state.equalsIgnoreCase(contact.getString("stateOrProvince"))) {
+            city = contact.getString("city");
+        }
+        String country = countryName(tax.getString("countryCode"));
+        row.put("买家所在县/市", nz(city));
+        row.put("买家所在州/省", nz(state));
+        row.put("买家邮政编码", nz(postal));
+        row.put("买家所在国家/地区", country);
+        row.put("课税县/市", nz(city));
+        row.put("课税州/省", nz(state));
+        row.put("课税邮政编码", nz(postal));
+        row.put("课税国家/地区", country);
+        if (contact != null && postal != null && zip5(postal).equals(zip5(contact.getString("postalCode")))) {
+            row.put("买家地址 1", nz(contact.getString("addressLine1")));
+            row.put("买家地址 2", nz(contact.getString("addressLine2")));
+        }
+    }
+
+    private static String zip5(String postal) {
+        if (postal == null) {
+            return "";
+        }
+        String trimmed = postal.trim();
+        return trimmed.length() > 5 ? trimmed.substring(0, 5) : trimmed;
+    }
+
+    private static String countryName(String code) {
+        if (code == null || code.isBlank()) {
+            return "";
+        }
+        String name = new Locale("", code.trim()).getDisplayCountry(Locale.US);
+        return name == null || name.isBlank() ? code : name;
     }
 
     private BigDecimal total(Element order, boolean singleLineOrder, boolean cancelled, BigDecimal price,
