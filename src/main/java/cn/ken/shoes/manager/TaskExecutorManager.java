@@ -33,6 +33,7 @@ import cn.ken.shoes.service.StockXShippingExtensionService;
 import cn.ken.shoes.service.EbayPriceSyncService;
 import cn.ken.shoes.service.EbayBulkListingService;
 import cn.ken.shoes.service.EbayDelistService;
+import cn.ken.shoes.service.EbayOrderFetchService;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -94,6 +95,9 @@ public class TaskExecutorManager {
 
     @Resource
     private EbayDelistService ebayDelistService;
+
+    @Resource
+    private EbayOrderFetchService ebayOrderFetchService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -302,7 +306,8 @@ public class TaskExecutorManager {
                 && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
                 || taskType == TaskTypeEnum.EBAY_BULK_LISTING
                 || taskType == TaskTypeEnum.EBAY_DELIST
-                || taskType == TaskTypeEnum.EBAY_ZERO_STOCK));
+                || taskType == TaskTypeEnum.EBAY_ZERO_STOCK
+                || taskType == TaskTypeEnum.EBAY_FETCH_ORDERS));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -326,6 +331,9 @@ public class TaskExecutorManager {
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_ZERO_STOCK) {
             return startEbayZeroStock(styleIds(params));
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_FETCH_ORDERS) {
+            return startEbayFetchOrders(params.getInteger("days"));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
@@ -442,6 +450,7 @@ public class TaskExecutorManager {
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
             case EBAY_ZERO_STOCK -> startEbayZeroStock(styleIds(params));
+            case EBAY_FETCH_ORDERS -> startEbayFetchOrders(params.getInteger("days"));
         };
     }
 
@@ -512,6 +521,14 @@ public class TaskExecutorManager {
 
     public Long startEbayZeroStock(java.util.List<String> styleIds) {
         return ebayDelistService.startZeroStock(styleIds);
+    }
+
+    public Long startEbayFetchOrders(Integer days) {
+        return ebayOrderFetchService.start(days);
+    }
+
+    public void cancelEbayFetchOrders(Long taskId) {
+        ebayOrderFetchService.cancel(taskId);
     }
 
     public void cancelEbayDelist(Long taskId) {

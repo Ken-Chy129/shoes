@@ -58,4 +58,15 @@ describe('eBay bulk listing task UI', () => {
     expect(page).toContain('doPostRequest(TASK_API.EBAY_START_ZERO_STOCK, {styleIds: []}');
     expect(service).toContain("EBAY_START_ZERO_STOCK = '/api/task/ebay/startZeroStock'");
   });
+
+  it('offers fetching eBay orders as a separate task type', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+    const options = fs.readFileSync(path.join(__dirname, 'taskOptions.ts'), 'utf8');
+    const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
+
+    expect(options).toContain("ebay_fetch_orders: 'eBay获取订单'");
+    expect(page).toContain("createTaskType === 'ebay_fetch_orders'");
+    expect(page).toContain('doPostRequest(TASK_API.EBAY_START_FETCH_ORDERS');
+    expect(service).toContain("EBAY_START_FETCH_ORDERS = '/api/task/ebay/startFetchOrders'");
+  });
 });

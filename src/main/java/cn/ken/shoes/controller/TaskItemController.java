@@ -16,6 +16,8 @@ import cn.ken.shoes.model.excel.StockXListingTaskExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
 import cn.ken.shoes.model.excel.EbayListingTaskExcel;
+import cn.ken.shoes.service.EbayOrderFetchService;
+import cn.ken.shoes.service.EbayOrderReportBuilder;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -40,6 +42,9 @@ public class TaskItemController {
 
     @Resource
     private TaskMapper taskMapper;
+
+    @Resource
+    private EbayOrderFetchService ebayOrderFetchService;
 
     @GetMapping("page")
     public PageResult<List<TaskItemDO>> queryTaskItems(
@@ -80,6 +85,11 @@ public class TaskItemController {
         response.setCharacterEncoding("utf-8");
         String encodedName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
         response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + encodedName + ".xlsx");
+
+        if (task != null && EbayOrderFetchService.TASK_TYPE.equals(task.getTaskType())) {
+            writeEbayOrderReport(response, taskId, items);
+            return;
+        }
 
         if (task != null && ("ebay_bulk_listing".equals(task.getTaskType())
                 || "ebay_price_sync".equals(task.getTaskType())
@@ -287,6 +297,54 @@ public class TaskItemController {
             return false;
         }
         return operation == StockXPurchaseOperation.ORDERS || operation == StockXPurchaseOperation.HISTORY;
+    }
+
+    /**
+     * eBay 订单导出：列与卖家中心「下载报告」一致，末尾追加 货号/US码/EU码/订单日期/发货截止日期。
+     * 有筛选条件时只导出筛选后的订单行。
+     */
+    private void writeEbayOrderReport(HttpServletResponse response, Long taskId,
+                                      List<TaskItemDO> items) throws IOException {
+        List<String> columns = EbayOrderReportBuilder.allColumns();
+        List<java.util.LinkedHashMap<String, String>> rows = ebayOrderFetchService.loadReport(taskId)
+                .orElseGet(ArrayList::new);
+        java.util.Set<String> selectedOrders = new java.util.HashSet<>();
+        for (TaskItemDO item : items) {
+            selectedOrders.add(item.getOrderNumber() + "|" + item.getListingId());
+        }
+        List<List<String>> head = new ArrayList<>();
+        for (String column : columns) {
+            head.add(List.of(column));
+        }
+        List<List<String>> data = new ArrayList<>();
+        if (rows.isEmpty()) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm");
+            dateFormat.setTimeZone(java.util.TimeZone.getTimeZone("Asia/Shanghai"));
+            for (TaskItemDO item : items) {
+                java.util.Map<String, String> row = new java.util.HashMap<>();
+                row.put("订单编号", item.getOrderNumber());
+                row.put("物品编号", item.getListingId());
+                row.put("物品标题", item.getTitle());
+                row.put("自定义标签", item.getSku());
+                row.put("成交价", item.getSalePrice() == null ? "" : "US $" + item.getSalePrice());
+                row.put(EbayOrderReportBuilder.COL_STYLE_ID, item.getStyleId());
+                row.put(EbayOrderReportBuilder.COL_US_SIZE, item.getSize());
+                row.put(EbayOrderReportBuilder.COL_EU_SIZE, item.getEuSize());
+                row.put(EbayOrderReportBuilder.COL_ORDER_DATE,
+                        item.getSoldOn() == null ? "" : dateFormat.format(item.getSoldOn()));
+                row.put(EbayOrderReportBuilder.COL_SHIP_BY,
+                        item.getOperateTime() == null ? "" : dateFormat.format(item.getOperateTime()));
+                data.add(columns.stream().map(column -> StrUtil.nullToEmpty(row.get(column))).toList());
+            }
+        } else {
+            for (java.util.LinkedHashMap<String, String> row : rows) {
+                if (!selectedOrders.contains(row.get("订单编号") + "|" + row.get("物品编号"))) {
+                    continue;
+                }
+                data.add(columns.stream().map(column -> StrUtil.nullToEmpty(row.get(column))).toList());
+            }
+        }
+        EasyExcel.write(response.getOutputStream()).head(head).sheet("eBay订单").doWrite(data);
     }
 
     private String buildExportFileName(Long taskId) {

@@ -350,6 +350,20 @@ const TaskPage = () => {
                     onError: (res: any) => message.error(res.errorMsg || 'eBay库存清零任务创建失败'),
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_fetch_orders') {
+                doPostRequest(TASK_API.EBAY_START_FETCH_ORDERS, {days: values.ebayOrderDays ?? 90}, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay获取订单任务创建失败');
+                            return;
+                        }
+                        message.success(`eBay获取订单任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    },
+                    onError: (res: any) => message.error(res.errorMsg || 'eBay获取订单任务创建失败'),
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'listing') {
                 const modelNoSearch = values.searchMode === 'model_no';
                 if (modelNoSearch) {
@@ -951,6 +965,17 @@ const TaskPage = () => {
                     </Button>
                 </div>
             </>;
+        }
+
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_fetch_orders') {
+            return <Form.Item name="ebayOrderDays" label="时间范围" initialValue={90}
+                              rules={[
+                                  {required: true, message: '请输入天数'},
+                                  {type: 'number', min: 1, max: 90, message: 'eBay最多只能获取最近90天的订单'},
+                              ]}
+                              extra="获取全部状态的订单；导出列与eBay卖家中心「下载报告」一致，末尾追加货号、US尺码、EU码、订单日期、发货截止日期">
+                <InputNumber min={1} max={90} precision={0} addonBefore="最近" addonAfter="天" style={{width: 200}}/>
+            </Form.Item>;
         }
 
         if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {

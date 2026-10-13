@@ -42,6 +42,20 @@
         ORDER BY sku
     </select>
 
+    <select id="selectBySkus" resultType="cn.ken.shoes.model.entity.EbayListingDO">
+        SELECT <include refid="columns"/>
+        FROM ebay_listing
+        WHERE sku IN
+        <foreach collection="skus" item="sku" open="(" separator="," close=")">#{sku}</foreach>
+    </select>
+
+    <select id="selectByListingIds" resultType="cn.ken.shoes.model.entity.EbayListingDO">
+        SELECT <include refid="columns"/>
+        FROM ebay_listing
+        WHERE listing_id IN
+        <foreach collection="listingIds" item="listingId" open="(" separator="," close=")">#{listingId}</foreach>
+    </select>
+
     <update id="markEnded">
         UPDATE ebay_listing SET status = 'ended' WHERE sku = #{sku}
     </update>

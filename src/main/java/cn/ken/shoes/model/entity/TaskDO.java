@@ -79,6 +79,7 @@ public class TaskDO {
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
         EBAY_DELIST("eBay下架", "ebay_delist"),
         EBAY_ZERO_STOCK("eBay库存清零", "ebay_zero_stock"),
+        EBAY_FETCH_ORDERS("eBay获取订单", "ebay_fetch_orders"),
         PURCHASE_GUIDANCE("购买价格参考", "purchase_guidance"),
         ;
 

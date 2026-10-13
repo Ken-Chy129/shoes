@@ -212,6 +212,21 @@ public class TaskController {
         return styleIds;
     }
 
+    /** 获取最近 days 天（默认且最多 90 天）的 eBay 订单，导出格式与卖家中心下载报告一致。 */
+    @PostMapping("ebay/startFetchOrders")
+    public Result<String> startEbayFetchOrders(@RequestBody(required = false) JSONObject body) {
+        Integer days = body == null ? null : body.getInteger("days");
+        try {
+            Long taskId = taskExecutorManager.startEbayFetchOrders(days);
+            if (taskId == null) {
+                return Result.buildError("eBay获取订单任务已在运行，请等待当前任务结束");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
     @PostMapping("ebay/cancelDelist")
     public Result<Void> cancelEbayDelist(@RequestParam Long taskId) {
         taskExecutorManager.cancelEbayDelist(taskId);

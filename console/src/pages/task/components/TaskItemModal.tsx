@@ -489,6 +489,23 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
     ];
 
+    const ebayOrderColumns = [
+        {title: '订单编号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150},
+        {title: '物品编号', dataIndex: 'listingId', key: 'listingId', width: 130},
+        {title: '标题', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
+        {title: '自定义标签(SKU)', dataIndex: 'sku', key: 'sku', width: 230, ellipsis: true},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: 'US尺码', dataIndex: 'size', key: 'size', width: 80},
+        {title: 'EU码', dataIndex: 'euSize', key: 'euSize', width: 70},
+        {
+            title: '成交价', dataIndex: 'salePrice', key: 'salePrice', width: 100,
+            render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode || 'USD'),
+        },
+        {title: '订单日期', dataIndex: 'soldOn', key: 'soldOn', width: 165},
+        {title: '发货截止日期', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+        {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 120},
+    ];
+
     const shippingExtensionColumns = [
         {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 160},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
@@ -535,6 +552,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     const columns = taskType === 'purchase_guidance' ? guidanceColumns : taskType === 'purchase'
         ? (purchaseOperation === 'bids' || purchaseOperation === 'create_bids' || purchaseOperation === 'update_bids'
             ? purchaseBidColumns : purchaseOrderColumns)
+        : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单')
+        ? ebayOrderColumns
         : taskType === 'fetch_orders'
         ? orderColumns
         : taskType === 'extend_shipping'
@@ -563,6 +582,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 : taskType === 'replenishment' ? '补单明细'
                             : taskType === 'purchase' ? '购买明细'
                                 : taskType === 'purchase_guidance' ? '购买价格参考明细'
+                                : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 'eBay订单明细'
                             : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
                                 ? 'eBay商品明细' : '任务明细'}
             open={visible}
@@ -633,6 +653,16 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                         })()}
+                        {(taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') && attributes && (() => {
+                            try {
+                                const attrs = JSON.parse(attributes);
+                                const statuses = ['待发货', '已发货', '已取消', '买家申请取消']
+                                    .filter(key => attrs[key]).map(key => `${key} ${attrs[key]}`);
+                                return <span style={{color: '#1677ff', fontWeight: 500}}>
+                                    {`最近${attrs.days ?? 90}天 | 订单 ${attrs.orders ?? 0} | 明细 ${attrs.lines ?? 0}${statuses.length ? ` | ${statuses.join(' | ')}` : ''}`}
+                                </span>;
+                            } catch { return null; }
+                        })()}
                         {(taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零') && attributes && (() => {
                             try {
                                 const attrs = JSON.parse(attributes);
@@ -656,6 +686,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 dataSource={taskItems}
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1980
+                        : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1700
                         : isCustodialListings ? 1410
                         : taskType === 'purchase' ? 1700
                             : taskType === 'purchase_guidance' ? 2200

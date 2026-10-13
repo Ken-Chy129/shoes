@@ -13,6 +13,7 @@ const TASK_TYPE = {
     EBAY_PRICE_SYNC: 'ebay_price_sync',
     EBAY_DELIST: 'ebay_delist',
     EBAY_ZERO_STOCK: 'ebay_zero_stock',
+    EBAY_FETCH_ORDERS: 'ebay_fetch_orders',
 };
 
 enum TASK_API {
@@ -68,6 +69,8 @@ enum TASK_API {
     EBAY_START_DELIST = '/api/task/ebay/startDelist',
     EBAY_START_ZERO_STOCK = '/api/task/ebay/startZeroStock',
     EBAY_CANCEL_DELIST = '/api/task/ebay/cancelDelist',
+    // eBay 获取订单（导出格式与卖家中心下载报告一致）
+    EBAY_START_FETCH_ORDERS = '/api/task/ebay/startFetchOrders',
 }
 
 export {TASK_API, TASK_TYPE}

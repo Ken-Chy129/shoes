@@ -18,6 +18,10 @@ public interface EbayListingMapper extends BaseMapper<EbayListingDO> {
 
     List<EbayListingDO> selectAll();
 
+    List<EbayListingDO> selectBySkus(@Param("skus") java.util.Collection<String> skus);
+
+    List<EbayListingDO> selectByListingIds(@Param("listingIds") java.util.Collection<String> listingIds);
+
     int markEnded(@Param("sku") String sku);
 
     int updatePriceAndQuantity(@Param("sku") String sku,
