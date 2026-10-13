@@ -139,25 +139,29 @@ class StockXDeleteBidsTaskRunnerTest {
     }
 
     @Test
-    void deletesOnlyExactTargetStyleIdsAcrossAllPages() {
+    void searchesEachTargetStyleIdAndDeletesOnlyExactMatches() {
         FakeStockXClient client = new FakeStockXClient();
-        client.pages.add(page(List.of(
-                bid("keep-prefix", "STYLE-10"),
-                bid("keep-other", "OTHER")), true, "cursor-1", 4));
-        client.pages.add(page(List.of(
-                bid("delete-1", "style-1"),
-                bid("delete-2", "STYLE-1")), false, null, 4));
-        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
-        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
-        client.pages.add(page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
+        // 服务端搜索是模糊匹配：STYLE-1 的结果里混入 STYLE-10，且分两页返回
+        client.search("STYLE-1",
+                page(List.of(bid("keep-prefix", "STYLE-10"), bid("delete-1", "style-1")),
+                        true, "cursor-1", 3),
+                page(List.of(bid("delete-2", "STYLE-1")), false, null, 3),
+                page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1),
+                page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1),
+                page(List.of(bid("keep-prefix", "STYLE-10")), false, null, 1));
+        client.search("STYLE-2", emptyPage());
         List<TaskItemDO> stored = new ArrayList<>();
         AtomicReference<String> status = new AtomicReference<>();
         AtomicReference<String> attributes = new AtomicReference<>();
 
-        targetedRunner(206L, Set.of("STYLE-1"), client,
+        targetedRunner(206L, Set.of("STYLE-1", "style-2"), client,
                 taskMapper(status, attributes, new AtomicInteger()), itemMapper(stored)).run();
 
-        assertThat(client.queryCursors).containsExactly(null, "cursor-1", null, null, null);
+        assertThat(client.queryCursors).isEmpty();
+        // 首轮两个货号都检索，后续确认轮只复查匹配到的 STYLE-1
+        assertThat(client.searches).filteredOn(s -> s.startsWith("STYLE-2")).containsExactly("STYLE-2@");
+        assertThat(client.searches).filteredOn(s -> s.startsWith("STYLE-1@"))
+                .containsExactly("STYLE-1@", "STYLE-1@cursor-1", "STYLE-1@", "STYLE-1@", "STYLE-1@");
         assertThat(client.deletedBatches).singleElement().satisfies(batch ->
                 assertThat(batch).extracting(StockXBidDeleteItem::chainId)
                         .containsExactly("delete-1", "delete-2"));
@@ -166,18 +170,16 @@ class StockXDeleteBidsTaskRunnerTest {
         assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
         assertThat(attributes.get())
                 .contains("\"deleteMode\":\"style_ids\"")
-                .contains("\"targetStyleCount\":1")
+                .contains("\"targetStyleCount\":2")
                 .contains("\"matchedStyleCount\":1")
-                .contains("\"unmatchedStyleCount\":0")
+                .contains("\"unmatchedStyleCount\":1")
                 .contains("\"deleted\":2");
     }
 
     @Test
     void succeedsWithoutDeletingWhenNoExactTargetStyleIdExists() {
         FakeStockXClient client = new FakeStockXClient();
-        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
-        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
-        client.pages.add(page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
+        client.search("STYLE-1", page(List.of(bid("keep-1", "STYLE-10")), false, null, 1));
         AtomicReference<String> status = new AtomicReference<>();
         AtomicReference<String> attributes = new AtomicReference<>();
 
@@ -186,6 +188,8 @@ class StockXDeleteBidsTaskRunnerTest {
                 itemMapper(new ArrayList<>())).run();
 
         assertThat(client.deletedBatches).isEmpty();
+        // 未匹配到的货号不在确认轮重复检索
+        assertThat(client.searches).containsExactly("STYLE-1@");
         assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
         assertThat(attributes.get())
                 .contains("\"matchedStyleCount\":0")
@@ -304,6 +308,23 @@ class StockXDeleteBidsTaskRunnerTest {
         private final List<String> queryCursors = new ArrayList<>();
         private final List<List<StockXBidDeleteItem>> deletedBatches = new ArrayList<>();
         private int transientNullReads;
+        private final java.util.Map<String, Deque<JSONObject>> searchPages = new java.util.HashMap<>();
+        private final List<String> searches = new ArrayList<>();
+
+        private void search(String styleId, JSONObject... results) {
+            searchPages.computeIfAbsent(styleId, ignored -> new ArrayDeque<>()).addAll(List.of(results));
+        }
+
+        @Override
+        public JSONObject searchCurrentBidsPage(String query, String after, StockXAccount account) {
+            searches.add(query + "@" + (after == null ? "" : after));
+            Deque<JSONObject> results = searchPages.get(query);
+            if (results == null || results.isEmpty()) {
+                return emptyPage();
+            }
+            // 最后一页保持可重复读取，模拟出价未变化
+            return results.size() == 1 ? results.peekFirst() : results.removeFirst();
+        }
 
         @Override
         public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,

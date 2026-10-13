@@ -234,9 +234,25 @@ public class StockXClient {
      */
     public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
                                         StockXAccount account) {
+        return queryPurchasePage(operation, after, null, account);
+    }
+
+    /**
+     * 按 StockX Pro 出价页搜索框检索当前有效出价（服务端按货号/名称搜索）。
+     * 指定货号撤销用它代替全量分页扫描，调用方仍需按货号精确过滤。
+     */
+    public JSONObject searchCurrentBidsPage(String query, String after, StockXAccount account) {
+        if (StrUtil.isBlank(query)) {
+            throw new IllegalArgumentException("搜索关键词不能为空");
+        }
+        return queryPurchasePage(StockXPurchaseOperation.BIDS, after, query, account);
+    }
+
+    private JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
+                                         String query, StockXAccount account) {
         String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
         JSONObject response = queryPro(
-                buildPurchaseRequest(operation, after, country).toJSONString(),
+                buildPurchaseRequest(operation, after, country, query).toJSONString(),
                 buildViperHeaders(account),
                 account.getName());
         if (response == null) {
@@ -381,6 +397,11 @@ public class StockXClient {
     }
 
     static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after, String country) {
+        return buildPurchaseRequest(operation, after, country, null);
+    }
+
+    static JSONObject buildPurchaseRequest(StockXPurchaseOperation operation, String after,
+                                           String country, String query) {
         Objects.requireNonNull(operation, "operation");
         if (operation == StockXPurchaseOperation.CREATE_BIDS
                 || operation == StockXPurchaseOperation.UPDATE_BIDS
@@ -403,6 +424,9 @@ public class StockXClient {
             variables.put("market", market);
             variables.put("filters", new JSONObject(true).fluentPut(
                     "listingType", Map.of("in", List.of("STANDARD", "NORMAL"))));
+            if (StrUtil.isNotBlank(query)) {
+                variables.put("query", query.trim());
+            }
         }
         request.put("variables", variables);
         request.put("extensions", persistedQuery(operation == StockXPurchaseOperation.BIDS

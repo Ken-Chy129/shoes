@@ -29,7 +29,11 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-/** 后台撤销账号全部或指定货号的当前有效出价。 */
+/**
+ * 后台撤销账号全部或指定货号的当前有效出价。
+ * <p>指定货号模式按货号调用 StockX 出价搜索（每个货号通常一页），不再全量分页扫描整个账号的出价；
+ * 首轮检索全部目标货号，后续确认轮只复查曾匹配到出价的货号。
+ */
 @Slf4j
 public class StockXDeleteBidsTaskRunner implements Runnable {
 
@@ -46,6 +50,12 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     private final TaskItemMapper taskItemMapper;
     private final Set<String> targetStyleIds;
     private final boolean deleteAll;
+    private final Set<String> matchedStyleIds = new LinkedHashSet<>();
+    private boolean firstTargetScanDone;
+    private int progressDeleted;
+    private int progressFailed;
+    private int progressRound;
+    private int progressObserved;
 
     public StockXDeleteBidsTaskRunner(StockXAccount account, Long taskId,
                                       StockXClient stockXClient, TaskMapper taskMapper,
@@ -89,14 +99,16 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
         int total = 0;
         int scanned = 0;
         Set<String> observed = new HashSet<>();
-        Set<String> matchedStyleIds = new HashSet<>();
         try {
             while (true) {
                 ensureNotCancelled();
+                progressDeleted = deleted;
+                progressFailed = failed;
+                progressRound = round;
+                progressObserved = observed.size();
                 BidScan scan = loadCurrentBids();
                 List<JSONObject> bids = scan.bids();
                 scanned = scan.scanned();
-                matchedStyleIds.addAll(scan.matchedStyleIds());
                 int remaining = deleteAll ? scan.totalCount() : bids.size();
                 total = Math.max(total, deleted + remaining);
 
@@ -209,60 +221,65 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
 
     private BidScan loadCurrentBids() {
         if (deleteAll) {
-            JSONObject page = loadPageWithRetry(null, 1);
+            JSONObject page = loadPageWithRetry(null, null, 1);
             List<JSONObject> bids = extractBids(page);
             int totalCount = page.containsKey("totalCount")
                     ? Math.max(0, page.getIntValue("totalCount"))
                     : bids.size();
-            return new BidScan(bids, totalCount, bids.size(), Set.of());
+            return new BidScan(bids, totalCount, bids.size());
         }
 
+        // 首轮检索全部目标货号；之后只复查曾匹配到出价的货号（未匹配的货号无需反复检索）。
+        List<String> styles = new ArrayList<>(firstTargetScanDone ? matchedStyleIds : targetStyleIds);
         Map<String, JSONObject> matchingBids = new LinkedHashMap<>();
-        Set<String> matchedStyles = new HashSet<>();
-        Set<String> cursors = new HashSet<>();
-        String after = null;
-        int pageNumber = 1;
         int scanned = 0;
-        int totalCount = 0;
-        while (true) {
-            JSONObject page = loadPageWithRetry(after, pageNumber);
-            List<JSONObject> bids = extractBids(page);
-            scanned += bids.size();
-            if (pageNumber == 1) {
-                totalCount = page.containsKey("totalCount")
-                        ? Math.max(0, page.getIntValue("totalCount"))
-                        : bids.size();
-            }
-            for (JSONObject bid : bids) {
-                String styleId = bidStyleId(bid);
-                if (!targetStyleIds.contains(styleId)) {
-                    continue;
+        for (int i = 0; i < styles.size(); i++) {
+            String styleId = styles.get(i);
+            Set<String> cursors = new HashSet<>();
+            String after = null;
+            int pageNumber = 1;
+            while (true) {
+                JSONObject page = loadPageWithRetry(styleId, after, pageNumber);
+                List<JSONObject> bids = extractBids(page);
+                scanned += bids.size();
+                for (JSONObject bid : bids) {
+                    // 搜索是服务端模糊匹配，这里仍按货号精确过滤
+                    if (!styleId.equals(bidStyleId(bid))) {
+                        continue;
+                    }
+                    matchedStyleIds.add(styleId);
+                    matchingBids.putIfAbsent(bid.getString("id"), bid);
                 }
-                matchedStyles.add(styleId);
-                matchingBids.putIfAbsent(bid.getString("id"), bid);
+                JSONObject pageInfo = page.getJSONObject("pageInfo");
+                if (!pageInfo.getBooleanValue("hasNextPage")) {
+                    break;
+                }
+                String nextCursor = StrUtil.trim(pageInfo.getString("endCursor"));
+                if (StrUtil.isBlank(nextCursor) || !cursors.add(nextCursor)) {
+                    throw new IllegalStateException("货号" + styleId + "的出价分页缺少新游标，已停止撤销");
+                }
+                after = nextCursor;
+                pageNumber++;
             }
-
-            JSONObject pageInfo = page.getJSONObject("pageInfo");
-            if (!pageInfo.getBooleanValue("hasNextPage")) {
-                return new BidScan(new ArrayList<>(matchingBids.values()),
-                        totalCount, scanned, Set.copyOf(matchedStyles));
+            if ((i + 1) % 10 == 0 && i + 1 < styles.size()) {
+                updateProgress("检索货号 " + (i + 1) + "/" + styles.size(),
+                        progressDeleted + matchingBids.size(), matchingBids.size(), progressObserved,
+                        progressDeleted, progressFailed, progressRound, scanned, matchedStyleIds.size());
             }
-            String nextCursor = StrUtil.trim(pageInfo.getString("endCursor"));
-            if (StrUtil.isBlank(nextCursor) || !cursors.add(nextCursor)) {
-                throw new IllegalStateException("当前有效出价分页缺少新游标，已停止撤销");
-            }
-            after = nextCursor;
-            pageNumber++;
         }
+        firstTargetScanDone = true;
+        return new BidScan(new ArrayList<>(matchingBids.values()), matchingBids.size(), scanned);
     }
 
-    private JSONObject loadPageWithRetry(String after, int pageNumber) {
+    private JSONObject loadPageWithRetry(String styleId, String after, int pageNumber) {
+        String pageLabel = (styleId == null ? "" : "货号" + styleId + "的") + "当前有效出价第" + pageNumber + "页";
         RuntimeException lastException = null;
         for (int attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
             ensureNotCancelled();
             try {
-                JSONObject page = stockXClient.queryPurchasePage(
-                        StockXPurchaseOperation.BIDS, after, account);
+                JSONObject page = styleId == null
+                        ? stockXClient.queryPurchasePage(StockXPurchaseOperation.BIDS, after, account)
+                        : stockXClient.searchCurrentBidsPage(styleId, after, account);
                 if (page != null && page.getBooleanValue("_unauthorized")) {
                     throw new IllegalStateException("TOKEN_EXPIRED");
                 }
@@ -275,14 +292,14 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
                 lastException = e;
             }
             if (attempt < MAX_QUERY_ATTEMPTS) {
-                taskMapper.updateTaskFailReason(taskId, "读取当前有效出价第" + pageNumber
-                        + "页失败，2秒后重试（"
+                taskMapper.updateTaskFailReason(taskId, "读取" + pageLabel
+                        + "失败，2秒后重试（"
                         + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）");
                 waitBeforeNextCheck(NEXT_CHECK_DELAY_MS);
             }
         }
-        throw new IllegalStateException("读取当前有效出价第" + pageNumber
-                + "页失败（已重试2次），已停止撤销", lastException);
+        throw new IllegalStateException("读取" + pageLabel
+                + "失败（已重试2次），已停止撤销", lastException);
     }
 
     private List<JSONObject> extractBids(JSONObject page) {
@@ -364,7 +381,6 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
         }
     }
 
-    private record BidScan(List<JSONObject> bids, int totalCount, int scanned,
-                           Set<String> matchedStyleIds) {
+    private record BidScan(List<JSONObject> bids, int totalCount, int scanned) {
     }
 }

@@ -35,6 +35,18 @@ class StockXClientPurchaseRequestTest {
     }
 
     @Test
+    void addsSearchQueryToCurrentBidsRequestOnlyWhenProvided() {
+        JSONObject plain = StockXClient.buildPurchaseRequest(StockXPurchaseOperation.BIDS, null, "US");
+        JSONObject searched = StockXClient.buildPurchaseRequest(
+                StockXPurchaseOperation.BIDS, "cursor", "US", " DD1391-100 ");
+
+        assertThat(plain.getJSONObject("variables").containsKey("query")).isFalse();
+        assertThat(searched.getJSONObject("variables").getString("query")).isEqualTo("DD1391-100");
+        assertThat(searched.getJSONObject("variables").getString("after")).isEqualTo("cursor");
+        assertThat(hash(searched)).isEqualTo(hash(plain));
+    }
+
+    @Test
     void buildsPendingPurchaseOrdersRequestObservedOnStockXPro() {
         JSONObject request = StockXClient.buildPurchaseRequest(
                 StockXPurchaseOperation.ORDERS, "next-cursor", "US");
