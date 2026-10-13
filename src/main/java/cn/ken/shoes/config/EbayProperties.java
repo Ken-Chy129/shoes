@@ -18,6 +18,8 @@ public class EbayProperties {
             "https://api.ebay.com/oauth/api_scope";
     public static final String IDENTITY_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly";
+    public static final String FULFILLMENT_READ_SCOPE =
+            "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
 
     private String environment = "sandbox";
     private String clientId = "";
@@ -126,6 +128,7 @@ public class EbayProperties {
                 .collect(Collectors.toCollection(LinkedHashSet::new));
         effective.add(TRADING_API_SCOPE);
         effective.add(IDENTITY_READ_SCOPE);
+        effective.add(FULFILLMENT_READ_SCOPE);
         return String.join(" ", effective);
     }
 

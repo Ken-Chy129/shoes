@@ -64,7 +64,8 @@ class EbayOAuthServiceTest {
         assertThat(authorization.getLongValue("stateExpiresAt")).isGreaterThan(NOW);
         assertThat(query.get("scope").split(" ")).contains(
                 EbayProperties.TRADING_API_SCOPE,
-                EbayProperties.IDENTITY_READ_SCOPE);
+                EbayProperties.IDENTITY_READ_SCOPE,
+                EbayProperties.FULFILLMENT_READ_SCOPE);
     }
 
     @Test
