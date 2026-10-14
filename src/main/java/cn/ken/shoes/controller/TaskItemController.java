@@ -18,6 +18,7 @@ import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
 import cn.ken.shoes.model.excel.EbayListingTaskExcel;
 import cn.ken.shoes.service.EbayOrderFetchService;
 import cn.ken.shoes.service.EbayOrderReportBuilder;
+import cn.ken.shoes.service.EbayTrackingUploadService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
@@ -88,6 +89,22 @@ public class TaskItemController {
 
         if (task != null && EbayOrderFetchService.TASK_TYPE.equals(task.getTaskType())) {
             writeEbayOrderReport(response, taskId, items);
+            return;
+        }
+
+        if (task != null && EbayTrackingUploadService.TASK_TYPE.equals(task.getTaskType())) {
+            SimpleDateFormat trackingDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            List<List<String>> head = List.of(List.of("订单编号"), List.of("追踪号码"), List.of("物流公司"),
+                    List.of("物品编号"), List.of("标题"), List.of("SKU"), List.of("执行结果"), List.of("执行时间"));
+            List<List<String>> data = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                data.add(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getOrderNumber()),
+                        StrUtil.nullToEmpty(item.getTrackingNumber()), StrUtil.nullToEmpty(item.getShippingCarrier()),
+                        StrUtil.nullToEmpty(item.getListingId()), StrUtil.nullToEmpty(item.getTitle()),
+                        StrUtil.nullToEmpty(item.getSku()), StrUtil.nullToEmpty(item.getOperateResult()),
+                        item.getOperateTime() == null ? "" : trackingDateFormat.format(item.getOperateTime())));
+            }
+            EasyExcel.write(response.getOutputStream()).head(head).sheet("eBay追踪号码").doWrite(data);
             return;
         }
 

@@ -214,6 +214,11 @@ public class TaskService {
                     taskExecutorManager.cancelEbayBulkListing(task.getId());
                 }
             }
+            case "ebay_add_tracking" -> {
+                if (!clearState) {
+                    taskExecutorManager.cancelEbayAddTracking(task.getId());
+                }
+            }
             case "ebay_fetch_orders" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayFetchOrders(task.getId());

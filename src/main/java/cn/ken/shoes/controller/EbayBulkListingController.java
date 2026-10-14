@@ -3,7 +3,9 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.excel.EbayListingExcel;
+import cn.ken.shoes.model.excel.EbayTrackingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
+import cn.ken.shoes.service.EbayTrackingUploadService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.write.metadata.WriteSheet;
@@ -28,9 +30,65 @@ public class EbayBulkListingController {
 
     private static final long MAX_EXCEL_SIZE = 10 * 1024 * 1024L;
     private final EbayBulkListingService bulkListingService;
+    private final EbayTrackingUploadService trackingUploadService;
 
     public EbayBulkListingController(EbayBulkListingService bulkListingService) {
+        this(bulkListingService, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public EbayBulkListingController(EbayBulkListingService bulkListingService,
+                                     EbayTrackingUploadService trackingUploadService) {
         this.bulkListingService = bulkListingService;
+        this.trackingUploadService = trackingUploadService;
+    }
+
+    /** 上传「订单编号 + 追踪号码 (+ 物流公司)」Excel，给订单添加追踪号码并标记已发货。 */
+    @PostMapping("startAddTracking")
+    public Result<String> startAddTracking(@RequestParam("file") MultipartFile file) {
+        List<EbayTrackingExcel> rows;
+        try {
+            validateFile(file);
+            try (InputStream input = file.getInputStream()) {
+                rows = EasyExcel.read(input).head(EbayTrackingExcel.class).sheet().doReadSync();
+            }
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        } catch (Exception e) {
+            return Result.buildError("Excel读取失败，请确认使用了eBay添加追踪号码模板");
+        }
+        try {
+            Long taskId = trackingUploadService.start(rows);
+            if (taskId == null) {
+                return Result.buildError("eBay添加追踪号码任务已在运行，请等待当前任务结束");
+            }
+            return Result.buildSuccess(String.valueOf(taskId));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
+    @GetMapping("trackingTemplate")
+    public void downloadTrackingTemplate(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        String fileName = URLEncoder.encode("eBay添加追踪号码模板", StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        try (ExcelWriter writer = EasyExcel.write(response.getOutputStream()).build()) {
+            WriteSheet inputSheet = EasyExcel.writerSheet(0, "追踪号码")
+                    .head(EbayTrackingExcel.class).build();
+            writer.write(List.of(), inputSheet);
+            List<List<String>> guide = List.of(
+                    List.of("字段", "说明"),
+                    List.of("订单编号", "必填；eBay订单编号，例如 21-15259-42163"),
+                    List.of("追踪号码", "必填；物流追踪号码，例如 524382226900。请将单元格设为文本，避免长数字被转成科学计数法"),
+                    List.of("物流公司", "选填；默认 FedEx，也可填 UPS、USPS、DHL 等eBay支持的物流公司"),
+                    List.of("一单多个追踪号码", "同一订单写多行即可，会一起提交（对应卖家中心的「其他追踪号码」）"),
+                    List.of("重复执行", "订单上已经存在的追踪号码会自动跳过；提交后订单标记为已发货"));
+            WriteSheet guideSheet = EasyExcel.writerSheet(1, "填写说明").build();
+            writer.write(guide, guideSheet);
+        }
     }
 
     public Result<String> startBulkListing(MultipartFile file) {

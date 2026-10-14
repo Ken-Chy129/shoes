@@ -34,6 +34,8 @@ import cn.ken.shoes.service.EbayPriceSyncService;
 import cn.ken.shoes.service.EbayBulkListingService;
 import cn.ken.shoes.service.EbayDelistService;
 import cn.ken.shoes.service.EbayOrderFetchService;
+import cn.ken.shoes.service.EbayTrackingUploadService;
+import cn.ken.shoes.model.excel.EbayTrackingExcel;
 import cn.ken.shoes.task.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
@@ -98,6 +100,9 @@ public class TaskExecutorManager {
 
     @Resource
     private EbayOrderFetchService ebayOrderFetchService;
+
+    @Resource
+    private EbayTrackingUploadService ebayTrackingUploadService;
 
     @Resource
     private TaskInputSnapshotStore taskInputSnapshotStore;
@@ -307,7 +312,8 @@ public class TaskExecutorManager {
                 || taskType == TaskTypeEnum.EBAY_BULK_LISTING
                 || taskType == TaskTypeEnum.EBAY_DELIST
                 || taskType == TaskTypeEnum.EBAY_ZERO_STOCK
-                || taskType == TaskTypeEnum.EBAY_FETCH_ORDERS));
+                || taskType == TaskTypeEnum.EBAY_FETCH_ORDERS
+                || taskType == TaskTypeEnum.EBAY_ADD_TRACKING));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -334,6 +340,11 @@ public class TaskExecutorManager {
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_FETCH_ORDERS) {
             return startEbayFetchOrders(params.getInteger("days"));
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_ADD_TRACKING) {
+            var snapshot = taskInputSnapshotStore.loadEbayTrackingInput(source.getId());
+            return snapshot.isEmpty() || snapshot.get().isEmpty()
+                    ? null : startEbayAddTracking(snapshot.get());
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
@@ -451,6 +462,7 @@ public class TaskExecutorManager {
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
             case EBAY_ZERO_STOCK -> startEbayZeroStock(styleIds(params));
             case EBAY_FETCH_ORDERS -> startEbayFetchOrders(params.getInteger("days"));
+            case EBAY_ADD_TRACKING -> null;
         };
     }
 
@@ -525,6 +537,14 @@ public class TaskExecutorManager {
 
     public Long startEbayFetchOrders(Integer days) {
         return ebayOrderFetchService.start(days);
+    }
+
+    public Long startEbayAddTracking(List<EbayTrackingExcel> rows) {
+        return ebayTrackingUploadService.start(rows);
+    }
+
+    public void cancelEbayAddTracking(Long taskId) {
+        ebayTrackingUploadService.cancel(taskId);
     }
 
     public void cancelEbayFetchOrders(Long taskId) {

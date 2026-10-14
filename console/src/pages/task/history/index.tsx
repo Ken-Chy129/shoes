@@ -313,6 +313,23 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('eBay批量上架Excel上传失败'); setCreating(false); },
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_add_tracking') {
+                const file = values.ebayTrackingExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传追踪号码Excel'); setCreating(false); return; }
+                doUploadRequestWithParams(TASK_API.EBAY_START_ADD_TRACKING, file, {}, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay添加追踪号码任务创建失败');
+                            setCreating(false);
+                            return;
+                        }
+                        message.success(`eBay添加追踪号码任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                        setCreating(false);
+                    },
+                    onError: () => { message.error('追踪号码Excel上传失败'); setCreating(false); },
+                });
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
                 doPostRequest(TASK_API.EBAY_START_PRICE_SYNC, {
                     intervalHours: values.intervalHours,
@@ -793,6 +810,16 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'ebay_add_tracking' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        return <Tooltip title={`订单 ${attrs.total ?? 0} | 已存在跳过 ${attrs.skipped ?? 0}`}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                成功 {attrs.succeeded ?? 0}<br/>失败 {attrs.failed ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'ebay_bulk_listing' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
@@ -962,6 +989,28 @@ const TaskPage = () => {
                 <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
                     <Button href={TASK_API.EBAY_BULK_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
                         下载eBay模板
+                    </Button>
+                </div>
+            </>;
+        }
+
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_add_tracking') {
+            return <>
+                <Form.Item name="ebayTrackingExcel" label="追踪号码Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           rules={[{required: true, message: '请上传追踪号码Excel'}]}
+                           extra={<ExcelFieldHint
+                               requiredFields={['订单编号', '追踪号码']}
+                               optionalFields={['物流公司（默认FedEx）']}
+                               note="提交后订单标记为已发货，追踪详情会同步给买家；同一订单写多行即可添加多个追踪号码，已存在的追踪号码自动跳过。"
+                           />}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                    </Upload>
+                </Form.Item>
+                <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
+                    <Button href={TASK_API.EBAY_TRACKING_TEMPLATE} icon={<DownloadOutlined/>}>
+                        下载追踪号码模板
                     </Button>
                 </div>
             </>;

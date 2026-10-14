@@ -93,6 +93,66 @@ class EbayTradingApiClientTest {
                 .hasMessageContaining("21843");
     }
 
+    @Test
+    void looksUpOrdersByIdAndEscapesThem() throws Exception {
+        server.enqueue(xml("""
+                <GetOrdersResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <OrderArray><Order><OrderID>21-15259-42163</OrderID></Order></OrderArray>
+                </GetOrdersResponse>
+                """));
+
+        var orders = client.getOrdersByIds(java.util.List.of("21-15259-42163", "a<b"));
+
+        assertThat(orders).hasSize(1);
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("GetOrders");
+        assertThat(request.getBody().readUtf8())
+                .contains("<OrderID>21-15259-42163</OrderID>")
+                .contains("<OrderID>a&lt;b</OrderID>")
+                .contains("<OrderRole>Seller</OrderRole>")
+                .doesNotContain("CreateTimeFrom");
+    }
+
+    @Test
+    void addsTrackingThroughCompleteSaleAndMarksShipped() throws Exception {
+        server.enqueue(xml("""
+                <CompleteSaleResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></CompleteSaleResponse>
+                """));
+
+        client.addTracking("21-15259-42163", java.util.List.of(
+                new EbayTradingApiClient.ShipmentTracking("524382226900", "FedEx"),
+                new EbayTradingApiClient.ShipmentTracking("1Z999", "UPS")));
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("CompleteSale");
+        String body = request.getBody().readUtf8();
+        assertThat(body)
+                .contains("<OrderID>21-15259-42163</OrderID>")
+                .contains("<Shipped>true</Shipped>")
+                .contains("<ShipmentTrackingNumber>524382226900</ShipmentTrackingNumber>")
+                .contains("<ShippingCarrierUsed>FedEx</ShippingCarrierUsed>")
+                .contains("<ShipmentTrackingNumber>1Z999</ShipmentTrackingNumber>")
+                .contains("<ShippingCarrierUsed>UPS</ShippingCarrierUsed>");
+        assertThat(body.indexOf("<Shipment>")).isLessThan(body.indexOf("<ShipmentTrackingDetails>"));
+    }
+
+    @Test
+    void surfacesCompleteSaleErrors() {
+        server.enqueue(xml("""
+                <CompleteSaleResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors><ShortMessage>Invalid tracking number.</ShortMessage><ErrorCode>21916</ErrorCode>
+                    <SeverityCode>Error</SeverityCode></Errors>
+                </CompleteSaleResponse>
+                """));
+
+        assertThatThrownBy(() -> client.addTracking("1-2-3",
+                java.util.List.of(new EbayTradingApiClient.ShipmentTracking("x1234", "FedEx"))))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("21916");
+    }
+
     private static MockResponse xml(String body) {
         return new MockResponse().setHeader("Content-Type", "text/xml").setBody(body);
     }

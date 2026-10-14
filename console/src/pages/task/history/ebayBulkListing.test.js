@@ -69,4 +69,16 @@ describe('eBay bulk listing task UI', () => {
     expect(page).toContain('doPostRequest(TASK_API.EBAY_START_FETCH_ORDERS');
     expect(service).toContain("EBAY_START_FETCH_ORDERS = '/api/task/ebay/startFetchOrders'");
   });
+
+  it('offers adding eBay tracking numbers from an uploaded Excel', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+    const options = fs.readFileSync(path.join(__dirname, 'taskOptions.ts'), 'utf8');
+    const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
+
+    expect(options).toContain("ebay_add_tracking: 'eBay添加追踪号码'");
+    expect(page).toContain("createTaskType === 'ebay_add_tracking'");
+    expect(page).toContain('doUploadRequestWithParams(TASK_API.EBAY_START_ADD_TRACKING');
+    expect(service).toContain("EBAY_START_ADD_TRACKING = '/api/task/ebay/startAddTracking'");
+    expect(service).toContain("EBAY_TRACKING_TEMPLATE = '/api/task/ebay/trackingTemplate'");
+  });
 });

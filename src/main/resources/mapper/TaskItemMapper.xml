@@ -15,6 +15,8 @@
         <result property="size" column="size"/>
         <result property="euSize" column="eu_size"/>
         <result property="orderNumber" column="order_number"/>
+        <result property="trackingNumber" column="tracking_number"/>
+        <result property="shippingCarrier" column="shipping_carrier"/>
         <result property="purchaseOrderNumber" column="purchase_order_number"/>
         <result property="purchasePrice" column="purchase_price"/>
         <result property="purchaseCurrencyCode" column="purchase_currency_code"/>

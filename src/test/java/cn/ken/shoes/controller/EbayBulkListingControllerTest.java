@@ -185,4 +185,33 @@ class EbayBulkListingControllerTest {
         row.setPrice(new BigDecimal("129.99"));
         return row;
     }
+
+    @Test
+    void startsAddTrackingFromTheTemplateWorkbook() throws Exception {
+        cn.ken.shoes.service.EbayTrackingUploadService trackingService =
+                mock(cn.ken.shoes.service.EbayTrackingUploadService.class);
+        EbayBulkListingController controller = new EbayBulkListingController(
+                mock(EbayBulkListingService.class), trackingService);
+        MockHttpServletResponse template = new MockHttpServletResponse();
+        controller.downloadTrackingTemplate(template);
+        List<Map<Integer, String>> header = EasyExcel.read(new ByteArrayInputStream(template.getContentAsByteArray()))
+                .headRowNumber(0).sheet("追踪号码").doReadSync();
+        assertThat(header).hasSize(1);
+        assertThat(header.getFirst()).containsEntry(0, "订单编号（例：21-15259-42163）")
+                .containsEntry(1, "追踪号码（例：524382226900）");
+
+        cn.ken.shoes.model.excel.EbayTrackingExcel row = new cn.ken.shoes.model.excel.EbayTrackingExcel();
+        row.setOrderNumber("21-15259-42163");
+        row.setTrackingNumber("524382226900");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        EasyExcel.write(output, cn.ken.shoes.model.excel.EbayTrackingExcel.class).sheet("追踪号码").doWrite(List.of(row));
+        when(trackingService.start(argThat(rows -> rows.size() == 1
+                && "21-15259-42163".equals(rows.getFirst().getOrderNumber())
+                && "524382226900".equals(rows.getFirst().getTrackingNumber())))).thenReturn(99L);
+
+        Result<String> result = controller.startAddTracking(new MockMultipartFile("file", "tracking.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", output.toByteArray()));
+
+        assertThat(result.getData()).isEqualTo("99");
+    }
 }

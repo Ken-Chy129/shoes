@@ -14,6 +14,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   ebay_delist: 'eBay下架',
   ebay_zero_stock: 'eBay库存清零',
   ebay_fetch_orders: 'eBay获取订单',
+  ebay_add_tracking: 'eBay添加追踪号码',
 };
 
 export const EBAY_TASK_OPTIONS = [
@@ -22,6 +23,7 @@ export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_delist, value: 'ebay_delist'},
   {label: TASK_TYPE_LABELS.ebay_zero_stock, value: 'ebay_zero_stock'},
   {label: TASK_TYPE_LABELS.ebay_fetch_orders, value: 'ebay_fetch_orders'},
+  {label: TASK_TYPE_LABELS.ebay_add_tracking, value: 'ebay_add_tracking'},
 ];
 
 export const STOCKX_TASK_OPTIONS = [

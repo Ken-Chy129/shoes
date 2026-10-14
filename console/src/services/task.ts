@@ -14,6 +14,7 @@ const TASK_TYPE = {
     EBAY_DELIST: 'ebay_delist',
     EBAY_ZERO_STOCK: 'ebay_zero_stock',
     EBAY_FETCH_ORDERS: 'ebay_fetch_orders',
+    EBAY_ADD_TRACKING: 'ebay_add_tracking',
 };
 
 enum TASK_API {
@@ -71,6 +72,9 @@ enum TASK_API {
     EBAY_CANCEL_DELIST = '/api/task/ebay/cancelDelist',
     // eBay 获取订单（导出格式与卖家中心下载报告一致）
     EBAY_START_FETCH_ORDERS = '/api/task/ebay/startFetchOrders',
+    // eBay 添加追踪号码（上传 订单编号+追踪号码 Excel）
+    EBAY_START_ADD_TRACKING = '/api/task/ebay/startAddTracking',
+    EBAY_TRACKING_TEMPLATE = '/api/task/ebay/trackingTemplate',
 }
 
 export {TASK_API, TASK_TYPE}

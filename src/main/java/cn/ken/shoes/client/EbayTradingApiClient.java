@@ -117,6 +117,74 @@ public class EbayTradingApiClient {
                 parseInt(text(root, "PaginationResult/TotalNumberOfEntries")));
     }
 
+    /** GetOrders 按 OrderID 查询时单次最多携带的订单数。 */
+    public static final int ORDER_ID_BATCH = 20;
+
+    /** 按订单编号批量查询卖家订单（含明细与已有追踪号码）；单次不超过 {@link #ORDER_ID_BATCH} 个。 */
+    public List<Element> getOrdersByIds(List<String> orderIds) {
+        if (orderIds == null || orderIds.isEmpty()) {
+            return List.of();
+        }
+        if (orderIds.size() > ORDER_ID_BATCH) {
+            throw new IllegalArgumentException("单次最多查询" + ORDER_ID_BATCH + "个订单");
+        }
+        StringBuilder ids = new StringBuilder();
+        for (String orderId : orderIds) {
+            ids.append("    <OrderID>").append(escapeXml(orderId)).append("</OrderID>\n");
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <GetOrdersRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <OrderIDArray>
+                %s  </OrderIDArray>
+                  <OrderRole>Seller</OrderRole>
+                  <DetailLevel>ReturnAll</DetailLevel>
+                </GetOrdersRequest>
+                """.formatted(ids);
+        Document document = call("GetOrders", payload);
+        return children(firstElement(document.getDocumentElement(), "OrderArray"), "Order");
+    }
+
+    public record ShipmentTracking(String trackingNumber, String carrier) {
+    }
+
+    /**
+     * 给整个订单添加追踪号码并标记为已发货（CompleteSale，只传 OrderID 时作用于订单内全部物品）。
+     * 与卖家中心「添加或编辑追踪号码」弹窗效果一致，eBay 会把追踪详情同步给买家。
+     */
+    public void addTracking(String orderId, List<ShipmentTracking> trackings) {
+        if (orderId == null || orderId.isBlank() || trackings == null || trackings.isEmpty()) {
+            throw new IllegalArgumentException("订单编号和追踪号码不能为空");
+        }
+        StringBuilder details = new StringBuilder();
+        for (ShipmentTracking tracking : trackings) {
+            details.append("""
+                        <ShipmentTrackingDetails>
+                          <ShipmentTrackingNumber>%s</ShipmentTrackingNumber>
+                          <ShippingCarrierUsed>%s</ShippingCarrierUsed>
+                        </ShipmentTrackingDetails>
+                    """.formatted(escapeXml(tracking.trackingNumber()), escapeXml(tracking.carrier())));
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <CompleteSaleRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <OrderID>%s</OrderID>
+                  <Shipped>true</Shipped>
+                  <Shipment>
+                %s  </Shipment>
+                </CompleteSaleRequest>
+                """.formatted(escapeXml(orderId), details);
+        call("CompleteSale", payload);
+    }
+
+    private static String escapeXml(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                .replace("\"", "&quot;").replace("'", "&apos;");
+    }
+
     /** 卖家已给买家留下信用评价的 OrderLineItemID 集合。 */
     public Set<String> getFeedbackLeftLineItemIds() {
         Set<String> lineItemIds = new HashSet<>();

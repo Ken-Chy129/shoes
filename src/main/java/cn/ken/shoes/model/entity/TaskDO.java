@@ -80,6 +80,7 @@ public class TaskDO {
         EBAY_DELIST("eBay下架", "ebay_delist"),
         EBAY_ZERO_STOCK("eBay库存清零", "ebay_zero_stock"),
         EBAY_FETCH_ORDERS("eBay获取订单", "ebay_fetch_orders"),
+        EBAY_ADD_TRACKING("eBay添加追踪号码", "ebay_add_tracking"),
         PURCHASE_GUIDANCE("购买价格参考", "purchase_guidance"),
         ;
 

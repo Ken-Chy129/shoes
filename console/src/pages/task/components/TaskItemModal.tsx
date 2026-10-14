@@ -33,6 +33,8 @@ interface TaskItemRecord {
     operateResult: string;
     operateTime: string;
     orderNumber: string;
+    trackingNumber?: string | null;
+    shippingCarrier?: string | null;
     purchaseOrderNumber?: string | null;
     purchasePrice?: number | null;
     purchaseCurrencyCode?: string | null;
@@ -506,6 +508,17 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 120},
     ];
 
+    const ebayTrackingColumns = [
+        {title: '订单编号', dataIndex: 'orderNumber', key: 'orderNumber', width: 150},
+        {title: '追踪号码', dataIndex: 'trackingNumber', key: 'trackingNumber', width: 170},
+        {title: '物流公司', dataIndex: 'shippingCarrier', key: 'shippingCarrier', width: 100},
+        {title: '物品编号', dataIndex: 'listingId', key: 'listingId', width: 130},
+        {title: '标题', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
+        {title: 'SKU', dataIndex: 'sku', key: 'sku', width: 200, ellipsis: true},
+        {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 220, ellipsis: true},
+        {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 165},
+    ];
+
     const shippingExtensionColumns = [
         {title: '订单号', dataIndex: 'orderNumber', key: 'orderNumber', width: 160},
         {title: '产品名称', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
@@ -554,6 +567,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             ? purchaseBidColumns : purchaseOrderColumns)
         : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单')
         ? ebayOrderColumns
+        : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码')
+        ? ebayTrackingColumns
         : taskType === 'fetch_orders'
         ? orderColumns
         : taskType === 'extend_shipping'
@@ -583,6 +598,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             : taskType === 'purchase' ? '购买明细'
                                 : taskType === 'purchase_guidance' ? '购买价格参考明细'
                                 : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 'eBay订单明细'
+                                : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 'eBay追踪号码明细'
                             : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
                                 ? 'eBay商品明细' : '任务明细'}
             open={visible}
@@ -653,6 +669,14 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             </span>;
                         } catch { return null; }
                         })()}
+                        {(taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') && attributes && (() => {
+                            try {
+                                const attrs = JSON.parse(attributes);
+                                return <span style={{color: '#1677ff', fontWeight: 500}}>
+                                    {`订单 ${attrs.total ?? 0} | 成功 ${attrs.succeeded ?? 0} | 已存在跳过 ${attrs.skipped ?? 0} | 失败 ${attrs.failed ?? 0}`}
+                                </span>;
+                            } catch { return null; }
+                        })()}
                         {(taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') && attributes && (() => {
                             try {
                                 const attrs = JSON.parse(attributes);
@@ -687,6 +711,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1980
                         : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1700
+                        : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 1400
                         : isCustodialListings ? 1410
                         : taskType === 'purchase' ? 1700
                             : taskType === 'purchase_guidance' ? 2200

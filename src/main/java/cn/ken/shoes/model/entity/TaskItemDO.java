@@ -78,6 +78,12 @@ public class TaskItemDO {
     @TableField("order_number")
     private String orderNumber;
 
+    /** 物流追踪号码（eBay 添加追踪号码任务）。 */
+    private String trackingNumber;
+
+    /** 物流公司（eBay 添加追踪号码任务）。 */
+    private String shippingCarrier;
+
     /** BUY_INTO_FLEX 来源订单号，与销售订单号分开保存。 */
     @TableField("purchase_order_number")
     private String purchaseOrderNumber;

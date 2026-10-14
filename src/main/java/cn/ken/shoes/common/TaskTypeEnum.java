@@ -25,6 +25,7 @@ public enum TaskTypeEnum {
     EBAY_DELIST("ebay_delist", "eBay下架", false),
     EBAY_ZERO_STOCK("ebay_zero_stock", "eBay库存清零", false),
     EBAY_FETCH_ORDERS("ebay_fetch_orders", "eBay获取订单", false),
+    EBAY_ADD_TRACKING("ebay_add_tracking", "eBay添加追踪号码", false),
     ;
 
     private final String code;
