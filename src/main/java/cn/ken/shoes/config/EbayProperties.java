@@ -20,6 +20,9 @@ public class EbayProperties {
             "https://api.ebay.com/oauth/api_scope/commerce.identity.readonly";
     public static final String FULFILLMENT_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/sell.fulfillment.readonly";
+    /** 只读广告活动（Promoted Listings 已设广告费率）。 */
+    public static final String MARKETING_READ_SCOPE =
+            "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly";
 
     private String environment = "sandbox";
     private String clientId = "";
@@ -133,6 +136,7 @@ public class EbayProperties {
         effective.add(TRADING_API_SCOPE);
         effective.add(IDENTITY_READ_SCOPE);
         effective.add(FULFILLMENT_READ_SCOPE);
+        effective.add(MARKETING_READ_SCOPE);
         return String.join(" ", effective);
     }
 

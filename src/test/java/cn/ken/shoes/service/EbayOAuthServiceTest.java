@@ -65,7 +65,8 @@ class EbayOAuthServiceTest {
         assertThat(query.get("scope").split(" ")).contains(
                 EbayProperties.TRADING_API_SCOPE,
                 EbayProperties.IDENTITY_READ_SCOPE,
-                EbayProperties.FULFILLMENT_READ_SCOPE);
+                EbayProperties.FULFILLMENT_READ_SCOPE,
+                EbayProperties.MARKETING_READ_SCOPE);
     }
 
     @Test
