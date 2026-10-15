@@ -51,7 +51,7 @@ import java.util.function.Consumer;
  *   <li>利润 &gt; a：若 x-1 仍盈利则降价 1 美元，否则价格不动；库存为 0 的同时恢复为 1。</li>
  * </ul>
  * 广告费率取运行中按成交付费活动里该商品的实际费率，不在活动里按 0；得物无价按不盈利处理。
- * 只处理港区商品。
+ * 只处理港区商品。按 GetSellerList 分页：拉一页、处理一页、写回一页，再拉下一页。
  */
 @Slf4j
 @Service
@@ -65,7 +65,6 @@ public class EbayProfitPriceService {
     private static final long MAX_INTERVAL_HOURS = 168;
     private static final BigDecimal MAX_PROFIT = new BigDecimal("100000");
     private static final int PARALLEL_BATCHES = 4;
-    private static final int PROGRESS_EVERY_WAVES = 10;
     private static final int MAX_OVERRIDE_ROWS = 20000;
 
     private final TaskMapper taskMapper;
@@ -190,7 +189,7 @@ public class EbayProfitPriceService {
                     if (handle.cancelled.get()) {
                         break;
                     }
-                    log.error("eBay盈利改价第{}轮失败，本轮不改价, taskId={}", round, taskId, e);
+                    log.error("eBay盈利改价第{}轮失败, taskId={}", round, taskId, e);
                     recordRoundFailure(taskId, round, e);
                 }
                 if (handle.stop.await(intervalHours, TimeUnit.HOURS)) {
@@ -251,13 +250,21 @@ public class EbayProfitPriceService {
         return new Decision(Action.KEEP, null, null, profit, loweredProfit);
     }
 
+    /**
+     * 一轮：先读一次广告费率，再逐页读 eBay 在架商品（GetSellerList 每页 200 个 listing），
+     * 每读到一页就立即查这一页的得物价、计算并写回 eBay，处理完再读下一页，保证用的是几秒内的实时价格/库存。
+     *
+     * <p>广告费率读取失败时整轮不改任何商品（按 0 计会低估成本而过度降价）；
+     * 某页读取失败则本轮在该页中断，之前已处理的页保留，剩余商品留到下一轮。
+     * 翻页期间有上下架会让页边界移动，同一 SKU 可能出现在两页，按 SKU 去重，保证一轮内每个商品最多处理一次。
+     */
     void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, Map<String, BigDecimal> targets,
                         AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
         BigDecimal exchangeRate = exchangeRate();
         BigDecimal freight = BigDecimal.valueOf(PriceSwitch.FREIGHT == null ? 0 : PriceSwitch.FREIGHT);
 
-        Map<String, EbayListingDO> bySku = new LinkedHashMap<>();
+        Map<String, EbayListingDO> bySku = new HashMap<>();
         int skippedUsRegion = 0;
         for (EbayListingDO mapping : listOrEmpty(ebayListingMapper.selectActive())) {
             if (mapping.getSku() == null || mapping.getSku().isBlank()) {
@@ -275,24 +282,59 @@ public class EbayProfitPriceService {
             return;
         }
 
-        // 实时价格/库存以 eBay 为准；读取失败整轮放弃，避免按过期价格降价或误清库存。
-        Map<String, EbayTradingApiClient.ActiveSku> live = new HashMap<>();
-        for (EbayTradingApiClient.ActiveSku sku : tradingClient.getActiveSkus(cancelled::get)) {
-            live.putIfAbsent(sku.sku(), sku);
-        }
-        ensureNotCancelled(cancelled);
-        // 广告费率读取失败也整轮放弃：按 0 计算会低估成本，导致过度降价。
         Map<String, BigDecimal> adRates = marketingClient.getRunningAdRates();
         ensureNotCancelled(cancelled);
 
+        Counters counters = new Counters(skippedUsRegion, adRates.size());
+        Set<String> processed = new HashSet<>();
+        try {
+            tradingClient.forEachActiveSkuPage(cancelled::get, page -> {
+                ensureNotCancelled(cancelled);
+                processPage(taskId, round, page, bySku, processed, adRates, targets, defaultProfit,
+                        exchangeRate, freight, counters, cancelled);
+                counters.pages = page.pageNumber();
+                counters.totalPages = page.totalPages();
+                writeAttributes(taskId, counters);
+            });
+        } catch (TaskCancelledException | java.util.concurrent.CancellationException e) {
+            writeAttributes(taskId, counters);
+            throw e;
+        } catch (RuntimeException e) {
+            writeAttributes(taskId, counters);
+            throw new RoundInterruptedException("第" + (counters.pages + 1) + "页处理失败，本轮已中断（前"
+                    + counters.pages + "页已处理）：" + safeError(e), e);
+        }
+        counters.notListed = (int) bySku.keySet().stream().filter(sku -> !processed.contains(sku)).count();
+        List<String> problems = new ArrayList<>();
+        if (counters.total == 0) {
+            problems.add("本轮没有可改价的在架港区商品（映射" + bySku.size() + "个）");
+        }
+        if (counters.failed > 0) {
+            problems.add("本轮有 " + counters.failed + " 个商品处理失败");
+        }
+        if (counters.poisonSkippedPages > 0) {
+            problems.add(counters.poisonSkippedPages + " 页得物查价未返回结果，已跳过这些页");
+        }
+        taskMapper.updateTaskFailReason(taskId, problems.isEmpty() ? null : String.join("；", problems));
+        writeAttributes(taskId, counters);
+    }
+
+    private void processPage(Long taskId, int round, EbayTradingApiClient.ActiveSkuPage page,
+                             Map<String, EbayListingDO> bySku, Set<String> processed,
+                             Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
+                             BigDecimal defaultProfit, BigDecimal exchangeRate, BigDecimal freight,
+                             Counters counters, AtomicBoolean cancelled) {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
-        int skipped = 0;
-        for (EbayListingDO mapping : bySku.values()) {
-            EbayTradingApiClient.ActiveSku current = live.get(mapping.getSku());
+        for (EbayTradingApiClient.ActiveSku current : page.skus()) {
+            EbayListingDO mapping = bySku.get(current.sku());
+            // 不在港区映射里的（美区或非本系统上架）不处理；已在前面页处理过的跳过，避免一轮内重复降价。
+            if (mapping == null || !processed.add(current.sku())) {
+                continue;
+            }
             String euSize = firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
-            if (current == null || isBlank(mapping.getOfferId()) || isBlank(mapping.getStyleId()) || euSize == null) {
-                skipped++;
+            if (isBlank(mapping.getOfferId()) || isBlank(mapping.getStyleId()) || euSize == null) {
+                counters.skipped++;
                 continue;
             }
             String styleId = mapping.getStyleId().trim();
@@ -302,15 +344,17 @@ public class EbayProfitPriceService {
             modelNos.add(styleId);
         }
         if (contexts.isEmpty()) {
-            taskMapper.updateTaskFailReason(taskId, "本轮没有可改价的在架港区商品（映射" + bySku.size()
-                    + "个，eBay未在架或缺少货号/尺码" + skipped + "个）");
             return;
         }
 
         List<PoisonPriceDO> poisonPrices = poisonClient.batchQueryPrice(new ArrayList<>(modelNos));
         ensureNotCancelled(cancelled);
         if (poisonPrices == null || poisonPrices.isEmpty()) {
-            taskMapper.updateTaskFailReason(taskId, "本轮得物查价未返回可确认结果，已跳过改价和清库存");
+            // 整页一个价格都没有，多半是查价接口异常，不能据此把整页库存清零。
+            counters.poisonSkippedPages++;
+            counters.poisonSkipped += contexts.size();
+            log.warn("eBay盈利改价第{}页得物查价无结果，跳过该页{}个商品, taskId={}", page.pageNumber(),
+                    contexts.size(), taskId);
             return;
         }
         Map<String, BigDecimal> prices = new HashMap<>();
@@ -321,7 +365,7 @@ public class EbayProfitPriceService {
             }
         }
 
-        Counters counters = new Counters(contexts.size(), skipped, skippedUsRegion, adRates.size());
+        counters.total += contexts.size();
         List<Planned> planned = new ArrayList<>();
         for (Context context : contexts) {
             BigDecimal poisonPrice = prices.get(priceKey(context.styleId(), context.euSize()));
@@ -359,14 +403,14 @@ public class EbayProfitPriceService {
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
             }
-            if ((i / PARALLEL_BATCHES) % PROGRESS_EVERY_WAVES == 0) {
-                writeAttributes(taskId, counters, Math.min((i + wave.size()) * EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT,
-                        planned.size()), planned.size());
-            }
         }
-        taskMapper.updateTaskFailReason(taskId, counters.failed == 0 ? null
-                : "本轮有 " + counters.failed + " 个商品处理失败");
-        writeAttributes(taskId, counters, planned.size(), planned.size());
+    }
+
+    /** 本轮在中途某页失败：之前的页已处理，失败原因里需说明，不能写成「本轮未改价」。 */
+    static final class RoundInterruptedException extends RuntimeException {
+        RoundInterruptedException(String message, Throwable cause) {
+            super(message, cause);
+        }
     }
 
     private void recordBatch(Long taskId, int round, List<Planned> batch,
@@ -467,7 +511,7 @@ public class EbayProfitPriceService {
         }
     }
 
-    private void writeAttributes(Long taskId, Counters c, int processed, int planned) {
+    private void writeAttributes(Long taskId, Counters c) {
         try {
             taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
                     .fluentPut("total", c.total)
@@ -479,9 +523,11 @@ public class EbayProfitPriceService {
                     .fluentPut("failed", c.failed)
                     .fluentPut("skipped", c.skipped)
                     .fluentPut("skippedUsRegion", c.skippedUsRegion)
+                    .fluentPut("notListed", c.notListed)
+                    .fluentPut("poisonSkipped", c.poisonSkipped)
                     .fluentPut("adListings", c.adListings)
-                    .fluentPut("planned", planned)
-                    .fluentPut("processed", processed)
+                    .fluentPut("pages", c.pages)
+                    .fluentPut("totalPages", c.totalPages)
                     .toJSONString());
         } catch (Exception e) {
             log.warn("eBay盈利改价进度写入失败, taskId={}", taskId, e);
@@ -512,7 +558,10 @@ public class EbayProfitPriceService {
 
     private void recordRoundFailure(Long taskId, int round, Exception e) {
         try {
-            taskMapper.updateTaskFailReason(taskId, "第" + round + "轮失败（本轮未改价）：" + safeError(e));
+            String reason = e instanceof RoundInterruptedException
+                    ? "第" + round + "轮" + e.getMessage()
+                    : "第" + round + "轮失败（本轮未改价）：" + safeError(e);
+            taskMapper.updateTaskFailReason(taskId, truncate(reason, 500));
         } catch (Exception writeFailure) {
             log.warn("eBay盈利改价失败原因写入失败, taskId={}", taskId, writeFailure);
         }
@@ -648,10 +697,15 @@ public class EbayProfitPriceService {
     }
 
     private static final class Counters {
-        final int total;
-        final int skipped;
         final int skippedUsRegion;
         final int adListings;
+        int total;
+        int skipped;
+        int notListed;
+        int poisonSkipped;
+        int poisonSkippedPages;
+        int pages;
+        int totalPages;
         int lowered;
         int restored;
         int zeroed;
@@ -659,9 +713,7 @@ public class EbayProfitPriceService {
         int alreadyZero;
         int failed;
 
-        Counters(int total, int skipped, int skippedUsRegion, int adListings) {
-            this.total = total;
-            this.skipped = skipped;
+        Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;
             this.adListings = adListings;
         }

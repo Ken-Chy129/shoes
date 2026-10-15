@@ -34,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.*;
 
 class EbayProfitPriceServiceTest {
@@ -155,9 +156,10 @@ class EbayProfitPriceServiceTest {
                 listing("SKU-A", "offer-A", "AAA-1", "HK"),
                 listing("SKU-B", "offer-B", "BBB-2", "HK"),
                 listing("SKU-US", "offer-US", "CCC-3", "US")));
-        when(tradingClient.getActiveSkus(any())).thenReturn(List.of(
-                new EbayTradingApiClient.ActiveSku("SKU-A", "L-A", new BigDecimal("150"), 1),
-                new EbayTradingApiClient.ActiveSku("SKU-B", "L-B", new BigDecimal("150"), 1)));
+        pages(List.of(
+                sku("SKU-A", "L-A", "150", 1),
+                sku("SKU-B", "L-B", "150", 1),
+                sku("SKU-US", "L-US", "150", 1)));
         when(marketingClient.getRunningAdRates()).thenReturn(Map.of("L-A", AD));
         when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(
                 poison("AAA-1", 500), poison("BBB-2", 500)));
@@ -192,13 +194,76 @@ class EbayProfitPriceServiceTest {
     @Test
     void abortsRoundWithoutChangesWhenAdRatesUnavailable() {
         when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
-        when(tradingClient.getActiveSkus(any())).thenReturn(List.of(
-                new EbayTradingApiClient.ActiveSku("SKU-A", "L-A", new BigDecimal("150"), 1)));
+        pages(List.of(sku("SKU-A", "L-A", "150", 1)));
         when(marketingClient.getRunningAdRates()).thenThrow(new RuntimeException("403"));
 
         assertThatThrownBy(() -> service.runSingleRound(7L, 1, BigDecimal.ZERO, Map.of(), new AtomicBoolean()))
                 .hasMessageContaining("403");
+        verify(tradingClient, never()).forEachActiveSkuPage(any(), any());
         verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+    }
+
+    @Test
+    void processesEachPageBeforeReadingTheNextAndSkipsDuplicatesAcrossPages() {
+        when(listingMapper.selectActive()).thenReturn(List.of(
+                listing("SKU-A", "offer-A", "AAA-1", "HK"),
+                listing("SKU-B", "offer-B", "BBB-2", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(
+                poison("AAA-1", 500), poison("BBB-2", 500)));
+        List<String> events = new ArrayList<>();
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            updates.forEach(u -> events.add("write:" + u.sku()));
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
+                    .toList();
+        });
+        doAnswer(invocation -> {
+            java.util.function.Consumer<EbayTradingApiClient.ActiveSkuPage> consumer = invocation.getArgument(1);
+            events.add("page1");
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(1, 2, List.of(sku("SKU-A", "L-A", "150", 1))));
+            events.add("page2");
+            // 页边界移动导致 SKU-A 在第 2 页再次出现：一轮内不能降两次价
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(2, 2, List.of(
+                    sku("SKU-A", "L-A", "150", 1), sku("SKU-B", "L-B", "150", 1))));
+            return null;
+        }).when(tradingClient).forEachActiveSkuPage(any(), any());
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        assertThat(events).containsExactly("page1", "write:SKU-A", "page2", "write:SKU-B");
+        verify(poisonClient, times(2)).batchQueryPrice(anyList());
+        verify(taskMapper).updateTaskFailReason(7L, null);
+    }
+
+    @Test
+    void keepsEarlierPagesWhenALaterPageFails() {
+        when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        doAnswer(invocation -> {
+            java.util.function.Consumer<EbayTradingApiClient.ActiveSkuPage> consumer = invocation.getArgument(1);
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(1, 3, List.of(sku("SKU-A", "L-A", "150", 1))));
+            throw new RuntimeException("GetSellerList timeout");
+        }).when(tradingClient).forEachActiveSkuPage(any(), any());
+
+        assertThatThrownBy(() -> service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean()))
+                .isInstanceOf(EbayProfitPriceService.RoundInterruptedException.class)
+                .hasMessageContaining("第2页").hasMessageContaining("前1页已处理");
+        verify(sellClient).bulkUpdatePriceQuantity(anyList());
+    }
+
+    @Test
+    void skipsPageWhenPoisonReturnsNothingInsteadOfZeroingStock() {
+        when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of());
+        pages(List.of(sku("SKU-A", "L-A", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+        verify(taskMapper).updateTaskFailReason(eq(7L), contains("得物查价未返回结果"));
     }
 
     @Test
@@ -232,6 +297,18 @@ class EbayProfitPriceServiceTest {
         row.setStyleId("AAA");
         assertThatThrownBy(() -> EbayProfitPriceService.normalizeOverrides(List.of(row)))
                 .hasMessageContaining("第2行目标盈利无效");
+    }
+
+    private void pages(List<EbayTradingApiClient.ActiveSku> skus) {
+        doAnswer(invocation -> {
+            java.util.function.Consumer<EbayTradingApiClient.ActiveSkuPage> consumer = invocation.getArgument(1);
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(1, 1, skus));
+            return null;
+        }).when(tradingClient).forEachActiveSkuPage(any(), any());
+    }
+
+    private static EbayTradingApiClient.ActiveSku sku(String sku, String listingId, String price, int quantity) {
+        return new EbayTradingApiClient.ActiveSku(sku, listingId, new BigDecimal(price), quantity);
     }
 
     private static EbayListingDO listing(String sku, String offerId, String styleId, String region) {

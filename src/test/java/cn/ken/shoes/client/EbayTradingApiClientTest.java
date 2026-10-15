@@ -198,4 +198,28 @@ class EbayTradingApiClientTest {
                 .contains("<PageNumber>1</PageNumber>");
         assertThat(server.takeRequest().getBody().readUtf8()).contains("<PageNumber>2</PageNumber>");
     }
+
+    @Test
+    void handsEachSellerListPageToConsumerBeforeRequestingNext() {
+        server.enqueue(xml("""
+                <GetSellerListResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>
+                  <PaginationResult><TotalNumberOfPages>2</TotalNumberOfPages></PaginationResult>
+                  <ItemArray><Item><ItemID>1</ItemID><SKU>S1</SKU><StartPrice>10</StartPrice><Quantity>1</Quantity></Item></ItemArray>
+                </GetSellerListResponse>
+                """));
+        server.enqueue(xml("""
+                <GetSellerListResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>
+                  <PaginationResult><TotalNumberOfPages>2</TotalNumberOfPages></PaginationResult>
+                  <ItemArray><Item><ItemID>2</ItemID><SKU>S2</SKU><StartPrice>20</StartPrice><Quantity>1</Quantity></Item></ItemArray>
+                </GetSellerListResponse>
+                """));
+        java.util.List<String> seen = new java.util.ArrayList<>();
+
+        client.forEachActiveSkuPage(() -> false, page -> {
+            seen.add(page.pageNumber() + "/" + page.totalPages() + ":" + page.skus().get(0).sku()
+                    + " requests=" + server.getRequestCount());
+        });
+
+        assertThat(seen).containsExactly("1/2:S1 requests=1", "2/2:S2 requests=2");
+    }
 }

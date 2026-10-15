@@ -125,11 +125,26 @@ public class EbayTradingApiClient {
     public record ActiveSku(String sku, String listingId, java.math.BigDecimal price, int availableQuantity) {
     }
 
+    /** GetSellerList 的一页：页码从 1 开始，totalPages 为 eBay 当次返回的总页数。 */
+    public record ActiveSkuPage(int pageNumber, int totalPages, List<ActiveSku> skus) {
+    }
+
     /**
      * 用 GetSellerList 读取全部在架商品的 SKU 实时价格与可售数量（含多属性商品的每个尺码）。
      * 结束时间窗口取未来 119 天：GTC 商品每 30 天续期，都会落在窗口内。
      */
     public List<ActiveSku> getActiveSkus(java.util.function.BooleanSupplier cancelled) {
+        List<ActiveSku> result = new ArrayList<>();
+        forEachActiveSkuPage(cancelled, page -> result.addAll(page.skus()));
+        return result;
+    }
+
+    /**
+     * 逐页读取在架商品，每读到一页立即交给 consumer 处理，处理完再读下一页，
+     * 让调用方按接近实时的价格/库存处理，不必等全部页读完。consumer 抛出的异常直接向上传播并终止翻页。
+     */
+    public void forEachActiveSkuPage(java.util.function.BooleanSupplier cancelled,
+                                     java.util.function.Consumer<ActiveSkuPage> consumer) {
         Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
         StringBuilder selectors = new StringBuilder();
         for (String selector : List.of("ItemArray.Item.ItemID", "ItemArray.Item.SKU",
@@ -141,7 +156,6 @@ public class EbayTradingApiClient {
                 "PaginationResult", "HasMoreItems")) {
             selectors.append("  <OutputSelector>").append(selector).append("</OutputSelector>\n");
         }
-        List<ActiveSku> result = new ArrayList<>();
         for (int page = 1; page <= MAX_SELLER_LIST_PAGES; page++) {
             if (cancelled != null && cancelled.getAsBoolean()) {
                 throw new java.util.concurrent.CancellationException("cancelled");
@@ -162,24 +176,28 @@ public class EbayTradingApiClient {
             Document document = call("GetSellerList", payload);
             Element root = document.getDocumentElement();
             List<Element> items = children(firstElement(root, "ItemArray"), "Item");
+            List<ActiveSku> skus = new ArrayList<>();
             for (Element item : items) {
                 String itemId = text(item, "ItemID");
                 List<Element> variations = children(firstElement(item, "Variations"), "Variation");
                 if (variations.isEmpty()) {
-                    addActiveSku(result, text(item, "SKU"), itemId, text(item, "StartPrice"),
+                    addActiveSku(skus, text(item, "SKU"), itemId, text(item, "StartPrice"),
                             text(item, "Quantity"), text(item, "SellingStatus/QuantitySold"));
                 }
                 for (Element variation : variations) {
-                    addActiveSku(result, text(variation, "SKU"), itemId, text(variation, "StartPrice"),
+                    addActiveSku(skus, text(variation, "SKU"), itemId, text(variation, "StartPrice"),
                             text(variation, "Quantity"), text(variation, "SellingStatus/QuantitySold"));
                 }
             }
             int totalPages = parseInt(text(root, "PaginationResult/TotalNumberOfPages"));
-            if (items.isEmpty() || page >= totalPages) {
+            if (items.isEmpty()) {
+                break;
+            }
+            consumer.accept(new ActiveSkuPage(page, Math.max(totalPages, page), List.copyOf(skus)));
+            if (page >= totalPages) {
                 break;
             }
         }
-        return result;
     }
 
     private static void addActiveSku(List<ActiveSku> result, String sku, String itemId, String price,

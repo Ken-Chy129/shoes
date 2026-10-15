@@ -843,7 +843,7 @@ const TaskPage = () => {
                 if (record.taskType === 'ebay_profit_price' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
-                        const tip = `本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`;
+                        const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`;
                         return <Tooltip title={tip}>
                             <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
                                 降价 {attrs.lowered ?? 0}<br/>清库存 {attrs.zeroed ?? 0}
