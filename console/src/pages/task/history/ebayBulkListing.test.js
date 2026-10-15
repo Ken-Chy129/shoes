@@ -81,4 +81,17 @@ describe('eBay bulk listing task UI', () => {
     expect(service).toContain("EBAY_START_ADD_TRACKING = '/api/task/ebay/startAddTracking'");
     expect(service).toContain("EBAY_TRACKING_TEMPLATE = '/api/task/ebay/trackingTemplate'");
   });
+
+  it('offers the eBay profit-based repricing task with optional per-style targets', () => {
+    const page = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+    const options = fs.readFileSync(path.join(__dirname, 'taskOptions.ts'), 'utf8');
+    const service = fs.readFileSync(path.join(__dirname, '../../../services/task.ts'), 'utf8');
+
+    expect(options).toContain("ebay_profit_price: 'eBay盈利改价'");
+    expect(page).toContain("createTaskType === 'ebay_profit_price'");
+    expect(page).toContain('request(TASK_API.EBAY_START_PROFIT_PRICE');
+    expect(page).toContain("formData.append('defaultProfit'");
+    expect(service).toContain("EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice'");
+    expect(service).toContain("EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate'");
+  });
 });

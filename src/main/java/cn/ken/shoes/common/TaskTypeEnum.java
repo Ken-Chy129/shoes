@@ -22,6 +22,7 @@ public enum TaskTypeEnum {
     REPLENISHMENT("replenishment", "补单", false),
     EBAY_BULK_LISTING("ebay_bulk_listing", "eBay批量上架", false),
     EBAY_PRICE_SYNC("ebay_price_sync", "eBay定时改价", true),
+    EBAY_PROFIT_PRICE("ebay_profit_price", "eBay盈利改价", true),
     EBAY_DELIST("ebay_delist", "eBay下架", false),
     EBAY_ZERO_STOCK("ebay_zero_stock", "eBay库存清零", false),
     EBAY_FETCH_ORDERS("ebay_fetch_orders", "eBay获取订单", false),

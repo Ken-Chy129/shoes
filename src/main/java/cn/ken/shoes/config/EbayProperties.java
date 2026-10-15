@@ -118,6 +118,10 @@ public class EbayProperties {
         return apiRoot() + "/sell/fulfillment/v1/";
     }
 
+    public String getMarketingApiEndpoint() {
+        return apiRoot() + "/sell/marketing/v1/";
+    }
+
     public String getTradingApiEndpoint() {
         return apiRoot() + "/ws/api.dll";
     }

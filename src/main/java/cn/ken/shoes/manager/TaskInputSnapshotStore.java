@@ -11,6 +11,7 @@ import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.model.excel.EbayTrackingExcel;
+import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
@@ -39,6 +40,7 @@ public class TaskInputSnapshotStore {
     private static final String PURCHASE_GUIDANCE_FILE = "purchase-guidance.json";
     private static final String EBAY_BULK_LISTING_FILE = "ebay-bulk-listing.json";
     private static final String EBAY_TRACKING_FILE = "ebay-tracking.json";
+    private static final String EBAY_PROFIT_TARGETS_FILE = "ebay-profit-targets.json";
 
     private final Path root;
 
@@ -175,6 +177,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<EbayTrackingExcel>> loadEbayTrackingInput(Long taskId) {
         return loadList(taskId, EBAY_TRACKING_FILE, EbayTrackingExcel.class, "eBay添加追踪号码");
+    }
+
+    public void saveEbayProfitTargets(Long taskId, List<EbayProfitTargetExcel> input) {
+        write(taskPath(taskId, EBAY_PROFIT_TARGETS_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbayProfitTargetExcel>> loadEbayProfitTargets(Long taskId) {
+        return loadList(taskId, EBAY_PROFIT_TARGETS_FILE, EbayProfitTargetExcel.class, "eBay盈利改价");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {

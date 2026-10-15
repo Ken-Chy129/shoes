@@ -5,6 +5,7 @@ import {
 import {DownloadOutlined, PlusOutlined, RedoOutlined, UploadOutlined} from "@ant-design/icons";
 import React, {useEffect, useRef, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
+import {request} from "@@/exports";
 import {TASK_API, TASK_TYPE} from "@/services/task";
 import {SETTING_API} from "@/services/shoes";
 import moment from "moment";
@@ -330,6 +331,25 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('追踪号码Excel上传失败'); setCreating(false); },
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_profit_price') {
+                // Excel 选填，所以自己组 FormData（doUploadRequestWithParams 要求必须有文件）。
+                const formData = new FormData();
+                formData.append('intervalHours', String(values.profitIntervalHours));
+                formData.append('defaultProfit', String(values.defaultProfit));
+                const file = values.ebayProfitExcel?.[0]?.originFileObj;
+                if (file) formData.append('file', file);
+                request(TASK_API.EBAY_START_PROFIT_PRICE, {method: 'POST', data: formData})
+                    .then((res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay盈利改价任务创建失败');
+                            return;
+                        }
+                        message.success(`eBay盈利改价任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    })
+                    .catch(() => message.error('eBay盈利改价任务创建失败'))
+                    .finally(() => setCreating(false));
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
                 doPostRequest(TASK_API.EBAY_START_PRICE_SYNC, {
                     intervalHours: values.intervalHours,
@@ -820,6 +840,17 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'ebay_profit_price' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        const tip = `本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`;
+                        return <Tooltip title={tip}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                降价 {attrs.lowered ?? 0}<br/>清库存 {attrs.zeroed ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'ebay_bulk_listing' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
@@ -1025,6 +1056,44 @@ const TaskPage = () => {
                               extra="获取全部状态的订单；导出列与eBay卖家中心「下载报告」一致，末尾追加货号、US尺码、EU码、订单日期、发货截止日期">
                 <InputNumber min={1} max={90} precision={0} addonBefore="最近" addonAfter="天" style={{width: 200}}/>
             </Form.Item>;
+        }
+
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_profit_price') {
+            return <>
+                <Form.Item name="profitIntervalHours" label="执行间隔"
+                           initialValue={1}
+                           rules={[
+                               {required: true, message: '请输入执行间隔'},
+                               {type: 'number', min: 1, max: 168, message: '请输入1到168之间的整数小时'},
+                           ]}
+                           extra="范围1~168小时；与「定时改价」互斥，需先停止定时改价">
+                    <InputNumber min={1} max={168} precision={0} addonAfter="小时" style={{width: 160}}/>
+                </Form.Item>
+                <Form.Item name="defaultProfit" label="默认目标盈利"
+                           rules={[
+                               {required: true, message: '请输入默认目标盈利'},
+                               {type: 'number', min: -100000, max: 100000, message: '请输入-100000到100000之间的数字'},
+                           ]}
+                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；利润 > 目标盈利才算盈利。盈利且降$1后仍盈利则降$1；不盈利则库存置0；盈利但库存为0则恢复1件">
+                    <InputNumber min={-100000} max={100000} step={10} precision={2} addonAfter="元"
+                                 style={{width: 160}}/>
+                </Form.Item>
+                <Form.Item name="ebayProfitExcel" label="按货号目标盈利" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           extra={<ExcelFieldHint
+                               requiredFields={['货号', '目标盈利']}
+                               note="选填；表里的货号使用单独的目标盈利（优先于默认值），其余货号用默认目标盈利。"
+                           />}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                    </Upload>
+                </Form.Item>
+                <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
+                    <Button href={TASK_API.EBAY_PROFIT_TARGET_TEMPLATE} icon={<DownloadOutlined/>}>
+                        下载目标盈利模板
+                    </Button>
+                </div>
+            </>;
         }
 
         if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
@@ -1411,7 +1480,7 @@ const TaskPage = () => {
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
-        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价',
+        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', overrideCount: '单独设置货号数',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -1444,7 +1513,8 @@ const TaskPage = () => {
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
         if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
         if (k === 'intervalHours') return `${v}小时`;
-        if (k === 'priceAddition') return `¥${v}`;
+        if (k === 'priceAddition' || k === 'defaultProfit') return `¥${v}`;
+        if (k === 'overrideCount') return `${v}个`;
         if (k === 'orderTypes') {
             const labels: Record<string, string> = {pending: '待处理', completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
             const values = Array.isArray(v) ? v : String(v).split(',');

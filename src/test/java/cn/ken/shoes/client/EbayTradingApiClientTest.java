@@ -156,4 +156,46 @@ class EbayTradingApiClientTest {
     private static MockResponse xml(String body) {
         return new MockResponse().setHeader("Content-Type", "text/xml").setBody(body);
     }
+
+    @Test
+    void readsActiveSkusFromSellerListIncludingVariations() throws Exception {
+        server.enqueue(xml("""
+                <GetSellerListResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <PaginationResult><TotalNumberOfPages>2</TotalNumberOfPages></PaginationResult>
+                  <ItemArray>
+                    <Item><ItemID>1</ItemID><SKU>S1</SKU><StartPrice currencyID="USD">150.0</StartPrice>
+                      <Quantity>3</Quantity><SellingStatus><QuantitySold>1</QuantitySold></SellingStatus></Item>
+                    <Item><ItemID>2</ItemID>
+                      <Variations>
+                        <Variation><SKU>V1</SKU><StartPrice>99.5</StartPrice><Quantity>1</Quantity>
+                          <SellingStatus><QuantitySold>1</QuantitySold></SellingStatus></Variation>
+                        <Variation><SKU>V2</SKU><StartPrice>120</StartPrice><Quantity>2</Quantity></Variation>
+                      </Variations></Item>
+                  </ItemArray>
+                </GetSellerListResponse>
+                """));
+        server.enqueue(xml("""
+                <GetSellerListResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <PaginationResult><TotalNumberOfPages>2</TotalNumberOfPages></PaginationResult>
+                  <ItemArray><Item><ItemID>3</ItemID><SKU>S3</SKU><StartPrice>80</StartPrice><Quantity>0</Quantity></Item></ItemArray>
+                </GetSellerListResponse>
+                """));
+
+        var skus = client.getActiveSkus(() -> false);
+
+        assertThat(skus).extracting(EbayTradingApiClient.ActiveSku::sku).containsExactly("S1", "V1", "V2", "S3");
+        assertThat(skus.get(0).listingId()).isEqualTo("1");
+        assertThat(skus.get(0).price()).isEqualByComparingTo("150");
+        assertThat(skus.get(0).availableQuantity()).isEqualTo(2);
+        assertThat(skus.get(1).listingId()).isEqualTo("2");
+        assertThat(skus.get(1).availableQuantity()).isZero();
+        assertThat(skus.get(2).availableQuantity()).isEqualTo(2);
+        RecordedRequest first = server.takeRequest();
+        assertThat(first.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("GetSellerList");
+        assertThat(first.getBody().readUtf8()).contains("<IncludeVariations>true</IncludeVariations>")
+                .contains("<PageNumber>1</PageNumber>");
+        assertThat(server.takeRequest().getBody().readUtf8()).contains("<PageNumber>2</PageNumber>");
+    }
 }

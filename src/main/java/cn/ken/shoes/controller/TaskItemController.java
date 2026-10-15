@@ -108,6 +108,26 @@ public class TaskItemController {
             return;
         }
 
+        if (task != null && cn.ken.shoes.service.EbayProfitPriceService.TASK_TYPE.equals(task.getTaskType())) {
+            SimpleDateFormat profitDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            List<List<String>> head = List.of(List.of("轮次"), List.of("物品编号"), List.of("SKU"), List.of("货号"),
+                    List.of("尺码"), List.of("标题"), List.of("原价格($)"), List.of("新价格($)"), List.of("库存"),
+                    List.of("得物价(¥)"), List.of("利润(¥)"), List.of("执行结果"), List.of("执行时间"));
+            List<List<String>> data = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                data.add(java.util.Arrays.asList(item.getRound() == null ? "" : String.valueOf(item.getRound()),
+                        StrUtil.nullToEmpty(item.getListingId()), StrUtil.nullToEmpty(item.getSku()),
+                        StrUtil.nullToEmpty(item.getStyleId()), StrUtil.nullToEmpty(item.getEuSize()),
+                        StrUtil.nullToEmpty(item.getTitle()), plain(item.getCurrentPrice()), plain(item.getTargetPrice()),
+                        item.getListingQuantity() == null ? "" : String.valueOf(item.getListingQuantity()),
+                        plain(item.getPoisonPrice()), plain(item.getProfit35()),
+                        StrUtil.nullToEmpty(item.getOperateResult()),
+                        item.getOperateTime() == null ? "" : profitDateFormat.format(item.getOperateTime())));
+            }
+            EasyExcel.write(response.getOutputStream()).head(head).sheet("eBay盈利改价").doWrite(data);
+            return;
+        }
+
         if (task != null && ("ebay_bulk_listing".equals(task.getTaskType())
                 || "ebay_price_sync".equals(task.getTaskType())
                 || "ebay_delist".equals(task.getTaskType())
@@ -397,5 +417,12 @@ public class TaskItemController {
             sb.append("_").append(new SimpleDateFormat("MMdd_HHmm").format(task.getStartTime()));
         }
         return sb.toString();
+    }
+
+    private static String plain(Object value) {
+        if (value == null) {
+            return "";
+        }
+        return value instanceof java.math.BigDecimal decimal ? decimal.toPlainString() : String.valueOf(value);
     }
 }

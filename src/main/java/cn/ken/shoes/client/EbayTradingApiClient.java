@@ -117,6 +117,84 @@ public class EbayTradingApiClient {
                 parseInt(text(root, "PaginationResult/TotalNumberOfEntries")));
     }
 
+    /** GetSellerList 每页上限 200。 */
+    private static final int SELLER_LIST_PAGE_SIZE = 200;
+    private static final int MAX_SELLER_LIST_PAGES = 500;
+
+    /** eBay 上一个 SKU 的实时价格与可售数量（可售 = Quantity - QuantitySold）。 */
+    public record ActiveSku(String sku, String listingId, java.math.BigDecimal price, int availableQuantity) {
+    }
+
+    /**
+     * 用 GetSellerList 读取全部在架商品的 SKU 实时价格与可售数量（含多属性商品的每个尺码）。
+     * 结束时间窗口取未来 119 天：GTC 商品每 30 天续期，都会落在窗口内。
+     */
+    public List<ActiveSku> getActiveSkus(java.util.function.BooleanSupplier cancelled) {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        StringBuilder selectors = new StringBuilder();
+        for (String selector : List.of("ItemArray.Item.ItemID", "ItemArray.Item.SKU",
+                "ItemArray.Item.StartPrice", "ItemArray.Item.Quantity",
+                "ItemArray.Item.SellingStatus.QuantitySold",
+                "ItemArray.Item.Variations.Variation.SKU", "ItemArray.Item.Variations.Variation.StartPrice",
+                "ItemArray.Item.Variations.Variation.Quantity",
+                "ItemArray.Item.Variations.Variation.SellingStatus.QuantitySold",
+                "PaginationResult", "HasMoreItems")) {
+            selectors.append("  <OutputSelector>").append(selector).append("</OutputSelector>\n");
+        }
+        List<ActiveSku> result = new ArrayList<>();
+        for (int page = 1; page <= MAX_SELLER_LIST_PAGES; page++) {
+            if (cancelled != null && cancelled.getAsBoolean()) {
+                throw new java.util.concurrent.CancellationException("cancelled");
+            }
+            String payload = """
+                    <?xml version="1.0" encoding="utf-8"?>
+                    <GetSellerListRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                      <EndTimeFrom>%s</EndTimeFrom>
+                      <EndTimeTo>%s</EndTimeTo>
+                      <GranularityLevel>Coarse</GranularityLevel>
+                      <IncludeVariations>true</IncludeVariations>
+                      <Pagination>
+                        <EntriesPerPage>%d</EntriesPerPage>
+                        <PageNumber>%d</PageNumber>
+                      </Pagination>
+                    %s</GetSellerListRequest>
+                    """.formatted(now, now.plus(119, ChronoUnit.DAYS), SELLER_LIST_PAGE_SIZE, page, selectors);
+            Document document = call("GetSellerList", payload);
+            Element root = document.getDocumentElement();
+            List<Element> items = children(firstElement(root, "ItemArray"), "Item");
+            for (Element item : items) {
+                String itemId = text(item, "ItemID");
+                List<Element> variations = children(firstElement(item, "Variations"), "Variation");
+                if (variations.isEmpty()) {
+                    addActiveSku(result, text(item, "SKU"), itemId, text(item, "StartPrice"),
+                            text(item, "Quantity"), text(item, "SellingStatus/QuantitySold"));
+                }
+                for (Element variation : variations) {
+                    addActiveSku(result, text(variation, "SKU"), itemId, text(variation, "StartPrice"),
+                            text(variation, "Quantity"), text(variation, "SellingStatus/QuantitySold"));
+                }
+            }
+            int totalPages = parseInt(text(root, "PaginationResult/TotalNumberOfPages"));
+            if (items.isEmpty() || page >= totalPages) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private static void addActiveSku(List<ActiveSku> result, String sku, String itemId, String price,
+                                     String quantity, String sold) {
+        if (sku == null || itemId == null || price == null) {
+            return;
+        }
+        try {
+            int available = Math.max(0, parseInt(quantity) - parseInt(sold));
+            result.add(new ActiveSku(sku, itemId, new java.math.BigDecimal(price), available));
+        } catch (NumberFormatException ignored) {
+            // 价格异常的 SKU 跳过，不参与改价
+        }
+    }
+
     /** GetOrders 按 OrderID 查询时单次最多携带的订单数。 */
     public static final int ORDER_ID_BATCH = 20;
 

@@ -15,6 +15,7 @@ const TASK_TYPE = {
     EBAY_ZERO_STOCK: 'ebay_zero_stock',
     EBAY_FETCH_ORDERS: 'ebay_fetch_orders',
     EBAY_ADD_TRACKING: 'ebay_add_tracking',
+    EBAY_PROFIT_PRICE: 'ebay_profit_price',
 };
 
 enum TASK_API {
@@ -75,6 +76,9 @@ enum TASK_API {
     // eBay 添加追踪号码（上传 订单编号+追踪号码 Excel）
     EBAY_START_ADD_TRACKING = '/api/task/ebay/startAddTracking',
     EBAY_TRACKING_TEMPLATE = '/api/task/ebay/trackingTemplate',
+    // eBay 盈利改价（含广告费；默认目标盈利 + 可选按货号目标盈利 Excel）
+    EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice',
+    EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate',
 }
 
 export {TASK_API, TASK_TYPE}

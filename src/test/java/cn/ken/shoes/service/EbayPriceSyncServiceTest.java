@@ -80,6 +80,16 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
+    void refusesToStartWhileProfitPriceTaskRunning() {
+        when(taskMapper.selectRunningTask("ebay", EbayProfitPriceService.TASK_TYPE, "running"))
+                .thenReturn(new TaskDO());
+
+        assertThat(service.canRun()).isFalse();
+        assertThat(service.start(1, new BigDecimal("1.2"), new BigDecimal("320"))).isNull();
+        verify(taskMapper, never()).insert(any(TaskDO.class));
+    }
+
+    @Test
     void defaultsAdditionTo250WhenNotProvided() {
         when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
         when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));

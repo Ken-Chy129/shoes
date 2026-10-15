@@ -93,7 +93,7 @@ public class EbayPriceSyncService {
         validate(intervalHours, priceMultiplier, addition);
         TaskDO existing = taskMapper.selectRunningTask(
                 "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode());
-        if (existing != null || !running.isEmpty()) {
+        if (existing != null || !running.isEmpty() || profitPriceRunning()) {
             return null;
         }
 
@@ -136,7 +136,14 @@ public class EbayPriceSyncService {
     public boolean canRun() {
         return running.isEmpty()
                 && taskMapper.selectRunningTask(
-                "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
+                "ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode()) == null
+                && !profitPriceRunning();
+    }
+
+    /** 与「eBay盈利改价」互斥：两者都改同一批港区商品的价格。 */
+    private boolean profitPriceRunning() {
+        return taskMapper.selectRunningTask("ebay", EbayProfitPriceService.TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode()) != null;
     }
 
     void runSingleRound(Long taskId, BigDecimal priceMultiplier) {

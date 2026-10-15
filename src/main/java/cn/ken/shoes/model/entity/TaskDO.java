@@ -77,6 +77,7 @@ public class TaskDO {
         EXCEL_DELIST("下架", "excel_delist"),
         EBAY_BULK_LISTING("eBay批量上架", "ebay_bulk_listing"),
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
+        EBAY_PROFIT_PRICE("eBay盈利改价", "ebay_profit_price"),
         EBAY_DELIST("eBay下架", "ebay_delist"),
         EBAY_ZERO_STOCK("eBay库存清零", "ebay_zero_stock"),
         EBAY_FETCH_ORDERS("eBay获取订单", "ebay_fetch_orders"),
