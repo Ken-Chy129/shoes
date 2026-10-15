@@ -269,8 +269,7 @@ public class TaskExecutorManager {
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition")) != null;
         }
         if ("ebay".equals(platform) && taskType == TaskTypeEnum.EBAY_PROFIT_PRICE) {
-            return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
-                    taskInputSnapshotStore.loadEbayProfitTargets(task.getId()).orElse(List.of())) != null;
+            return startEbayProfitPriceFromSnapshot(task, params) != null;
         }
         log.warn("重启恢复：不支持的平台: {}", platform);
         return false;
@@ -343,8 +342,7 @@ public class TaskExecutorManager {
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PROFIT_PRICE) {
-            return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
-                    taskInputSnapshotStore.loadEbayProfitTargets(source.getId()).orElse(List.of()));
+            return startEbayProfitPriceFromSnapshot(source, params);
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_DELIST) {
             return startEbayDelist(styleIds(params));
@@ -561,6 +559,38 @@ public class TaskExecutorManager {
     public Long startEbayProfitPrice(long intervalHours, java.math.BigDecimal defaultProfit,
                                      List<EbayProfitTargetExcel> overrides) {
         return ebayProfitPriceService.start(intervalHours, defaultProfit, overrides);
+    }
+
+    /**
+     * 按原任务参数和「按货号目标盈利」快照重新拉起盈利改价。原任务有单独设置的货号、但快照缺失/损坏/条数对不上时
+     * 拒绝启动：否则这些货号会悄悄退回默认目标盈利，按更低的门槛被降价。
+     */
+    Long startEbayProfitPriceFromSnapshot(TaskDO source, JSONObject params) {
+        int expected = params.getIntValue("overrideCount");
+        List<EbayProfitTargetExcel> targets;
+        String problem = null;
+        try {
+            targets = taskInputSnapshotStore.loadEbayProfitTargets(source.getId()).orElse(null);
+        } catch (RuntimeException e) {
+            log.error("读取eBay盈利改价目标盈利快照失败, taskId:{}", source.getId(), e);
+            targets = null;
+            problem = "按货号目标盈利快照读取失败";
+        }
+        if (expected > 0 && (targets == null || targets.size() != expected)) {
+            if (problem == null) {
+                problem = targets == null ? "按货号目标盈利快照不存在"
+                        : "按货号目标盈利快照条数不符（应为" + expected + "，实际" + targets.size() + "）";
+            }
+            log.error("eBay盈利改价未恢复：{}, taskId:{}", problem, source.getId());
+            try {
+                taskMapper.updateTaskFailReason(source.getId(), problem + "，为避免按默认目标盈利改价已停止恢复，请重新上传Excel创建任务");
+            } catch (Exception e) {
+                log.warn("eBay盈利改价恢复失败原因写入失败, taskId:{}", source.getId(), e);
+            }
+            return null;
+        }
+        return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
+                targets == null ? List.of() : targets);
     }
 
     public void cancelEbayProfitPrice(Long taskId) {
