@@ -10,6 +10,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class EbayProfitCalculatorTest {
 
     @Test
+    void keepsExactProfitSeparateFromDisplayRounding() {
+        assertThat(EbayProfitCalculator.exactProfit(new BigDecimal("36.40"), new BigDecimal("4"),
+                new BigDecimal("6.7"), new BigDecimal("103"), new BigDecimal("25")))
+                .isEqualByComparingTo("50.001044");
+        assertThat(EbayProfitCalculator.profit(new BigDecimal("36.40"), new BigDecimal("4"),
+                new BigDecimal("6.7"), new BigDecimal("103"), new BigDecimal("25")))
+                .isEqualByComparingTo("50.00");
+    }
+
+    @Test
     void computesBuyerPaysAndNetForHighPrice() {
         BigDecimal x = new BigDecimal("150");
         // y = 150 + 14.95 + 13.5 = 178.45

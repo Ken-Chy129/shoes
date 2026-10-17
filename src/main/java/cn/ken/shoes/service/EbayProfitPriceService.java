@@ -233,10 +233,10 @@ public class EbayProfitPriceService {
                     ? new Decision(Action.ZERO_STOCK, null, 0, null, null)
                     : new Decision(Action.ALREADY_ZERO, null, null, null, null);
         }
-        BigDecimal profit = EbayProfitCalculator.profit(price, adRate, exchangeRate, poisonPrice, freight);
+        BigDecimal profit = EbayProfitCalculator.exactProfit(price, adRate, exchangeRate, poisonPrice, freight);
         if (profit.compareTo(targetProfit) <= 0) {
             BigDecimal raised = minimumProfitablePrice(price, poisonPrice, adRate, targetProfit, exchangeRate, freight);
-            BigDecimal raisedProfit = EbayProfitCalculator.profit(
+            BigDecimal raisedProfit = EbayProfitCalculator.exactProfit(
                     raised, adRate, exchangeRate, poisonPrice, freight);
             return availableQuantity > 0
                     ? new Decision(Action.RAISE_PRICE, raised, null, profit, raisedProfit)
@@ -244,7 +244,7 @@ public class EbayProfitPriceService {
         }
         BigDecimal lowered = price.subtract(PRICE_STEP).setScale(2, RoundingMode.HALF_UP);
         BigDecimal loweredProfit = lowered.compareTo(MIN_PRICE) < 0 ? null
-                : EbayProfitCalculator.profit(lowered, adRate, exchangeRate, poisonPrice, freight);
+                : EbayProfitCalculator.exactProfit(lowered, adRate, exchangeRate, poisonPrice, freight);
         boolean lower = loweredProfit != null && loweredProfit.compareTo(targetProfit) > 0;
         boolean restore = availableQuantity <= 0;
         if (lower && restore) {
@@ -269,17 +269,17 @@ public class EbayProfitPriceService {
             throw new IllegalArgumentException("当前价格已达到安全调价上限");
         }
         long high = Math.max(low, 15000L);
-        while (high < max && EbayProfitCalculator.profit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
+        while (high < max && EbayProfitCalculator.exactProfit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
                 poisonPrice, freight).compareTo(targetProfit) <= 0) {
             high = Math.min(max, Math.max(high + 1, high * 2));
         }
-        if (EbayProfitCalculator.profit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
+        if (EbayProfitCalculator.exactProfit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
                 poisonPrice, freight).compareTo(targetProfit) <= 0) {
             throw new IllegalArgumentException("无法在安全调价上限内达到目标盈利");
         }
         while (low < high) {
             long mid = low + (high - low) / 2;
-            if (EbayProfitCalculator.profit(BigDecimal.valueOf(mid, 2), adRate, exchangeRate,
+            if (EbayProfitCalculator.exactProfit(BigDecimal.valueOf(mid, 2), adRate, exchangeRate,
                     poisonPrice, freight).compareTo(targetProfit) > 0) {
                 high = mid;
             } else {
@@ -414,8 +414,20 @@ public class EbayProfitPriceService {
         List<Planned> planned = new ArrayList<>();
         for (Context context : contexts) {
             BigDecimal poisonPrice = prices.get(priceKey(context.styleId(), context.euSize()));
-            Decision decision = decide(context.live().price(), context.live().availableQuantity(), poisonPrice,
-                    context.adRate(), context.targetProfit(), exchangeRate, freight);
+            ensureNotCancelled(cancelled);
+            Decision decision;
+            try {
+                decision = decide(context.live().price(), context.live().availableQuantity(), poisonPrice,
+                        context.adRate(), context.targetProfit(), exchangeRate, freight);
+            } catch (IllegalArgumentException | ArithmeticException e) {
+                counters.failed++;
+                log.warn("eBay盈利改价计算失败，保留价格和库存, taskId={}, sku={}",
+                        taskId, context.mapping().getSku(), e);
+                recordItem(taskId, round, context, poisonPrice, null, null,
+                        context.live().availableQuantity(),
+                        truncate("失败(计算盈利价：" + safeError(e) + ")，价格和库存未改动", 250));
+                continue;
+            }
             if (decision.action() == Action.KEEP) {
                 counters.kept++;
             } else if (decision.action() == Action.ALREADY_ZERO) {
@@ -515,9 +527,9 @@ public class EbayProfitPriceService {
             text.append("→$").append(d.newPrice().toPlainString());
         }
         text.append(" 利润");
-        text.append(d.profit() == null ? "-(得物无价)" : "¥" + d.profit().toPlainString());
+        text.append(d.profit() == null ? "-(得物无价)" : "¥" + displayProfit(d.profit()).toPlainString());
         if (d.newPrice() != null && d.profitAfterStep() != null) {
-            text.append("→¥").append(d.profitAfterStep().toPlainString());
+            text.append("→¥").append(displayProfit(d.profitAfterStep()).toPlainString());
         }
         text.append(" 目标¥").append(plan.context().targetProfit().stripTrailingZeros().toPlainString())
                 .append(" 广告").append(plan.context().adRate().stripTrailingZeros().toPlainString()).append('%');
@@ -536,24 +548,34 @@ public class EbayProfitPriceService {
         }
     }
 
+    private static BigDecimal displayProfit(BigDecimal profit) {
+        return profit == null ? null : profit.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private void recordItem(Long taskId, int round, Planned plan, String result) {
-        EbayListingDO mapping = plan.context().mapping();
+        recordItem(taskId, round, plan.context(), plan.poisonPrice(), plan.decision().profit(),
+                plan.decision().newPrice(), plan.decision().newQuantity() != null
+                        ? plan.decision().newQuantity() : plan.context().live().availableQuantity(), result);
+    }
+
+    private void recordItem(Long taskId, int round, Context context, BigDecimal poisonPrice,
+                            BigDecimal profit, BigDecimal targetPrice, Integer quantity, String result) {
+        EbayListingDO mapping = context.mapping();
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(round);
         item.setTitle(mapping.getTitle());
-        item.setListingId(plan.context().live().listingId());
+        item.setListingId(context.live().listingId());
         item.setSku(mapping.getSku());
         item.setOfferId(mapping.getOfferId());
         item.setStyleId(mapping.getStyleId());
         item.setSize(mapping.getSize());
-        item.setEuSize(plan.context().euSize());
-        item.setCurrentPrice(plan.context().live().price());
-        item.setTargetPrice(plan.decision().newPrice());
-        item.setListingQuantity(plan.decision().newQuantity() != null ? plan.decision().newQuantity()
-                : plan.context().live().availableQuantity());
-        item.setPoisonPrice(plan.poisonPrice());
-        item.setProfit35(plan.decision().profit());
+        item.setEuSize(context.euSize());
+        item.setCurrentPrice(context.live().price());
+        item.setTargetPrice(targetPrice);
+        item.setListingQuantity(quantity);
+        item.setPoisonPrice(poisonPrice);
+        item.setProfit35(displayProfit(profit));
         item.setOperateResult(result);
         item.setOperateTime(new Date());
         try {

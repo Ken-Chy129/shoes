@@ -43,6 +43,27 @@ class EbayProfitPriceServiceTest {
     private static final BigDecimal FREIGHT = new BigDecimal("25");
     private static final BigDecimal AD = new BigDecimal("4");
 
+    @Test
+    void usesExactProfitForRaisingKeepingAndLoweringAtBoundary() {
+        BigDecimal cost = new BigDecimal("103");
+        BigDecimal target = new BigDecimal("50");
+        Decision raised = EbayProfitPriceService.decide(new BigDecimal("36"), 1, cost, AD, target, RATE, FREIGHT);
+        assertThat(raised.newPrice()).isEqualByComparingTo("36.40");
+        assertThat(raised.profitAfterStep()).isEqualByComparingTo("50.001044");
+        assertThat(EbayProfitCalculator.exactProfit(new BigDecimal("36.39"), AD, RATE, cost, FREIGHT))
+                .isLessThan(target);
+        Decision kept = EbayProfitPriceService.decide(new BigDecimal("36.40"), 1, cost, AD, target, RATE, FREIGHT);
+        assertThat(kept.action()).isEqualTo(Action.KEEP);
+        Decision lowered = EbayProfitPriceService.decide(new BigDecimal("37.40"), 1, cost, AD, target, RATE, FREIGHT);
+        assertThat(lowered.action()).isEqualTo(Action.LOWER_PRICE);
+        assertThat(lowered.newPrice()).isEqualByComparingTo("36.40");
+        // Exact equality still fails the strict > comparison.
+        Decision equal = EbayProfitPriceService.decide(new BigDecimal("36.40"), 1, cost, AD,
+                new BigDecimal("50.001044"), RATE, FREIGHT);
+        assertThat(equal.action()).isEqualTo(Action.RAISE_PRICE);
+        assertThat(equal.newPrice()).isEqualByComparingTo("36.41");
+    }
+
     private TaskMapper taskMapper;
     private TaskItemMapper taskItemMapper;
     private EbayListingMapper listingMapper;
@@ -99,7 +120,7 @@ class EbayProfitPriceServiceTest {
         assertThat(d.action()).isEqualTo(Action.LOWER_PRICE);
         assertThat(d.newPrice()).isEqualByComparingTo("149");
         assertThat(d.newQuantity()).isNull();
-        assertThat(d.profit()).isEqualByComparingTo("332.94");
+        assertThat(d.profit()).isEqualByComparingTo("332.939355");
     }
 
     @Test
@@ -118,7 +139,7 @@ class EbayProfitPriceServiceTest {
         assertThat(d.action()).isEqualTo(Action.RAISE_PRICE);
         assertThat(d.newPrice()).isGreaterThan(new BigDecimal("150"));
         assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("332.94"));
-        assertThat(EbayProfitCalculator.profit(d.newPrice().subtract(new BigDecimal("0.01")), AD, RATE,
+        assertThat(EbayProfitCalculator.exactProfit(d.newPrice().subtract(new BigDecimal("0.01")), AD, RATE,
                 new BigDecimal("500"), FREIGHT)).isLessThanOrEqualTo(new BigDecimal("332.94"));
         assertThat(d.newQuantity()).isNull();
     }
@@ -151,7 +172,7 @@ class EbayProfitPriceServiceTest {
                         new BigDecimal("50"), RATE, FREIGHT);
                 assertThat(d.action()).isEqualTo(Action.RAISE_PRICE);
                 assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("50"));
-                assertThat(EbayProfitCalculator.profit(d.newPrice().subtract(new BigDecimal("0.01")),
+                assertThat(EbayProfitCalculator.exactProfit(d.newPrice().subtract(new BigDecimal("0.01")),
                         rate, RATE, poison, FREIGHT)).isLessThanOrEqualTo(new BigDecimal("50"));
             }
         }
@@ -305,6 +326,48 @@ class EbayProfitPriceServiceTest {
                 .isInstanceOf(EbayProfitPriceService.RoundInterruptedException.class)
                 .hasMessageContaining("第2页").hasMessageContaining("前1页已处理");
         verify(sellClient).bulkUpdatePriceQuantity(anyList());
+    }
+
+    @Test
+    void calculationFailuresDoNotBlockSamePageOrFollowingPages() {
+        when(listingMapper.selectActive()).thenReturn(List.of(
+                listing("BAD", "offer-bad", "BAD", "HK"),
+                listing("LIMIT", "offer-limit", "LIMIT", "HK"),
+                listing("A", "offer-A", "A", "HK"), listing("B", "offer-B", "B", "HK")));
+        // With 90% ads, raising cannot reach the target even at the safety limit.
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of("L-bad", new BigDecimal("90"),
+                "L-limit", new BigDecimal("90")));
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(
+                poison("BAD", 500), poison("LIMIT", 500), poison("A", 500), poison("B", 500)));
+        doAnswer(invocation -> {
+            java.util.function.Consumer<EbayTradingApiClient.ActiveSkuPage> consumer = invocation.getArgument(1);
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(1, 2, List.of(
+                    sku("BAD", "L-bad", "150", 1), sku("LIMIT", "L-limit", "999999.99", 0),
+                    sku("A", "L-A", "150", 1))));
+            consumer.accept(new EbayTradingApiClient.ActiveSkuPage(2, 2, List.of(sku("B", "L-B", "150", 1))));
+            return null;
+        }).when(tradingClient).forEachActiveSkuPage(any(), any());
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(sellClient, times(2)).bulkUpdatePriceQuantity(argThat(updates -> updates.size() == 1
+                && List.of("A", "B").contains(updates.get(0).sku())));
+        verify(listingMapper, never()).updatePriceAndQuantity(eq("BAD"), any(), any());
+        verify(listingMapper, never()).updatePriceAndQuantity(eq("LIMIT"), any(), any());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(4)).insert(items.capture());
+        assertThat(items.getAllValues()).filteredOn(i -> List.of("BAD", "LIMIT").contains(i.getSku()))
+                .hasSize(2).allSatisfy(i -> {
+                    assertThat(i.getOperateResult()).contains("失败(计算盈利价").contains("价格和库存未改动");
+                    assertThat(i.getTargetPrice()).isNull();
+                    assertThat(i.getListingQuantity()).isEqualTo("BAD".equals(i.getSku()) ? 1 : 0);
+                });
+        verify(taskMapper).updateTaskFailReason(7L, "本轮有 2 个商品处理失败");
+        verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(7L), argThat(json -> {
+            var attrs = com.alibaba.fastjson.JSONObject.parseObject(json);
+            return attrs.getIntValue("failed") == 2 && attrs.getIntValue("pages") == 2
+                    && attrs.getIntValue("lowered") == 2;
+        }));
     }
 
     @Test

@@ -38,16 +38,21 @@ public final class EbayProfitCalculator {
     public static BigDecimal netReceived(BigDecimal price, BigDecimal adRatePercent) {
         BigDecimal y = buyerPays(price);
         BigDecimal fvf = price.compareTo(HIGH_PRICE_THRESHOLD) >= 0 ? HIGH_PRICE_FVF_RATE : LOW_PRICE_FVF_RATE;
-        BigDecimal ad = adRatePercent == null ? BigDecimal.ZERO
-                : adRatePercent.divide(HUNDRED, 6, RoundingMode.HALF_UP);
+        BigDecimal ad = adRatePercent == null ? BigDecimal.ZERO : adRatePercent.divide(HUNDRED);
         return price.subtract(y.multiply(fvf.add(INTERNATIONAL_FEE_RATE).add(ad)));
     }
 
     /** 利润（人民币）= z × 汇率 - 得物价 - 运费，保留两位小数。 */
     public static BigDecimal profit(BigDecimal price, BigDecimal adRatePercent, BigDecimal exchangeRate,
                                     BigDecimal poisonPrice, BigDecimal freight) {
-        return netReceived(price, adRatePercent).multiply(exchangeRate)
-                .subtract(poisonPrice).subtract(freight)
+        return exactProfit(price, adRatePercent, exchangeRate, poisonPrice, freight)
                 .setScale(2, RoundingMode.HALF_UP);
+    }
+
+    /** 未舍入的人民币利润：用于所有盈利判断及最低盈利价搜索；仅在展示/写明细时舍入。 */
+    public static BigDecimal exactProfit(BigDecimal price, BigDecimal adRatePercent, BigDecimal exchangeRate,
+                                         BigDecimal poisonPrice, BigDecimal freight) {
+        return netReceived(price, adRatePercent).multiply(exchangeRate)
+                .subtract(poisonPrice).subtract(freight);
     }
 }
