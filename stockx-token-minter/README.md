@@ -68,6 +68,15 @@ node index.js
 | `accounts[].name` | **必须和后端 stockx-accounts.json 里的账号名完全一致** |
 | `accounts[].profileDir` | 该账号的浏览器持久化目录（含登录 cookie，已 gitignore） |
 
+### 带认证的 SOCKS5 代理
+
+`browserProxy` 支持 `{ "server": "socks5://proxy.example.com:1080", "username": "<账号>", "password": "<密码>" }`。
+Chromium 不支持直接进行 SOCKS5 用户名密码认证，因此程序使用 `proxy-chain` 为每个浏览器会话创建
+仅监听 `127.0.0.1` 随机端口的 HTTP CONNECT 转发，再通过 SOCKS5 上游连接目标站点。
+域名由上游代理解析，浏览器启动失败或关闭后会清理转发端口；写回后端依然直连，不走此代理。
+更新部署时必须同步 `package.json` / `package-lock.json` 并执行 `npm ci --omit=dev`。
+代理凭据仅放服务器权限为 `0600` 的 `config.json`，不得提交 Git。
+
 `node index.js --once` 只要有任一账号失败就会返回非 0 退出码，避免 systemd 把 `0/6` 误判为成功。
 
 ## ⚠️ 部署位置的权衡（重要）

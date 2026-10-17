@@ -2,7 +2,7 @@
 
 const path = require('path');
 const { chromium } = require('playwright');
-const { normalizeProxy } = require('./proxy-config');
+const { launchWithProxy } = require('./browser-proxy');
 
 // 与解 cookie 时一致的 UA，降低 Cloudflare/PerimeterX 指纹突变风险
 const USER_AGENT =
@@ -30,9 +30,10 @@ async function openContext({ profileDir, headless, useRealChrome, proxy }) {
     ],
   };
   if (useRealChrome) opts.channel = 'chrome';
-  const proxyOptions = normalizeProxy(proxy);
-  if (proxyOptions) opts.proxy = proxyOptions;
-  return await chromium.launchPersistentContext(path.resolve(profileDir), opts);
+  return launchWithProxy(proxy, async (proxyOptions) => {
+    if (proxyOptions) opts.proxy = proxyOptions;
+    return chromium.launchPersistentContext(path.resolve(profileDir), opts);
+  });
 }
 
 module.exports = { openContext, USER_AGENT };
