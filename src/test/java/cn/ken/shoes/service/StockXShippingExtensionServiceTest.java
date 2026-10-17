@@ -134,6 +134,27 @@ class StockXShippingExtensionServiceTest {
         }
     }
 
+    @Test
+    void scheduledRunSkipsAccountsWithAutomaticShippingExtensionDisabled() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.pages.add(page(false, null));
+        StockXShippingExtensionService service = new StockXShippingExtensionService(
+                client, Clock.fixed(Instant.parse("2026-07-16T08:00:00Z"), ZoneOffset.UTC));
+        StockXAccount optedIn = account("opted-in");
+        StockXAccount optedOut = account("opted-out");
+        optedOut.setAutoShippingExtensionEnabled(false);
+        List<StockXAccount> originalAccounts = new ArrayList<>(StockXConfig.getAccounts());
+        try {
+            StockXConfig.setAccounts(List.of(optedOut, optedIn));
+
+            service.extendAllEnabledAccounts("scheduled");
+
+            assertThat(client.queriedAccounts).containsExactly("opted-in");
+        } finally {
+            StockXConfig.setAccounts(originalAccounts);
+        }
+    }
+
     private static StockXAccount account(String name) {
         StockXAccount account = new StockXAccount();
         account.setName(name);
@@ -181,6 +202,7 @@ class StockXShippingExtensionServiceTest {
     private static class FakeStockXClient extends StockXClient {
         private final Deque<JSONObject> pages = new ArrayDeque<>();
         private final List<String> requestedAfter = new ArrayList<>();
+        private final List<String> queriedAccounts = new ArrayList<>();
         private final List<String> extended = new ArrayList<>();
         private String failAccount;
         private boolean tokenExpiresOnExtend;
@@ -188,6 +210,7 @@ class StockXShippingExtensionServiceTest {
         @Override
         public JSONObject queryPendingAsks(String after, StockXAccount account) {
             requestedAfter.add(after);
+            queriedAccounts.add(account.getName());
             if (account.getName().equals(failAccount)) {
                 throw new IllegalStateException("query failed");
             }

@@ -164,6 +164,7 @@ const SettingPage = () => {
             inheritSpecialStyleFee: true,
             inheritSpecialStyle35Fee: true,
             autoReplenishmentEnabled: false,
+            autoShippingExtensionEnabled: true,
         });
         setAccountStep(0);
         setAccountModalVisible(true);
@@ -176,6 +177,7 @@ const SettingPage = () => {
             ...record,
             inheritSpecialStyleFee: !record.specialStyleFeeConfig,
             inheritSpecialStyle35Fee: !record.specialStyle35FeeConfig,
+            autoShippingExtensionEnabled: record.autoShippingExtensionEnabled !== false,
         });
         setAccountStep(0);
         setAccountModalVisible(true);
@@ -231,6 +233,12 @@ const SettingPage = () => {
         });
     }
 
+    const handleToggleAutoShippingExtension = (record: any, autoShippingExtensionEnabled: boolean) => {
+        doPutRequest(`${SETTING_API.STOCKX_ACCOUNTS}/${record.name}`, {...record, autoShippingExtensionEnabled}, {
+            onSuccess: () => loadAccounts()
+        });
+    }
+
     const enableSpecialFeeProfile = (prefix: string) => {
         if (accountForm.getFieldValue(prefix)) return;
         const defaults = accountForm.getFieldsValue(FEE_FIELD_NAMES);
@@ -282,6 +290,14 @@ const SettingPage = () => {
                 <Tooltip title="开启后每12小时自动补单；账号停用时不会执行">
                     <Switch checked={!!v}
                             onChange={(checked) => handleToggleAutoReplenishment(record, checked)}
+                            size="small"/>
+                </Tooltip>
+            )},
+        {title: '自动延期', dataIndex: 'autoShippingExtensionEnabled', key: 'autoShippingExtensionEnabled', width: 90,
+            render: (v: boolean, record: any) => (
+                <Tooltip title="开启后每12小时自动订单延期；账号停用时不会执行">
+                    <Switch checked={v !== false}
+                            onChange={(checked) => handleToggleAutoShippingExtension(record, checked)}
                             size="small"/>
                 </Tooltip>
             )},
@@ -433,7 +449,7 @@ const SettingPage = () => {
                    accountStep > 0 && <Button key="prev" onClick={() => setAccountStep(s => s - 1)}>上一步</Button>,
                    accountStep < 2 && <Button key="next" type="primary" onClick={() => {
                        const fields: any[] = accountStep === 0
-                           ? ['name', 'country', 'apiKey', 'authorization', 'enabled', 'autoReplenishmentEnabled']
+                           ? ['name', 'country', 'apiKey', 'authorization', 'enabled', 'autoReplenishmentEnabled', 'autoShippingExtensionEnabled']
                            : [...FEE_FIELD_NAMES];
                        if (accountStep === 1 && !inheritSpecialStyleFee) {
                            fields.push(...FEE_FIELD_NAMES.map(field => ['specialStyleFeeConfig', field]));
@@ -471,6 +487,11 @@ const SettingPage = () => {
                     <Form.Item name="autoReplenishmentEnabled" label="自动补单" valuePropName="checked"
                                initialValue={false}
                                extra="开启后每12小时自动补单；仅账号处于启用状态时执行">
+                        <Switch/>
+                    </Form.Item>
+                    <Form.Item name="autoShippingExtensionEnabled" label="自动延期" valuePropName="checked"
+                               initialValue={true}
+                               extra="开启后每12小时自动订单延期；仅账号处于启用状态时执行">
                         <Switch/>
                     </Form.Item>
                 </div>

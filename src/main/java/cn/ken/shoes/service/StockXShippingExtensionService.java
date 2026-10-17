@@ -67,7 +67,11 @@ public class StockXShippingExtensionService {
             return;
         }
         try {
-            extendAccounts(StockXConfig.getEnabledAccounts(), trigger);
+            // 定时任务只处理开启了「自动延期」的账号；手动批量触发仍处理全部启用账号
+            List<StockXAccount> accounts = "scheduled".equals(trigger)
+                    ? StockXConfig.getAutoShippingExtensionAccounts()
+                    : StockXConfig.getEnabledAccounts();
+            extendAccounts(accounts, trigger);
         } finally {
             running.set(false);
         }

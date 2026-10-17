@@ -59,6 +59,34 @@ class StockXConfigTest {
         assertThat(new StockXAccount().isAutoReplenishmentEnabled()).isFalse();
     }
 
+    @Test
+    void automaticShippingExtensionOnlyUsesEnabledAccountsThatOptedIn() {
+        List<StockXAccount> original = new ArrayList<>(StockXConfig.getAccounts());
+        StockXAccount optedIn = account("opted-in", 0);
+        optedIn.setEnabled(true);
+        StockXAccount optedOut = account("opted-out", 0);
+        optedOut.setEnabled(true);
+        optedOut.setAutoShippingExtensionEnabled(false);
+        StockXAccount disabled = account("disabled", 0);
+        disabled.setEnabled(false);
+
+        try {
+            StockXConfig.setAccounts(List.of(optedIn, optedOut, disabled));
+
+            assertThat(StockXConfig.getAutoShippingExtensionAccounts())
+                    .extracting(StockXAccount::getName)
+                    .containsExactly("opted-in");
+        } finally {
+            StockXConfig.setAccounts(original);
+        }
+    }
+
+    @Test
+    void automaticShippingExtensionDefaultsToEnabledForLegacyAccounts() {
+        StockXAccount legacy = com.alibaba.fastjson.JSON.parseObject("{\"name\":\"legacy\",\"enabled\":true}", StockXAccount.class);
+        assertThat(legacy.isAutoShippingExtensionEnabled()).isTrue();
+    }
+
     private static StockXAccount account(String name, int batchItemLimit) {
         StockXAccount account = new StockXAccount();
         account.setName(name);

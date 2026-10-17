@@ -17,6 +17,9 @@ public class StockXAccount {
     // 是否允许定时任务自动补单；默认关闭，需按账号显式开启
     private boolean autoReplenishmentEnabled = false;
 
+    // 是否允许定时任务自动订单延期；默认开启以保持旧账号原有行为，可按账号关闭
+    private boolean autoShippingExtensionEnabled = true;
+
     // 是否由"发token机"自动续期托管（由 token minter 推送时置 true）
     private boolean autoRefresh = false;
 

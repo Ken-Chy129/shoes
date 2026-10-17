@@ -26,6 +26,13 @@ public class StockXConfig {
                 .toList();
     }
 
+    public static List<StockXAccount> getAutoShippingExtensionAccounts() {
+        return ACCOUNTS.stream()
+                .filter(StockXAccount::isEnabled)
+                .filter(StockXAccount::isAutoShippingExtensionEnabled)
+                .toList();
+    }
+
     public static StockXAccount getAccount(String name) {
         return ACCOUNTS.stream().filter(a -> a.getName().equals(name)).findFirst().orElse(null);
     }
