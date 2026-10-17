@@ -557,8 +557,9 @@ public class TaskExecutorManager {
     }
 
     public Long startEbayProfitPrice(long intervalHours, java.math.BigDecimal defaultProfit,
+                                     java.math.BigDecimal freight,
                                      List<EbayProfitTargetExcel> overrides) {
-        return ebayProfitPriceService.start(intervalHours, defaultProfit, overrides);
+        return ebayProfitPriceService.start(intervalHours, defaultProfit, freight, overrides);
     }
 
     /**
@@ -589,8 +590,14 @@ public class TaskExecutorManager {
             }
             return null;
         }
+        // 兼容本参数上线前创建的历史任务：没有 freight 时沿用当时的全局运费配置。
+        java.math.BigDecimal freight = params.getBigDecimal("freight");
+        if (freight == null) {
+            freight = java.math.BigDecimal.valueOf(cn.ken.shoes.config.PriceSwitch.FREIGHT == null
+                    ? 0 : cn.ken.shoes.config.PriceSwitch.FREIGHT);
+        }
         return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
-                targets == null ? List.of() : targets);
+                freight, targets == null ? List.of() : targets);
     }
 
     public void cancelEbayProfitPrice(Long taskId) {

@@ -37,6 +37,7 @@ public class EbayProfitPriceController {
     @PostMapping("startProfitPrice")
     public Result<String> startProfitPrice(@RequestParam("intervalHours") long intervalHours,
                                            @RequestParam("defaultProfit") BigDecimal defaultProfit,
+                                           @RequestParam("freight") BigDecimal freight,
                                            @RequestParam(value = "file", required = false) MultipartFile file) {
         List<EbayProfitTargetExcel> rows = List.of();
         if (file != null && !file.isEmpty()) {
@@ -52,7 +53,7 @@ public class EbayProfitPriceController {
             }
         }
         try {
-            Long taskId = profitPriceService.start(intervalHours, defaultProfit, rows);
+            Long taskId = profitPriceService.start(intervalHours, defaultProfit, freight, rows);
             if (taskId == null) {
                 return Result.buildError("eBay盈利改价或eBay定时改价任务正在运行，两者互斥，请先停止正在运行的任务");
             }

@@ -693,7 +693,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                             try {
                                 const attrs = JSON.parse(attributes);
                                 return <span style={{color: '#1677ff', fontWeight: 500}}>
-                                    {`${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0} | 广告商品 ${attrs.adListings ?? 0}${attrs.poisonSkipped ? ` | 得物无结果跳过 ${attrs.poisonSkipped}` : ''}`}
+                                    {`${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 调至盈利 ${attrs.raised ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 得物无价清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0} | 广告商品 ${attrs.adListings ?? 0}${attrs.poisonSkipped ? ` | 得物无结果跳过 ${attrs.poisonSkipped}` : ''}`}
                                 </span>;
                             } catch { return null; }
                         })()}

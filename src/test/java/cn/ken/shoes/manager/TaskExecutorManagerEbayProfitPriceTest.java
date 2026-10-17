@@ -36,7 +36,7 @@ class TaskExecutorManagerEbayProfitPriceTest {
         set("ebayProfitPriceService", service);
         source = new TaskDO();
         source.setId(9L);
-        when(service.start(anyLong(), any(), anyList())).thenReturn(100L);
+        when(service.start(anyLong(), any(), any(), anyList())).thenReturn(100L);
     }
 
     @Test
@@ -45,7 +45,7 @@ class TaskExecutorManagerEbayProfitPriceTest {
 
         assertThat(manager.startEbayProfitPriceFromSnapshot(source, params(2))).isNull();
 
-        verify(service, never()).start(anyLong(), any(), anyList());
+        verify(service, never()).start(anyLong(), any(), any(), anyList());
         verify(taskMapper).updateTaskFailReason(eq(9L), contains("快照不存在"));
     }
 
@@ -58,7 +58,7 @@ class TaskExecutorManagerEbayProfitPriceTest {
         when(snapshotStore.loadEbayProfitTargets(9L)).thenReturn(Optional.of(List.of(row())));
         assertThat(manager.startEbayProfitPriceFromSnapshot(source, params(2))).isNull();
 
-        verify(service, never()).start(anyLong(), any(), anyList());
+        verify(service, never()).start(anyLong(), any(), any(), anyList());
     }
 
     @Test
@@ -67,7 +67,7 @@ class TaskExecutorManagerEbayProfitPriceTest {
         when(snapshotStore.loadEbayProfitTargets(9L)).thenReturn(Optional.of(rows));
 
         assertThat(manager.startEbayProfitPriceFromSnapshot(source, params(1))).isEqualTo(100L);
-        verify(service).start(1L, new BigDecimal("50"), rows);
+        verify(service).start(1L, new BigDecimal("50"), new BigDecimal("25"), rows);
     }
 
     @Test
@@ -75,11 +75,30 @@ class TaskExecutorManagerEbayProfitPriceTest {
         when(snapshotStore.loadEbayProfitTargets(9L)).thenReturn(Optional.empty());
 
         assertThat(manager.startEbayProfitPriceFromSnapshot(source, params(0))).isEqualTo(100L);
-        verify(service).start(1L, new BigDecimal("50"), List.of());
+        verify(service).start(1L, new BigDecimal("50"), new BigDecimal("25"), List.of());
+    }
+
+    @Test
+    void resumePreservesTaskFreightAndLegacyTaskFallsBackToGlobal() {
+        when(snapshotStore.loadEbayProfitTargets(9L)).thenReturn(Optional.empty());
+        Integer previous = cn.ken.shoes.config.PriceSwitch.FREIGHT;
+        try {
+            cn.ken.shoes.config.PriceSwitch.FREIGHT = 70;
+            assertThat(manager.startEbayProfitPriceFromSnapshot(source,
+                    params(0).fluentPut("freight", new BigDecimal("35.50")))).isEqualTo(100L);
+            verify(service).start(1L, new BigDecimal("50"), new BigDecimal("35.50"), List.of());
+            JSONObject legacy = params(0);
+            legacy.remove("freight");
+            assertThat(manager.startEbayProfitPriceFromSnapshot(source, legacy)).isEqualTo(100L);
+            verify(service).start(1L, new BigDecimal("50"), new BigDecimal("70"), List.of());
+        } finally {
+            cn.ken.shoes.config.PriceSwitch.FREIGHT = previous;
+        }
     }
 
     private static JSONObject params(int overrideCount) {
         return new JSONObject().fluentPut("intervalHours", 1).fluentPut("defaultProfit", new BigDecimal("50"))
+                .fluentPut("freight", new BigDecimal("25"))
                 .fluentPut("overrideCount", overrideCount);
     }
 

@@ -336,6 +336,7 @@ const TaskPage = () => {
                 const formData = new FormData();
                 formData.append('intervalHours', String(values.profitIntervalHours));
                 formData.append('defaultProfit', String(values.defaultProfit));
+                formData.append('freight', String(values.profitFreight));
                 const file = values.ebayProfitExcel?.[0]?.originFileObj;
                 if (file) formData.append('file', file);
                 request(TASK_API.EBAY_START_PROFIT_PRICE, {method: 'POST', data: formData})
@@ -843,10 +844,10 @@ const TaskPage = () => {
                 if (record.taskType === 'ebay_profit_price' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
-                        const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`;
+                        const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 调至盈利 ${attrs.raised ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 得物无价清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}`;
                         return <Tooltip title={tip}>
                             <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
-                                降价 {attrs.lowered ?? 0}<br/>清库存 {attrs.zeroed ?? 0}
+                                降价 {attrs.lowered ?? 0}<br/>调至盈利 {attrs.raised ?? 0}
                             </span>
                         </Tooltip>;
                     } catch { return '-'; }
@@ -1074,8 +1075,18 @@ const TaskPage = () => {
                                {required: true, message: '请输入默认目标盈利'},
                                {type: 'number', min: -100000, max: 100000, message: '请输入-100000到100000之间的数字'},
                            ]}
-                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；利润 > 目标盈利才算盈利。盈利且降$1后仍盈利则降$1；不盈利则库存置0；盈利但库存为0则恢复1件">
+                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价但不盈利时自动调高到刚好盈利，只有得物没价格才将库存置0；盈利且降$1后仍盈利则降$1">
                     <InputNumber min={-100000} max={100000} step={10} precision={2} addonAfter="元"
+                                 style={{width: 160}}/>
+                </Form.Item>
+                <Form.Item name="profitFreight" label="运费"
+                           initialValue={25}
+                           rules={[
+                               {required: true, message: '请输入运费'},
+                               {type: 'number', min: 0, max: 100000, message: '请输入0到100000之间的数字'},
+                           ]}
+                           extra="人民币；本任务按该运费计算利润，不受全局运费配置后续变化影响">
+                    <InputNumber min={0} max={100000} step={1} precision={2} addonAfter="元"
                                  style={{width: 160}}/>
                 </Form.Item>
                 <Form.Item name="ebayProfitExcel" label="按货号目标盈利" valuePropName="fileList"
@@ -1480,7 +1491,7 @@ const TaskPage = () => {
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
-        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', overrideCount: '单独设置货号数',
+        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -1513,7 +1524,7 @@ const TaskPage = () => {
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
         if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
         if (k === 'intervalHours') return `${v}小时`;
-        if (k === 'priceAddition' || k === 'defaultProfit') return `¥${v}`;
+        if (k === 'priceAddition' || k === 'defaultProfit' || k === 'freight') return `¥${v}`;
         if (k === 'overrideCount') return `${v}个`;
         if (k === 'orderTypes') {
             const labels: Record<string, string> = {pending: '待处理', completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};

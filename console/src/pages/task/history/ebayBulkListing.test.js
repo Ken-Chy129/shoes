@@ -91,6 +91,9 @@ describe('eBay bulk listing task UI', () => {
     expect(page).toContain("createTaskType === 'ebay_profit_price'");
     expect(page).toContain('request(TASK_API.EBAY_START_PROFIT_PRICE');
     expect(page).toContain("formData.append('defaultProfit'");
+    expect(page).toContain("formData.append('freight'");
+    expect(page).toContain('name="profitFreight"');
+    expect(page).toContain('只有得物没价格才将库存置0');
     expect(service).toContain("EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice'");
     expect(service).toContain("EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate'");
   });

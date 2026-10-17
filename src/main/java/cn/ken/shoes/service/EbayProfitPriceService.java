@@ -47,10 +47,11 @@ import java.util.function.Consumer;
  *
  * <p>每轮以 eBay 实时价格 x 为准，按 {@link EbayProfitCalculator} 计算利润，与目标盈利 a 比较：
  * <ul>
- *   <li>利润 ≤ a：不盈利，库存置 0（不结束 listing）；</li>
+ *   <li>有得物价但利润 ≤ a：调高到严格满足利润 &gt; a 的最低美分价格；</li>
+ *   <li>得物无价：库存置 0（不结束 listing）；</li>
  *   <li>利润 &gt; a：若 x-1 仍盈利则降价 1 美元，否则价格不动；库存为 0 的同时恢复为 1。</li>
  * </ul>
- * 广告费率取运行中按成交付费活动里该商品的实际费率，不在活动里按 0；得物无价按不盈利处理。
+ * 广告费率取运行中按成交付费活动里该商品的实际费率，不在活动里按 0；得物无价时清零库存。
  * 只处理港区商品。按 GetSellerList 分页：拉一页、处理一页、写回一页，再拉下一页。
  */
 @Slf4j
@@ -61,6 +62,7 @@ public class EbayProfitPriceService {
     public static final BigDecimal PRICE_STEP = BigDecimal.ONE;
     public static final int RESTORE_QUANTITY = 1;
     private static final BigDecimal MIN_PRICE = new BigDecimal("0.99");
+    private static final BigDecimal MAX_SAFE_PRICE = new BigDecimal("999999.99");
     private static final long MIN_INTERVAL_HOURS = 1;
     private static final long MAX_INTERVAL_HOURS = 168;
     private static final BigDecimal MAX_PROFIT = new BigDecimal("100000");
@@ -112,9 +114,9 @@ public class EbayProfitPriceService {
      * @param overrides 按货号指定的目标盈利，优先于默认值；可为空
      * @return 任务ID；本任务或「eBay定时改价」正在运行时返回 null
      */
-    public synchronized Long start(long intervalHours, BigDecimal defaultProfit,
+    public synchronized Long start(long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
                                    List<EbayProfitTargetExcel> overrides) {
-        validate(intervalHours, defaultProfit);
+        validate(intervalHours, defaultProfit, freight);
         Map<String, BigDecimal> targets = normalizeOverrides(overrides);
         if (!canRun()) {
             return null;
@@ -136,6 +138,7 @@ public class EbayProfitPriceService {
         task.setParams(new JSONObject(true)
                 .fluentPut("intervalHours", intervalHours)
                 .fluentPut("defaultProfit", defaultProfit)
+                .fluentPut("freight", freight)
                 .fluentPut("overrideCount", snapshot.size())
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .toJSONString());
@@ -146,7 +149,7 @@ public class EbayProfitPriceService {
             if (!snapshot.isEmpty()) {
                 snapshotStore.saveEbayProfitTargets(task.getId(), snapshot);
             }
-            threadStarter.accept(() -> runLoop(task.getId(), intervalHours, defaultProfit, targets, handle));
+            threadStarter.accept(() -> runLoop(task.getId(), intervalHours, defaultProfit, freight, targets, handle));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
@@ -173,7 +176,7 @@ public class EbayProfitPriceService {
                 TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
     }
 
-    private void runLoop(Long taskId, long intervalHours, BigDecimal defaultProfit,
+    private void runLoop(Long taskId, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
                          Map<String, BigDecimal> targets, RunHandle handle) {
         int round = 0;
         boolean cancelled = false;
@@ -181,7 +184,7 @@ public class EbayProfitPriceService {
             while (!handle.cancelled.get()) {
                 round++;
                 try {
-                    runSingleRound(taskId, round, defaultProfit, targets, handle.cancelled);
+                    runSingleRound(taskId, round, defaultProfit, freight, targets, handle.cancelled);
                     taskMapper.updateTaskRound(taskId, round);
                 } catch (TaskCancelledException | java.util.concurrent.CancellationException e) {
                     break;
@@ -213,7 +216,10 @@ public class EbayProfitPriceService {
     }
 
     /** 一轮的决策结果，供测试直接断言。 */
-    enum Action { LOWER_PRICE, RESTORE, LOWER_AND_RESTORE, ZERO_STOCK, KEEP, ALREADY_ZERO }
+    enum Action {
+        LOWER_PRICE, RAISE_PRICE, RESTORE, LOWER_AND_RESTORE, RAISE_AND_RESTORE,
+        ZERO_STOCK, KEEP, ALREADY_ZERO
+    }
 
     record Decision(Action action, BigDecimal newPrice, Integer newQuantity, BigDecimal profit,
                     BigDecimal profitAfterStep) {
@@ -229,9 +235,12 @@ public class EbayProfitPriceService {
         }
         BigDecimal profit = EbayProfitCalculator.profit(price, adRate, exchangeRate, poisonPrice, freight);
         if (profit.compareTo(targetProfit) <= 0) {
+            BigDecimal raised = minimumProfitablePrice(price, poisonPrice, adRate, targetProfit, exchangeRate, freight);
+            BigDecimal raisedProfit = EbayProfitCalculator.profit(
+                    raised, adRate, exchangeRate, poisonPrice, freight);
             return availableQuantity > 0
-                    ? new Decision(Action.ZERO_STOCK, null, 0, profit, null)
-                    : new Decision(Action.ALREADY_ZERO, null, null, profit, null);
+                    ? new Decision(Action.RAISE_PRICE, raised, null, profit, raisedProfit)
+                    : new Decision(Action.RAISE_AND_RESTORE, raised, RESTORE_QUANTITY, profit, raisedProfit);
         }
         BigDecimal lowered = price.subtract(PRICE_STEP).setScale(2, RoundingMode.HALF_UP);
         BigDecimal loweredProfit = lowered.compareTo(MIN_PRICE) < 0 ? null
@@ -250,6 +259,36 @@ public class EbayProfitPriceService {
         return new Decision(Action.KEEP, null, null, profit, loweredProfit);
     }
 
+    /** 当前不盈利时，按 $0.01 找到严格满足「利润 > 目标盈利」的最低售价。 */
+    private static BigDecimal minimumProfitablePrice(BigDecimal currentPrice, BigDecimal poisonPrice,
+                                                     BigDecimal adRate, BigDecimal targetProfit,
+                                                     BigDecimal exchangeRate, BigDecimal freight) {
+        long low = currentPrice.setScale(2, RoundingMode.FLOOR).movePointRight(2).longValue() + 1;
+        long max = MAX_SAFE_PRICE.movePointRight(2).longValueExact();
+        if (low > max) {
+            throw new IllegalArgumentException("当前价格已达到安全调价上限");
+        }
+        long high = Math.max(low, 15000L);
+        while (high < max && EbayProfitCalculator.profit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
+                poisonPrice, freight).compareTo(targetProfit) <= 0) {
+            high = Math.min(max, Math.max(high + 1, high * 2));
+        }
+        if (EbayProfitCalculator.profit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
+                poisonPrice, freight).compareTo(targetProfit) <= 0) {
+            throw new IllegalArgumentException("无法在安全调价上限内达到目标盈利");
+        }
+        while (low < high) {
+            long mid = low + (high - low) / 2;
+            if (EbayProfitCalculator.profit(BigDecimal.valueOf(mid, 2), adRate, exchangeRate,
+                    poisonPrice, freight).compareTo(targetProfit) > 0) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+        return BigDecimal.valueOf(low, 2);
+    }
+
     /**
      * 一轮：先读一次广告费率，再逐页读 eBay 在架商品（GetSellerList 每页 200 个 listing），
      * 每读到一页就立即查这一页的得物价、计算并写回 eBay，处理完再读下一页，保证用的是几秒内的实时价格/库存。
@@ -260,9 +299,15 @@ public class EbayProfitPriceService {
      */
     void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, Map<String, BigDecimal> targets,
                         AtomicBoolean cancelled) {
+        runSingleRound(taskId, round, defaultProfit,
+                BigDecimal.valueOf(PriceSwitch.FREIGHT == null ? 0 : PriceSwitch.FREIGHT), targets, cancelled);
+    }
+
+    void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, BigDecimal freight,
+                        Map<String, BigDecimal> targets,
+                        AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
         BigDecimal exchangeRate = exchangeRate();
-        BigDecimal freight = BigDecimal.valueOf(PriceSwitch.FREIGHT == null ? 0 : PriceSwitch.FREIGHT);
 
         Map<String, EbayListingDO> bySku = new HashMap<>();
         int skippedUsRegion = 0;
@@ -430,9 +475,14 @@ public class EbayProfitPriceService {
             } else {
                 switch (decision.action()) {
                     case LOWER_PRICE -> counters.lowered++;
+                    case RAISE_PRICE -> counters.raised++;
                     case RESTORE -> counters.restored++;
                     case LOWER_AND_RESTORE -> {
                         counters.lowered++;
+                        counters.restored++;
+                    }
+                    case RAISE_AND_RESTORE -> {
+                        counters.raised++;
                         counters.restored++;
                     }
                     case ZERO_STOCK -> counters.zeroed++;
@@ -449,9 +499,11 @@ public class EbayProfitPriceService {
     private static String label(Action action) {
         return switch (action) {
             case LOWER_PRICE -> "降价";
+            case RAISE_PRICE -> "调价至盈利";
             case RESTORE -> "恢复库存";
             case LOWER_AND_RESTORE -> "降价并恢复库存";
-            case ZERO_STOCK -> "不盈利，库存置0";
+            case RAISE_AND_RESTORE -> "调价至盈利并恢复库存";
+            case ZERO_STOCK -> "得物无价，库存置0";
             default -> "";
         };
     }
@@ -516,6 +568,7 @@ public class EbayProfitPriceService {
             taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
                     .fluentPut("total", c.total)
                     .fluentPut("lowered", c.lowered)
+                    .fluentPut("raised", c.raised)
                     .fluentPut("restored", c.restored)
                     .fluentPut("zeroed", c.zeroed)
                     .fluentPut("kept", c.kept)
@@ -618,12 +671,15 @@ public class EbayProfitPriceService {
         return targets;
     }
 
-    private void validate(long intervalHours, BigDecimal defaultProfit) {
+    private void validate(long intervalHours, BigDecimal defaultProfit, BigDecimal freight) {
         if (intervalHours < MIN_INTERVAL_HOURS || intervalHours > MAX_INTERVAL_HOURS) {
             throw new IllegalArgumentException("执行间隔必须是1到168小时");
         }
         if (defaultProfit == null || defaultProfit.abs().compareTo(MAX_PROFIT) > 0) {
             throw new IllegalArgumentException("默认目标盈利必须在-100000到100000元之间");
+        }
+        if (freight == null || freight.signum() < 0 || freight.compareTo(MAX_PROFIT) > 0) {
+            throw new IllegalArgumentException("运费必须在0到100000元之间");
         }
     }
 
@@ -707,6 +763,7 @@ public class EbayProfitPriceService {
         int pages;
         int totalPages;
         int lowered;
+        int raised;
         int restored;
         int zeroed;
         int kept;

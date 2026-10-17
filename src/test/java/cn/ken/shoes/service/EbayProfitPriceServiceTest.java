@@ -112,19 +112,73 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
-    void zeroesStockWhenNotProfitable() {
+    void raisesToLowestCentThatIsProfitable() {
         Decision d = EbayProfitPriceService.decide(new BigDecimal("150"), 2, new BigDecimal("500"), AD,
                 new BigDecimal("332.94"), RATE, FREIGHT);
-        assertThat(d.action()).isEqualTo(Action.ZERO_STOCK);
-        assertThat(d.newQuantity()).isZero();
-        assertThat(d.newPrice()).isNull();
+        assertThat(d.action()).isEqualTo(Action.RAISE_PRICE);
+        assertThat(d.newPrice()).isGreaterThan(new BigDecimal("150"));
+        assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("332.94"));
+        assertThat(EbayProfitCalculator.profit(d.newPrice().subtract(new BigDecimal("0.01")), AD, RATE,
+                new BigDecimal("500"), FREIGHT)).isLessThanOrEqualTo(new BigDecimal("332.94"));
+        assertThat(d.newQuantity()).isNull();
     }
 
     @Test
-    void alreadyZeroWhenNotProfitableAndNoStock() {
+    void raisesAndRestoresWhenNotProfitableAndNoStock() {
         Decision d = EbayProfitPriceService.decide(new BigDecimal("150"), 0, new BigDecimal("900"), AD,
                 new BigDecimal("0"), RATE, FREIGHT);
-        assertThat(d.action()).isEqualTo(Action.ALREADY_ZERO);
+        assertThat(d.action()).isEqualTo(Action.RAISE_AND_RESTORE);
+        assertThat(d.newPrice()).isGreaterThan(new BigDecimal("150"));
+        assertThat(d.newQuantity()).isEqualTo(1);
+    }
+
+    @Test
+    void raisingCanStopExactlyAtFeeThreshold() {
+        Decision d = EbayProfitPriceService.decide(new BigDecimal("149"), 1, new BigDecimal("500"), AD,
+                new BigDecimal("300"), RATE, FREIGHT);
+        assertThat(d.action()).isEqualTo(Action.RAISE_PRICE);
+        assertThat(d.newPrice()).isEqualByComparingTo("150.00");
+        assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("300"));
+    }
+
+    @Test
+    void findsMinimalProfitableCentOnBothSidesOf150() {
+        for (String cost : List.of("100", "500", "1000", "2500")) {
+            for (String ad : List.of("0", "4", "15")) {
+                BigDecimal poison = new BigDecimal(cost);
+                BigDecimal rate = new BigDecimal(ad);
+                Decision d = EbayProfitPriceService.decide(new BigDecimal("10"), 1, poison, rate,
+                        new BigDecimal("50"), RATE, FREIGHT);
+                assertThat(d.action()).isEqualTo(Action.RAISE_PRICE);
+                assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("50"));
+                assertThat(EbayProfitCalculator.profit(d.newPrice().subtract(new BigDecimal("0.01")),
+                        rate, RATE, poison, FREIGHT)).isLessThanOrEqualTo(new BigDecimal("50"));
+            }
+        }
+    }
+
+    @Test
+    void roundUsesTaskFreightRatherThanGlobalConfiguration() {
+        when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of("L-A", AD));
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        pages(List.of(sku("SKU-A", "L-A", "150", 1)));
+        // Global freight=25 would keep $150 at target ¥300; task freight=100 must raise the price.
+        service.runSingleRound(7L, 1, new BigDecimal("300"), new BigDecimal("100"), Map.of(), new AtomicBoolean());
+        verify(sellClient).bulkUpdatePriceQuantity(argThat(updates -> updates.size() == 1
+                && updates.get(0).price().compareTo(new BigDecimal("150")) > 0
+                && updates.get(0).availableQuantity() == null));
+    }
+
+    @Test
+    void rejectsInvalidFreightBeforeCreatingTask() {
+        for (BigDecimal freight : List.of(new BigDecimal("-1"), new BigDecimal("100001"))) {
+            assertThatThrownBy(() -> service.start(1, BigDecimal.ZERO, freight, List.of()))
+                    .hasMessageContaining("运费");
+        }
+        assertThatThrownBy(() -> service.start(1, BigDecimal.ZERO, null, List.of()))
+                .hasMessageContaining("运费");
+        verify(taskMapper, never()).insert(any(TaskDO.class));
     }
 
     @Test
@@ -164,7 +218,7 @@ class EbayProfitPriceServiceTest {
         when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(
                 poison("AAA-1", 500), poison("BBB-2", 500)));
 
-        // A：默认目标 100，广告 4% -> 降价；B：Excel 设目标 900 -> 不盈利，清库存
+        // A：默认目标 100，广告 4% -> 降价；B：Excel 设目标 900 -> 调高至盈利
         service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of("BBB-2", new BigDecimal("900")),
                 new AtomicBoolean());
 
@@ -178,17 +232,17 @@ class EbayProfitPriceServiceTest {
         assertThat(a.availableQuantity()).isNull();
         EbaySellApiClient.OfferPriceQuantity b = sent.getValue().stream().filter(u -> u.sku().equals("SKU-B"))
                 .findFirst().orElseThrow();
-        assertThat(b.price()).isNull();
-        assertThat(b.availableQuantity()).isZero();
+        assertThat(b.price()).isGreaterThan(new BigDecimal("150"));
+        assertThat(b.availableQuantity()).isNull();
 
         verify(poisonClient).batchQueryPrice(argThat(list -> !list.contains("CCC-3")));
         ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
         verify(taskItemMapper, times(2)).insert(items.capture());
         assertThat(items.getAllValues()).extracting(TaskItemDO::getOperateResult)
                 .anySatisfy(r -> assertThat(r).startsWith("降价").contains("广告4%"))
-                .anySatisfy(r -> assertThat(r).startsWith("不盈利，库存置0").contains("目标¥900"));
+                .anySatisfy(r -> assertThat(r).startsWith("调价至盈利").contains("目标¥900"));
         verify(listingMapper).updatePriceAndQuantity("SKU-A", new BigDecimal("149.00"), 1);
-        verify(listingMapper).updatePriceAndQuantity("SKU-B", new BigDecimal("150"), 0);
+        verify(listingMapper).updatePriceAndQuantity(eq("SKU-B"), argThat(price -> price.compareTo(new BigDecimal("150")) > 0), eq(1));
     }
 
     @Test
@@ -270,7 +324,7 @@ class EbayProfitPriceServiceTest {
     void refusesToStartWhileLegacyPriceSyncRunning() {
         when(taskMapper.selectRunningTask("ebay", EbayPriceSyncService.TASK_TYPE, "running"))
                 .thenReturn(new TaskDO());
-        assertThat(service.start(1, new BigDecimal("50"), List.of())).isNull();
+        assertThat(service.start(1, new BigDecimal("50"), FREIGHT, List.of())).isNull();
         verify(taskMapper, never()).insert(any(TaskDO.class));
     }
 
@@ -284,7 +338,11 @@ class EbayProfitPriceServiceTest {
             return 1;
         }).when(taskMapper).insert(any(TaskDO.class));
 
-        assertThat(service.start(2, new BigDecimal("50"), List.of(row))).isEqualTo(55L);
+        assertThat(service.start(2, new BigDecimal("50"), new BigDecimal("30"), List.of(row))).isEqualTo(55L);
+        ArgumentCaptor<TaskDO> created = ArgumentCaptor.forClass(TaskDO.class);
+        verify(taskMapper).insert(created.capture());
+        assertThat(com.alibaba.fastjson.JSONObject.parseObject(created.getValue().getParams())
+                .getBigDecimal("freight")).isEqualByComparingTo("30");
         assertThat(started).hasSize(1);
         verify(snapshotStore).saveEbayProfitTargets(eq(55L), argThat(list -> list.size() == 1
                 && "DD1391-100".equals(list.get(0).getStyleId())));
