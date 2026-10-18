@@ -16,6 +16,9 @@ const { isLoggedIn, mintFreshToken, LISTINGS_URL } = require('./src/mint');
 const { openPageWithRetry } = require('./src/navigation');
 const { pushTokenToBackend } = require('./src/backend');
 const { exitCodeForRefresh, runWithRetry } = require('./src/run-policy');
+const { finishOnce } = require('./src/once-exit');
+
+const retryable = error => !/未登录或登录态已失效|authorize_login_required|authorize_consent_required/.test(error.message);
 
 function loadConfig() {
   const p = path.resolve(__dirname, 'config.json');
@@ -62,6 +65,7 @@ async function refreshOneAttempt(account, cfg) {
       attempts,
       delayMs: retryDelayMs,
       sleep: (delayMs) => page.waitForTimeout(delayMs),
+      shouldRetry: retryable,
       onRetry: (error, attempt, totalAttempts) => {
         log(`[${account.name}] 第 ${attempt}/${totalAttempts} 次签发失败(${error.message.split('\n')[0]})，${Math.round(retryDelayMs / 1000)}s 后重试`);
       },
@@ -88,7 +92,7 @@ async function refreshOne(account, cfg) {
     return await runWithRetry(() => refreshOneAttempt(account, cfg), {
       attempts: sessionAttempts,
       delayMs: sessionRetryDelayMs,
-      shouldRetry: (error) => !error.message.includes('未登录或登录态已失效'),
+      shouldRetry: retryable,
       onRetry: (error, attempt, totalAttempts) => {
         log(`[${account.name}] 第 ${attempt}/${totalAttempts} 个浏览器会话失败(${error.message.split('\n')[0]})，${Math.round(sessionRetryDelayMs / 1000)}s 后更换代理出口重试`);
       },
@@ -117,7 +121,7 @@ async function main() {
   const summary = await refreshAll(cfg);
 
   if (once) {
-    process.exitCode = exitCodeForRefresh(summary);
+    finishOnce(exitCodeForRefresh(summary));
     return;
   }
 
@@ -129,8 +133,9 @@ async function main() {
 if (require.main === module) {
   main().catch((error) => {
     log('刷新进程异常:', error.message);
-    process.exitCode = 1;
+    if (process.argv.includes('--once')) finishOnce(1);
+    else process.exitCode = 1;
   });
 }
 
-module.exports = { loadConfig, refreshOneAttempt, refreshOne, refreshAll, main };
+module.exports = { loadConfig, refreshOneAttempt, refreshOne, refreshAll, main, retryable };

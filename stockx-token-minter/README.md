@@ -79,6 +79,12 @@ Chromium 不支持直接进行 SOCKS5 用户名密码认证，因此程序使用
 
 `node index.js --once` 只要有任一账号失败就会返回非 0 退出码，避免 systemd 把 `0/6` 误判为成功。
 
+单轮结束后最多留 1 秒刷新日志，然后退出，即使第三方代理还残留连接，也不会阻塞下一轮 timer。
+`deploy/sx-token-minter-retry.conf` 同时限制 oneshot 启动阶段最多 45 分钟、停止最多 20 秒，
+防止浏览器/网络请求中途卡住。部署时必须同步 service drop-in 并 `systemctl daemon-reload`。
+`authorize_login_required`/`authorize_consent_required` 立即结束该账号尝试，需要人工重新登录，
+不占用多轮重试；其他账号继续处理。
+
 ## ⚠️ 部署位置的权衡（重要）
 
 - **跑在 HK 服务器**：后端走 `127.0.0.1:8080` 最方便；但数据中心 IP 更容易被 Cloudflare/PerimeterX
