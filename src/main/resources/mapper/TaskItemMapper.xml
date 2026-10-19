@@ -125,6 +125,23 @@
         WHERE task_id = #{taskId} AND operate_result IS NULL
     </update>
 
+    <!-- 走 idx_task_result 的两段前缀范围扫描，不触及真实操作行 -->
+    <delete id="deleteStaleNoopItems">
+        DELETE FROM task_item
+        WHERE task_id = #{taskId}
+          AND (operate_result LIKE '保持-%' OR operate_result LIKE '跳过-%' OR operate_result LIKE '无须%')
+          AND round &lt; #{beforeRound}
+        LIMIT #{limit}
+    </delete>
+
+    <!-- 走 idx_task_operate_time 范围扫描 -->
+    <delete id="deleteItemsOperatedBefore">
+        DELETE FROM task_item
+        WHERE task_id = #{taskId}
+          AND operate_time &lt; #{beforeDate}
+        LIMIT #{limit}
+    </delete>
+
     <delete id="deleteByTaskId">
         DELETE FROM task_item WHERE task_id = #{taskId}
     </delete>
@@ -148,11 +165,17 @@
                COUNT(DISTINCT CASE WHEN operate_result LIKE '下架成功%'
                    THEN COALESCE(listing_id, product_id, CAST(id AS CHAR)) END) AS delistCount,
                SUM(CASE WHEN operate_result = '上架处理中' THEN 1 ELSE 0 END) AS pendingOperationCount
-        FROM task_item FORCE INDEX (idx_task_id)
+        FROM task_item FORCE INDEX (idx_task_result)
         WHERE task_id IN
         <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
             #{taskId}
         </foreach>
+          <!-- 只回表计入统计的结果；保持/跳过等大量无操作明细在 (task_id, operate_result) 索引上直接剪掉 -->
+          AND (operate_result LIKE '压价成功%'
+               OR operate_result LIKE '上架成功%'
+               OR operate_result = '已上架'
+               OR operate_result LIKE '下架成功%'
+               OR operate_result = '上架处理中')
         GROUP BY task_id
     </select>
 

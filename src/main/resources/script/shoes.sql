@@ -278,7 +278,10 @@ CREATE TABLE task_item
     profit_rate_35 DECIMAL(10,4) NULL    COMMENT '3.5利润率',
     operate_result VARCHAR(255) NULL     COMMENT '操作结果',
     operate_time   DATETIME     NULL     COMMENT '操作时间',
-    INDEX idx_task_id (task_id)
+    INDEX idx_task_id (task_id),
+    INDEX idx_task_operate_time (task_id, operate_time),
+    INDEX idx_result_operate_time (operate_result, operate_time),
+    INDEX idx_task_result (task_id, operate_result)
 ) COMMENT '任务明细表';
 
 CREATE TABLE IF NOT EXISTS ebay_listing_image_state

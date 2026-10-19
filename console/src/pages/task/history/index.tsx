@@ -171,7 +171,10 @@ const TaskPage = () => {
             t.status === 'running' || t.status === '运行中' || (t.pendingOperationCount || 0) > 0
         ) || stockxRateStatus.some(s => s.mode !== 'BULK_ACTIVE');
         if (!shouldPoll) return;
-        const timer = setInterval(queryTaskList, 5000);
+        // 每次刷新都会聚合任务明细统计，15s 足够观察进度；页面在后台时不轮询
+        const timer = setInterval(() => {
+            if (document.visibilityState === 'visible') queryTaskList();
+        }, 15000);
         return () => clearInterval(timer);
     }, [taskList, stockxRateStatus]);
 

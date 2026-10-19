@@ -62,6 +62,9 @@ class StockXListingReconciliationTest {
             ArgumentCaptor<QueryWrapper> query = ArgumentCaptor.forClass(QueryWrapper.class);
             verify(itemMapper).selectList(query.capture());
             assertThat(query.getValue().getCustomSqlSegment()).contains("LIKE");
+            // 历史异常分支必须带"上架失败"前缀，才能走 idx_result_operate_time 而不是全表扫描
+            assertThat(query.getValue().getParamNameValuePairs().values())
+                    .anyMatch(value -> "上架失败%".equals(String.valueOf(value)));
             assertThat(query.getValue().getParamNameValuePairs().values())
                     .anyMatch(value -> String.valueOf(value)
                             .contains("Failed to fetch from Subgraph 'asks'"));

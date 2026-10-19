@@ -1667,10 +1667,12 @@ public class StockXService {
     public void reconcilePendingListings() {
         long now = System.currentTimeMillis();
         Date ageCutoff = new Date(now - RECONCILE_MIN_AGE_MS);
+        // 两个分支都落在 idx_result_operate_time 的范围扫描上：历史 asks 子图异常只会以"上架失败"开头写入，
+        // 先用前缀收窄再做包含匹配，避免对整张 task_item 做 '%...%' 全表扫描。
         List<TaskItemDO> pending = taskItemMapper.selectList(new QueryWrapper<TaskItemDO>()
                 .and(query -> query.eq("operate_result", "上架处理中")
-                        .or()
-                        .like("operate_result", ASKS_SUBGRAPH_FETCH_FAILURE))
+                        .or(legacy -> legacy.likeRight("operate_result", "上架失败")
+                                .like("operate_result", ASKS_SUBGRAPH_FETCH_FAILURE)))
                 .lt("operate_time", ageCutoff)
                 .orderByAsc("operate_time")
                 .last("LIMIT " + RECONCILE_BATCH_LIMIT));

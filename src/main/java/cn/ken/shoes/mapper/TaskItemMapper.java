@@ -52,6 +52,20 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
     List<String> selectDistinctOperateResults(@Param("taskId") Long taskId);
 
     /**
+     * 删除周期任务旧轮次中的无操作明细（保持-/跳过-），保留真实操作与待对账结果；单次最多删除 limit 行。
+     */
+    int deleteStaleNoopItems(@Param("taskId") Long taskId,
+                             @Param("beforeRound") Integer beforeRound,
+                             @Param("limit") Integer limit);
+
+    /**
+     * 删除指定任务在 beforeDate 之前写入/更新的明细；单次最多删除 limit 行。
+     */
+    int deleteItemsOperatedBefore(@Param("taskId") Long taskId,
+                                  @Param("beforeDate") java.util.Date beforeDate,
+                                  @Param("limit") Integer limit);
+
+    /**
      * 批量聚合任务真实成功操作数，避免任务列表逐条查询。
      */
     List<TaskOperationCount> selectOperationCountsByTaskIds(@Param("taskIds") List<Long> taskIds);

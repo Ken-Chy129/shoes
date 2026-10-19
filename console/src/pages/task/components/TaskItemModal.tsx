@@ -110,10 +110,13 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
     // 自动刷新逻辑
     useEffect(() => {
         if (autoRefresh && visible && taskId) {
+            let ticks = 0;
             timerRef.current = setInterval(() => {
+                if (document.visibilityState !== 'visible') return;
                 queryTaskItems();
-                queryOperateResults();
-            }, 5000);
+                // 结果类型变化很慢，且需要扫描整个任务的明细，降频到每分钟一次
+                if (++ticks % 6 === 0) queryOperateResults();
+            }, 10000);
         } else {
             if (timerRef.current) {
                 clearInterval(timerRef.current);

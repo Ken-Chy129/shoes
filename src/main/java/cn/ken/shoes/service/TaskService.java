@@ -17,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -42,6 +44,14 @@ public class TaskService {
             .expireAfterWrite(OPERATION_COUNT_CACHE_SECONDS, TimeUnit.SECONDS)
             .build();
 
+    /** 对账最长 30 分钟判超时，结束 40 分钟后统计视为稳定。 */
+    static final long SETTLE_AFTER_END_MS = 40 * 60 * 1000L;
+
+    private final Cache<SettledKey, TaskOperationCount> settledCountCache = CacheBuilder.newBuilder()
+            .maximumSize(5000)
+            .expireAfterAccess(12, TimeUnit.HOURS)
+            .build();
+
     public TaskService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                        TaskExecutorManager taskExecutorManager) {
         this.taskMapper = taskMapper;
@@ -60,10 +70,7 @@ public class TaskService {
             emptyResult.setTotal(count);
             return emptyResult;
         }
-        List<Long> taskIds = taskDOS.stream().map(TaskDO::getId).toList();
-        List<TaskOperationCount> operationCounts = queryOperationCounts(taskIds);
-        Map<Long, TaskOperationCount> countMap = operationCounts.stream()
-                .collect(Collectors.toMap(TaskOperationCount::getTaskId, Function.identity()));
+        Map<Long, TaskOperationCount> countMap = resolveOperationCounts(taskDOS);
         for (TaskDO taskDO : taskDOS) {
             TaskOperationCount operationCount = countMap.get(taskDO.getId());
             if (operationCount != null) {
@@ -79,6 +86,59 @@ public class TaskService {
         PageResult<List<TaskDO>> result = PageResult.buildSuccess(taskDOS);
         result.setTotal(count);
         return result;
+    }
+
+    /**
+     * 已结束且超过对账窗口的任务，统计不会再变化：按 (taskId, endTime) 长期缓存，只算一次。
+     * endTime 参与 key，任务被继续执行后再次结束时 endTime 改变，自然失效旧值。
+     * 运行中/刚结束的任务仍实时聚合（短 TTL 合并并发请求）。
+     */
+    private Map<Long, TaskOperationCount> resolveOperationCounts(List<TaskDO> tasks) {
+        long now = System.currentTimeMillis();
+        Map<Long, TaskOperationCount> result = new HashMap<>();
+        Map<Long, SettledKey> settledKeys = new HashMap<>();
+        List<Long> missing = new ArrayList<>();
+        for (TaskDO task : tasks) {
+            SettledKey key = settledKey(task, now);
+            TaskOperationCount cached = key == null ? null : settledCountCache.getIfPresent(key);
+            if (cached != null) {
+                result.put(task.getId(), cached);
+                continue;
+            }
+            if (key != null) {
+                settledKeys.put(task.getId(), key);
+            }
+            missing.add(task.getId());
+        }
+        if (missing.isEmpty()) {
+            return result;
+        }
+        Map<Long, TaskOperationCount> fetched = queryOperationCounts(missing).stream()
+                .collect(Collectors.toMap(TaskOperationCount::getTaskId, Function.identity(), (a, b) -> a));
+        for (Long taskId : missing) {
+            TaskOperationCount count = fetched.getOrDefault(taskId, new TaskOperationCount(taskId, 0L, 0L, 0L, 0L));
+            result.put(taskId, count);
+            SettledKey key = settledKeys.get(taskId);
+            if (key != null && (count.getPendingOperationCount() == null || count.getPendingOperationCount() == 0)) {
+                settledCountCache.put(key, count);
+            }
+        }
+        return result;
+    }
+
+    static SettledKey settledKey(TaskDO task, long now) {
+        if (task.getId() == null || task.getEndTime() == null
+                || TaskDO.TaskStatusEnum.RUNNING.getCode().equals(task.getStatus())) {
+            return null;
+        }
+        long endTime = task.getEndTime().getTime();
+        if (endTime > now - SETTLE_AFTER_END_MS) {
+            return null;
+        }
+        return new SettledKey(task.getId(), endTime);
+    }
+
+    record SettledKey(Long taskId, long endTime) {
     }
 
     private List<TaskOperationCount> queryOperationCounts(List<Long> taskIds) {

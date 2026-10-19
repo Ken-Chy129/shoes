@@ -96,6 +96,52 @@ class TaskServiceLifecycleTest {
     }
 
     @Test
+    void cachesCountsOfSettledTasksAndOnlyRequeriesRunningOnes() {
+        TaskDO settled = task(7L, "success");
+        settled.setEndTime(new java.util.Date(System.currentTimeMillis() - TaskService.SETTLE_AFTER_END_MS - 60_000));
+        TaskDO running = task(8L, "running");
+        List<List<Long>> queried = new java.util.concurrent.CopyOnWriteArrayList<>();
+        TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> switch (method) {
+            case "count" -> 2L;
+            case "selectByCondition" -> List.of(copy(settled), copy(running));
+            default -> null;
+        });
+        TaskItemMapper taskItemMapper = proxy(TaskItemMapper.class, (method, args) -> {
+            if (!"selectOperationCountsByTaskIds".equals(method)) {
+                return null;
+            }
+            @SuppressWarnings("unchecked")
+            List<Long> ids = (List<Long>) args[0];
+            queried.add(ids);
+            // 8L 无匹配明细：SQL 已过滤无操作行，不返回该任务，应补 0
+            return ids.contains(7L) ? List.of(new TaskOperationCount(7L, 5L, 0L, 1L, 0L)) : List.of();
+        });
+        TaskService taskService = new TaskService(taskMapper, taskItemMapper, new FakeTaskExecutorManager());
+
+        PageResult<List<TaskDO>> first = taskService.queryTasksByCondition(new TaskRequest());
+        assertThat(first.getData()).extracting(TaskDO::getPriceDownCount).containsExactly(5L, 0L);
+
+        assertThat(queried).containsExactly(List.of(7L, 8L));
+        assertThat(TaskService.settledKey(running, System.currentTimeMillis())).isNull();
+        assertThat(TaskService.settledKey(settled, System.currentTimeMillis())).isNotNull();
+    }
+
+    @Test
+    void doesNotCacheRecentlyEndedTasksStillInReconciliationWindow() {
+        TaskDO justEnded = task(9L, "success");
+        justEnded.setEndTime(new java.util.Date());
+        assertThat(TaskService.settledKey(justEnded, System.currentTimeMillis())).isNull();
+        TaskDO noEnd = task(10L, "failed");
+        assertThat(TaskService.settledKey(noEnd, System.currentTimeMillis())).isNull();
+    }
+
+    private static TaskDO copy(TaskDO source) {
+        TaskDO task = task(source.getId(), source.getStatus());
+        task.setEndTime(source.getEndTime());
+        return task;
+    }
+
+    @Test
     void marksUnsupportedHistoricalTaskAsNotRerunnableAndRejectsRerun() {
         TaskDO source = task(7L, "failed");
         source.setTaskType("legacy_removed_task");

@@ -140,10 +140,20 @@
         LIMIT #{limit}
     </select>
 
+    <select id="selectTrimCandidates" resultMap="taskResultMap">
+        SELECT id, platform, task_type, status, round, start_time, end_time
+        FROM task
+        WHERE task_type IN
+        <foreach collection="taskTypes" item="taskType" open="(" separator="," close=")">
+            #{taskType}
+        </foreach>
+          AND (status = 'running' OR end_time &gt; #{endedAfter})
+    </select>
+
     <delete id="deleteExpiredTaskWithItems">
         DELETE t, ti
         FROM task t
-        LEFT JOIN task_item ti FORCE INDEX (idx_task_id) ON ti.task_id = t.id
+        LEFT JOIN task_item ti FORCE INDEX (idx_task_operate_time) ON ti.task_id = t.id
         WHERE t.id = #{taskId}
           AND t.start_time &lt; #{beforeDate}
           AND t.status != 'running'

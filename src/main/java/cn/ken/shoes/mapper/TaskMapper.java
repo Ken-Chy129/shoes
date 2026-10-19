@@ -48,6 +48,10 @@ public interface TaskMapper extends BaseMapper<TaskDO> {
                                     @Param("afterId") Long afterId,
                                     @Param("limit") Integer limit);
 
+    /** 明细滚动清理候选：指定类型中运行中、或在 endedAfter 之后结束的任务。 */
+    List<TaskDO> selectTrimCandidates(@Param("taskTypes") List<String> taskTypes,
+                                      @Param("endedAfter") java.util.Date endedAfter);
+
     int deleteExpiredTaskWithItems(@Param("taskId") Long taskId,
                                    @Param("beforeDate") java.util.Date beforeDate);
 
