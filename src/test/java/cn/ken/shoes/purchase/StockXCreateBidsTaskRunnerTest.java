@@ -89,6 +89,41 @@ class StockXCreateBidsTaskRunnerTest {
     }
 
     @Test
+    void retriesTransientActiveBidPageFailuresBeforeCreating() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBidFailuresBeforeSuccess = 2;
+        client.searchRows = List.of(priceRow("variant-1", "STYLE-1", "9", null, "42"));
+        AtomicReference<String> status = new AtomicReference<>();
+        List<Long> waits = new ArrayList<>();
+
+        new NoWaitCreateBidsRunner(208L, List.of(input("STYLE-1", "9", "80")), client,
+                taskMapper(status, new AtomicReference<>()), itemMapper(new ArrayList<>()), waits).run();
+
+        assertThat(client.activeBidQueries.get()).isEqualTo(3);
+        assertThat(waits).containsExactly(2_000L, 5_000L);
+        assertThat(client.submitted).hasSize(1);
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+    }
+
+    @Test
+    void stopsCreatingWhenActiveBidPageKeepsFailing() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.activeBidFailuresBeforeSuccess = Integer.MAX_VALUE;
+        client.searchRows = List.of(priceRow("variant-1", "STYLE-1", "9", null, "42"));
+        AtomicReference<String> status = new AtomicReference<>();
+        List<Long> waits = new ArrayList<>();
+
+        new NoWaitCreateBidsRunner(209L, List.of(input("STYLE-1", "9", "80")), client,
+                taskMapper(status, new AtomicReference<>()), itemMapper(new ArrayList<>()), waits).run();
+
+        assertThat(client.activeBidQueries.get()).isEqualTo(5);
+        assertThat(waits).containsExactly(2_000L, 5_000L, 10_000L, 20_000L);
+        assertThat(client.submitted).isEmpty();
+        assertThat(client.searchCalls.get()).isZero();
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.FAILED.getCode());
+    }
+
+    @Test
     void submitsAProfitableBidWhenFeeMonitoringIsEnabled() {
         FakeStockXClient client = new FakeStockXClient();
         StockXPriceExcel market = priceRow("variant-1", "STYLE-1", "9", null, "42");
@@ -510,8 +545,25 @@ class StockXCreateBidsTaskRunnerTest {
         Object invoke(String method, Object[] args);
     }
 
+    private static class NoWaitCreateBidsRunner extends StockXCreateBidsTaskRunner {
+        private final List<Long> waits;
+
+        private NoWaitCreateBidsRunner(Long taskId, List<StockXBidInputExcel> rows, StockXClient client,
+                                       TaskMapper taskMapper, TaskItemMapper itemMapper, List<Long> waits) {
+            super(account(), taskId, rows, client, taskMapper, itemMapper);
+            this.waits = waits;
+        }
+
+        @Override
+        protected void waitBeforeNextQueryRetry(long delayMs) {
+            waits.add(delayMs);
+        }
+    }
+
     private static class FakeStockXClient extends StockXClient {
         private JSONObject activeBids = emptyActiveBidsPage();
+        private int activeBidFailuresBeforeSuccess;
+        private final AtomicInteger activeBidQueries = new AtomicInteger();
         private List<StockXPriceExcel> searchRows = List.of();
         private final List<List<StockXBidCreateItem>> submitted = new ArrayList<>();
         private final AtomicInteger searchCalls = new AtomicInteger();
@@ -532,6 +584,9 @@ class StockXCreateBidsTaskRunnerTest {
         @Override
         public JSONObject queryPurchasePage(StockXPurchaseOperation operation, String after,
                                             StockXAccount account) {
+            if (activeBidQueries.incrementAndGet() <= activeBidFailuresBeforeSuccess) {
+                return null;
+            }
             return activeBids;
         }
 

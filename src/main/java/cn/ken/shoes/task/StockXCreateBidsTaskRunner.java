@@ -46,6 +46,8 @@ public class StockXCreateBidsTaskRunner implements Runnable {
     private static final int BATCH_SIZE = 100;
     private static final int DEFAULT_SEARCH_CONCURRENCY = 5;
     private static final long SEARCH_POLL_MS = 200L;
+    private static final long[] QUERY_RETRY_DELAYS_MS = {2_000L, 5_000L, 10_000L, 20_000L};
+    private static final int MAX_QUERY_ATTEMPTS = QUERY_RETRY_DELAYS_MS.length + 1;
 
     private final StockXAccount account;
     private final Long taskId;
@@ -410,15 +412,9 @@ public class StockXCreateBidsTaskRunner implements Runnable {
         Set<String> result = new HashSet<>();
         Set<String> seenCursors = new HashSet<>();
         String after = null;
+        int pageNumber = 1;
         while (true) {
-            ensureNotCancelled();
-            JSONObject page = stockXClient.queryPurchasePage(StockXPurchaseOperation.BIDS, after, account);
-            if (page != null && page.getBooleanValue("_unauthorized")) {
-                throw new IllegalStateException("TOKEN_EXPIRED");
-            }
-            if (page == null || page.getJSONArray("edges") == null || page.getJSONObject("pageInfo") == null) {
-                throw new IllegalStateException("读取已有有效出价失败，已停止创建以避免重复出价");
-            }
+            JSONObject page = loadActiveBidPageWithRetry(after, pageNumber);
             for (JSONObject edge : page.getJSONArray("edges").toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
                 JSONObject variant = node != null ? node.getJSONObject("productVariant") : null;
@@ -435,6 +431,52 @@ public class StockXCreateBidsTaskRunner implements Runnable {
                 throw new IllegalStateException("读取已有有效出价时分页游标无效");
             }
             after = nextCursor;
+            pageNumber++;
+        }
+    }
+
+    /**
+     * 已有出价较多时预读需要数百页，StockX bids 子图偶发 "Failed to fetch from Subgraph 'bids'"。
+     * 单页失败按退避重试，仍失败才停止创建，避免一次瞬时错误让整个任务失败。
+     */
+    private JSONObject loadActiveBidPageWithRetry(String after, int pageNumber) {
+        for (int attempt = 1; attempt <= MAX_QUERY_ATTEMPTS; attempt++) {
+            ensureNotCancelled();
+            JSONObject page = stockXClient.queryPurchasePage(StockXPurchaseOperation.BIDS, after, account);
+            if (page != null && page.getBooleanValue("_unauthorized")) {
+                throw new IllegalStateException("TOKEN_EXPIRED");
+            }
+            if (page != null && page.getJSONArray("edges") != null && page.getJSONObject("pageInfo") != null) {
+                if (attempt > 1) {
+                    taskMapper.updateTaskFailReason(taskId, null);
+                }
+                return page;
+            }
+            if (attempt < MAX_QUERY_ATTEMPTS) {
+                long delayMs = QUERY_RETRY_DELAYS_MS[attempt - 1];
+                String message = "读取已有有效出价第" + pageNumber + "页失败，" + (delayMs / 1000)
+                        + "秒后重试（" + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）";
+                taskMapper.updateTaskFailReason(taskId, message);
+                log.warn("[{}] {}, taskId:{}", account.getName(), message, taskId);
+                waitBeforeNextQueryRetry(delayMs);
+            }
+        }
+        throw new IllegalStateException("读取已有有效出价第" + pageNumber + "页失败（已重试"
+                + (MAX_QUERY_ATTEMPTS - 1) + "次），已停止创建以避免重复出价");
+    }
+
+    protected void waitBeforeNextQueryRetry(long delayMs) {
+        long remaining = delayMs;
+        while (remaining > 0) {
+            ensureNotCancelled();
+            long sleepMs = Math.min(remaining, 1_000L);
+            try {
+                Thread.sleep(sleepMs);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new TaskCancelledException();
+            }
+            remaining -= sleepMs;
         }
     }
 
