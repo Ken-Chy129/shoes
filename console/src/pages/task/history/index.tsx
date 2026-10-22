@@ -1078,7 +1078,7 @@ const TaskPage = () => {
                                {required: true, message: '请输入默认目标盈利'},
                                {type: 'number', min: -100000, max: 100000, message: '请输入-100000到100000之间的数字'},
                            ]}
-                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价但不盈利时自动调高到刚好盈利，只有得物没价格才将库存置0；盈利且降$1后仍盈利则降$1">
+                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价时直接调到刚好盈利的最低价（不盈利则调高，有余量则一次降到底）；只有得物没价格才将库存置0">
                     <InputNumber min={-100000} max={100000} step={10} precision={2} addonAfter="元"
                                  style={{width: 160}}/>
                 </Form.Item>

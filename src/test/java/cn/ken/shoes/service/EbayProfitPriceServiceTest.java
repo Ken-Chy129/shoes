@@ -113,23 +113,39 @@ class EbayProfitPriceServiceTest {
     // x=150, g=4% -> 利润 = 128.05065*6.7 - 得物价 - 25 = 857.94 - 得物价 - 25
 
     @Test
-    void lowersPriceWhenStillProfitableAfterOneDollar() {
-        // x=150 利润 832.94-500=332.94；x=149 走 12.7% 档位，仍远大于 100
-        Decision d = EbayProfitPriceService.decide(new BigDecimal("150"), 1, new BigDecimal("500"), AD,
-                new BigDecimal("100"), RATE, FREIGHT);
+    void lowersDirectlyToLowestProfitablePriceInsteadOfOneDollarStep() {
+        // x=150 利润 332.94，目标 100：直接跳到最低盈利价，远低于 149
+        BigDecimal poison = new BigDecimal("500");
+        BigDecimal target = new BigDecimal("100");
+        Decision d = EbayProfitPriceService.decide(new BigDecimal("150"), 1, poison, AD, target, RATE, FREIGHT);
         assertThat(d.action()).isEqualTo(Action.LOWER_PRICE);
-        assertThat(d.newPrice()).isEqualByComparingTo("149");
+        assertThat(d.newPrice()).isLessThan(new BigDecimal("149"));
         assertThat(d.newQuantity()).isNull();
         assertThat(d.profit()).isEqualByComparingTo("332.939355");
+        assertThat(d.profitAfterStep()).isGreaterThan(target);
+        assertThat(EbayProfitCalculator.exactProfit(d.newPrice().subtract(new BigDecimal("0.01")), AD, RATE,
+                poison, FREIGHT)).isLessThanOrEqualTo(target);
+        // 再跑一轮价格不再变化
+        Decision again = EbayProfitPriceService.decide(d.newPrice(), 1, poison, AD, target, RATE, FREIGHT);
+        assertThat(again.action()).isEqualTo(Action.KEEP);
     }
 
     @Test
-    void keepsPriceWhenDroppingAcross150ThresholdLosesProfit() {
-        // x=150 利润 332.94；x=149 成交费变 12.7%，利润掉到约 268，目标 300 时不降价
+    void lowersHighPriceTo150WhenOnlyHighFeeTierIsProfitable() {
+        // 目标 300：<150 走 12.7% 档位都不盈利，≥150 才盈利，最低盈利价正好是 150.00
+        Decision d = EbayProfitPriceService.decide(new BigDecimal("200"), 1, new BigDecimal("500"), AD,
+                new BigDecimal("300"), RATE, FREIGHT);
+        assertThat(d.action()).isEqualTo(Action.LOWER_PRICE);
+        assertThat(d.newPrice()).isEqualByComparingTo("150.00");
+        assertThat(d.profitAfterStep()).isGreaterThan(new BigDecimal("300"));
+    }
+
+    @Test
+    void keepsPriceWhenAlreadyAtLowestProfitablePrice() {
         Decision d = EbayProfitPriceService.decide(new BigDecimal("150"), 1, new BigDecimal("500"), AD,
                 new BigDecimal("300"), RATE, FREIGHT);
         assertThat(d.action()).isEqualTo(Action.KEEP);
-        assertThat(d.profitAfterStep()).isLessThan(new BigDecimal("300"));
+        assertThat(d.newPrice()).isNull();
     }
 
     @Test
@@ -213,7 +229,7 @@ class EbayProfitPriceServiceTest {
         Decision lower = EbayProfitPriceService.decide(new BigDecimal("150"), 0, new BigDecimal("500"), AD,
                 new BigDecimal("100"), RATE, FREIGHT);
         assertThat(lower.action()).isEqualTo(Action.LOWER_AND_RESTORE);
-        assertThat(lower.newPrice()).isEqualByComparingTo("149");
+        assertThat(lower.newPrice()).isLessThan(new BigDecimal("149"));
         assertThat(lower.newQuantity()).isEqualTo(1);
     }
 
@@ -249,7 +265,10 @@ class EbayProfitPriceServiceTest {
         assertThat(sent.getValue()).hasSize(2);
         EbaySellApiClient.OfferPriceQuantity a = sent.getValue().stream().filter(u -> u.sku().equals("SKU-A"))
                 .findFirst().orElseThrow();
-        assertThat(a.price()).isEqualByComparingTo("149");
+        BigDecimal expectedA = EbayProfitPriceService.minimumProfitablePrice(new BigDecimal("500"), AD,
+                new BigDecimal("100"), RATE, FREIGHT);
+        assertThat(expectedA).isLessThan(new BigDecimal("149"));
+        assertThat(a.price()).isEqualByComparingTo(expectedA);
         assertThat(a.availableQuantity()).isNull();
         EbaySellApiClient.OfferPriceQuantity b = sent.getValue().stream().filter(u -> u.sku().equals("SKU-B"))
                 .findFirst().orElseThrow();
@@ -262,7 +281,7 @@ class EbayProfitPriceServiceTest {
         assertThat(items.getAllValues()).extracting(TaskItemDO::getOperateResult)
                 .anySatisfy(r -> assertThat(r).startsWith("降价").contains("广告4%"))
                 .anySatisfy(r -> assertThat(r).startsWith("调价至盈利").contains("目标¥900"));
-        verify(listingMapper).updatePriceAndQuantity("SKU-A", new BigDecimal("149.00"), 1);
+        verify(listingMapper).updatePriceAndQuantity("SKU-A", expectedA, 1);
         verify(listingMapper).updatePriceAndQuantity(eq("SKU-B"), argThat(price -> price.compareTo(new BigDecimal("150")) > 0), eq(1));
     }
 

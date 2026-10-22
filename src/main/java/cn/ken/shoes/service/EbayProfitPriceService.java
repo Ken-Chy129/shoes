@@ -47,9 +47,9 @@ import java.util.function.Consumer;
  *
  * <p>每轮以 eBay 实时价格 x 为准，按 {@link EbayProfitCalculator} 计算利润，与目标盈利 a 比较：
  * <ul>
- *   <li>有得物价但利润 ≤ a：调高到严格满足利润 &gt; a 的最低美分价格；</li>
- *   <li>得物无价：库存置 0（不结束 listing）；</li>
- *   <li>利润 &gt; a：若 x-1 仍盈利则降价 1 美元，否则价格不动；库存为 0 的同时恢复为 1。</li>
+ *   <li>有得物价：算出严格满足利润 &gt; a 的最低美分价格 p*，当前价高于 p* 直接降到 p*，
+ *       低于 p*（不盈利）直接调到 p*，相等不动；库存为 0 的同时恢复为 1；</li>
+ *   <li>得物无价：库存置 0（不结束 listing）。</li>
  * </ul>
  * 广告费率取运行中按成交付费活动里该商品的实际费率，不在活动里按 0；得物无价时清零库存。
  * 只处理港区商品。按 GetSellerList 分页：拉一页、处理一页、写回一页，再拉下一页。
@@ -59,7 +59,6 @@ import java.util.function.Consumer;
 public class EbayProfitPriceService {
 
     public static final String TASK_TYPE = "ebay_profit_price";
-    public static final BigDecimal PRICE_STEP = BigDecimal.ONE;
     public static final int RESTORE_QUANTITY = 1;
     private static final BigDecimal MIN_PRICE = new BigDecimal("0.99");
     private static final BigDecimal MAX_SAFE_PRICE = new BigDecimal("999999.99");
@@ -225,7 +224,10 @@ public class EbayProfitPriceService {
                     BigDecimal profitAfterStep) {
     }
 
-    /** 纯决策逻辑：给定当前价、可售数量、成本参数，决定本轮动作。 */
+    /**
+     * 纯决策逻辑：有得物价时，统一算出严格满足「利润 &gt; 目标盈利」的最低美分售价 p*，
+     * 当前价高于 p* 直接降到 p*，低于 p* 直接调到 p*，相等则不动；库存为 0 的同时恢复为 1。
+     */
     static Decision decide(BigDecimal price, int availableQuantity, BigDecimal poisonPrice, BigDecimal adRate,
                            BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
         if (poisonPrice == null) {
@@ -234,59 +236,84 @@ public class EbayProfitPriceService {
                     : new Decision(Action.ALREADY_ZERO, null, null, null, null);
         }
         BigDecimal profit = EbayProfitCalculator.exactProfit(price, adRate, exchangeRate, poisonPrice, freight);
-        if (profit.compareTo(targetProfit) <= 0) {
-            BigDecimal raised = minimumProfitablePrice(price, poisonPrice, adRate, targetProfit, exchangeRate, freight);
-            BigDecimal raisedProfit = EbayProfitCalculator.exactProfit(
-                    raised, adRate, exchangeRate, poisonPrice, freight);
-            return availableQuantity > 0
-                    ? new Decision(Action.RAISE_PRICE, raised, null, profit, raisedProfit)
-                    : new Decision(Action.RAISE_AND_RESTORE, raised, RESTORE_QUANTITY, profit, raisedProfit);
-        }
-        BigDecimal lowered = price.subtract(PRICE_STEP).setScale(2, RoundingMode.HALF_UP);
-        BigDecimal loweredProfit = lowered.compareTo(MIN_PRICE) < 0 ? null
-                : EbayProfitCalculator.exactProfit(lowered, adRate, exchangeRate, poisonPrice, freight);
-        boolean lower = loweredProfit != null && loweredProfit.compareTo(targetProfit) > 0;
+        BigDecimal target = minimumProfitablePrice(poisonPrice, adRate, targetProfit, exchangeRate, freight);
+        BigDecimal targetPriceProfit = EbayProfitCalculator.exactProfit(
+                target, adRate, exchangeRate, poisonPrice, freight);
         boolean restore = availableQuantity <= 0;
-        if (lower && restore) {
-            return new Decision(Action.LOWER_AND_RESTORE, lowered, RESTORE_QUANTITY, profit, loweredProfit);
+        int cmp = target.compareTo(price);
+        if (cmp < 0) {
+            return restore
+                    ? new Decision(Action.LOWER_AND_RESTORE, target, RESTORE_QUANTITY, profit, targetPriceProfit)
+                    : new Decision(Action.LOWER_PRICE, target, null, profit, targetPriceProfit);
         }
-        if (lower) {
-            return new Decision(Action.LOWER_PRICE, lowered, null, profit, loweredProfit);
+        if (cmp > 0) {
+            return restore
+                    ? new Decision(Action.RAISE_AND_RESTORE, target, RESTORE_QUANTITY, profit, targetPriceProfit)
+                    : new Decision(Action.RAISE_PRICE, target, null, profit, targetPriceProfit);
         }
-        if (restore) {
-            return new Decision(Action.RESTORE, null, RESTORE_QUANTITY, profit, loweredProfit);
-        }
-        return new Decision(Action.KEEP, null, null, profit, loweredProfit);
+        return restore
+                ? new Decision(Action.RESTORE, null, RESTORE_QUANTITY, profit, profit)
+                : new Decision(Action.KEEP, null, null, profit, profit);
     }
 
-    /** 当前不盈利时，按 $0.01 找到严格满足「利润 > 目标盈利」的最低售价。 */
-    private static BigDecimal minimumProfitablePrice(BigDecimal currentPrice, BigDecimal poisonPrice,
-                                                     BigDecimal adRate, BigDecimal targetProfit,
-                                                     BigDecimal exchangeRate, BigDecimal freight) {
-        long low = currentPrice.setScale(2, RoundingMode.FLOOR).movePointRight(2).longValue() + 1;
+    /**
+     * 按 $0.01 找全局最低盈利价（≥ $0.99）。利润在 &lt;$150 与 ≥$150 两段内各自单调递增，
+     * 在 $150 处因成交费从 12.7% 降到 7% 向上跳，所以先在低价段找，找不到再到高价段找。
+     */
+    static BigDecimal minimumProfitablePrice(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal targetProfit,
+                                             BigDecimal exchangeRate, BigDecimal freight) {
+        long min = MIN_PRICE.movePointRight(2).longValueExact();
+        long threshold = EbayProfitCalculator.HIGH_PRICE_THRESHOLD.movePointRight(2).longValueExact();
         long max = MAX_SAFE_PRICE.movePointRight(2).longValueExact();
-        if (low > max) {
-            throw new IllegalArgumentException("当前价格已达到安全调价上限");
+        requireIncreasing(poisonPrice, adRate, exchangeRate, freight, min, threshold - 1);
+        if (profitable(threshold - 1, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+            return BigDecimal.valueOf(searchLowest(min, threshold - 1,
+                    poisonPrice, adRate, targetProfit, exchangeRate, freight), 2);
         }
-        long high = Math.max(low, 15000L);
-        while (high < max && EbayProfitCalculator.exactProfit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
-                poisonPrice, freight).compareTo(targetProfit) <= 0) {
-            high = Math.min(max, Math.max(high + 1, high * 2));
+        requireIncreasing(poisonPrice, adRate, exchangeRate, freight, threshold, max);
+        long low = threshold;
+        long high = threshold;
+        while (high < max && !profitable(high, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+            low = high + 1;
+            high = Math.min(max, high * 2);
         }
-        if (EbayProfitCalculator.exactProfit(BigDecimal.valueOf(high, 2), adRate, exchangeRate,
-                poisonPrice, freight).compareTo(targetProfit) <= 0) {
+        if (!profitable(high, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
             throw new IllegalArgumentException("无法在安全调价上限内达到目标盈利");
         }
+        return BigDecimal.valueOf(searchLowest(Math.min(low, high), high,
+                poisonPrice, adRate, targetProfit, exchangeRate, freight), 2);
+    }
+
+    /** 在 [low, high]（美分）内二分，前提：high 盈利且区间内利润单调递增。 */
+    private static long searchLowest(long low, long high, BigDecimal poisonPrice, BigDecimal adRate,
+                                     BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
         while (low < high) {
             long mid = low + (high - low) / 2;
-            if (EbayProfitCalculator.exactProfit(BigDecimal.valueOf(mid, 2), adRate, exchangeRate,
-                    poisonPrice, freight).compareTo(targetProfit) > 0) {
+            if (profitable(mid, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
                 high = mid;
             } else {
                 low = mid + 1;
             }
         }
-        return BigDecimal.valueOf(low, 2);
+        return low;
+    }
+
+    private static boolean profitable(long cents, BigDecimal poisonPrice, BigDecimal adRate,
+                                      BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
+        return EbayProfitCalculator.exactProfit(BigDecimal.valueOf(cents, 2), adRate, exchangeRate,
+                poisonPrice, freight).compareTo(targetProfit) > 0;
+    }
+
+    /** 费率过高（总扣点 × 1.09 ≥ 1）时涨价反而亏更多，二分不成立，直接判失败而不是给出错误价格。 */
+    private static void requireIncreasing(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal exchangeRate,
+                                          BigDecimal freight, long fromCents, long toCents) {
+        BigDecimal from = EbayProfitCalculator.exactProfit(BigDecimal.valueOf(fromCents, 2), adRate, exchangeRate,
+                poisonPrice, freight);
+        BigDecimal to = EbayProfitCalculator.exactProfit(BigDecimal.valueOf(toCents, 2), adRate, exchangeRate,
+                poisonPrice, freight);
+        if (to.compareTo(from) <= 0) {
+            throw new IllegalArgumentException("广告费率过高，提价无法提高利润");
+        }
     }
 
     /**
