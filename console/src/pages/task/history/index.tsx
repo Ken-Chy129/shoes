@@ -317,6 +317,24 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('eBay批量上架Excel上传失败'); setCreating(false); },
                 });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_poison_listing') {
+                const file = values.ebayPoisonListingExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传货号Excel'); setCreating(false); return; }
+                const region = values.ebayRegion || 'hk';
+                doUploadRequestWithParams(TASK_API.EBAY_START_POISON_LISTING, file, {region}, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay得物价上架任务创建失败');
+                            setCreating(false);
+                            return;
+                        }
+                        message.success(`eBay${region === 'us' ? '美区' : '港区'}得物价上架任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                        setCreating(false);
+                    },
+                    onError: () => { message.error('货号Excel上传失败'); setCreating(false); },
+                });
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_add_tracking') {
                 const file = values.ebayTrackingExcel?.[0]?.originFileObj;
                 if (!file) { message.error('请上传追踪号码Excel'); setCreating(false); return; }
@@ -855,7 +873,7 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
-                if (record.taskType === 'ebay_bulk_listing' && record.attributes) {
+                if ((record.taskType === 'ebay_bulk_listing' || record.taskType === 'ebay_poison_listing') && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
                         return <span style={{lineHeight: 1.3, display: 'inline-block'}}>
@@ -1024,6 +1042,34 @@ const TaskPage = () => {
                 <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
                     <Button href={TASK_API.EBAY_BULK_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
                         下载eBay模板
+                    </Button>
+                </div>
+            </>;
+        }
+
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_poison_listing') {
+            return <>
+                <Form.Item name="ebayRegion" label="发货区域" initialValue="hk"
+                           extra="港区与美区使用不同的发货地址和运输政策；两个区域的SKU互相独立，不会覆盖对方的商品">
+                    <Radio.Group>
+                        <Radio.Button value="hk">港区</Radio.Button>
+                        <Radio.Button value="us">美区</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item name="ebayPoisonListingExcel" label="货号Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           rules={[{required: true, message: '请上传货号Excel'}]}
+                           extra={<ExcelFieldHint
+                               requiredFields={['货号']}
+                               note="得物有价格的尺码全部上架，每个尺码1件；上架价(USD) = 得物价 × 1.25 ÷ 6.6 + 50，例如得物¥500 → $144.70。商品资料自动获取。"
+                           />}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                    </Upload>
+                </Form.Item>
+                <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
+                    <Button href={TASK_API.EBAY_POISON_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
+                        下载货号模板
                     </Button>
                 </div>
             </>;
@@ -1494,7 +1540,7 @@ const TaskPage = () => {
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
-        trigger: '触发方式', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数',
+        trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数',
     };
 
     const formatParamValue = (k: string, v: any): string => {

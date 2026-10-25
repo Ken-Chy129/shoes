@@ -35,6 +35,9 @@ public class EbayListingTaskExcel {
     @ExcelProperty("上架价格(USD)")
     private BigDecimal price;
 
+    @ExcelProperty("得物价(CNY)")
+    private BigDecimal poisonPrice;
+
     @ExcelProperty("执行结果")
     private String operateResult;
 

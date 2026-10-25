@@ -10,6 +10,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   extend_shipping: '订单延期',
   replenishment: '补单',
   ebay_bulk_listing: '批量上架',
+  ebay_poison_listing: '得物价上架',
   ebay_price_sync: '定时改价',
   ebay_delist: 'eBay下架',
   ebay_zero_stock: 'eBay库存清零',
@@ -20,6 +21,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
 
 export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_bulk_listing, value: 'ebay_bulk_listing'},
+  {label: TASK_TYPE_LABELS.ebay_poison_listing, value: 'ebay_poison_listing'},
   {label: TASK_TYPE_LABELS.ebay_price_sync, value: 'ebay_price_sync'},
   {label: TASK_TYPE_LABELS.ebay_profit_price, value: 'ebay_profit_price'},
   {label: TASK_TYPE_LABELS.ebay_delist, value: 'ebay_delist'},

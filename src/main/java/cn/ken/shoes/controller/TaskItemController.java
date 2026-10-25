@@ -129,6 +129,7 @@ public class TaskItemController {
         }
 
         if (task != null && ("ebay_bulk_listing".equals(task.getTaskType())
+                || "ebay_poison_listing".equals(task.getTaskType())
                 || "ebay_price_sync".equals(task.getTaskType())
                 || "ebay_delist".equals(task.getTaskType())
                 || "ebay_zero_stock".equals(task.getTaskType()))) {
@@ -145,6 +146,7 @@ public class TaskItemController {
                 excel.setSize(item.getSize());
                 excel.setQuantity(item.getListingQuantity());
                 excel.setPrice(item.getCurrentPrice());
+                excel.setPoisonPrice(item.getPoisonPrice());
                 excel.setOperateResult(item.getOperateResult());
                 excel.setOperateTime(item.getOperateTime() != null
                         ? ebayDateFormat.format(item.getOperateTime()) : "-");

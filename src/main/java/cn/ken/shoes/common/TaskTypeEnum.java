@@ -21,6 +21,7 @@ public enum TaskTypeEnum {
     EXTEND_SHIPPING("extend_shipping", "订单延期", false),
     REPLENISHMENT("replenishment", "补单", false),
     EBAY_BULK_LISTING("ebay_bulk_listing", "eBay批量上架", false),
+    EBAY_POISON_LISTING("ebay_poison_listing", "eBay得物价上架", false),
     EBAY_PRICE_SYNC("ebay_price_sync", "eBay定时改价", true),
     EBAY_PROFIT_PRICE("ebay_profit_price", "eBay盈利改价", true),
     EBAY_DELIST("ebay_delist", "eBay下架", false),

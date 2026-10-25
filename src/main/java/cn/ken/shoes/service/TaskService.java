@@ -274,6 +274,11 @@ public class TaskService {
                     taskExecutorManager.cancelEbayBulkListing(task.getId());
                 }
             }
+            case "ebay_poison_listing" -> {
+                if (!clearState) {
+                    taskExecutorManager.cancelEbayPoisonListing(task.getId());
+                }
+            }
             case "ebay_profit_price" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayProfitPrice(task.getId());

@@ -3,8 +3,10 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.excel.EbayListingExcel;
+import cn.ken.shoes.model.excel.EbayPoisonListingExcel;
 import cn.ken.shoes.model.excel.EbayTrackingExcel;
 import cn.ken.shoes.service.EbayBulkListingService;
+import cn.ken.shoes.service.EbayPoisonListingService;
 import cn.ken.shoes.service.EbayTrackingUploadService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
@@ -31,16 +33,74 @@ public class EbayBulkListingController {
     private static final long MAX_EXCEL_SIZE = 10 * 1024 * 1024L;
     private final EbayBulkListingService bulkListingService;
     private final EbayTrackingUploadService trackingUploadService;
+    private final EbayPoisonListingService poisonListingService;
 
     public EbayBulkListingController(EbayBulkListingService bulkListingService) {
-        this(bulkListingService, null);
+        this(bulkListingService, null, null);
+    }
+
+    public EbayBulkListingController(EbayBulkListingService bulkListingService,
+                                     EbayTrackingUploadService trackingUploadService) {
+        this(bulkListingService, trackingUploadService, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
     public EbayBulkListingController(EbayBulkListingService bulkListingService,
-                                     EbayTrackingUploadService trackingUploadService) {
+                                     EbayTrackingUploadService trackingUploadService,
+                                     EbayPoisonListingService poisonListingService) {
         this.bulkListingService = bulkListingService;
         this.trackingUploadService = trackingUploadService;
+        this.poisonListingService = poisonListingService;
+    }
+
+    /**
+     * 上传货号 Excel，得物有价的尺码全部上架；上架价(USD) = 得物价 × 1.25 ÷ 6.6 + 50。
+     * region: hk(默认，港区) / us(美区)。
+     */
+    @PostMapping("startPoisonListing")
+    public Result<String> startPoisonListing(@RequestParam("file") MultipartFile file,
+                                             @RequestParam(value = "region", required = false) String region) {
+        List<EbayPoisonListingExcel> rows;
+        EbayListingRegion listingRegion;
+        try {
+            listingRegion = EbayListingRegion.fromCode(region);
+            validateFile(file);
+            try (InputStream input = file.getInputStream()) {
+                rows = EasyExcel.read(input).head(EbayPoisonListingExcel.class).sheet().doReadSync();
+            }
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        } catch (Exception e) {
+            return Result.buildError("Excel读取失败，请确认使用了eBay得物价上架模板");
+        }
+        try {
+            return Result.buildSuccess(String.valueOf(poisonListingService.start(rows, listingRegion)));
+        } catch (IllegalArgumentException e) {
+            return Result.buildError(e.getMessage());
+        }
+    }
+
+    @GetMapping("poisonListingTemplate")
+    public void downloadPoisonListingTemplate(HttpServletResponse response) throws IOException {
+        response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        String fileName = URLEncoder.encode("eBay得物价上架模板", StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        try (ExcelWriter writer = EasyExcel.write(response.getOutputStream()).build()) {
+            WriteSheet inputSheet = EasyExcel.writerSheet(0, "货号")
+                    .head(EbayPoisonListingExcel.class).build();
+            writer.write(List.of(), inputSheet);
+            List<List<String>> guide = List.of(
+                    List.of("字段", "说明"),
+                    List.of("货号", "必填；一行一个货号，重复货号自动去重，单次最多2000个"),
+                    List.of("上架尺码", "得物有价格的尺码全部上架（按EU码），无价尺码不上架"),
+                    List.of("上架价格", "USD = 得物价(人民币) × 1.25 ÷ 6.6 + 50，保留两位小数；例如得物500元 → $144.70"),
+                    List.of("数量", "每个尺码上架1件"),
+                    List.of("商品资料", "标题、品牌、描述、图片自动获取，与批量上架一致"),
+                    List.of("发货区域", "创建任务时在页面选择港区或美区"));
+            writer.write(guide, EasyExcel.writerSheet(1, "填写说明").build());
+        }
     }
 
     /** 上传「订单编号 + 追踪号码 (+ 物流公司)」Excel，给订单添加追踪号码并标记已发货。 */

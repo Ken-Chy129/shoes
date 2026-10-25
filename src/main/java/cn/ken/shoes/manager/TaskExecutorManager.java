@@ -32,6 +32,7 @@ import cn.ken.shoes.service.StockXReplenishmentService;
 import cn.ken.shoes.service.StockXShippingExtensionService;
 import cn.ken.shoes.service.EbayPriceSyncService;
 import cn.ken.shoes.service.EbayBulkListingService;
+import cn.ken.shoes.service.EbayPoisonListingService;
 import cn.ken.shoes.service.EbayDelistService;
 import cn.ken.shoes.service.EbayOrderFetchService;
 import cn.ken.shoes.service.EbayTrackingUploadService;
@@ -96,6 +97,9 @@ public class TaskExecutorManager {
 
     @Resource
     private EbayBulkListingService ebayBulkListingService;
+
+    @Resource
+    private EbayPoisonListingService ebayPoisonListingService;
 
     @Resource
     private EbayDelistService ebayDelistService;
@@ -319,6 +323,7 @@ public class TaskExecutorManager {
                 && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
                 || taskType == TaskTypeEnum.EBAY_PROFIT_PRICE
                 || taskType == TaskTypeEnum.EBAY_BULK_LISTING
+                || taskType == TaskTypeEnum.EBAY_POISON_LISTING
                 || taskType == TaskTypeEnum.EBAY_DELIST
                 || taskType == TaskTypeEnum.EBAY_ZERO_STOCK
                 || taskType == TaskTypeEnum.EBAY_FETCH_ORDERS
@@ -357,6 +362,12 @@ public class TaskExecutorManager {
             var snapshot = taskInputSnapshotStore.loadEbayTrackingInput(source.getId());
             return snapshot.isEmpty() || snapshot.get().isEmpty()
                     ? null : startEbayAddTracking(snapshot.get());
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_POISON_LISTING) {
+            var snapshot = taskInputSnapshotStore.loadEbayPoisonListingInput(source.getId());
+            return snapshot.isEmpty() || snapshot.get().isEmpty()
+                    ? null : ebayPoisonListingService.start(snapshot.get(),
+                    cn.ken.shoes.model.ebay.EbayListingRegion.fromCode(params.getString("region")));
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_BULK_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayBulkListingInput(source.getId());
@@ -469,6 +480,7 @@ public class TaskExecutorManager {
             case EXTEND_SHIPPING -> shippingExtensionService.startManualAccount(account);
             case REPLENISHMENT -> startReplenishmentFromParams(account, params);
             case EBAY_BULK_LISTING -> null;
+            case EBAY_POISON_LISTING -> null;
             case EBAY_PRICE_SYNC -> startEbayPriceSync(params.getLongValue("intervalHours"),
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
             case EBAY_DELIST -> startEbayDelist(styleIds(params));
@@ -618,6 +630,10 @@ public class TaskExecutorManager {
 
     public void cancelEbayBulkListing(Long taskId) {
         ebayBulkListingService.cancel(taskId);
+    }
+
+    public void cancelEbayPoisonListing(Long taskId) {
+        ebayPoisonListingService.cancel(taskId);
     }
 
     /**

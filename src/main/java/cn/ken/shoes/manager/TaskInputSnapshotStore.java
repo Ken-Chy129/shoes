@@ -11,6 +11,7 @@ import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
 import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.model.excel.EbayTrackingExcel;
+import cn.ken.shoes.model.excel.EbayPoisonListingExcel;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
@@ -39,6 +40,7 @@ public class TaskInputSnapshotStore {
     private static final String DELETE_BIDS_FILE = "delete-bids.json";
     private static final String PURCHASE_GUIDANCE_FILE = "purchase-guidance.json";
     private static final String EBAY_BULK_LISTING_FILE = "ebay-bulk-listing.json";
+    private static final String EBAY_POISON_LISTING_FILE = "ebay-poison-listing.json";
     private static final String EBAY_TRACKING_FILE = "ebay-tracking.json";
     private static final String EBAY_PROFIT_TARGETS_FILE = "ebay-profit-targets.json";
 
@@ -169,6 +171,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<EbayListingExcel>> loadEbayBulkListingInput(Long taskId) {
         return loadList(taskId, EBAY_BULK_LISTING_FILE, EbayListingExcel.class, "eBay批量上架");
+    }
+
+    public void saveEbayPoisonListingInput(Long taskId, List<EbayPoisonListingExcel> input) {
+        write(taskPath(taskId, EBAY_POISON_LISTING_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbayPoisonListingExcel>> loadEbayPoisonListingInput(Long taskId) {
+        return loadList(taskId, EBAY_POISON_LISTING_FILE, EbayPoisonListingExcel.class, "eBay得物价上架");
     }
 
     public void saveEbayTrackingInput(Long taskId, List<EbayTrackingExcel> input) {

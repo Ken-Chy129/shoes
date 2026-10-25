@@ -156,6 +156,16 @@ public class EbayBulkListingService {
 
     void run(Long taskId, List<EbayListingExcel> rows, AtomicBoolean cancelled,
              EbayListingRegion region) {
+        run(taskId, rows, cancelled, region, null, null);
+    }
+
+    /**
+     * poisonPriceOf：可选，给明细记录得物价（得物价上架任务用）；
+     * extraAttributes：可选，合并进任务统计（如得物无价被跳过的货号数）。
+     */
+    void run(Long taskId, List<EbayListingExcel> rows, AtomicBoolean cancelled,
+             EbayListingRegion region, java.util.function.Function<EbayListingExcel, java.math.BigDecimal> poisonPriceOf,
+             JSONObject extraAttributes) {
         int succeeded = 0;
         int failed = 0;
         Map<String, List<RowContext>> groups = new LinkedHashMap<>();
@@ -164,6 +174,9 @@ public class EbayBulkListingService {
                 break;
             }
             TaskItemDO item = initialTaskItem(taskId, row);
+            if (poisonPriceOf != null) {
+                item.setPoisonPrice(poisonPriceOf.apply(row));
+            }
             taskItemMapper.insert(item);
             String groupKey = trim(row.getStyleId()).toUpperCase(Locale.ROOT);
             groups.computeIfAbsent(groupKey, ignored -> new ArrayList<>())
@@ -222,12 +235,15 @@ public class EbayBulkListingService {
             }
         }
         try {
-            taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
+            JSONObject attributes = new JSONObject(true)
                     .fluentPut("total", rows.size())
                     .fluentPut("succeeded", succeeded)
                     .fluentPut("failed", failed)
-                    .fluentPut("remaining", rows.size() - succeeded - failed)
-                    .toJSONString());
+                    .fluentPut("remaining", rows.size() - succeeded - failed);
+            if (extraAttributes != null) {
+                attributes.putAll(extraAttributes);
+            }
+            taskMapper.updateTaskAttributes(taskId, attributes.toJSONString());
             if (cancelled.get()) {
                 taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.CANCEL.getCode());
             } else if (failed == 0) {
