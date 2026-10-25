@@ -70,7 +70,7 @@
     <update id="updatePriceAndQuantity">
         UPDATE ebay_listing
         SET price = COALESCE(#{price}, price),
-            quantity = #{quantity}
+            quantity = COALESCE(#{quantity}, quantity)
         WHERE sku = #{sku}
     </update>
 
