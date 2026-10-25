@@ -151,6 +151,22 @@ public class StockXService {
                                                            boolean currentProfitable,
                                                            boolean newPriceProfitable,
                                                            String unprofitableAction) {
+        return decideProfitDrivenListing(currentPrice, bestListing, anyIsLowest, lowestPrice, excelMinPrice,
+                currentProfitable, newPriceProfitable, unprofitableAction, false);
+    }
+
+    /**
+     * @param outsideExcel Excel 外商品：当前价盈利但压价后不盈利时直接下架(不再保持)；Excel 内商品逻辑不变
+     */
+    static ProfitDrivenDecision decideProfitDrivenListing(int currentPrice,
+                                                           boolean bestListing,
+                                                           boolean anyIsLowest,
+                                                           Integer lowestPrice,
+                                                           int excelMinPrice,
+                                                           boolean currentProfitable,
+                                                           boolean newPriceProfitable,
+                                                           String unprofitableAction,
+                                                           boolean outsideExcel) {
         if (lowestPrice == null || lowestPrice <= 1) {
             return new ProfitDrivenDecision(ProfitDrivenAction.MARK_UP, currentPrice + 100,
                     "待加价$100-无最低价");
@@ -173,6 +189,9 @@ public class StockXService {
             int newPrice = lowestPrice - 1;
             if (newPrice >= excelMinPrice && newPriceProfitable) {
                 return new ProfitDrivenDecision(ProfitDrivenAction.PRICE_DOWN, newPrice, "待压价");
+            }
+            if (currentProfitable && outsideExcel && newPrice >= excelMinPrice) {
+                return new ProfitDrivenDecision(ProfitDrivenAction.DELETE, null, "待下架-压价后不盈利");
             }
             if (currentProfitable) {
                 String reason = newPrice < excelMinPrice
@@ -544,7 +563,7 @@ public class StockXService {
                         continue;
                     }
                     totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType, effectiveFetchMode,
-                            styleId, listings, account, PriceDownType.DEFAULT, 0,
+                            styleId, listings, account, PriceDownType.DEFAULT, 0, true,
                             unprofitableAction, toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
@@ -562,7 +581,7 @@ public class StockXService {
 
                 if (config.type() != PriceDownType.DEFAULT) {
                     totalSkip += processProfitDrivenPriceDownGroup(taskId, accountId, inventoryType, effectiveFetchMode,
-                            styleId, listings, account, config.type(), config.minPrice(),
+                            styleId, listings, account, config.type(), config.minPrice(), false,
                             unprofitableAction, toPriceDown, listingToTaskInfo, toDelete, deleteToTaskInfo);
                     continue;
                 }
@@ -1997,6 +2016,7 @@ public class StockXService {
                                                   StockXAccount account,
                                                   PriceDownType priceDownType,
                                                   int excelMinPrice,
+                                                  boolean outsideExcel,
                                                   String unprofitableAction,
                                                   List<Map<String, String>> toPriceDown,
                                                   Map<String, Pair<Long, String>> listingToTaskInfo,
@@ -2075,7 +2095,8 @@ public class StockXService {
                     floorPrice,
                     currentProfitable,
                     candidateProfitable,
-                    unprofitableAction);
+                    unprofitableAction,
+                    outsideExcel);
 
             switch (decision.action()) {
                 case PRICE_DOWN, MARK_UP -> {

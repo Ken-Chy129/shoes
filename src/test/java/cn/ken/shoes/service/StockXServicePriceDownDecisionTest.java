@@ -40,4 +40,22 @@ class StockXServicePriceDownDecisionTest {
         assertThat(decision.action()).isEqualTo(StockXService.ProfitDrivenAction.MARK_UP);
         assertThat(decision.targetPrice()).isEqualTo(190);
     }
+
+    @Test
+    void outsideExcelDelistsWhenProfitableButPriceDownUnprofitable() {
+        StockXService.ProfitDrivenDecision decision = StockXService.decideProfitDrivenListing(
+                120, true, false, 110, 0, true, false, "markup", true);
+
+        assertThat(decision.action()).isEqualTo(StockXService.ProfitDrivenAction.DELETE);
+        assertThat(decision.result()).isEqualTo("待下架-压价后不盈利");
+    }
+
+    @Test
+    void insideExcelKeepsWhenProfitableButPriceDownUnprofitable() {
+        StockXService.ProfitDrivenDecision decision = StockXService.decideProfitDrivenListing(
+                120, true, false, 110, 0, true, false, "delist", false);
+
+        assertThat(decision.action()).isEqualTo(StockXService.ProfitDrivenAction.KEEP);
+        assertThat(decision.result()).isEqualTo("保持-压价后不盈利但当前价盈利");
+    }
 }
