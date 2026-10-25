@@ -269,13 +269,14 @@ public class EbayPriceSyncService {
             planned.add(new PlannedUpdate(context, poisonPrice, target, update));
         }
 
-        int[] counters = new int[6]; // changed, noPrice, failed, groupWithdrawn, removedByEbay, detachedOutOfStock
+        int[] counters = new int[6]; // changed, noPrice, failed, groupWithdrawn, removedByEbay, detached
+        Set<String> pricedGroups = pricedGroups(bySku.values(), planned);
         EbayRepricingRecovery.Round recoveryRound = recovery.newRound();
         List<List<PlannedUpdate>> batches = partition(planned, EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT);
         for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
             ensureNotCancelled(cancelled);
             List<List<PlannedUpdate>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
-            List<List<EbayRepricingRecovery.Resolution>> results = submitWave(wave, recoveryRound);
+            List<List<EbayRepricingRecovery.Resolution>> results = submitWave(wave, recoveryRound, pricedGroups);
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), results.get(b), counters);
             }
@@ -305,7 +306,7 @@ public class EbayPriceSyncService {
             attributes.put("removedByEbay", counters[4]);
         }
         if (counters[5] > 0) {
-            attributes.put("detachedOutOfStock", counters[5]);
+            attributes.put("detached", counters[5]);
         }
         return attributes;
     }
@@ -314,13 +315,46 @@ public class EbayPriceSyncService {
      * 并发发出一波批量改价请求并等待全部返回。整批请求失败只记为该批商品失败，
      * 不影响同一波的其它批次；等待期间不响应中断，保证在途写入有确定结果。
      */
+    /**
+     * 本轮仍有得物价的商品组（货号+区域）。没进改价计划的在架映射（缺尺码等）
+     * 价格未知，保守地算作有价，避免据此整组下架。
+     */
+    private Set<String> pricedGroups(java.util.Collection<EbayListingDO> mappings, List<PlannedUpdate> planned) {
+        Set<String> plannedSkus = new HashSet<>();
+        Set<String> priced = new HashSet<>();
+        for (PlannedUpdate plan : planned) {
+            plannedSkus.add(plan.context().mapping().getSku());
+            if (plan.target() != null) {
+                priced.add(groupId(plan.context().mapping()));
+            }
+        }
+        for (EbayListingDO mapping : mappings) {
+            if (!isUsRegion(mapping) && !plannedSkus.contains(mapping.getSku())) {
+                priced.add(groupId(mapping));
+            }
+        }
+        return priced;
+    }
+
+    private static String groupId(EbayListingDO mapping) {
+        String style = mapping.getStyleId() == null ? "" : mapping.getStyleId().trim().toUpperCase(Locale.ROOT);
+        String region;
+        try {
+            region = EbayListingRegion.fromCode(mapping.getRegion()).getCode();
+        } catch (IllegalArgumentException e) {
+            region = mapping.getRegion();
+        }
+        return style + "|" + region;
+    }
+
     private List<List<EbayRepricingRecovery.Resolution>> submitWave(List<List<PlannedUpdate>> wave,
-                                                                     EbayRepricingRecovery.Round recoveryRound) {
+                                                                     EbayRepricingRecovery.Round recoveryRound,
+                                                                     Set<String> pricedGroups) {
         List<Future<List<EbayRepricingRecovery.Resolution>>> futures = new ArrayList<>(wave.size());
         for (List<PlannedUpdate> batch : wave) {
             List<EbayRepricingRecovery.Target> targets = batch.stream().map(p -> new EbayRepricingRecovery.Target(
                     p.update(), p.context().mapping().getStyleId(), p.context().mapping().getRegion(),
-                    p.context().mapping().getQuantity())).toList();
+                    !pricedGroups.contains(groupId(p.context().mapping())))).toList();
             futures.add(updateExecutor.submit(() -> recoveryRound.apply(targets)));
         }
         List<List<EbayRepricingRecovery.Resolution>> results = new ArrayList<>(futures.size());
@@ -373,7 +407,7 @@ public class EbayPriceSyncService {
             } else if (result.kind() == EbayRepricingRecovery.Kind.REMOVED_BY_EBAY) {
                 counters[4]++;
                 operateResult = result.note();
-            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED_OUT_OF_STOCK) {
+            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED) {
                 counters[5]++;
                 operateResult = result.note();
             } else if (plan.target() != null) {

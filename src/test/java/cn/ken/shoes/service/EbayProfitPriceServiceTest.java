@@ -354,6 +354,37 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void withdrawsTheListingOnlyWhenNoSizeOnItHasAPoisonPrice() {
+        EbayListingDO a42 = listing("SKU-A42", "offer-A42", "AAA-1", "HK");
+        EbayListingDO b42 = listing("SKU-B42", "offer-B42", "BBB-2", "HK");
+        EbayListingDO b43 = listing("SKU-B43", "offer-B43", "BBB-2", "HK");
+        b43.setEuSize("43");
+        when(listingMapper.selectActive()).thenReturn(List.of(a42, b42, b43));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        PoisonPriceDO b43Price = poison("BBB-2", 500);
+        b43Price.setEuSize("43");
+        // AAA-1 整组无价；BBB-2 的 42 码无价但 43 码有价。
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(b43Price));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> Integer.valueOf(0).equals(u.availableQuantity())
+                    ? new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400, "HTTP 400: 25004: quantity")
+                    : new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null)).toList();
+        });
+        pages(List.of(sku("SKU-A42", "L-A", "150", 1),
+                sku("SKU-B42", "L-B", "150", 1), sku("SKU-B43", "L-B", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(sellClient).withdrawOfferByInventoryItemGroup(
+                EbayListingFactory.inventoryGroupKey("AAA-1", cn.ken.shoes.model.ebay.EbayListingRegion.HK), "EBAY_US");
+        verify(sellClient, times(1)).withdrawOfferByInventoryItemGroup(anyString(), anyString());
+        verify(listingMapper).markGroupEnded("AAA-1", "hk");
+        verify(listingMapper, never()).markGroupEnded(eq("BBB-2"), anyString());
+        verify(taskMapper).updateTaskFailReason(7L, "本轮有 1 个商品处理失败");
+    }
+
+    @Test
     void keepsEarlierPagesWhenALaterPageFails() {
         when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
         when(marketingClient.getRunningAdRates()).thenReturn(Map.of());

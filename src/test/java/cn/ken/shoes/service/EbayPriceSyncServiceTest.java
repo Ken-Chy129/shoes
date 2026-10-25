@@ -316,7 +316,6 @@ class EbayPriceSyncServiceTest {
             return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400,
                     "HTTP 400: 25004: At least one of the variations must have a quantity greater than 0.")).toList();
         });
-        when(ebayClient.withdrawOfferByInventoryItemGroup(anyString(), eq("EBAY_US"))).thenReturn(true);
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
@@ -334,26 +333,27 @@ class EbayPriceSyncServiceTest {
     }
 
     @Test
-    void republishesTheGroupWhenAPricedSizeHasDetachedFromTheListing() {
-        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
-        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));
+    void keepsTheGroupListedWhenAnotherSizeStillHasAPoisonPrice() {
+        EbayListingDO other = mapping();
+        other.setSku("SKU-2");
+        other.setOfferId("offer-2");
+        other.setEuSize("43");
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping(), other));
+        PoisonPriceDO size43 = price("DD1391-100", 100);
+        size43.setEuSize("43");
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(size43));
         when(ebayClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
             List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
-            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400,
-                    "HTTP 400: 25013: Invalid data in the Inventory Item Group. Missing name in the variation specifics."))
-                    .toList();
-        }).thenAnswer(invocation -> {
-            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
-            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
-                    u.sku(), u.offerId(), 200, null)).toList();
+            return updates.stream().map(u -> u.price() == null
+                    ? new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400, "HTTP 400: 25004: quantity")
+                    : new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null)).toList();
         });
 
         service.runSingleRound(88L, new BigDecimal("1.1"), 1);
 
-        verify(ebayClient).publishOfferByInventoryItemGroup(anyString(), eq("EBAY_US"));
-        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
-        verify(taskItemMapper).insert(item.capture());
-        assertThat(item.getValue().getOperateResult()).startsWith("改价成功").contains("整组重新发布");
+        verify(ebayClient, never()).withdrawOfferByInventoryItemGroup(anyString(), anyString());
+        verify(ebayListingMapper, never()).markGroupEnded(anyString(), anyString());
+        verify(taskMapper).updateTaskFailReason(88L, "本轮有 1 个商品处理失败");
     }
 
     private void succeedAllBulkUpdates() {

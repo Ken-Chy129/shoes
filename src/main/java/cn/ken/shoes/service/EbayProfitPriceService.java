@@ -453,6 +453,7 @@ public class EbayProfitPriceService {
         }
 
         counters.total += contexts.size();
+        Set<String> pricedListings = pricedListings(page, bySku, prices);
         List<Planned> planned = new ArrayList<>();
         for (Context context : contexts) {
             BigDecimal poisonPrice = prices.get(priceKey(context.styleId(), context.euSize()));
@@ -491,13 +492,31 @@ public class EbayProfitPriceService {
                                 p.decision().newPrice(), properties.getDefaultCurrency(),
                                 p.decision().newQuantity()),
                                 p.context().mapping().getStyleId(), p.context().mapping().getRegion(),
-                                p.context().live().availableQuantity())).toList();
+                                !pricedListings.contains(p.context().live().listingId()))).toList();
                 futures.add(updateExecutor.submit(() -> recoveryRound.apply(batchTargets)));
             }
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
             }
         }
+    }
+
+    /**
+     * 本页里仍有得物价的 listing。GetSellerList 按 listing 分页，同一 listing 的所有尺码都在同一页，
+     * 因此可以据此判断「整组都无价」。不在港区映射里或缺货号/尺码的 SKU 价格未知，保守地算作有价。
+     */
+    private Set<String> pricedListings(EbayTradingApiClient.ActiveSkuPage page, Map<String, EbayListingDO> bySku,
+                                       Map<String, BigDecimal> prices) {
+        Set<String> priced = new HashSet<>();
+        for (EbayTradingApiClient.ActiveSku current : page.skus()) {
+            EbayListingDO mapping = bySku.get(current.sku());
+            String euSize = mapping == null ? null : firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
+            if (mapping == null || isBlank(mapping.getStyleId()) || euSize == null
+                    || prices.containsKey(priceKey(mapping.getStyleId().trim(), euSize))) {
+                priced.add(current.listingId());
+            }
+        }
+        return priced;
     }
 
     /** 本轮在中途某页失败：之前的页已处理，失败原因里需说明，不能写成「本轮未改价」。 */
@@ -529,8 +548,8 @@ public class EbayProfitPriceService {
             } else if (result.kind() == EbayRepricingRecovery.Kind.REMOVED_BY_EBAY) {
                 counters.removedByEbay++;
                 operateResult = result.note() + " " + detail;
-            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED_OUT_OF_STOCK) {
-                counters.detachedOutOfStock++;
+            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED) {
+                counters.detached++;
                 operateResult = result.note() + " " + detail;
             } else {
                 switch (decision.action()) {
@@ -647,7 +666,7 @@ public class EbayProfitPriceService {
                     .fluentPut("failed", c.failed)
                     .fluentPut("groupWithdrawn", c.groupWithdrawn)
                     .fluentPut("removedByEbay", c.removedByEbay)
-                    .fluentPut("detachedOutOfStock", c.detachedOutOfStock)
+                    .fluentPut("detached", c.detached)
                     .fluentPut("skipped", c.skipped)
                     .fluentPut("skippedUsRegion", c.skippedUsRegion)
                     .fluentPut("notListed", c.notListed)
@@ -845,7 +864,7 @@ public class EbayProfitPriceService {
         int failed;
         int groupWithdrawn;
         int removedByEbay;
-        int detachedOutOfStock;
+        int detached;
 
         Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;

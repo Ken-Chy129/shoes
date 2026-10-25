@@ -108,20 +108,30 @@ class EbaySellApiClientTest {
     }
 
     @Test
-    void withdrawsAWholeInventoryItemGroupAndTreatsEndedGroupsAsWithdrawn() throws Exception {
+    void withdrawsAWholeInventoryItemGroupAndRetriesServerErrors() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(500).setBody(
+                "{\"errors\":[{\"errorId\":25002,\"message\":\"System error.\"}]}"));
         server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
-        server.enqueue(new MockResponse().setResponseCode(400).setBody(
-                "{\"errors\":[{\"errorId\":25082,\"message\":\"variation not on listing\"}]}"));
 
-        assertThat(client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US")).isTrue();
-        assertThat(client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US")).isFalse();
+        client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US");
 
+        assertThat(server.getRequestCount()).isEqualTo(2);
         RecordedRequest request = server.takeRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
         assertThat(request.getPath()).isEqualTo("/sell/inventory/v1/offer/withdraw_by_inventory_item_group");
         JSONObject body = JSON.parseObject(request.getBody().readUtf8());
         assertThat(body.getString("inventoryItemGroupKey")).isEqualTo("group/1");
         assertThat(body.getString("marketplaceId")).isEqualTo("EBAY_US");
+    }
+
+    @Test
+    void groupWithdrawDoesNotTreatErrorsAsAlreadyWithdrawn() {
+        server.enqueue(new MockResponse().setResponseCode(400).setBody(
+                "{\"errors\":[{\"errorId\":25002,\"message\":\"A user error has occurred.\"}]}"));
+
+        assertThatThrownBy(() -> client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US"))
+                .isInstanceOf(EbayApiException.class)
+                .hasMessageContaining("25002");
     }
 
     @Test

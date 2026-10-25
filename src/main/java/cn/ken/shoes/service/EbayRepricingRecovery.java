@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -23,12 +24,12 @@ import java.util.function.LongConsumer;
  * 批量改价（bulkUpdatePriceQuantity）的统一出错处理，定时改价和盈利改价共用。
  *
  * <ul>
- *   <li>整批 4xx（如 "provider error"）：二分拆批重试，只让真正有问题的 offer 失败；</li>
- *   <li>单个 offer 5xx（如 25002 System error）：短暂退避后重试；</li>
- *   <li>25013 尺码已脱离 listing：清库存的直接视为完成；要写价格且有库存的整组重新发布后重试；
- *       库存为 0 的只做说明（eBay 已把它移出 listing，重新发布也挂不回去）；</li>
- *   <li>25004 清最后一个有货尺码被拒：说明整组都无价，整组下架并把映射标记为 ended，
- *       之后需重新上传 Excel 上架；</li>
+ *   <li>整批 HTTP 400（如 "provider error"）：二分拆批重试，只让真正有问题的 offer 失败；</li>
+ *   <li>单个 offer 5xx（如 25002 System error）或整批 429：短暂退避后重试；</li>
+ *   <li>25013 尺码已脱离 listing（库存清零后被 eBay 移出）：清库存的视为完成，其余只记录。
+ *       改价不会把它挂回去——那需要重写商品组，交给重新上传 Excel 的上架流程；</li>
+ *   <li>25004 清最后一个有货尺码被拒：仅当调用方确认本轮整组都无得物价时整组下架并把映射
+ *       标记为 ended（之后需重新上传 Excel 上架），否则记为失败；</li>
  *   <li>25097 eBay 因违规移除 listing：标记 ended，之后不再改价。</li>
  * </ul>
  */
@@ -37,31 +38,27 @@ class EbayRepricingRecovery {
 
     static final int MAX_TRANSIENT_RETRIES = 2;
     private static final long RETRY_BASE_DELAY_MS = 1000L;
+    private static final int TOO_MANY_REQUESTS = 429;
 
-    /** 一个待改价的 offer。knownQuantity 为改价前已知库存，null 表示未知。 */
-    record Target(OfferPriceQuantity update, String styleId, String region, Integer knownQuantity) {
+    /**
+     * 一个待改价的 offer。groupHasNoPrice 由调用方根据本轮得物查价结果给出：
+     * 同一货号同一区域的所有在架尺码本轮都没有得物价时为 true。
+     */
+    record Target(OfferPriceQuantity update, String styleId, String region, boolean groupHasNoPrice) {
         boolean zeroing() {
             return update.price() == null && update.availableQuantity() != null
                     && update.availableQuantity() == 0;
         }
-
-        /** 改完后这个尺码是否应当有货：有货才值得整组重新发布把它挂回 listing。 */
-        boolean shouldBeInStock() {
-            if (update.availableQuantity() != null) {
-                return update.availableQuantity() > 0;
-            }
-            return knownQuantity == null || knownQuantity > 0;
-        }
     }
 
     enum Kind {
-        /** 已写入（可能经过重试或整组重新发布），note 里说明额外处理。 */
+        /** 已写入（可能经过重试），note 里说明额外情况。 */
         UPDATED,
-        /** 尺码库存为 0 已被 eBay 移出 listing，价格未写入。 */
-        DETACHED_OUT_OF_STOCK,
+        /** 尺码已被 eBay 移出 listing，价格/库存未写入。 */
+        DETACHED,
         /** 整组都已无价，整组下架。 */
         GROUP_WITHDRAWN,
-        /** eBay 因违规移除了 listing。 */
+        /** eBay 因违规移除了该 listing。 */
         REMOVED_BY_EBAY,
         FAILED
     }
@@ -94,12 +91,8 @@ class EbayRepricingRecovery {
         return new Round();
     }
 
-    /**
-     * 一轮改价的共享状态：同一商品组在一轮内最多重新发布/下架一次，
-     * 并发的批次之间也只做一次。线程安全。
-     */
+    /** 一轮改价的共享状态：同一商品组一轮内最多下架一次，并发批次之间也只做一次。线程安全。 */
     final class Round {
-        private final Map<String, CompletableFuture<String>> republished = new ConcurrentHashMap<>();
         private final Map<String, CompletableFuture<String>> withdrawn = new ConcurrentHashMap<>();
         private final Set<String> endedGroups = ConcurrentHashMap.newKeySet();
 
@@ -116,28 +109,10 @@ class EbayRepricingRecovery {
                 }
             }
 
-            Map<String, OfferUpdateResult> results = updateWithSplit(pending);
-            results = retryTransient(pending, results);
-
-            List<Target> detached = new ArrayList<>();
+            Map<String, OfferUpdateResult> results = retryTransient(pending, updateWithSplit(pending));
             for (Target target : pending) {
                 OfferUpdateResult result = results.get(offerId(target));
-                if (result == null) {
-                    resolved.put(offerId(target), failed(target, "eBay未返回该offer的处理结果"));
-                } else if (result.success()) {
-                    resolved.put(offerId(target), new Resolution(offerId(target), Kind.UPDATED, null, null));
-                } else if (hasCode(result, "25013")) {
-                    detached.add(target);
-                } else if (hasCode(result, "25004") && target.zeroing()) {
-                    resolved.put(offerId(target), withdrawGroup(target, result.error()));
-                } else if (hasCode(result, "25097")) {
-                    resolved.put(offerId(target), removedByEbay(target));
-                } else {
-                    resolved.put(offerId(target), failed(target, result.error()));
-                }
-            }
-            for (Map.Entry<String, Resolution> entry : reattach(detached).entrySet()) {
-                resolved.put(entry.getKey(), entry.getValue());
+                resolved.put(offerId(target), resolve(target, result));
             }
 
             List<Resolution> ordered = new ArrayList<>(targets.size());
@@ -147,62 +122,37 @@ class EbayRepricingRecovery {
             return ordered;
         }
 
-        private Map<String, Resolution> reattach(List<Target> detached) {
-            Map<String, Resolution> resolved = new HashMap<>();
-            List<Target> retry = new ArrayList<>();
-            for (Target target : detached) {
-                if (target.zeroing()) {
-                    resolved.put(offerId(target), new Resolution(offerId(target), Kind.UPDATED, null,
-                            "尺码已被eBay移出listing，库存已为0"));
-                } else if (!target.shouldBeInStock()) {
-                    resolved.put(offerId(target), new Resolution(offerId(target), Kind.DETACHED_OUT_OF_STOCK,
-                            null, "尺码库存为0已被eBay移出listing，价格未写入（需重新上架该尺码）"));
-                } else {
-                    String error = republish(target);
-                    if (error == null) {
-                        retry.add(target);
-                    } else {
-                        resolved.put(offerId(target), failed(target,
-                                "尺码已脱离listing，整组重新发布失败：" + error));
-                    }
-                }
+        private Resolution resolve(Target target, OfferUpdateResult result) {
+            if (result == null) {
+                return failed(target, "eBay未返回该offer的处理结果");
             }
-            if (retry.isEmpty()) {
-                return resolved;
+            if (result.success()) {
+                return new Resolution(offerId(target), Kind.UPDATED, null, null);
             }
-            Map<String, OfferUpdateResult> results = retryTransient(retry, updateWithSplit(retry));
-            for (Target target : retry) {
-                OfferUpdateResult result = results.get(offerId(target));
-                if (result != null && result.success()) {
-                    resolved.put(offerId(target), new Resolution(offerId(target), Kind.UPDATED, null,
-                            "尺码曾脱离listing，已整组重新发布挂回"));
-                } else {
-                    String error = result == null ? "eBay未返回该offer的处理结果" : result.error();
-                    resolved.put(offerId(target), failed(target, "整组重新发布后仍失败：" + error));
-                }
+            if (hasCode(result, "25013")) {
+                return target.zeroing()
+                        ? new Resolution(offerId(target), Kind.UPDATED, null, "尺码已被eBay移出listing，库存已为0")
+                        : new Resolution(offerId(target), Kind.DETACHED, null,
+                        "尺码已被eBay移出listing（多为库存曾清零），本次未写入；需重新上传该货号上架");
             }
-            return resolved;
+            if (hasCode(result, "25004") && target.zeroing()) {
+                return target.groupHasNoPrice()
+                        ? withdrawGroup(target)
+                        : failed(target, result.error() + "（同组仍有尺码有得物价，未整组下架）");
+            }
+            if (hasCode(result, "25097")) {
+                return removedByEbay(target);
+            }
+            return failed(target, result.error());
         }
 
-        private String republish(Target target) {
+        private Resolution withdrawGroup(Target target) {
             String groupKey;
             try {
-                groupKey = groupKey(target);
+                groupKey = EbayListingFactory.inventoryGroupKey(target.styleId(),
+                        EbayListingRegion.fromCode(target.region()));
             } catch (IllegalArgumentException e) {
-                return e.getMessage();
-            }
-            return once(republished, groupKey, () -> {
-                log.warn("商品组{}（货号{}）有尺码脱离listing，整组重新发布", groupKey, target.styleId());
-                client.publishOfferByInventoryItemGroup(groupKey, properties.getDefaultMarketplaceId());
-            });
-        }
-
-        private Resolution withdrawGroup(Target target, String originalError) {
-            String groupKey;
-            try {
-                groupKey = groupKey(target);
-            } catch (IllegalArgumentException e) {
-                return failed(target, originalError);
+                return failed(target, "整组无价，但无法确定商品组：" + e.getMessage());
             }
             String error = once(withdrawn, groupKey, () -> {
                 log.warn("商品组{}（货号{}）所有尺码均无得物价，整组下架", groupKey, target.styleId());
@@ -249,7 +199,10 @@ class EbayRepricingRecovery {
         }
     }
 
-    /** 整批请求被拒（4xx）时二分拆批，找出真正有问题的 offer，其余照常写入。 */
+    /**
+     * 整批请求被拒（HTTP 400）时二分拆批，找出真正有问题的 offer，其余照常写入。
+     * 429 不拆批（拆了只会放大请求量），标记为可重试；整批 5xx 客户端已退避重试过，直接失败。
+     */
     private Map<String, OfferUpdateResult> updateWithSplit(List<Target> targets) {
         Map<String, OfferUpdateResult> results = new HashMap<>();
         if (targets.isEmpty()) {
@@ -262,29 +215,31 @@ class EbayRepricingRecovery {
             }
             return results;
         } catch (Exception e) {
-            String error = errorOf(e);
-            if (targets.size() > 1 && isClientError(e)) {
+            int status = httpStatus(e);
+            if (status == 400 && targets.size() > 1) {
                 int middle = targets.size() / 2;
                 results.putAll(updateWithSplit(targets.subList(0, middle)));
                 results.putAll(updateWithSplit(targets.subList(middle, targets.size())));
                 return results;
             }
-            int status = isClientError(e) ? 400 : 0;
+            String error = errorOf(e);
+            int recorded = status == TOO_MANY_REQUESTS || status == 400 ? status : 0;
             for (OfferPriceQuantity update : updates) {
-                results.put(update.offerId(), new OfferUpdateResult(update.sku(), update.offerId(), status, error));
+                results.put(update.offerId(), new OfferUpdateResult(update.sku(), update.offerId(), recorded, error));
             }
             return results;
         }
     }
 
-    /** 单个 offer 返回 5xx（eBay 内部临时错误）时退避重试。 */
+    /** 单个 offer 返回 5xx（eBay 内部临时错误）或整批 429 时退避重试；写入的是绝对值，可安全重试。 */
     private Map<String, OfferUpdateResult> retryTransient(List<Target> targets,
                                                           Map<String, OfferUpdateResult> results) {
         Map<String, OfferUpdateResult> merged = new HashMap<>(results);
         for (int attempt = 1; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
             List<Target> transientFailures = targets.stream().filter(t -> {
                 OfferUpdateResult result = merged.get(offerId(t));
-                return result != null && !result.success() && result.statusCode() >= 500;
+                return result != null && !result.success()
+                        && (result.statusCode() >= 500 || result.statusCode() == TOO_MANY_REQUESTS);
             }).toList();
             if (transientFailures.isEmpty()) {
                 break;
@@ -295,12 +250,8 @@ class EbayRepricingRecovery {
         return merged;
     }
 
-    private String groupKey(Target target) {
-        return EbayListingFactory.inventoryGroupKey(target.styleId(), EbayListingRegion.fromCode(target.region()));
-    }
-
     private static String groupId(Target target) {
-        String style = target.styleId() == null ? "" : target.styleId().trim().toUpperCase(java.util.Locale.ROOT);
+        String style = target.styleId() == null ? "" : target.styleId().trim().toUpperCase(Locale.ROOT);
         return style + "|" + regionCode(target);
     }
 
@@ -325,9 +276,14 @@ class EbayRepricingRecovery {
         return error != null && error.contains(code + ":");
     }
 
-    private static boolean isClientError(Exception e) {
+    /** 从 "eBay API request failed (HTTP 400): ..." 里取状态码，取不到返回 0。 */
+    private static int httpStatus(Exception e) {
         String message = e.getMessage();
-        return e instanceof EbayApiException && message != null && message.contains("(HTTP 4");
+        if (!(e instanceof EbayApiException) || message == null) {
+            return 0;
+        }
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("\\(HTTP (\\d{3})\\)").matcher(message);
+        return matcher.find() ? Integer.parseInt(matcher.group(1)) : 0;
     }
 
     private static String errorOf(Exception e) {

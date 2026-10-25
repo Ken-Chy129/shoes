@@ -192,10 +192,13 @@ public class EbaySellApiClient {
 
     /**
      * 结束整个多尺码 listing（保留 offer 与库存数据，之后可整组重新发布）。
-     * eBay 对已结束的组返回的错误视为已下架，返回 false。
+     *
+     * <p>和 {@link #withdrawOffer(String)} 不同，这里不把任何错误当作「已下架」：
+     * 调用方会据此把映射标记为 ended 并停止改价，误判会让仍在线的 listing 脱离管理。
+     * 下架是幂等的，5xx 按只读请求一样退避重试。
      */
-    public boolean withdrawOfferByInventoryItemGroup(String inventoryItemGroupKey,
-                                                     String marketplaceId) {
+    public void withdrawOfferByInventoryItemGroup(String inventoryItemGroupKey,
+                                                  String marketplaceId) {
         JSONObject payload = new JSONObject(true);
         payload.put("inventoryItemGroupKey",
                 requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"));
@@ -205,15 +208,7 @@ public class EbaySellApiClient {
                 .build(), null)
                 .post(jsonBody(payload))
                 .build();
-        try {
-            execute(request, Set.of(200, 204));
-            return true;
-        } catch (EbayApiException e) {
-            if (isAlreadyWithdrawn(e)) {
-                return false;
-            }
-            throw e;
-        }
+        execute(request, Set.of(200, 204), false, Set.of(), true);
     }
 
     public void createInventoryLocation(String merchantLocationKey, JSONObject payload) {
