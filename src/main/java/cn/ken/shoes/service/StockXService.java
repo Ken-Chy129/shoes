@@ -156,7 +156,7 @@ public class StockXService {
     }
 
     /**
-     * @param outsideExcel Excel 外商品：当前价盈利但压价后不盈利时直接下架(不再保持)；Excel 内商品逻辑不变
+     * @param outsideExcel Excel 外商品且不盈利操作为"下架"时：当前价盈利但压价后不盈利也直接下架；选"加价"或 Excel 内商品仍保持
      */
     static ProfitDrivenDecision decideProfitDrivenListing(int currentPrice,
                                                            boolean bestListing,
@@ -190,7 +190,8 @@ public class StockXService {
             if (newPrice >= excelMinPrice && newPriceProfitable) {
                 return new ProfitDrivenDecision(ProfitDrivenAction.PRICE_DOWN, newPrice, "待压价");
             }
-            if (currentProfitable && outsideExcel && newPrice >= excelMinPrice) {
+            if (currentProfitable && outsideExcel && "delist".equals(unprofitableAction)
+                    && newPrice >= excelMinPrice) {
                 return new ProfitDrivenDecision(ProfitDrivenAction.DELETE, null, "待下架-压价后不盈利");
             }
             if (currentProfitable) {
