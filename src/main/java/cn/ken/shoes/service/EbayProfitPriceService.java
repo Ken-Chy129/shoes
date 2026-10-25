@@ -80,6 +80,7 @@ public class EbayProfitPriceService {
     private final Consumer<Runnable> threadStarter;
     private final Map<Long, RunHandle> running = new java.util.concurrent.ConcurrentHashMap<>();
     private final ExecutorService updateExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final EbayRepricingRecovery recovery;
 
     @Autowired
     public EbayProfitPriceService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
@@ -97,6 +98,18 @@ public class EbayProfitPriceService {
                            EbayTradingApiClient tradingClient, EbayMarketingApiClient marketingClient,
                            PoisonClient poisonClient, TaskInputSnapshotStore snapshotStore,
                            EbayProperties properties, Consumer<Runnable> threadStarter) {
+        this(taskMapper, taskItemMapper, ebayListingMapper, sellClient, tradingClient, marketingClient,
+                poisonClient, snapshotStore, properties, threadStarter,
+                new EbayRepricingRecovery(sellClient, ebayListingMapper, properties));
+    }
+
+    EbayProfitPriceService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
+                           EbayListingMapper ebayListingMapper, EbaySellApiClient sellClient,
+                           EbayTradingApiClient tradingClient, EbayMarketingApiClient marketingClient,
+                           PoisonClient poisonClient, TaskInputSnapshotStore snapshotStore,
+                           EbayProperties properties, Consumer<Runnable> threadStarter,
+                           EbayRepricingRecovery recovery) {
+        this.recovery = recovery;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
         this.ebayListingMapper = ebayListingMapper;
@@ -359,11 +372,12 @@ public class EbayProfitPriceService {
 
         Counters counters = new Counters(skippedUsRegion, adRates.size());
         Set<String> processed = new HashSet<>();
+        EbayRepricingRecovery.Round recoveryRound = recovery.newRound();
         try {
             tradingClient.forEachActiveSkuPage(cancelled::get, page -> {
                 ensureNotCancelled(cancelled);
                 processPage(taskId, round, page, bySku, processed, adRates, targets, defaultProfit,
-                        exchangeRate, freight, counters, cancelled);
+                        exchangeRate, freight, counters, cancelled, recoveryRound);
                 counters.pages = page.pageNumber();
                 counters.totalPages = page.totalPages();
                 writeAttributes(taskId, counters);
@@ -395,7 +409,8 @@ public class EbayProfitPriceService {
                              Map<String, EbayListingDO> bySku, Set<String> processed,
                              Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
                              BigDecimal defaultProfit, BigDecimal exchangeRate, BigDecimal freight,
-                             Counters counters, AtomicBoolean cancelled) {
+                             Counters counters, AtomicBoolean cancelled,
+                             EbayRepricingRecovery.Round recoveryRound) {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
@@ -468,21 +483,16 @@ public class EbayProfitPriceService {
         for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
             ensureNotCancelled(cancelled);
             List<List<Planned>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
-            List<Future<List<EbaySellApiClient.OfferUpdateResult>>> futures = new ArrayList<>();
+            List<Future<List<EbayRepricingRecovery.Resolution>>> futures = new ArrayList<>();
             for (List<Planned> batch : wave) {
-                List<EbaySellApiClient.OfferPriceQuantity> updates = batch.stream().map(p ->
-                        new EbaySellApiClient.OfferPriceQuantity(p.context().mapping().getSku(),
-                                p.context().mapping().getOfferId(), p.decision().newPrice(),
-                                properties.getDefaultCurrency(), p.decision().newQuantity())).toList();
-                futures.add(updateExecutor.submit(() -> {
-                    try {
-                        return sellClient.bulkUpdatePriceQuantity(updates);
-                    } catch (Exception e) {
-                        String error = safeError(e);
-                        return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
-                                u.sku(), u.offerId(), 0, error)).toList();
-                    }
-                }));
+                List<EbayRepricingRecovery.Target> batchTargets = batch.stream().map(p ->
+                        new EbayRepricingRecovery.Target(new EbaySellApiClient.OfferPriceQuantity(
+                                p.context().mapping().getSku(), p.context().mapping().getOfferId(),
+                                p.decision().newPrice(), properties.getDefaultCurrency(),
+                                p.decision().newQuantity()),
+                                p.context().mapping().getStyleId(), p.context().mapping().getRegion(),
+                                p.context().live().availableQuantity())).toList();
+                futures.add(updateExecutor.submit(() -> recoveryRound.apply(batchTargets)));
             }
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
@@ -498,19 +508,30 @@ public class EbayProfitPriceService {
     }
 
     private void recordBatch(Long taskId, int round, List<Planned> batch,
-                             List<EbaySellApiClient.OfferUpdateResult> results, Counters counters) {
-        Map<String, EbaySellApiClient.OfferUpdateResult> byOfferId = new HashMap<>();
-        for (EbaySellApiClient.OfferUpdateResult result : results) {
-            byOfferId.putIfAbsent(result.offerId(), result);
+                             List<EbayRepricingRecovery.Resolution> results, Counters counters) {
+        Map<String, EbayRepricingRecovery.Resolution> byOfferId = new HashMap<>();
+        for (EbayRepricingRecovery.Resolution result : results) {
+            if (result != null) {
+                byOfferId.putIfAbsent(result.offerId(), result);
+            }
         }
         for (Planned plan : batch) {
-            EbaySellApiClient.OfferUpdateResult result = byOfferId.get(plan.context().mapping().getOfferId());
+            EbayRepricingRecovery.Resolution result = byOfferId.get(plan.context().mapping().getOfferId());
             Decision decision = plan.decision();
             String detail = detail(plan);
             String operateResult;
-            if (result == null || !result.success()) {
+            if (result == null || result.failed()) {
                 counters.failed++;
                 operateResult = "失败(" + (result == null ? "eBay未返回该offer的处理结果" : result.error()) + ") " + detail;
+            } else if (result.kind() == EbayRepricingRecovery.Kind.GROUP_WITHDRAWN) {
+                counters.groupWithdrawn++;
+                operateResult = result.note() + " " + detail;
+            } else if (result.kind() == EbayRepricingRecovery.Kind.REMOVED_BY_EBAY) {
+                counters.removedByEbay++;
+                operateResult = result.note() + " " + detail;
+            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED_OUT_OF_STOCK) {
+                counters.detachedOutOfStock++;
+                operateResult = result.note() + " " + detail;
             } else {
                 switch (decision.action()) {
                     case LOWER_PRICE -> counters.lowered++;
@@ -528,7 +549,8 @@ public class EbayProfitPriceService {
                     default -> {
                     }
                 }
-                operateResult = label(decision.action()) + " " + detail;
+                operateResult = label(decision.action()) + " " + detail
+                        + (result.note() == null ? "" : "；" + result.note());
                 rememberSnapshot(plan);
             }
             recordItem(taskId, round, plan, truncate(operateResult, 250));
@@ -623,6 +645,9 @@ public class EbayProfitPriceService {
                     .fluentPut("kept", c.kept)
                     .fluentPut("alreadyZero", c.alreadyZero)
                     .fluentPut("failed", c.failed)
+                    .fluentPut("groupWithdrawn", c.groupWithdrawn)
+                    .fluentPut("removedByEbay", c.removedByEbay)
+                    .fluentPut("detachedOutOfStock", c.detachedOutOfStock)
                     .fluentPut("skipped", c.skipped)
                     .fluentPut("skippedUsRegion", c.skippedUsRegion)
                     .fluentPut("notListed", c.notListed)
@@ -636,8 +661,8 @@ public class EbayProfitPriceService {
         }
     }
 
-    private List<EbaySellApiClient.OfferUpdateResult> await(Future<List<EbaySellApiClient.OfferUpdateResult>> future,
-                                                            List<Planned> batch) {
+    private List<EbayRepricingRecovery.Resolution> await(Future<List<EbayRepricingRecovery.Resolution>> future,
+                                                         List<Planned> batch) {
         boolean interrupted = false;
         try {
             while (true) {
@@ -647,8 +672,8 @@ public class EbayProfitPriceService {
                     interrupted = true;
                 } catch (java.util.concurrent.ExecutionException e) {
                     String error = e.getCause() instanceof Exception cause ? safeError(cause) : "系统异常";
-                    return batch.stream().map(p -> new EbaySellApiClient.OfferUpdateResult(
-                            p.context().mapping().getSku(), p.context().mapping().getOfferId(), 0, error)).toList();
+                    return batch.stream().map(p -> new EbayRepricingRecovery.Resolution(
+                            p.context().mapping().getOfferId(), EbayRepricingRecovery.Kind.FAILED, error, null)).toList();
                 }
             }
         } finally {
@@ -818,6 +843,9 @@ public class EbayProfitPriceService {
         int kept;
         int alreadyZero;
         int failed;
+        int groupWithdrawn;
+        int removedByEbay;
+        int detachedOutOfStock;
 
         Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;

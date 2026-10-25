@@ -49,7 +49,8 @@ class EbayPriceSyncServiceTest {
         properties.setDefaultCurrency("USD");
         properties.setDefaultContentLanguage("en-US");
         PriceSwitch.EXCHANGE_RATE = 7.3d;
-        service = new EbayPriceSyncService(taskMapper, taskItemMapper, ebayListingMapper, ebayClient, poisonClient, properties);
+        service = new EbayPriceSyncService(taskMapper, taskItemMapper, ebayListingMapper, ebayClient, poisonClient,
+                properties, ignored -> { });
     }
 
     @Test
@@ -304,6 +305,55 @@ class EbayPriceSyncServiceTest {
         ArgumentCaptor<String> attributes = ArgumentCaptor.forClass(String.class);
         verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(77L), attributes.capture());
         assertThat(attributes.getValue()).contains("\"skippedUsRegion\":1").contains("\"changed\":2");
+    }
+
+    @Test
+    void withdrawsTheGroupWhenTheLastInStockSizeLosesItsPoisonPrice() {
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("OTHER", 100)));
+        when(ebayClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400,
+                    "HTTP 400: 25004: At least one of the variations must have a quantity greater than 0.")).toList();
+        });
+        when(ebayClient.withdrawOfferByInventoryItemGroup(anyString(), eq("EBAY_US"))).thenReturn(true);
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        verify(ebayClient).withdrawOfferByInventoryItemGroup(
+                cn.ken.shoes.service.EbayListingFactory.inventoryGroupKey("DD1391-100",
+                        cn.ken.shoes.model.ebay.EbayListingRegion.HK), "EBAY_US");
+        verify(ebayListingMapper).markGroupEnded("DD1391-100", "hk");
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getOperateResult()).contains("整组下架");
+        verify(taskMapper).updateTaskFailReason(88L, null);
+        ArgumentCaptor<String> attributes = ArgumentCaptor.forClass(String.class);
+        verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(88L), attributes.capture());
+        assertThat(attributes.getValue()).contains("\"groupWithdrawn\":1").contains("\"failed\":0");
+    }
+
+    @Test
+    void republishesTheGroupWhenAPricedSizeHasDetachedFromTheListing() {
+        when(ebayListingMapper.selectActive()).thenReturn(List.of(mapping()));
+        when(poisonClient.batchQueryPrice(List.of("DD1391-100"))).thenReturn(List.of(price("DD1391-100", 100)));
+        when(ebayClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400,
+                    "HTTP 400: 25013: Invalid data in the Inventory Item Group. Missing name in the variation specifics."))
+                    .toList();
+        }).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
+                    u.sku(), u.offerId(), 200, null)).toList();
+        });
+
+        service.runSingleRound(88L, new BigDecimal("1.1"), 1);
+
+        verify(ebayClient).publishOfferByInventoryItemGroup(anyString(), eq("EBAY_US"));
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getOperateResult()).startsWith("改价成功").contains("整组重新发布");
     }
 
     private void succeedAllBulkUpdates() {

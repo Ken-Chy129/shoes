@@ -60,6 +60,13 @@
         UPDATE ebay_listing SET status = 'ended' WHERE sku = #{sku}
     </update>
 
+    <update id="markGroupEnded">
+        UPDATE ebay_listing SET status = 'ended'
+        WHERE style_id = #{styleId}
+          AND COALESCE(region, 'hk') = #{region}
+          AND status = 'active'
+    </update>
+
     <update id="updatePriceAndQuantity">
         UPDATE ebay_listing
         SET price = COALESCE(#{price}, price),

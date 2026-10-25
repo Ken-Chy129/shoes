@@ -16,6 +16,7 @@ import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.util.ShoesUtil;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -69,7 +70,9 @@ public class EbayPriceSyncService {
     private final EbayProperties properties;
     private final Map<Long, RunHandle> running = new ConcurrentHashMap<>();
     private final ExecutorService updateExecutor = Executors.newVirtualThreadPerTaskExecutor();
+    private final EbayRepricingRecovery recovery;
 
+    @Autowired
     public EbayPriceSyncService(TaskMapper taskMapper,
                                 TaskItemMapper taskItemMapper,
                                 EbayListingMapper ebayListingMapper,
@@ -82,6 +85,20 @@ public class EbayPriceSyncService {
         this.ebayClient = ebayClient;
         this.poisonClient = poisonClient;
         this.properties = properties;
+        this.recovery = new EbayRepricingRecovery(ebayClient, ebayListingMapper, properties);
+    }
+
+    EbayPriceSyncService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
+                         EbayListingMapper ebayListingMapper, EbaySellApiClient ebayClient,
+                         PoisonClient poisonClient, EbayProperties properties,
+                         java.util.function.LongConsumer retrySleeper) {
+        this.taskMapper = taskMapper;
+        this.taskItemMapper = taskItemMapper;
+        this.ebayListingMapper = ebayListingMapper;
+        this.ebayClient = ebayClient;
+        this.poisonClient = poisonClient;
+        this.properties = properties;
+        this.recovery = new EbayRepricingRecovery(ebayClient, ebayListingMapper, properties, retrySleeper);
     }
 
     public synchronized Long start(long intervalHours, BigDecimal priceMultiplier) {
@@ -252,17 +269,19 @@ public class EbayPriceSyncService {
             planned.add(new PlannedUpdate(context, poisonPrice, target, update));
         }
 
-        int[] counters = new int[3]; // changed, noPrice, failed
+        int[] counters = new int[6]; // changed, noPrice, failed, groupWithdrawn, removedByEbay, detachedOutOfStock
+        EbayRepricingRecovery.Round recoveryRound = recovery.newRound();
         List<List<PlannedUpdate>> batches = partition(planned, EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT);
         for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
             ensureNotCancelled(cancelled);
             List<List<PlannedUpdate>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
-            List<List<EbaySellApiClient.OfferUpdateResult>> results = submitWave(wave);
+            List<List<EbayRepricingRecovery.Resolution>> results = submitWave(wave, recoveryRound);
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), results.get(b), counters);
             }
             if ((i / PARALLEL_BATCHES) % PROGRESS_EVERY_WAVES == 0) {
-                taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), counters[0], counters[1], skipped)
+                taskMapper.updateTaskAttributes(taskId, withRecovery(
+                        attributes(contexts.size(), counters[0], counters[1], skipped), counters)
                         .fluentPut("skippedUsRegion", skippedUsRegion)
                         .fluentPut("failed", counters[2])
                         .fluentPut("processed", Math.min((i + wave.size()) * EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT,
@@ -272,38 +291,47 @@ public class EbayPriceSyncService {
         }
         int failed = counters[2];
         taskMapper.updateTaskFailReason(taskId, failed == 0 ? null : "本轮有 " + failed + " 个商品处理失败");
-        taskMapper.updateTaskAttributes(taskId, attributes(contexts.size(), counters[0], counters[1], skipped)
+        taskMapper.updateTaskAttributes(taskId, withRecovery(
+                attributes(contexts.size(), counters[0], counters[1], skipped), counters)
                 .fluentPut("skippedUsRegion", skippedUsRegion)
                 .fluentPut("failed", failed).toJSONString());
+    }
+
+    private static JSONObject withRecovery(JSONObject attributes, int[] counters) {
+        if (counters[3] > 0) {
+            attributes.put("groupWithdrawn", counters[3]);
+        }
+        if (counters[4] > 0) {
+            attributes.put("removedByEbay", counters[4]);
+        }
+        if (counters[5] > 0) {
+            attributes.put("detachedOutOfStock", counters[5]);
+        }
+        return attributes;
     }
 
     /**
      * 并发发出一波批量改价请求并等待全部返回。整批请求失败只记为该批商品失败，
      * 不影响同一波的其它批次；等待期间不响应中断，保证在途写入有确定结果。
      */
-    private List<List<EbaySellApiClient.OfferUpdateResult>> submitWave(List<List<PlannedUpdate>> wave) {
-        List<Future<List<EbaySellApiClient.OfferUpdateResult>>> futures = new ArrayList<>(wave.size());
+    private List<List<EbayRepricingRecovery.Resolution>> submitWave(List<List<PlannedUpdate>> wave,
+                                                                     EbayRepricingRecovery.Round recoveryRound) {
+        List<Future<List<EbayRepricingRecovery.Resolution>>> futures = new ArrayList<>(wave.size());
         for (List<PlannedUpdate> batch : wave) {
-            List<EbaySellApiClient.OfferPriceQuantity> updates = batch.stream().map(PlannedUpdate::update).toList();
-            futures.add(updateExecutor.submit(() -> {
-                try {
-                    return ebayClient.bulkUpdatePriceQuantity(updates);
-                } catch (Exception e) {
-                    String error = safeError(e);
-                    return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(
-                            u.sku(), u.offerId(), 0, error)).toList();
-                }
-            }));
+            List<EbayRepricingRecovery.Target> targets = batch.stream().map(p -> new EbayRepricingRecovery.Target(
+                    p.update(), p.context().mapping().getStyleId(), p.context().mapping().getRegion(),
+                    p.context().mapping().getQuantity())).toList();
+            futures.add(updateExecutor.submit(() -> recoveryRound.apply(targets)));
         }
-        List<List<EbaySellApiClient.OfferUpdateResult>> results = new ArrayList<>(futures.size());
+        List<List<EbayRepricingRecovery.Resolution>> results = new ArrayList<>(futures.size());
         for (int i = 0; i < futures.size(); i++) {
             results.add(awaitUninterruptibly(futures.get(i), wave.get(i)));
         }
         return results;
     }
 
-    private List<EbaySellApiClient.OfferUpdateResult> awaitUninterruptibly(
-            Future<List<EbaySellApiClient.OfferUpdateResult>> future, List<PlannedUpdate> batch) {
+    private List<EbayRepricingRecovery.Resolution> awaitUninterruptibly(
+            Future<List<EbayRepricingRecovery.Resolution>> future, List<PlannedUpdate> batch) {
         boolean interrupted = false;
         try {
             while (true) {
@@ -313,8 +341,8 @@ public class EbayPriceSyncService {
                     interrupted = true;
                 } catch (ExecutionException e) {
                     String error = e.getCause() instanceof Exception cause ? safeError(cause) : "系统异常";
-                    return batch.stream().map(p -> new EbaySellApiClient.OfferUpdateResult(
-                            p.update().sku(), p.update().offerId(), 0, error)).toList();
+                    return batch.stream().map(p -> new EbayRepricingRecovery.Resolution(
+                            p.update().offerId(), EbayRepricingRecovery.Kind.FAILED, error, null)).toList();
                 }
             }
         } finally {
@@ -325,30 +353,45 @@ public class EbayPriceSyncService {
     }
 
     private void recordBatch(Long taskId, int round, List<PlannedUpdate> batch,
-                             List<EbaySellApiClient.OfferUpdateResult> results, int[] counters) {
-        Map<String, EbaySellApiClient.OfferUpdateResult> byOfferId = new HashMap<>();
-        for (EbaySellApiClient.OfferUpdateResult result : results) {
-            byOfferId.putIfAbsent(result.offerId(), result);
+                             List<EbayRepricingRecovery.Resolution> results, int[] counters) {
+        Map<String, EbayRepricingRecovery.Resolution> byOfferId = new HashMap<>();
+        for (EbayRepricingRecovery.Resolution result : results) {
+            if (result != null) {
+                byOfferId.putIfAbsent(result.offerId(), result);
+            }
         }
         for (PlannedUpdate plan : batch) {
-            EbaySellApiClient.OfferUpdateResult result = byOfferId.get(plan.context().offerId());
+            EbayRepricingRecovery.Resolution result = byOfferId.get(plan.context().offerId());
             String operateResult;
             Integer recordedQuantity = plan.target() == null ? Integer.valueOf(0) : plan.context().mapping().getQuantity();
-            if (result == null || !result.success()) {
+            if (result == null || result.failed()) {
                 counters[2]++;
                 operateResult = "改价失败(" + (result == null ? "eBay未返回该offer的处理结果" : result.error()) + ")";
+            } else if (result.kind() == EbayRepricingRecovery.Kind.GROUP_WITHDRAWN) {
+                counters[3]++;
+                operateResult = result.note();
+            } else if (result.kind() == EbayRepricingRecovery.Kind.REMOVED_BY_EBAY) {
+                counters[4]++;
+                operateResult = result.note();
+            } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED_OUT_OF_STOCK) {
+                counters[5]++;
+                operateResult = result.note();
             } else if (plan.target() != null) {
                 counters[0]++;
                 rememberPriceAndQuantity(plan.context(), plan.target(), null);
-                operateResult = "改价成功($" + plan.target().toPlainString() + ")";
+                operateResult = "改价成功($" + plan.target().toPlainString() + ")" + suffix(result);
             } else {
                 counters[1]++;
                 rememberPriceAndQuantity(plan.context(), null, 0);
-                operateResult = "无得物价格，库存置0";
+                operateResult = "无得物价格，库存置0" + suffix(result);
             }
             recordItem(taskId, round, plan.context(), plan.poisonPrice(), plan.target(),
                     recordedQuantity, truncate(operateResult, 250));
         }
+    }
+
+    private static String suffix(EbayRepricingRecovery.Resolution result) {
+        return result.note() == null ? "" : "；" + result.note();
     }
 
     /** 区域以上架时写入映射的 region 为准；历史数据为空视为港区。 */

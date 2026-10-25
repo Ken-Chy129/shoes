@@ -331,6 +331,29 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void stopsRepricingListingsRemovedByEbayForPolicyViolations() {
+        when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 400,
+                    "HTTP 400: 25097: This listing has been removed for violating Counterfeit items policy."))
+                    .toList();
+        });
+        pages(List.of(sku("SKU-A", "L-A", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(listingMapper).markGroupEnded("AAA-1", "hk");
+        ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(item.capture());
+        assertThat(item.getValue().getOperateResult()).contains("25097").contains("已停止改价");
+        verify(taskMapper).updateTaskFailReason(7L, null);
+        verify(listingMapper, never()).updatePriceAndQuantity(anyString(), any(), any());
+    }
+
+    @Test
     void keepsEarlierPagesWhenALaterPageFails() {
         when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
         when(marketingClient.getRunningAdRates()).thenReturn(Map.of());

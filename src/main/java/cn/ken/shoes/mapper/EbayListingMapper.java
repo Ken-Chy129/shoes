@@ -24,6 +24,9 @@ public interface EbayListingMapper extends BaseMapper<EbayListingDO> {
 
     int markEnded(@Param("sku") String sku);
 
+    /** 整组下架后把同一货号、同一区域的在架映射全部标记为 ended。 */
+    int markGroupEnded(@Param("styleId") String styleId, @Param("region") String region);
+
     int updatePriceAndQuantity(@Param("sku") String sku,
                                @Param("price") BigDecimal price,
                                @Param("quantity") Integer quantity);

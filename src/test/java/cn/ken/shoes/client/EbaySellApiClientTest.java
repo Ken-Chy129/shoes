@@ -108,6 +108,35 @@ class EbaySellApiClientTest {
     }
 
     @Test
+    void withdrawsAWholeInventoryItemGroupAndTreatsEndedGroupsAsWithdrawn() throws Exception {
+        server.enqueue(new MockResponse().setResponseCode(200).setBody("{}"));
+        server.enqueue(new MockResponse().setResponseCode(400).setBody(
+                "{\"errors\":[{\"errorId\":25082,\"message\":\"variation not on listing\"}]}"));
+
+        assertThat(client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US")).isTrue();
+        assertThat(client.withdrawOfferByInventoryItemGroup("group/1", "EBAY_US")).isFalse();
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getMethod()).isEqualTo("POST");
+        assertThat(request.getPath()).isEqualTo("/sell/inventory/v1/offer/withdraw_by_inventory_item_group");
+        JSONObject body = JSON.parseObject(request.getBody().readUtf8());
+        assertThat(body.getString("inventoryItemGroupKey")).isEqualTo("group/1");
+        assertThat(body.getString("marketplaceId")).isEqualTo("EBAY_US");
+    }
+
+    @Test
+    void reportsTheErrorIdWhenEbayOmitsTheMessage() {
+        server.enqueue(new MockResponse().setResponseCode(400)
+                .setBody("{\"errors\":[{\"errorId\":25709}]}"));
+
+        assertThatThrownBy(() -> client.bulkUpdatePriceQuantity(List.of(
+                new EbaySellApiClient.OfferPriceQuantity("SKU-1", "offer-1",
+                        new java.math.BigDecimal("10"), "USD", null))))
+                .hasMessageContaining("HTTP 400")
+                .hasMessageContaining("eBay error 25709");
+    }
+
+    @Test
     void replacesInventoryItemWithEncodedSkuAndRequiredHeaders() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(204));
         JSONObject payload = JSON.parseObject("""

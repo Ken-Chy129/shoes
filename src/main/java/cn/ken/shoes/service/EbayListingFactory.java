@@ -117,6 +117,11 @@ public class EbayListingFactory {
     }
 
     public String groupKey(String styleId, EbayListingRegion region) {
+        return inventoryGroupKey(styleId, region);
+    }
+
+    /** 商品组 key 只由货号和区域决定，改价等不依赖工厂其它配置的地方也直接用它。 */
+    public static String inventoryGroupKey(String styleId, EbayListingRegion region) {
         String style = required(styleId, "货号");
         String source = region == EbayListingRegion.US
                 ? String.join("|", "EBAYGROUP", "US", style, "NEW")
@@ -124,21 +129,21 @@ public class EbayListingFactory {
         return stableKey(source.toUpperCase(Locale.ROOT));
     }
 
-    private String stableKey(String source) {
+    private static String stableKey(String source) {
         String readable = source.replaceAll("[^A-Z0-9]", "");
         String hash = sha256(source).substring(0, 8).toUpperCase(Locale.ROOT);
         int readableLength = Math.min(readable.length(), MAX_SKU_LENGTH - hash.length());
         return readable.substring(0, readableLength) + hash;
     }
 
-    private String required(String value, String label) {
+    private static String required(String value, String label) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(label + "不能为空");
         }
         return value.trim();
     }
 
-    private String sha256(String value) {
+    private static String sha256(String value) {
         try {
             byte[] bytes = MessageDigest.getInstance("SHA-256")
                     .digest(value.getBytes(StandardCharsets.UTF_8));

@@ -13,6 +13,7 @@ import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +29,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
+@Slf4j
 @Component
 public class EbaySellApiClient {
 
@@ -186,6 +188,32 @@ public class EbaySellApiClient {
                 .build();
         JSONObject response = execute(request, Set.of(200));
         return requiredResponseField(response, "listingId");
+    }
+
+    /**
+     * 结束整个多尺码 listing（保留 offer 与库存数据，之后可整组重新发布）。
+     * eBay 对已结束的组返回的错误视为已下架，返回 false。
+     */
+    public boolean withdrawOfferByInventoryItemGroup(String inventoryItemGroupKey,
+                                                     String marketplaceId) {
+        JSONObject payload = new JSONObject(true);
+        payload.put("inventoryItemGroupKey",
+                requireValue(inventoryItemGroupKey, "inventoryItemGroupKey"));
+        payload.put("marketplaceId", requireValue(marketplaceId, "marketplaceId"));
+        Request request = request(inventoryUrl("offer").newBuilder()
+                .addPathSegment("withdraw_by_inventory_item_group")
+                .build(), null)
+                .post(jsonBody(payload))
+                .build();
+        try {
+            execute(request, Set.of(200, 204));
+            return true;
+        } catch (EbayApiException e) {
+            if (isAlreadyWithdrawn(e)) {
+                return false;
+            }
+            throw e;
+        }
     }
 
     public void createInventoryLocation(String merchantLocationKey, JSONObject payload) {
@@ -629,15 +657,28 @@ public class EbaySellApiClient {
                                 + message.replaceAll("\\s+", " ").trim();
                         return summary.length() <= 500 ? summary : summary.substring(0, 500);
                     }
+                    if (code != null && !code.isBlank()) {
+                        return "eBay error " + code;
+                    }
                 }
             } catch (JSONException ignored) {
                 // Fall through to the generic label for malformed provider JSON.
             }
+            log.warn("eBay返回无法解析的错误响应: {}", redactedSnippet(responseText));
             return "provider error";
         }
         String compact = responseText.replaceAll("\\s+", " ").trim();
         compact = compact.replaceAll("(?i)(bearer\\s+|access-token[=:]\\s*)[^\\s,;]+", "$1[redacted]");
         return compact.length() <= 500 ? compact : compact.substring(0, 500);
+    }
+
+    /** 只用于日志排查：去掉可能的凭据片段并截断，不写入任务明细。 */
+    private String redactedSnippet(String responseText) {
+        String compact = responseText.replaceAll("\\s+", " ").trim();
+        if (containsSensitiveMarker(compact)) {
+            return "[redacted: response mentions credentials]";
+        }
+        return compact.length() <= 1000 ? compact : compact.substring(0, 1000);
     }
 
     private String firstErrorId(String responseText) {
