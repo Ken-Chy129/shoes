@@ -35,8 +35,11 @@ import java.util.Set;
 public class StockXUpdateBidsTaskRunner implements Runnable {
 
     private static final int BATCH_SIZE = 50;
-    private static final int MAX_QUERY_ATTEMPTS = 3;
-    private static final long QUERY_RETRY_DELAY_MS = 2_000L;
+    /** StockX bids 子图偶发 "Failed to fetch from Subgraph 'bids'"，常持续数十秒，按退避重试。 */
+    private static final long[] QUERY_RETRY_DELAYS_MS = {2_000L, 5_000L, 10_000L, 20_000L, 30_000L};
+    private static final int MAX_QUERY_ATTEMPTS = QUERY_RETRY_DELAYS_MS.length + 1;
+    /** 读取出价连续失败的轮数上限；未达上限时跳过本轮、下一轮再读，不让长期任务因瞬时故障终止。 */
+    private static final int MAX_CONSECUTIVE_UNAVAILABLE_ROUNDS = 5;
 
     private final StockXAccount account;
     private final Long taskId;
@@ -83,10 +86,30 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
         try {
             Counters totals = new Counters();
             int round = 0;
+            int unavailableRounds = 0;
             while (true) {
                 ensureNotCancelled();
                 round++;
-                Counters current = executeRound(round);
+                Counters current;
+                try {
+                    current = executeRound(round);
+                    unavailableRounds = 0;
+                } catch (ActiveBidsUnavailableException e) {
+                    unavailableRounds++;
+                    if (unavailableRounds >= MAX_CONSECUTIVE_UNAVAILABLE_ROUNDS) {
+                        throw new IllegalStateException(e.getMessage() + "，连续"
+                                + unavailableRounds + "轮读取失败，已停止修改", e);
+                    }
+                    String reason = "第" + round + "轮：" + e.getMessage() + "，本轮未修改，"
+                            + intervalSeconds + "秒后重试（连续失败" + unavailableRounds + "/"
+                            + MAX_CONSECUTIVE_UNAVAILABLE_ROUNDS + "）";
+                    taskMapper.updateTaskRound(taskId, round);
+                    taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(start));
+                    taskMapper.updateTaskFailReason(taskId, reason);
+                    log.warn("[{}] {}, taskId:{}", accountName, reason, taskId);
+                    waitBeforeNextRound(intervalSeconds * 1000L);
+                    continue;
+                }
                 totals.add(current);
                 taskMapper.updateTaskRound(taskId, round);
                 taskMapper.updateTaskAttributes(taskId, new JSONObject(true)
@@ -372,17 +395,23 @@ public class StockXUpdateBidsTaskRunner implements Runnable {
                 return page;
             }
             if (attempt < MAX_QUERY_ATTEMPTS) {
-                taskMapper.updateTaskFailReason(taskId, "读取当前有效出价第" + pageNumber
-                        + "页失败，2秒后重试（"
-                        + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）");
-                log.warn("[{}] 读取当前有效出价第{}页失败，2秒后重试（{}/{}）, taskId:{}",
-                        account.getName(), pageNumber, attempt,
-                        MAX_QUERY_ATTEMPTS - 1, taskId);
-                waitBeforeNextQueryRetry(QUERY_RETRY_DELAY_MS);
+                long delayMs = QUERY_RETRY_DELAYS_MS[attempt - 1];
+                String message = "读取当前有效出价第" + pageNumber + "页失败，" + (delayMs / 1000)
+                        + "秒后重试（" + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）";
+                taskMapper.updateTaskFailReason(taskId, message);
+                log.warn("[{}] {}, taskId:{}", account.getName(), message, taskId);
+                waitBeforeNextQueryRetry(delayMs);
             }
         }
-        throw new IllegalStateException("读取当前有效出价第" + pageNumber
-                + "页失败（已重试2次），已停止修改");
+        throw new ActiveBidsUnavailableException("读取当前有效出价第" + pageNumber
+                + "页失败（已重试" + (MAX_QUERY_ATTEMPTS - 1) + "次）");
+    }
+
+    /** 读取当前有效出价暂不可用（非Token/限流问题），本轮不提交任何修改，可安全跳过。 */
+    static final class ActiveBidsUnavailableException extends RuntimeException {
+        ActiveBidsUnavailableException(String message) {
+            super(message);
+        }
     }
 
     private String resolveMetadata(JSONObject node, String primaryKey, String secondaryKey,

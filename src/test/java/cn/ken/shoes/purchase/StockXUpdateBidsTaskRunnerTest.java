@@ -114,6 +114,67 @@ class StockXUpdateBidsTaskRunnerTest {
     }
 
     @Test
+    void skipsARoundWhenTheBidSubgraphStaysUnavailableAndRecoversNextRound() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.transientNullReads = 6;
+        client.activeBids = page(List.of(
+                edge(activeBid("retry-bid", "variant-retry", "80", "100"))));
+        List<TaskItemDO> stored = new ArrayList<>();
+        AtomicReference<String> status = new AtomicReference<>();
+        List<String> failReasons = new ArrayList<>();
+        AtomicInteger waitedRounds = new AtomicInteger();
+
+        new StockXUpdateBidsTaskRunner(account(), 513L, List.of(input("retry-bid", "200")), 300,
+                StockXBidFeePolicy.disabled(), client,
+                taskMapper(status, new AtomicReference<>(), failReasons), itemMapper(stored)) {
+            @Override
+            protected void waitBeforeNextRound(long delayMs) {
+                if (waitedRounds.incrementAndGet() > 1) {
+                    throw new cn.ken.shoes.exception.TaskCancelledException();
+                }
+            }
+
+            @Override
+            protected void waitBeforeNextQueryRetry(long delayMs) {
+            }
+        }.run();
+
+        assertThat(client.queryCalls.get()).isEqualTo(7);
+        assertThat(failReasons).anyMatch(reason -> reason != null
+                && reason.startsWith("第1轮：读取当前有效出价第1页失败（已重试5次），本轮未修改"));
+        assertThat(client.submitted).singleElement().satisfies(batch ->
+                assertThat(batch).extracting(StockXBidUpdateItem::amount)
+                        .containsExactly(new BigDecimal("101")));
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.CANCEL.getCode());
+    }
+
+    @Test
+    void failsAfterTheBidSubgraphStaysUnavailableForConsecutiveRounds() {
+        FakeStockXClient client = new FakeStockXClient();
+        client.transientNullReads = Integer.MAX_VALUE;
+        AtomicReference<String> status = new AtomicReference<>();
+        List<String> failReasons = new ArrayList<>();
+
+        new StockXUpdateBidsTaskRunner(account(), 514L, List.of(input("retry-bid", "200")), 300,
+                StockXBidFeePolicy.disabled(), client,
+                taskMapper(status, new AtomicReference<>(), failReasons), itemMapper(new ArrayList<>())) {
+            @Override
+            protected void waitBeforeNextRound(long delayMs) {
+            }
+
+            @Override
+            protected void waitBeforeNextQueryRetry(long delayMs) {
+            }
+        }.run();
+
+        assertThat(client.queryCalls.get()).isEqualTo(30);
+        assertThat(status.get()).isEqualTo(TaskDO.TaskStatusEnum.FAILED.getCode());
+        assertThat(failReasons.get(failReasons.size() - 1))
+                .contains("连续5轮读取失败，已停止修改");
+        assertThat(client.submitted).isEmpty();
+    }
+
+    @Test
     void doesNotChangeAnAlreadyHighestBidOrExceedTheMaximum() {
         FakeStockXClient client = new FakeStockXClient();
         client.activeBids = page(List.of(
@@ -382,9 +443,20 @@ class StockXUpdateBidsTaskRunnerTest {
 
     private static TaskMapper taskMapper(AtomicReference<String> status,
                                          AtomicReference<String> attributes) {
+        return taskMapper(status, attributes, new ArrayList<>());
+    }
+
+    private static TaskMapper taskMapper(AtomicReference<String> status,
+                                         AtomicReference<String> attributes,
+                                         List<String> failReasons) {
         return proxy(TaskMapper.class, (method, args) -> {
             if (method.equals("updateTaskStatus")) status.set((String) args[1]);
             if (method.equals("updateTaskAttributes")) attributes.set((String) args[1]);
+            if (method.equals("updateTaskFailReason")) failReasons.add((String) args[1]);
+            if (method.equals("updateTaskFailed")) {
+                status.set(TaskDO.TaskStatusEnum.FAILED.getCode());
+                failReasons.add((String) args[1]);
+            }
             return null;
         });
     }

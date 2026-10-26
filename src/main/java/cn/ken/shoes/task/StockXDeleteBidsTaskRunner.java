@@ -40,7 +40,9 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
     private static final int BATCH_SIZE = 10;
     private static final int MAX_NO_PROGRESS_ROUNDS = 3;
     private static final int ZERO_CONFIRMATIONS = 3;
-    private static final int MAX_QUERY_ATTEMPTS = 3;
+    /** StockX bids 子图偶发 "Failed to fetch from Subgraph 'bids'"，常持续数十秒，按退避重试。 */
+    private static final long[] QUERY_RETRY_DELAYS_MS = {2_000L, 5_000L, 10_000L, 20_000L, 30_000L};
+    private static final int MAX_QUERY_ATTEMPTS = QUERY_RETRY_DELAYS_MS.length + 1;
     private static final long NEXT_CHECK_DELAY_MS = 2_000L;
 
     private final StockXAccount account;
@@ -292,14 +294,16 @@ public class StockXDeleteBidsTaskRunner implements Runnable {
                 lastException = e;
             }
             if (attempt < MAX_QUERY_ATTEMPTS) {
-                taskMapper.updateTaskFailReason(taskId, "读取" + pageLabel
-                        + "失败，2秒后重试（"
-                        + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）");
-                waitBeforeNextCheck(NEXT_CHECK_DELAY_MS);
+                long delayMs = QUERY_RETRY_DELAYS_MS[attempt - 1];
+                String message = "读取" + pageLabel + "失败，" + (delayMs / 1000)
+                        + "秒后重试（" + attempt + "/" + (MAX_QUERY_ATTEMPTS - 1) + "）";
+                taskMapper.updateTaskFailReason(taskId, message);
+                log.warn("[{}] {}, taskId:{}", account.getName(), message, taskId);
+                waitBeforeNextCheck(delayMs);
             }
         }
-        throw new IllegalStateException("读取" + pageLabel
-                + "失败（已重试2次），已停止撤销", lastException);
+        throw new IllegalStateException("读取" + pageLabel + "失败（已重试"
+                + (MAX_QUERY_ATTEMPTS - 1) + "次），已停止撤销", lastException);
     }
 
     private List<JSONObject> extractBids(JSONObject page) {
