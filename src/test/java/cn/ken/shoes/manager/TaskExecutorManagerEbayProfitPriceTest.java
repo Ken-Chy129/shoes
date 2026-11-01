@@ -96,6 +96,20 @@ class TaskExecutorManagerEbayProfitPriceTest {
         }
     }
 
+    @Test
+    void resumesPromoTaskWithDiscountParams() {
+        when(snapshotStore.loadEbayProfitTargets(9L)).thenReturn(Optional.empty());
+        when(service.startPromo(anyLong(), any(), any(), any(), any(), anyList())).thenReturn(101L);
+        source.setTaskType(EbayProfitPriceService.PROMO_TASK_TYPE);
+        JSONObject params = params(0).fluentPut("discountPercent", new BigDecimal("15"))
+                .fluentPut("sellerSharePercent", new BigDecimal("70"));
+
+        assertThat(manager.startEbayProfitPriceFromSnapshot(source, params)).isEqualTo(101L);
+        verify(service).startPromo(1L, new BigDecimal("50"), new BigDecimal("25"), new BigDecimal("15"),
+                new BigDecimal("70"), List.of());
+        verify(service, never()).start(anyLong(), any(), any(), anyList());
+    }
+
     private static JSONObject params(int overrideCount) {
         return new JSONObject().fluentPut("intervalHours", 1).fluentPut("defaultProfit", new BigDecimal("50"))
                 .fluentPut("freight", new BigDecimal("25"))

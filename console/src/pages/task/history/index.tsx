@@ -352,25 +352,33 @@ const TaskPage = () => {
                     },
                     onError: () => { message.error('追踪号码Excel上传失败'); setCreating(false); },
                 });
-            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_profit_price') {
+            } else if (createPlatform === 'ebay'
+                && (createTaskType === 'ebay_profit_price' || createTaskType === 'ebay_promo_profit_price')) {
                 // Excel 选填，所以自己组 FormData（doUploadRequestWithParams 要求必须有文件）。
+                const promo = createTaskType === 'ebay_promo_profit_price';
+                const taskName = promo ? 'eBay活动改价' : 'eBay盈利改价';
                 const formData = new FormData();
                 formData.append('intervalHours', String(values.profitIntervalHours));
                 formData.append('defaultProfit', String(values.defaultProfit));
                 formData.append('freight', String(values.profitFreight));
+                if (promo) {
+                    formData.append('discountPercent', String(values.promoDiscountPercent));
+                    formData.append('sellerSharePercent', String(values.promoSellerSharePercent));
+                }
                 const file = values.ebayProfitExcel?.[0]?.originFileObj;
                 if (file) formData.append('file', file);
-                request(TASK_API.EBAY_START_PROFIT_PRICE, {method: 'POST', data: formData})
+                request(promo ? TASK_API.EBAY_START_PROMO_PROFIT_PRICE : TASK_API.EBAY_START_PROFIT_PRICE,
+                    {method: 'POST', data: formData})
                     .then((res: any) => {
                         if (!res.success) {
-                            message.error(res.errorMsg || 'eBay盈利改价任务创建失败');
+                            message.error(res.errorMsg || `${taskName}任务创建失败`);
                             return;
                         }
-                        message.success(`eBay盈利改价任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        message.success(`${taskName}任务已创建${res.data ? ` #${res.data}` : ''}`);
                         setCreateModalVisible(false);
                         queryTaskList();
                     })
-                    .catch(() => message.error('eBay盈利改价任务创建失败'))
+                    .catch(() => message.error(`${taskName}任务创建失败`))
                     .finally(() => setCreating(false));
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
                 doPostRequest(TASK_API.EBAY_START_PRICE_SYNC, {
@@ -862,7 +870,7 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
-                if (record.taskType === 'ebay_profit_price' && record.attributes) {
+                if ((record.taskType === 'ebay_profit_price' || record.taskType === 'ebay_promo_profit_price') && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
                         const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 调至盈利 ${attrs.raised ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 得物无价清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}${attrs.groupWithdrawn ? ` | 整组无价下架 ${attrs.groupWithdrawn}` : ''}${attrs.removedByEbay ? ` | eBay违规移除 ${attrs.removedByEbay}` : ''}`;
@@ -1108,7 +1116,9 @@ const TaskPage = () => {
             </Form.Item>;
         }
 
-        if (createPlatform === 'ebay' && createTaskType === 'ebay_profit_price') {
+        if (createPlatform === 'ebay'
+            && (createTaskType === 'ebay_profit_price' || createTaskType === 'ebay_promo_profit_price')) {
+            const promo = createTaskType === 'ebay_promo_profit_price';
             return <>
                 <Form.Item name="profitIntervalHours" label="执行间隔"
                            initialValue={1}
@@ -1116,15 +1126,40 @@ const TaskPage = () => {
                                {required: true, message: '请输入执行间隔'},
                                {type: 'number', min: 1, max: 168, message: '请输入1到168之间的整数小时'},
                            ]}
-                           extra="范围1~168小时；与「定时改价」互斥，需先停止定时改价">
+                           extra="范围1~168小时；盈利改价、活动改价、定时改价三者互斥，需先停止正在运行的改价任务">
                     <InputNumber min={1} max={168} precision={0} addonAfter="小时" style={{width: 160}}/>
                 </Form.Item>
+                {promo && <>
+                    <Form.Item name="promoDiscountPercent" label="活动折扣"
+                               initialValue={15}
+                               rules={[
+                                   {required: true, message: '请输入活动折扣'},
+                                   {type: 'number', min: 0.01, max: 99.99, message: '请输入0.01到99.99之间的数字'},
+                               ]}
+                               extra="买家少付的比例，如 85 折填 15">
+                        <InputNumber min={0.01} max={99.99} step={1} precision={2} addonAfter="%"
+                                     style={{width: 160}}/>
+                    </Form.Item>
+                    <Form.Item name="promoSellerSharePercent" label="卖家承担比例"
+                               initialValue={70}
+                               rules={[
+                                   {required: true, message: '请输入卖家承担比例'},
+                                   {type: 'number', min: 0, max: 100, message: '请输入0到100之间的数字'},
+                               ]}
+                               extra="折扣部分由卖家承担的比例（其余由eBay承担）；卖家承担 = 标价 × 折扣 × 该比例，之后从货款扣回，计入成本">
+                        <InputNumber min={0} max={100} step={5} precision={2} addonAfter="%"
+                                     style={{width: 160}}/>
+                    </Form.Item>
+                </>}
                 <Form.Item name="defaultProfit" label="默认目标盈利"
+                           initialValue={promo ? -30 : undefined}
                            rules={[
                                {required: true, message: '请输入默认目标盈利'},
                                {type: 'number', min: -100000, max: 100000, message: '请输入-100000到100000之间的数字'},
                            ]}
-                           extra="利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价时直接调到刚好盈利的最低价（不盈利则调高，有余量则一次降到底）；只有得物没价格才将库存置0">
+                           extra={promo
+                               ? '利润 = (到手美元 − 标价 × 卖家承担补贴率) × 汇率 − 得物价 − 运费；费用与$150门槛仍按标价计算，其余规则与盈利改价相同'
+                               : '利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价时直接调到刚好盈利的最低价（不盈利则调高，有余量则一次降到底）；只有得物没价格才将库存置0'}>
                     <InputNumber min={-100000} max={100000} step={10} precision={2} addonAfter="元"
                                  style={{width: 160}}/>
                 </Form.Item>

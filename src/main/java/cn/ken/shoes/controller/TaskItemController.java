@@ -108,7 +108,10 @@ public class TaskItemController {
             return;
         }
 
-        if (task != null && cn.ken.shoes.service.EbayProfitPriceService.TASK_TYPE.equals(task.getTaskType())) {
+        boolean promoProfitTask = task != null
+                && cn.ken.shoes.service.EbayProfitPriceService.PROMO_TASK_TYPE.equals(task.getTaskType());
+        if (task != null && (promoProfitTask
+                || cn.ken.shoes.service.EbayProfitPriceService.TASK_TYPE.equals(task.getTaskType()))) {
             SimpleDateFormat profitDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             List<List<String>> head = List.of(List.of("轮次"), List.of("物品编号"), List.of("SKU"), List.of("货号"),
                     List.of("尺码"), List.of("标题"), List.of("原价格($)"), List.of("新价格($)"), List.of("库存"),
@@ -124,7 +127,8 @@ public class TaskItemController {
                         StrUtil.nullToEmpty(item.getOperateResult()),
                         item.getOperateTime() == null ? "" : profitDateFormat.format(item.getOperateTime())));
             }
-            EasyExcel.write(response.getOutputStream()).head(head).sheet("eBay盈利改价").doWrite(data);
+            EasyExcel.write(response.getOutputStream()).head(head)
+                    .sheet(promoProfitTask ? "eBay活动改价" : "eBay盈利改价").doWrite(data);
             return;
         }
 

@@ -35,7 +35,8 @@ public class TaskItemRetentionService {
     private static final long PAUSE_BETWEEN_BATCHES_MS = 50;
 
     static final List<String> ROUND_BASED_TYPES = List.of("price_down");
-    static final List<String> TIME_BASED_TYPES = List.of("ebay_price_sync", "ebay_profit_price");
+    static final List<String> TIME_BASED_TYPES = List.of("ebay_price_sync", "ebay_profit_price",
+            "ebay_promo_profit_price");
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;

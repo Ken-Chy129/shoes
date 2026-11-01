@@ -279,7 +279,7 @@ public class TaskService {
                     taskExecutorManager.cancelEbayPoisonListing(task.getId());
                 }
             }
-            case "ebay_profit_price" -> {
+            case "ebay_profit_price", "ebay_promo_profit_price" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayProfitPrice(task.getId());
                 }

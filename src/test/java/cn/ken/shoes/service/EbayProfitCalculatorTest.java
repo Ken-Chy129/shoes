@@ -41,4 +41,23 @@ class EbayProfitCalculatorTest {
         assertThat(EbayProfitCalculator.netReceived(x, BigDecimal.ZERO).setScale(4, RoundingMode.HALF_UP))
                 .isEqualByComparingTo(expected.setScale(4, RoundingMode.HALF_UP));
     }
+
+    @Test
+    void promoSubsidyIsDeductedFromNetReceivedAtListPrice() {
+        // 标价 $200，85 折，卖家承担 7 成 -> 补贴 = 200 × 15% × 70% = $21
+        BigDecimal rate = new BigDecimal("0.105");
+        BigDecimal base = EbayProfitCalculator.netReceived(new BigDecimal("200"), BigDecimal.ZERO);
+        BigDecimal promo = EbayProfitCalculator.netReceived(new BigDecimal("200"), BigDecimal.ZERO, rate);
+        assertThat(base.subtract(promo)).isEqualByComparingTo("21");
+        // 150 门槛仍按标价判断：$150 走 7%，$149.99 走 12.7%
+        assertThat(
+                EbayProfitCalculator.netReceived(new BigDecimal("150"), BigDecimal.ZERO, rate))
+                .isEqualByComparingTo(EbayProfitCalculator.netReceived(new BigDecimal("150"), BigDecimal.ZERO)
+                        .subtract(new BigDecimal("15.75")));
+        assertThat(
+                EbayProfitCalculator.exactProfit(new BigDecimal("200"), BigDecimal.ZERO, rate,
+                        new BigDecimal("7"), new BigDecimal("1000"), new BigDecimal("25")))
+                .isEqualByComparingTo(EbayProfitCalculator.exactProfit(new BigDecimal("200"), BigDecimal.ZERO,
+                        new BigDecimal("7"), new BigDecimal("1000"), new BigDecimal("25")).subtract(new BigDecimal("147")));
+    }
 }

@@ -457,6 +457,74 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void promoDecisionFindsLowestPriceMeetingTargetAfterSellerSubsidy() {
+        BigDecimal subsidy = new BigDecimal("0.105");
+        BigDecimal poison = new BigDecimal("1000");
+        BigDecimal target = new BigDecimal("-30");
+        Decision d = EbayProfitPriceService.decide(new BigDecimal("300"), 1, poison, AD, subsidy, target, RATE,
+                FREIGHT);
+        BigDecimal p = d.newPrice();
+        assertThat(EbayProfitCalculator.exactProfit(p, AD, subsidy, RATE, poison, FREIGHT)).isGreaterThan(target);
+        assertThat(EbayProfitCalculator.exactProfit(p.subtract(new BigDecimal("0.01")), AD, subsidy, RATE, poison,
+                FREIGHT)).isLessThanOrEqualTo(target);
+        // 补贴要靠更高的标价覆盖
+        assertThat(p).isGreaterThan(EbayProfitPriceService.minimumProfitablePrice(poison, AD, target, RATE, FREIGHT));
+    }
+
+    @Test
+    void startsPromoTaskWithSubsidyParamsAndRunsRoundsWithSubsidy() {
+        doAnswer(invocation -> {
+            ((TaskDO) invocation.getArgument(0)).setId(66L);
+            return 1;
+        }).when(taskMapper).insert(any(TaskDO.class));
+
+        assertThat(service.startPromo(1, new BigDecimal("-30"), FREIGHT, new BigDecimal("15"),
+                new BigDecimal("70"), List.of())).isEqualTo(66L);
+        ArgumentCaptor<TaskDO> created = ArgumentCaptor.forClass(TaskDO.class);
+        verify(taskMapper).insert(created.capture());
+        assertThat(created.getValue().getTaskType()).isEqualTo(EbayProfitPriceService.PROMO_TASK_TYPE);
+        com.alibaba.fastjson.JSONObject params = com.alibaba.fastjson.JSONObject.parseObject(
+                created.getValue().getParams());
+        assertThat(params.getBigDecimal("discountPercent")).isEqualByComparingTo("15");
+        assertThat(params.getBigDecimal("sellerSharePercent")).isEqualByComparingTo("70");
+        assertThat(params.getBigDecimal("sellerSubsidyRate")).isEqualByComparingTo("0.105");
+        assertThat(started).hasSize(1);
+    }
+
+    @Test
+    void promoRoundWritesSubsidyAdjustedPrice() {
+        BigDecimal subsidy = new BigDecimal("0.105");
+        when(listingMapper.selectActive()).thenReturn(List.of(listing("SKU-A", "offer-A", "AAA-1", "HK")));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 1000)));
+        pages(List.of(sku("SKU-A", "L-A", "300", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("-30"), FREIGHT, subsidy, Map.of(), new AtomicBoolean());
+
+        BigDecimal expected = EbayProfitPriceService.minimumProfitablePrice(new BigDecimal("1000"), BigDecimal.ZERO,
+                subsidy, new BigDecimal("-30"), RATE, FREIGHT);
+        verify(sellClient).bulkUpdatePriceQuantity(argThat(updates -> updates.size() == 1
+                && updates.get(0).price().compareTo(expected) == 0));
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(items.capture());
+        assertThat(items.getValue().getOperateResult()).contains("活动补贴10.5%");
+    }
+
+    @Test
+    void rejectsInvalidPromoParamsAndRefusesWhileAnyRepricingRuns() {
+        assertThatThrownBy(() -> service.startPromo(1, BigDecimal.ZERO, FREIGHT, BigDecimal.ZERO,
+                new BigDecimal("70"), List.of())).hasMessageContaining("活动折扣");
+        assertThatThrownBy(() -> service.startPromo(1, BigDecimal.ZERO, FREIGHT, new BigDecimal("15"),
+                new BigDecimal("101"), List.of())).hasMessageContaining("卖家承担");
+        when(taskMapper.selectRunningTask("ebay", EbayProfitPriceService.PROMO_TASK_TYPE, "running"))
+                .thenReturn(new TaskDO());
+        assertThat(service.start(1, new BigDecimal("50"), FREIGHT, List.of())).isNull();
+        assertThat(service.startPromo(1, new BigDecimal("50"), FREIGHT, new BigDecimal("15"),
+                new BigDecimal("70"), List.of())).isNull();
+        verify(taskMapper, never()).insert(any(TaskDO.class));
+    }
+
+    @Test
     void refusesToStartWhileLegacyPriceSyncRunning() {
         when(taskMapper.selectRunningTask("ebay", EbayPriceSyncService.TASK_TYPE, "running"))
                 .thenReturn(new TaskDO());

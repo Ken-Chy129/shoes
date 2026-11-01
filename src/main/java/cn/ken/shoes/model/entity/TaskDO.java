@@ -79,6 +79,7 @@ public class TaskDO {
         EBAY_POISON_LISTING("eBay得物价上架", "ebay_poison_listing"),
         EBAY_PRICE_SYNC("eBay定时改价", "ebay_price_sync"),
         EBAY_PROFIT_PRICE("eBay盈利改价", "ebay_profit_price"),
+        EBAY_PROMO_PROFIT_PRICE("eBay活动改价", "ebay_promo_profit_price"),
         EBAY_DELIST("eBay下架", "ebay_delist"),
         EBAY_ZERO_STOCK("eBay库存清零", "ebay_zero_stock"),
         EBAY_FETCH_ORDERS("eBay获取订单", "ebay_fetch_orders"),

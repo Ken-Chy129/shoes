@@ -53,12 +53,19 @@ import java.util.function.Consumer;
  * </ul>
  * 广告费率取运行中按成交付费活动里该商品的实际费率，不在活动里按 0；得物无价时清零库存。
  * 只处理港区商品。按 GetSellerList 分页：拉一页、处理一页、写回一页，再拉下一页。
+ *
+ * <p>同一套逻辑还承载「eBay活动改价」（{@link #PROMO_TASK_TYPE}）：eBay 折扣活动里买家按折扣付款，
+ * 折扣部分卖家承担一定比例（如 15% 折扣、卖家承担 7 成 = 标价的 10.5%），这部分之后从货款扣回。
+ * 活动改价在到手金额里额外扣掉这笔补贴，其余算法与盈利改价完全一致。
  */
 @Slf4j
 @Service
 public class EbayProfitPriceService {
 
     public static final String TASK_TYPE = "ebay_profit_price";
+    public static final String PROMO_TASK_TYPE = "ebay_promo_profit_price";
+    public static final BigDecimal DEFAULT_PROMO_DISCOUNT_PERCENT = new BigDecimal("15");
+    public static final BigDecimal DEFAULT_PROMO_SELLER_SHARE_PERCENT = new BigDecimal("70");
     public static final int RESTORE_QUANTITY = 1;
     private static final BigDecimal MIN_PRICE = new BigDecimal("0.99");
     private static final BigDecimal MAX_SAFE_PRICE = new BigDecimal("999999.99");
@@ -67,6 +74,7 @@ public class EbayProfitPriceService {
     private static final BigDecimal MAX_PROFIT = new BigDecimal("100000");
     private static final int PARALLEL_BATCHES = 4;
     private static final int MAX_OVERRIDE_ROWS = 20000;
+    private static final BigDecimal HUNDRED = new BigDecimal("100");
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -128,6 +136,25 @@ public class EbayProfitPriceService {
      */
     public synchronized Long start(long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
                                    List<EbayProfitTargetExcel> overrides) {
+        return start(Mode.PROFIT, intervalHours, defaultProfit, freight, overrides);
+    }
+
+    /**
+     * 启动「eBay活动改价」：卖家承担的补贴 = 标价 × 折扣% × 卖家承担%，在到手金额里扣除。
+     *
+     * @param discountPercent    活动折扣百分数（15 表示买家少付 15%）
+     * @param sellerSharePercent 折扣部分卖家承担的百分数（70 表示卖家承担 7 成）
+     * @return 任务ID；任一改价任务正在运行时返回 null
+     */
+    public synchronized Long startPromo(long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
+                                        BigDecimal discountPercent, BigDecimal sellerSharePercent,
+                                        List<EbayProfitTargetExcel> overrides) {
+        validatePromo(discountPercent, sellerSharePercent);
+        return start(Mode.promo(discountPercent, sellerSharePercent), intervalHours, defaultProfit, freight, overrides);
+    }
+
+    private Long start(Mode mode, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
+                       List<EbayProfitTargetExcel> overrides) {
         validate(intervalHours, defaultProfit, freight);
         Map<String, BigDecimal> targets = normalizeOverrides(overrides);
         if (!canRun()) {
@@ -142,15 +169,21 @@ public class EbayProfitPriceService {
         });
         TaskDO task = new TaskDO();
         task.setPlatform("ebay");
-        task.setTaskType(TASK_TYPE);
+        task.setTaskType(mode.taskType());
         task.setAccountName(properties.getEnvironment());
         task.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         task.setStartTime(new Date());
         task.setRound(0);
-        task.setParams(new JSONObject(true)
+        JSONObject params = new JSONObject(true)
                 .fluentPut("intervalHours", intervalHours)
                 .fluentPut("defaultProfit", defaultProfit)
-                .fluentPut("freight", freight)
+                .fluentPut("freight", freight);
+        if (mode.promo()) {
+            params.fluentPut("discountPercent", mode.discountPercent())
+                    .fluentPut("sellerSharePercent", mode.sellerSharePercent())
+                    .fluentPut("sellerSubsidyRate", mode.subsidyRate());
+        }
+        task.setParams(params
                 .fluentPut("overrideCount", snapshot.size())
                 .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
                 .toJSONString());
@@ -161,7 +194,8 @@ public class EbayProfitPriceService {
             if (!snapshot.isEmpty()) {
                 snapshotStore.saveEbayProfitTargets(task.getId(), snapshot);
             }
-            threadStarter.accept(() -> runLoop(task.getId(), intervalHours, defaultProfit, freight, targets, handle));
+            threadStarter.accept(() -> runLoop(task.getId(), mode, intervalHours, defaultProfit, freight, targets,
+                    handle));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
@@ -180,15 +214,17 @@ public class EbayProfitPriceService {
         handle.stop.countDown();
     }
 
-    /** 与「eBay定时改价」互斥：两者都改同一批港区商品的价格。 */
+    /** 盈利改价、活动改价、定时改价三者互斥：都改同一批港区商品的价格。 */
     public boolean canRun() {
         return running.isEmpty()
                 && taskMapper.selectRunningTask("ebay", TASK_TYPE, TaskDO.TaskStatusEnum.RUNNING.getCode()) == null
+                && taskMapper.selectRunningTask("ebay", PROMO_TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode()) == null
                 && taskMapper.selectRunningTask("ebay", EbayPriceSyncService.TASK_TYPE,
                 TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
     }
 
-    private void runLoop(Long taskId, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
+    private void runLoop(Long taskId, Mode mode, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
                          Map<String, BigDecimal> targets, RunHandle handle) {
         int round = 0;
         boolean cancelled = false;
@@ -196,7 +232,8 @@ public class EbayProfitPriceService {
             while (!handle.cancelled.get()) {
                 round++;
                 try {
-                    runSingleRound(taskId, round, defaultProfit, freight, targets, handle.cancelled);
+                    runSingleRound(taskId, round, defaultProfit, freight, mode.subsidyRate(), targets,
+                            handle.cancelled);
                     taskMapper.updateTaskRound(taskId, round);
                 } catch (TaskCancelledException | java.util.concurrent.CancellationException e) {
                     break;
@@ -243,15 +280,25 @@ public class EbayProfitPriceService {
      */
     static Decision decide(BigDecimal price, int availableQuantity, BigDecimal poisonPrice, BigDecimal adRate,
                            BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
+        return decide(price, availableQuantity, poisonPrice, adRate, BigDecimal.ZERO, targetProfit, exchangeRate,
+                freight);
+    }
+
+    /** @param subsidyRate 卖家承担的活动补贴占标价比例，盈利改价为 0 */
+    static Decision decide(BigDecimal price, int availableQuantity, BigDecimal poisonPrice, BigDecimal adRate,
+                           BigDecimal subsidyRate, BigDecimal targetProfit, BigDecimal exchangeRate,
+                           BigDecimal freight) {
         if (poisonPrice == null) {
             return availableQuantity > 0
                     ? new Decision(Action.ZERO_STOCK, null, 0, null, null)
                     : new Decision(Action.ALREADY_ZERO, null, null, null, null);
         }
-        BigDecimal profit = EbayProfitCalculator.exactProfit(price, adRate, exchangeRate, poisonPrice, freight);
-        BigDecimal target = minimumProfitablePrice(poisonPrice, adRate, targetProfit, exchangeRate, freight);
+        BigDecimal profit = EbayProfitCalculator.exactProfit(price, adRate, subsidyRate, exchangeRate, poisonPrice,
+                freight);
+        BigDecimal target = minimumProfitablePrice(poisonPrice, adRate, subsidyRate, targetProfit, exchangeRate,
+                freight);
         BigDecimal targetPriceProfit = EbayProfitCalculator.exactProfit(
-                target, adRate, exchangeRate, poisonPrice, freight);
+                target, adRate, subsidyRate, exchangeRate, poisonPrice, freight);
         boolean restore = availableQuantity <= 0;
         int cmp = target.compareTo(price);
         if (cmp < 0) {
@@ -275,34 +322,39 @@ public class EbayProfitPriceService {
      */
     static BigDecimal minimumProfitablePrice(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal targetProfit,
                                              BigDecimal exchangeRate, BigDecimal freight) {
+        return minimumProfitablePrice(poisonPrice, adRate, BigDecimal.ZERO, targetProfit, exchangeRate, freight);
+    }
+
+    static BigDecimal minimumProfitablePrice(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal subsidyRate,
+                                             BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
+        Pricing pricing = new Pricing(poisonPrice, adRate, subsidyRate, targetProfit, exchangeRate, freight);
         long min = MIN_PRICE.movePointRight(2).longValueExact();
         long threshold = EbayProfitCalculator.HIGH_PRICE_THRESHOLD.movePointRight(2).longValueExact();
         long max = MAX_SAFE_PRICE.movePointRight(2).longValueExact();
-        requireIncreasing(poisonPrice, adRate, exchangeRate, freight, min, threshold - 1);
-        if (profitable(threshold - 1, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+        requireIncreasing(pricing, min, threshold - 1);
+        if (profitable(threshold - 1, pricing)) {
             return BigDecimal.valueOf(searchLowest(min, threshold - 1,
-                    poisonPrice, adRate, targetProfit, exchangeRate, freight), 2);
+                    pricing), 2);
         }
-        requireIncreasing(poisonPrice, adRate, exchangeRate, freight, threshold, max);
+        requireIncreasing(pricing, threshold, max);
         long low = threshold;
         long high = threshold;
-        while (high < max && !profitable(high, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+        while (high < max && !profitable(high, pricing)) {
             low = high + 1;
             high = Math.min(max, high * 2);
         }
-        if (!profitable(high, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+        if (!profitable(high, pricing)) {
             throw new IllegalArgumentException("无法在安全调价上限内达到目标盈利");
         }
         return BigDecimal.valueOf(searchLowest(Math.min(low, high), high,
-                poisonPrice, adRate, targetProfit, exchangeRate, freight), 2);
+                pricing), 2);
     }
 
     /** 在 [low, high]（美分）内二分，前提：high 盈利且区间内利润单调递增。 */
-    private static long searchLowest(long low, long high, BigDecimal poisonPrice, BigDecimal adRate,
-                                     BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
+    private static long searchLowest(long low, long high, Pricing pricing) {
         while (low < high) {
             long mid = low + (high - low) / 2;
-            if (profitable(mid, poisonPrice, adRate, targetProfit, exchangeRate, freight)) {
+            if (profitable(mid, pricing)) {
                 high = mid;
             } else {
                 low = mid + 1;
@@ -311,21 +363,37 @@ public class EbayProfitPriceService {
         return low;
     }
 
-    private static boolean profitable(long cents, BigDecimal poisonPrice, BigDecimal adRate,
-                                      BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
-        return EbayProfitCalculator.exactProfit(BigDecimal.valueOf(cents, 2), adRate, exchangeRate,
-                poisonPrice, freight).compareTo(targetProfit) > 0;
+    private static boolean profitable(long cents, Pricing p) {
+        return p.profit(cents).compareTo(p.targetProfit()) > 0;
     }
 
     /** 费率过高（总扣点 × 1.09 ≥ 1）时涨价反而亏更多，二分不成立，直接判失败而不是给出错误价格。 */
-    private static void requireIncreasing(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal exchangeRate,
-                                          BigDecimal freight, long fromCents, long toCents) {
-        BigDecimal from = EbayProfitCalculator.exactProfit(BigDecimal.valueOf(fromCents, 2), adRate, exchangeRate,
-                poisonPrice, freight);
-        BigDecimal to = EbayProfitCalculator.exactProfit(BigDecimal.valueOf(toCents, 2), adRate, exchangeRate,
-                poisonPrice, freight);
-        if (to.compareTo(from) <= 0) {
+    private static void requireIncreasing(Pricing p, long fromCents, long toCents) {
+        if (p.profit(toCents).compareTo(p.profit(fromCents)) <= 0) {
             throw new IllegalArgumentException("广告费率过高，提价无法提高利润");
+        }
+    }
+
+    private record Pricing(BigDecimal poisonPrice, BigDecimal adRate, BigDecimal subsidyRate,
+                           BigDecimal targetProfit, BigDecimal exchangeRate, BigDecimal freight) {
+        BigDecimal profit(long cents) {
+            return EbayProfitCalculator.exactProfit(BigDecimal.valueOf(cents, 2), adRate, subsidyRate,
+                    exchangeRate, poisonPrice, freight);
+        }
+    }
+
+    /** 任务模式：盈利改价（无补贴）或活动改价（扣卖家承担的折扣补贴）。 */
+    record Mode(String taskType, BigDecimal discountPercent, BigDecimal sellerSharePercent,
+                BigDecimal subsidyRate) {
+        static final Mode PROFIT = new Mode(TASK_TYPE, null, null, BigDecimal.ZERO);
+
+        static Mode promo(BigDecimal discountPercent, BigDecimal sellerSharePercent) {
+            BigDecimal rate = discountPercent.multiply(sellerSharePercent).divide(new BigDecimal("10000"));
+            return new Mode(PROMO_TASK_TYPE, discountPercent, sellerSharePercent, rate);
+        }
+
+        boolean promo() {
+            return PROMO_TASK_TYPE.equals(taskType);
         }
     }
 
@@ -345,6 +413,12 @@ public class EbayProfitPriceService {
 
     void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, BigDecimal freight,
                         Map<String, BigDecimal> targets,
+                        AtomicBoolean cancelled) {
+        runSingleRound(taskId, round, defaultProfit, freight, BigDecimal.ZERO, targets, cancelled);
+    }
+
+    void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, BigDecimal freight,
+                        BigDecimal subsidyRate, Map<String, BigDecimal> targets,
                         AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
         BigDecimal exchangeRate = exchangeRate();
@@ -377,7 +451,7 @@ public class EbayProfitPriceService {
             tradingClient.forEachActiveSkuPage(cancelled::get, page -> {
                 ensureNotCancelled(cancelled);
                 processPage(taskId, round, page, bySku, processed, adRates, targets, defaultProfit,
-                        exchangeRate, freight, counters, cancelled, recoveryRound);
+                        exchangeRate, freight, subsidyRate, counters, cancelled, recoveryRound);
                 counters.pages = page.pageNumber();
                 counters.totalPages = page.totalPages();
                 writeAttributes(taskId, counters);
@@ -409,7 +483,7 @@ public class EbayProfitPriceService {
                              Map<String, EbayListingDO> bySku, Set<String> processed,
                              Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
                              BigDecimal defaultProfit, BigDecimal exchangeRate, BigDecimal freight,
-                             Counters counters, AtomicBoolean cancelled,
+                             BigDecimal subsidyRate, Counters counters, AtomicBoolean cancelled,
                              EbayRepricingRecovery.Round recoveryRound) {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
@@ -427,7 +501,7 @@ public class EbayProfitPriceService {
             String styleId = mapping.getStyleId().trim();
             contexts.add(new Context(mapping, current, euSize, styleId,
                     adRates.getOrDefault(current.listingId(), BigDecimal.ZERO),
-                    targets.getOrDefault(normalizeStyleId(styleId), defaultProfit)));
+                    targets.getOrDefault(normalizeStyleId(styleId), defaultProfit), subsidyRate));
             modelNos.add(styleId);
         }
         if (contexts.isEmpty()) {
@@ -461,7 +535,7 @@ public class EbayProfitPriceService {
             Decision decision;
             try {
                 decision = decide(context.live().price(), context.live().availableQuantity(), poisonPrice,
-                        context.adRate(), context.targetProfit(), exchangeRate, freight);
+                        context.adRate(), context.subsidyRate(), context.targetProfit(), exchangeRate, freight);
             } catch (IllegalArgumentException | ArithmeticException e) {
                 counters.failed++;
                 log.warn("eBay盈利改价计算失败，保留价格和库存, taskId={}, sku={}",
@@ -601,6 +675,10 @@ public class EbayProfitPriceService {
         }
         text.append(" 目标¥").append(plan.context().targetProfit().stripTrailingZeros().toPlainString())
                 .append(" 广告").append(plan.context().adRate().stripTrailingZeros().toPlainString()).append('%');
+        if (plan.context().subsidyRate().signum() > 0) {
+            text.append(" 活动补贴").append(plan.context().subsidyRate().movePointRight(2).stripTrailingZeros()
+                    .toPlainString()).append('%');
+        }
         return text.toString();
     }
 
@@ -776,6 +854,15 @@ public class EbayProfitPriceService {
         }
     }
 
+    private static void validatePromo(BigDecimal discountPercent, BigDecimal sellerSharePercent) {
+        if (discountPercent == null || discountPercent.signum() <= 0 || discountPercent.compareTo(HUNDRED) >= 0) {
+            throw new IllegalArgumentException("活动折扣必须大于0%且小于100%");
+        }
+        if (sellerSharePercent == null || sellerSharePercent.signum() < 0 || sellerSharePercent.compareTo(HUNDRED) > 0) {
+            throw new IllegalArgumentException("卖家承担比例必须在0%到100%之间");
+        }
+    }
+
     private static BigDecimal exchangeRate() {
         double rate = PriceSwitch.EXCHANGE_RATE == null ? 0D : PriceSwitch.EXCHANGE_RATE;
         if (rate <= 0D) {
@@ -839,7 +926,7 @@ public class EbayProfitPriceService {
     }
 
     private record Context(EbayListingDO mapping, EbayTradingApiClient.ActiveSku live, String euSize,
-                           String styleId, BigDecimal adRate, BigDecimal targetProfit) {
+                           String styleId, BigDecimal adRate, BigDecimal targetProfit, BigDecimal subsidyRate) {
     }
 
     private record Planned(Context context, BigDecimal poisonPrice, Decision decision) {

@@ -21,8 +21,9 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
+import java.util.function.Function;
 
-/** eBay 盈利改价（含广告费）：默认目标盈利 + 可选的按货号目标盈利 Excel。 */
+/** eBay 盈利改价 / 活动改价（含广告费）：默认目标盈利 + 可选的按货号目标盈利 Excel。 */
 @RestController
 @RequestMapping("task/ebay")
 public class EbayProfitPriceController {
@@ -39,6 +40,23 @@ public class EbayProfitPriceController {
                                            @RequestParam("defaultProfit") BigDecimal defaultProfit,
                                            @RequestParam("freight") BigDecimal freight,
                                            @RequestParam(value = "file", required = false) MultipartFile file) {
+        return startWithOverrides(file, rows -> profitPriceService.start(intervalHours, defaultProfit, freight, rows));
+    }
+
+    /** eBay 活动改价：在盈利改价基础上，到手金额再扣卖家承担的折扣补贴（标价 × 折扣% × 卖家承担%）。 */
+    @PostMapping("startPromoProfitPrice")
+    public Result<String> startPromoProfitPrice(@RequestParam("intervalHours") long intervalHours,
+                                                @RequestParam("defaultProfit") BigDecimal defaultProfit,
+                                                @RequestParam("freight") BigDecimal freight,
+                                                @RequestParam("discountPercent") BigDecimal discountPercent,
+                                                @RequestParam("sellerSharePercent") BigDecimal sellerSharePercent,
+                                                @RequestParam(value = "file", required = false) MultipartFile file) {
+        return startWithOverrides(file, rows -> profitPriceService.startPromo(intervalHours, defaultProfit, freight,
+                discountPercent, sellerSharePercent, rows));
+    }
+
+    private Result<String> startWithOverrides(MultipartFile file,
+                                              Function<List<EbayProfitTargetExcel>, Long> starter) {
         List<EbayProfitTargetExcel> rows = List.of();
         if (file != null && !file.isEmpty()) {
             try {
@@ -53,9 +71,9 @@ public class EbayProfitPriceController {
             }
         }
         try {
-            Long taskId = profitPriceService.start(intervalHours, defaultProfit, freight, rows);
+            Long taskId = starter.apply(rows);
             if (taskId == null) {
-                return Result.buildError("eBay盈利改价或eBay定时改价任务正在运行，两者互斥，请先停止正在运行的任务");
+                return Result.buildError("eBay盈利改价、活动改价、定时改价任务互斥，已有改价任务正在运行，请先停止");
             }
             return Result.buildSuccess(String.valueOf(taskId));
         } catch (IllegalArgumentException e) {

@@ -17,6 +17,7 @@ const TASK_TYPE = {
     EBAY_FETCH_ORDERS: 'ebay_fetch_orders',
     EBAY_ADD_TRACKING: 'ebay_add_tracking',
     EBAY_PROFIT_PRICE: 'ebay_profit_price',
+    EBAY_PROMO_PROFIT_PRICE: 'ebay_promo_profit_price',
 };
 
 enum TASK_API {
@@ -83,6 +84,8 @@ enum TASK_API {
     // eBay 盈利改价（含广告费；默认目标盈利 + 可选按货号目标盈利 Excel）
     EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice',
     EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate',
+    // eBay 活动改价：盈利改价基础上，到手再扣卖家承担的折扣补贴（标价 × 折扣% × 卖家承担%）
+    EBAY_START_PROMO_PROFIT_PRICE = '/api/task/ebay/startPromoProfitPrice',
 }
 
 export {TASK_API, TASK_TYPE}

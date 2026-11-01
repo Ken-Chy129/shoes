@@ -157,9 +157,11 @@ public class EbayPriceSyncService {
                 && !profitPriceRunning();
     }
 
-    /** 与「eBay盈利改价」互斥：两者都改同一批港区商品的价格。 */
+    /** 与「eBay盈利改价」「eBay活动改价」互斥：都改同一批港区商品的价格。 */
     private boolean profitPriceRunning() {
         return taskMapper.selectRunningTask("ebay", EbayProfitPriceService.TASK_TYPE,
+                TaskDO.TaskStatusEnum.RUNNING.getCode()) != null
+                || taskMapper.selectRunningTask("ebay", EbayProfitPriceService.PROMO_TASK_TYPE,
                 TaskDO.TaskStatusEnum.RUNNING.getCode()) != null;
     }
 

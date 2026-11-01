@@ -24,6 +24,7 @@ public enum TaskTypeEnum {
     EBAY_POISON_LISTING("ebay_poison_listing", "eBay得物价上架", false),
     EBAY_PRICE_SYNC("ebay_price_sync", "eBay定时改价", true),
     EBAY_PROFIT_PRICE("ebay_profit_price", "eBay盈利改价", true),
+    EBAY_PROMO_PROFIT_PRICE("ebay_promo_profit_price", "eBay活动改价", true),
     EBAY_DELIST("ebay_delist", "eBay下架", false),
     EBAY_ZERO_STOCK("ebay_zero_stock", "eBay库存清零", false),
     EBAY_FETCH_ORDERS("ebay_fetch_orders", "eBay获取订单", false),

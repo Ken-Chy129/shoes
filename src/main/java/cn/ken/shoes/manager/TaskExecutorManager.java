@@ -272,7 +272,8 @@ public class TaskExecutorManager {
             return startEbayPriceSync(params.getLongValue("intervalHours"),
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition")) != null;
         }
-        if ("ebay".equals(platform) && taskType == TaskTypeEnum.EBAY_PROFIT_PRICE) {
+        if ("ebay".equals(platform) && (taskType == TaskTypeEnum.EBAY_PROFIT_PRICE
+                || taskType == TaskTypeEnum.EBAY_PROMO_PROFIT_PRICE)) {
             return startEbayProfitPriceFromSnapshot(task, params) != null;
         }
         log.warn("重启恢复：不支持的平台: {}", platform);
@@ -322,6 +323,7 @@ public class TaskExecutorManager {
                 || ("ebay".equals(task.getPlatform())
                 && (taskType == TaskTypeEnum.EBAY_PRICE_SYNC
                 || taskType == TaskTypeEnum.EBAY_PROFIT_PRICE
+                || taskType == TaskTypeEnum.EBAY_PROMO_PROFIT_PRICE
                 || taskType == TaskTypeEnum.EBAY_BULK_LISTING
                 || taskType == TaskTypeEnum.EBAY_POISON_LISTING
                 || taskType == TaskTypeEnum.EBAY_DELIST
@@ -346,7 +348,8 @@ public class TaskExecutorManager {
             return startEbayPriceSync(params.getLongValue("intervalHours"),
                     params.getBigDecimal("priceMultiplier"), params.getBigDecimal("priceAddition"));
         }
-        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_PROFIT_PRICE) {
+        if ("ebay".equals(source.getPlatform()) && (taskType == TaskTypeEnum.EBAY_PROFIT_PRICE
+                || taskType == TaskTypeEnum.EBAY_PROMO_PROFIT_PRICE)) {
             return startEbayProfitPriceFromSnapshot(source, params);
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_DELIST) {
@@ -487,7 +490,7 @@ public class TaskExecutorManager {
             case EBAY_ZERO_STOCK -> startEbayZeroStock(styleIds(params));
             case EBAY_FETCH_ORDERS -> startEbayFetchOrders(params.getInteger("days"));
             case EBAY_ADD_TRACKING -> null;
-            case EBAY_PROFIT_PRICE -> null;
+            case EBAY_PROFIT_PRICE, EBAY_PROMO_PROFIT_PRICE -> null;
         };
     }
 
@@ -574,6 +577,14 @@ public class TaskExecutorManager {
         return ebayProfitPriceService.start(intervalHours, defaultProfit, freight, overrides);
     }
 
+    public Long startEbayPromoProfitPrice(long intervalHours, java.math.BigDecimal defaultProfit,
+                                          java.math.BigDecimal freight, java.math.BigDecimal discountPercent,
+                                          java.math.BigDecimal sellerSharePercent,
+                                          List<EbayProfitTargetExcel> overrides) {
+        return ebayProfitPriceService.startPromo(intervalHours, defaultProfit, freight, discountPercent,
+                sellerSharePercent, overrides);
+    }
+
     /**
      * 按原任务参数和「按货号目标盈利」快照重新拉起盈利改价。原任务有单独设置的货号、但快照缺失/损坏/条数对不上时
      * 拒绝启动：否则这些货号会悄悄退回默认目标盈利，按更低的门槛被降价。
@@ -608,8 +619,14 @@ public class TaskExecutorManager {
             freight = java.math.BigDecimal.valueOf(cn.ken.shoes.config.PriceSwitch.FREIGHT == null
                     ? 0 : cn.ken.shoes.config.PriceSwitch.FREIGHT);
         }
+        List<EbayProfitTargetExcel> overrides = targets == null ? List.of() : targets;
+        if (EbayProfitPriceService.PROMO_TASK_TYPE.equals(source.getTaskType())) {
+            return startEbayPromoProfitPrice(params.getLongValue("intervalHours"),
+                    params.getBigDecimal("defaultProfit"), freight, params.getBigDecimal("discountPercent"),
+                    params.getBigDecimal("sellerSharePercent"), overrides);
+        }
         return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
-                freight, targets == null ? List.of() : targets);
+                freight, overrides);
     }
 
     public void cancelEbayProfitPrice(Long taskId) {

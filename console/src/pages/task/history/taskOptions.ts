@@ -17,6 +17,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   ebay_fetch_orders: 'eBay获取订单',
   ebay_add_tracking: 'eBay添加追踪号码',
   ebay_profit_price: 'eBay盈利改价',
+  ebay_promo_profit_price: 'eBay活动改价',
 };
 
 export const EBAY_TASK_OPTIONS = [
@@ -24,6 +25,7 @@ export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_poison_listing, value: 'ebay_poison_listing'},
   {label: TASK_TYPE_LABELS.ebay_price_sync, value: 'ebay_price_sync'},
   {label: TASK_TYPE_LABELS.ebay_profit_price, value: 'ebay_profit_price'},
+  {label: TASK_TYPE_LABELS.ebay_promo_profit_price, value: 'ebay_promo_profit_price'},
   {label: TASK_TYPE_LABELS.ebay_delist, value: 'ebay_delist'},
   {label: TASK_TYPE_LABELS.ebay_zero_stock, value: 'ebay_zero_stock'},
   {label: TASK_TYPE_LABELS.ebay_fetch_orders, value: 'ebay_fetch_orders'},

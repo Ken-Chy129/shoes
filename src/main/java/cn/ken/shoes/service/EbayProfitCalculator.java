@@ -11,6 +11,9 @@ import java.math.RoundingMode;
  * 到手 z = x - 成交费率·y - 0.013·y - 广告费率·y      （x ≥ 150 时成交费率 7%，否则 12.7%）
  * 利润 = z × 汇率 - 得物价 - 运费
  * </pre>
+ *
+ * <p>eBay 折扣活动（如买家 85 折、折扣部分卖家承担 7 成）时，卖家承担的补贴 = 补贴率 × x，
+ * 会在之后从货款里扣回，因此到手额外减去这一项：z' = z - 补贴率·x（其余费用仍按标价 x 计算）。
  */
 public final class EbayProfitCalculator {
 
@@ -36,6 +39,20 @@ public final class EbayProfitCalculator {
      * @param adRatePercent 广告费率百分数（4 表示 4%），null 视为 0
      */
     public static BigDecimal netReceived(BigDecimal price, BigDecimal adRatePercent) {
+        return netReceived(price, adRatePercent, BigDecimal.ZERO);
+    }
+
+    /**
+     * 到手美元 z'，扣除卖家承担的活动补贴。
+     *
+     * @param sellerSubsidyRate 卖家承担的补贴占标价的比例（0.105 表示 10.5%），null 视为 0
+     */
+    public static BigDecimal netReceived(BigDecimal price, BigDecimal adRatePercent, BigDecimal sellerSubsidyRate) {
+        BigDecimal subsidy = sellerSubsidyRate == null ? BigDecimal.ZERO : price.multiply(sellerSubsidyRate);
+        return netReceivedBeforeSubsidy(price, adRatePercent).subtract(subsidy);
+    }
+
+    private static BigDecimal netReceivedBeforeSubsidy(BigDecimal price, BigDecimal adRatePercent) {
         BigDecimal y = buyerPays(price);
         BigDecimal fvf = price.compareTo(HIGH_PRICE_THRESHOLD) >= 0 ? HIGH_PRICE_FVF_RATE : LOW_PRICE_FVF_RATE;
         BigDecimal ad = adRatePercent == null ? BigDecimal.ZERO : adRatePercent.divide(HUNDRED);
@@ -52,7 +69,13 @@ public final class EbayProfitCalculator {
     /** 未舍入的人民币利润：用于所有盈利判断及最低盈利价搜索；仅在展示/写明细时舍入。 */
     public static BigDecimal exactProfit(BigDecimal price, BigDecimal adRatePercent, BigDecimal exchangeRate,
                                          BigDecimal poisonPrice, BigDecimal freight) {
-        return netReceived(price, adRatePercent).multiply(exchangeRate)
+        return exactProfit(price, adRatePercent, BigDecimal.ZERO, exchangeRate, poisonPrice, freight);
+    }
+
+    /** 扣除卖家承担活动补贴后的未舍入人民币利润。 */
+    public static BigDecimal exactProfit(BigDecimal price, BigDecimal adRatePercent, BigDecimal sellerSubsidyRate,
+                                         BigDecimal exchangeRate, BigDecimal poisonPrice, BigDecimal freight) {
+        return netReceived(price, adRatePercent, sellerSubsidyRate).multiply(exchangeRate)
                 .subtract(poisonPrice).subtract(freight);
     }
 }
