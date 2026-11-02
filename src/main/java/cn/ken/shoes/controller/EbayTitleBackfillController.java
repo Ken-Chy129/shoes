@@ -24,8 +24,9 @@ public class EbayTitleBackfillController {
     @PostMapping("start")
     public Result<Boolean> start(@RequestParam(defaultValue = "true") boolean dryRun,
                                  @RequestParam(defaultValue = "0") int limit,
-                                 @RequestParam(required = false) List<String> styleIds) {
-        if (!service.start(dryRun, limit, styleIds)) {
+                                 @RequestParam(required = false) List<String> styleIds,
+                                 @RequestParam(defaultValue = "1") int concurrency) {
+        if (!service.start(dryRun, limit, styleIds, concurrency)) {
             return Result.buildError("标题补数据任务正在运行");
         }
         return Result.buildSuccess(true);

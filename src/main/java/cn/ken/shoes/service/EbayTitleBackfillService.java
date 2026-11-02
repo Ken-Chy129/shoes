@@ -74,6 +74,11 @@ public class EbayTitleBackfillService {
      * @param styleIds   非空时只处理这些货号
      */
     public boolean start(boolean dryRunMode, int limit, List<String> styleIds) {
+        return start(dryRunMode, limit, styleIds, 1);
+    }
+
+    /** @param concurrency 同时处理的商品组数，1~8 */
+    public boolean start(boolean dryRunMode, int limit, List<String> styleIds, int concurrency) {
         if (!running.compareAndSet(false, true)) {
             return false;
         }
@@ -83,7 +88,7 @@ public class EbayTitleBackfillService {
                 .collect(Collectors.toSet());
         Thread.ofVirtual().name("Ebay-Title-Backfill").start(() -> {
             try {
-                run(dryRunMode, limit, only);
+                run(dryRunMode, limit, only, Math.max(1, Math.min(8, concurrency)));
                 phase.set(cancelled.get() ? "cancelled" : "finished");
             } catch (Exception e) {
                 log.error("eBay标题补数据任务异常", e);
@@ -119,6 +124,10 @@ public class EbayTitleBackfillService {
     }
 
     void run(boolean dryRunMode, int limit, Set<String> only) {
+        run(dryRunMode, limit, only, 1);
+    }
+
+    void run(boolean dryRunMode, int limit, Set<String> only, int concurrency) {
         dryRun.set(dryRunMode);
         Map<String, GroupTarget> groups = new LinkedHashMap<>();
         for (EbayListingDO listing : listingMapper.selectActive()) {
@@ -141,26 +150,43 @@ public class EbayTitleBackfillService {
         }
         resetCounters(targets.size());
         log.info("eBay标题补数据开始, dryRun:{}, 商品组数:{}", dryRun.get(), targets.size());
-        for (GroupTarget target : targets) {
-            if (cancelled.get()) {
-                return;
-            }
-            try {
-                if (manualStyles.contains(target.styleId())) {
-                    skipped.incrementAndGet();
-                    continue;
+        java.util.concurrent.Semaphore permits = new java.util.concurrent.Semaphore(concurrency);
+        try (var executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()) {
+            for (GroupTarget target : targets) {
+                if (cancelled.get()) {
+                    break;
                 }
-                process(target);
-            } catch (Exception e) {
-                failed.incrementAndGet();
-                lastMessage.set(target.styleId() + ": " + e.getMessage());
-                log.warn("eBay标题补数据失败, styleId:{}, region:{}, reason:{}",
-                        target.styleId(), target.region().getCode(), e.getMessage());
-            } finally {
-                done.incrementAndGet();
+                permits.acquireUninterruptibly();
+                executor.submit(() -> {
+                    try {
+                        processSafely(target, manualStyles);
+                    } finally {
+                        permits.release();
+                    }
+                });
             }
         }
         log.info("eBay标题补数据完成, {}", status());
+    }
+
+    private void processSafely(GroupTarget target, Set<String> manualStyles) {
+        if (cancelled.get()) {
+            return;
+        }
+        try {
+            if (manualStyles.contains(target.styleId())) {
+                skipped.incrementAndGet();
+                return;
+            }
+            process(target);
+        } catch (Exception e) {
+            failed.incrementAndGet();
+            lastMessage.set(target.styleId() + ": " + e.getMessage());
+            log.warn("eBay标题补数据失败, styleId:{}, region:{}, reason:{}",
+                    target.styleId(), target.region().getCode(), e.getMessage());
+        } finally {
+            done.incrementAndGet();
+        }
     }
 
     private void process(GroupTarget target) {
