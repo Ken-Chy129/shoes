@@ -655,6 +655,36 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void publishesTheWholeGroupWhenANewSizeOfferCannotBePublishedAlone() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        size9.setAspects(new LinkedHashMap<>(size9.getAspects()));
+        size9.getAspects().put("US Shoe Size", List.of("9"));
+        EbayListingRequest size10 = listingRequest();
+        size10.setSku("shoe-sku-10");
+        size10.setAspects(new LinkedHashMap<>(size10.getAspects()));
+        size10.getAspects().put("US Shoe Size", List.of("10"));
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(List.of("shoe-sku-9"), List.of("9"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        when(apiClient.createOffer(org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq("en-US"))).thenReturn("offer-10");
+        when(apiClient.publishOffer("offer-10")).thenThrow(new EbayApiException(
+                "eBay API request failed (HTTP 404): 25713: This Offer is not available."));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup(
+                "group-style-1", List.of(size9, size10));
+
+        verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
     void treatsAnOfferStillReportedDetachedAfterTheGroupRepublishAsListed() {
         EbayListingRequest size9 = listingRequest();
         size9.setSku("shoe-sku-9");

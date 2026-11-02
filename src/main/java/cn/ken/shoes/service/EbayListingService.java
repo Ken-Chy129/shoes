@@ -316,7 +316,24 @@ public class EbayListingService {
         try {
             if (listingAlreadyPublished) {
                 for (PendingOffer pending : pendingOffers) {
-                    String listingId = apiClient.publishOffer(pending.offerId());
+                    String listingId;
+                    try {
+                        listingId = apiClient.publishOffer(pending.offerId());
+                    } catch (EbayApiException e) {
+                        if (!isOfferNotAvailable(e)) {
+                            throw e;
+                        }
+                        // 已属于商品组的 offer 单独发布时 eBay 偶发报 25713，
+                        // 整组发布会把组里所有未发布的尺码一起挂到 listing 上。
+                        log.warn("商品组{}中的SKU {}单独发布报25713，改为整组发布",
+                                inventoryItemGroupKey, pending.sku());
+                        existingListingId = publishGroupWithRepair(
+                                inventoryItemGroupKey, groupPayload, first);
+                        for (PendingOffer rest : pendingOffers) {
+                            listingIds.remove(rest.sku());
+                        }
+                        break;
+                    }
                     listingIds.put(pending.sku(), listingId);
                     if (existingListingId == null) {
                         existingListingId = listingId;
@@ -530,6 +547,11 @@ public class EbayListingService {
         retryIdempotentWrite(() -> apiClient.createOrReplaceInventoryItem(
                 request.getSku(), inventoryPayload(request, hostedImageUrls),
                 request.getContentLanguage()), this::isDetachedInventoryFailure);
+    }
+
+    private boolean isOfferNotAvailable(EbayApiException error) {
+        String message = error.getMessage();
+        return message != null && message.contains("25713:");
     }
 
     private boolean isDetachedInventoryFailure(EbayApiException error) {
