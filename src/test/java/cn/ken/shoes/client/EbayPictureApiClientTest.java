@@ -32,7 +32,7 @@ class EbayPictureApiClientTest {
         when(oauthService.getValidAccessToken()).thenReturn("seller-access-token");
         client = new EbayPictureApiClient(properties, oauthService,
                 new OkHttpClient.Builder().readTimeout(2, TimeUnit.SECONDS).build(),
-                server.url("/ws/api.dll").toString());
+                server.url("/commerce/media/v1_beta/").toString());
     }
 
     @AfterEach
@@ -41,46 +41,32 @@ class EbayPictureApiClientTest {
     }
 
     @Test
-    void uploadsAnExternalImageToEbayPictureServices() throws Exception {
-        server.enqueue(xmlResponse("""
-                <?xml version="1.0" encoding="UTF-8"?>
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Success</Ack>
-                  <SiteHostedPictureDetails>
-                    <FullURL>https://i.ebayimg.com/images/g/abc/s-l1600.jpg</FullURL>
-                  </SiteHostedPictureDetails>
-                </UploadSiteHostedPicturesResponse>
+    void uploadsAnExternalImageThroughTheMediaApi() throws Exception {
+        // NTAwWDcwMA== -> 500X700
+        server.enqueue(json(201, """
+                {"expirationDate":"2026-12-02T17:03:01Z",
+                 "imageUrl":"https://i.ebayimg.com/00/s/NTAwWDcwMA==/z/abc/$_1.JPG?set_id=8800005007"}
                 """));
 
         var hostedUrl = client.uploadExternalPicture(
                 "https://cdn.example.com/shoe?a=1&b=2", "DD1391-100-1");
 
         assertThat(hostedUrl).contains(
-                "https://i.ebayimg.com/images/g/abc/s-l1600.jpg");
+                "https://i.ebayimg.com/00/s/NTAwWDcwMA==/z/abc/$_1.JPG?set_id=8800005007");
         RecordedRequest request = server.takeRequest();
         assertThat(request.getMethod()).isEqualTo("POST");
-        assertThat(request.getHeader("X-EBAY-API-CALL-NAME"))
-                .isEqualTo("UploadSiteHostedPictures");
-        assertThat(request.getHeader("X-EBAY-API-IAF-TOKEN"))
-                .isEqualTo("seller-access-token");
+        assertThat(request.getPath())
+                .isEqualTo("/commerce/media/v1_beta/image/create_image_from_url");
+        assertThat(request.getHeader("Authorization")).isEqualTo("Bearer seller-access-token");
         assertThat(request.getBody().readUtf8())
-                .contains("<ExternalPictureURL>https://cdn.example.com/shoe?a=1&amp;b=2</ExternalPictureURL>")
-                .contains("<PictureName>DD1391-100-1</PictureName>");
+                .isEqualTo("{\"imageUrl\":\"https://cdn.example.com/shoe?a=1&b=2\"}");
     }
 
     @Test
     void marksAnUploadedPictureAsIneligibleWhenItsLongestSideIsBelow500Pixels() {
-        server.enqueue(xmlResponse("""
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Success</Ack>
-                  <SiteHostedPictureDetails>
-                    <FullURL>https://i.ebayimg.com/images/g/small/s-l1600.jpg</FullURL>
-                    <PictureSetMember>
-                      <PictureHeight>476</PictureHeight>
-                      <PictureWidth>476</PictureWidth>
-                    </PictureSetMember>
-                  </SiteHostedPictureDetails>
-                </UploadSiteHostedPicturesResponse>
+        // NDc2WDQ3Ng== -> 476X476
+        server.enqueue(json(201, """
+                {"imageUrl":"https://i.ebayimg.com/00/s/NDc2WDQ3Ng==/z/small/$_1.JPG"}
                 """));
 
         assertThat(client.uploadExternalPicture(
@@ -89,12 +75,16 @@ class EbayPictureApiClientTest {
     }
 
     @Test
-    void rejectsAnEpsResponseWithoutAHostedUrl() {
-        server.enqueue(xmlResponse("""
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Failure</Ack>
-                </UploadSiteHostedPicturesResponse>
-                """));
+    void readsTheLongestSideFromTheEpsUrl() {
+        assertThat(EbayPictureApiClient.maxDimension(
+                "https://i.ebayimg.com/00/s/MTYwMFgxMjAw/z/x/$_1.JPG")).isEqualTo(1600);
+        assertThat(EbayPictureApiClient.maxDimension(
+                "https://i.ebayimg.com/images/g/abc/s-l1600.jpg")).isZero();
+    }
+
+    @Test
+    void rejectsAResponseWithoutAHostedUrl() {
+        server.enqueue(json(201, "{}"));
 
         assertThatThrownBy(() -> client.uploadExternalPicture(
                 "https://cdn.example.com/private-name.jpg", "STYLE-1"))
@@ -104,71 +94,33 @@ class EbayPictureApiClientTest {
     }
 
     @Test
-    void rejectsXmlResponsesThatAttemptToDeclareExternalEntities() {
-        server.enqueue(xmlResponse("""
-                <?xml version="1.0"?>
-                <!DOCTYPE response [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Success</Ack>
-                  <SiteHostedPictureDetails><FullURL>&xxe;</FullURL></SiteHostedPictureDetails>
-                </UploadSiteHostedPicturesResponse>
-                """));
-
-        assertThatThrownBy(() -> client.uploadExternalPicture(
-                "https://cdn.example.com/shoe.jpg", "STYLE-1"))
-                .isInstanceOf(EbayApiException.class)
-                .hasMessageContaining("响应格式异常")
-                .hasMessageNotContaining("/etc/passwd");
-    }
-
-    @Test
-    void reportsTheDailyUploadQuotaAsAQuotaFailure() {
-        server.enqueue(xmlResponse("""
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Failure</Ack>
-                  <Errors>
-                    <ShortMessage>Call usage limit has been reached.</ShortMessage>
-                    <ErrorCode>518</ErrorCode>
-                    <SeverityCode>Error</SeverityCode>
-                  </Errors>
-                </UploadSiteHostedPicturesResponse>
-                """));
+    void reportsRateLimitingAsAQuotaFailure() {
+        server.enqueue(json(429, "{\"errors\":[{\"errorId\":2001,\"message\":\"Too many requests\"}]}"));
 
         assertThatThrownBy(() -> client.uploadExternalPicture(
                 "https://cdn.example.com/shoe.jpg", "STYLE-1"))
                 .isInstanceOf(EbayQuotaExceededException.class)
-                .hasMessageContaining("额度已用完")
-                .hasMessageContaining("518");
+                .hasMessageContaining("额度已用完");
     }
 
     @Test
-    void surfacesEbayErrorCodeAndMessageWhenHostingFails() {
-        server.enqueue(xmlResponse("""
-                <UploadSiteHostedPicturesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
-                  <Ack>Failure</Ack>
-                  <Errors>
-                    <ShortMessage>Dimensions are smaller than recommended.</ShortMessage>
-                    <ErrorCode>21916790</ErrorCode>
-                    <SeverityCode>Warning</SeverityCode>
-                  </Errors>
-                  <Errors>
-                    <ShortMessage>Picture could not be downloaded.</ShortMessage>
-                    <ErrorCode>21916638</ErrorCode>
-                    <SeverityCode>Error</SeverityCode>
-                  </Errors>
-                </UploadSiteHostedPicturesResponse>
+    void surfacesEbayErrorIdAndMessageWhenHostingFails() {
+        server.enqueue(json(400, """
+                {"errors":[{"errorId":190204,"domain":"API_MEDIA","category":"REQUEST",
+                  "message":"No valid image can be downloaded from the provided imageUrl."}]}
                 """));
 
         assertThatThrownBy(() -> client.uploadExternalPicture(
                 "https://cdn.example.com/shoe.jpg", "STYLE-1"))
                 .isInstanceOf(EbayApiException.class)
                 .isNotInstanceOf(EbayQuotaExceededException.class)
-                .hasMessage("eBay图片托管失败：21916638 Picture could not be downloaded.");
+                .hasMessage("eBay图片托管失败(HTTP 400)：190204 "
+                        + "No valid image can be downloaded from the provided imageUrl.");
     }
 
-    private MockResponse xmlResponse(String body) {
-        return new MockResponse().setResponseCode(200)
-                .setHeader("Content-Type", "text/xml; charset=utf-8")
+    private MockResponse json(int status, String body) {
+        return new MockResponse().setResponseCode(status)
+                .setHeader("Content-Type", "application/json")
                 .setBody(body);
     }
 }

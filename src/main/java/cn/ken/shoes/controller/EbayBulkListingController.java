@@ -93,7 +93,7 @@ public class EbayBulkListingController {
             writer.write(List.of(), inputSheet);
             List<List<String>> guide = List.of(
                     List.of("字段", "说明"),
-                    List.of("货号", "必填；一行一个货号，重复货号自动去重，单次最多2000个"),
+                    List.of("货号", "必填；一行一个货号，重复货号自动去重，数量不限"),
                     List.of("上架尺码", "得物有价格的尺码全部上架（按EU码），无价尺码不上架"),
                     List.of("上架价格", "USD = 得物价(人民币) × 1.25 ÷ 6.6 + 50，保留两位小数；例如得物500元 → $144.70"),
                     List.of("数量", "每个尺码上架1件"),

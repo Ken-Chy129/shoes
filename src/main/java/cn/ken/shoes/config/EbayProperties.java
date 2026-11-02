@@ -122,6 +122,13 @@ public class EbayProperties {
         return apiRoot() + "/sell/marketing/v1/";
     }
 
+    /** eBay 已下线 Trading API 的 UploadSiteHostedPictures，图片托管改走 Media API。 */
+    public String getMediaApiEndpoint() {
+        return isSandbox()
+                ? "https://apim.sandbox.ebay.com/commerce/media/v1_beta/"
+                : "https://apim.ebay.com/commerce/media/v1_beta/";
+    }
+
     public String getTradingApiEndpoint() {
         return apiRoot() + "/ws/api.dll";
     }

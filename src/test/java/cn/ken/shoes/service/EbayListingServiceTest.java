@@ -655,6 +655,33 @@ class EbayListingServiceTest {
     }
 
     @Test
+    void treatsAnOfferStillReportedDetachedAfterTheGroupRepublishAsListed() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(List.of("shoe-sku-9"), List.of("9"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        doThrow(new EbayApiException("eBay API request failed (HTTP 400): "
+                + "25013: Invalid data in the Inventory Item Group. Missing name in the "
+                + "variation specifics or variation specifics set."))
+                .when(apiClient).updateOffer(
+                        org.mockito.ArgumentMatchers.eq("offer-9"),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
+
+        verify(apiClient, times(2)).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
     void doesNotRepublishTheGroupForUnrelatedOfferUpdateFailures() {
         EbayListingRequest size9 = listingRequest();
         size9.setSku("shoe-sku-9");
@@ -747,10 +774,47 @@ class EbayListingServiceTest {
 
         List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
 
+        // offer 数量写回后组就能写进去，先写新组再发布，避免拿线上过期的组发布报 25013。
         InOrder order = inOrder(apiClient);
         order.verify(apiClient).createOrReplaceInventoryItemGroup(
                 org.mockito.ArgumentMatchers.eq("group-style-1"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).updateOffer(
+                org.mockito.ArgumentMatchers.eq("offer-9"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        verify(apiClient, times(2)).createOrReplaceInventoryItemGroup(
+                org.mockito.ArgumentMatchers.eq("group-style-1"),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        verify(apiClient, times(1)).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
+        assertThat(results).extracting(EbayListingResult::getListingId)
+                .containsOnly("listing-group-456");
+    }
+
+    @Test
+    void republishesBeforeRewritingTheGroupWhenTheGroupIsStillRejectedAfterOfferUpdates() {
+        EbayListingRequest size9 = listingRequest();
+        size9.setSku("shoe-sku-9");
+        when(apiClient.getInventoryItemGroup("group-style-1"))
+                .thenReturn(Optional.of(inventoryGroup(List.of("shoe-sku-9"), List.of("9"))));
+        when(apiClient.getOffersBySku("shoe-sku-9"))
+                .thenReturn(List.of(publishedOffer(
+                        "offer-9", "shoe-sku-9", "listing-group-456")));
+        EbayApiException zeroed = new EbayApiException("eBay API request failed (HTTP 400): 25004: "
+                + "The eBay listing associated with the inventory item has an invalid quantity.");
+        doThrow(zeroed).doThrow(zeroed).doNothing()
+                .when(apiClient).createOrReplaceInventoryItemGroup(
+                        org.mockito.ArgumentMatchers.eq("group-style-1"),
+                        org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
+        when(apiClient.publishOfferByInventoryItemGroup("group-style-1", "EBAY_US"))
+                .thenReturn("listing-group-456");
+
+        List<EbayListingResult> results = service.publishGroup("group-style-1", List.of(size9));
+
+        InOrder order = inOrder(apiClient);
         order.verify(apiClient).updateOffer(
                 org.mockito.ArgumentMatchers.eq("offer-9"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
@@ -759,9 +823,6 @@ class EbayListingServiceTest {
                 org.mockito.ArgumentMatchers.eq("group-style-1"),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         order.verify(apiClient).publishOfferByInventoryItemGroup("group-style-1", "EBAY_US");
-        verify(apiClient, times(2)).createOrReplaceInventoryItemGroup(
-                org.mockito.ArgumentMatchers.eq("group-style-1"),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.eq("en-US"));
         assertThat(results).extracting(EbayListingResult::getListingId)
                 .containsOnly("listing-group-456");
     }

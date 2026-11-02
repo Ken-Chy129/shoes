@@ -42,7 +42,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class EbayPoisonListingService {
 
     public static final String TASK_TYPE = "ebay_poison_listing";
-    public static final int MAX_STYLES = 2000;
     public static final int LISTING_QUANTITY = 1;
     static final BigDecimal PRICE_MULTIPLIER = new BigDecimal("1.25");
     static final BigDecimal EXCHANGE_RATE = new BigDecimal("6.6");
@@ -250,9 +249,6 @@ public class EbayPoisonListingService {
         }
         if (styleIds.isEmpty()) {
             throw new IllegalArgumentException("Excel中没有货号");
-        }
-        if (styleIds.size() > MAX_STYLES) {
-            throw new IllegalArgumentException("单次最多" + MAX_STYLES + "个货号");
         }
         return List.copyOf(styleIds);
     }

@@ -202,9 +202,28 @@ public class EbayBulkListingService {
             }
             try {
                 List<EbayListingRequest> requests = new ArrayList<>(group.size());
+                List<RowContext> buildable = new ArrayList<>(group.size());
                 for (RowContext context : group) {
                     EbayProductMetadata metadata = metadataService.resolve(context.row());
-                    requests.add(listingFactory.create(context.row(), metadata, region));
+                    try {
+                        requests.add(listingFactory.create(context.row(), metadata, region));
+                        buildable.add(context);
+                    } catch (IllegalArgumentException e) {
+                        // 单个尺码的属性不全（如尺码表缺这个欧码、换算不出美码）只影响这一个
+                        // 尺码，同货号其它尺码照常上架。
+                        log.info("eBay上架跳过尺码, taskId:{}, styleId:{}, size:{}, reason:{}",
+                                taskId, entry.getKey(), context.row().getSize(), e.getMessage());
+                        context.item().setOperateResult("上架失败(" + safeError(e) + ")");
+                        context.item().setOperateTime(new Date());
+                        taskItemMapper.updateById(context.item());
+                        failed++;
+                    }
+                }
+                if (buildable.size() < group.size()) {
+                    group = buildable;
+                    if (group.isEmpty()) {
+                        continue;
+                    }
                 }
                 List<EbayListingResult> results = listingService.publishGroup(
                         listingFactory.groupKey(entry.getKey(), region), requests);

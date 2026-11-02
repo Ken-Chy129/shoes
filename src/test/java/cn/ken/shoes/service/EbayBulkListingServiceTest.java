@@ -242,6 +242,36 @@ class EbayBulkListingServiceTest {
     }
 
     @Test
+    void aSizeMissingARequiredAspectFailsAloneWhileTheRestOfTheStyleIsListed() {
+        EbayListingExcel size9 = row();
+        size9.setSize("USM9");
+        EbayListingExcel size10 = row();
+        size10.setSize("USM10");
+        when(metadataService.resolve(any(EbayListingExcel.class))).thenReturn(metadata());
+        when(taxonomyService.resolve(any(), any(), any(), any(), eq("9")))
+                .thenThrow(new IllegalArgumentException("当前eBay类目缺少必填属性：US Shoe Size"));
+        when(listingService.publishGroup(any(), any())).thenAnswer(invocation -> {
+            List<cn.ken.shoes.model.ebay.EbayListingRequest> requests = invocation.getArgument(1);
+            return List.of(new EbayListingResult(
+                    requests.get(0).getSku(), "offer-10", "listing-group-1", "production"));
+        });
+
+        service.start(List.of(size9, size10));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<cn.ken.shoes.model.ebay.EbayListingRequest>> requests =
+                ArgumentCaptor.forClass(List.class);
+        verify(listingService).publishGroup(any(), requests.capture());
+        assertThat(requests.getValue()).hasSize(1);
+        ArgumentCaptor<TaskItemDO> updated = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(2)).updateById(updated.capture());
+        assertThat(updated.getAllValues()).extracting(TaskItemDO::getOperateResult)
+                .containsExactlyInAnyOrder("上架成功",
+                        "上架失败(当前eBay类目缺少必填属性：US Shoe Size)");
+        verify(taskMapper).updateTaskFailed(eq(88L), org.mockito.ArgumentMatchers.contains("成功 1，失败 1"));
+    }
+
+    @Test
     void keepsRowFailureReasonAndMarksTheTaskFailed() {
         EbayListingExcel row = row();
         when(metadataService.resolve(row)).thenThrow(new IllegalArgumentException("请在Excel补充标题、描述和图片链接"));

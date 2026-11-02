@@ -459,6 +459,12 @@ public class EbayListingService {
                                         EbayApiException originalFailure) {
         log.warn("商品组{}有{}个库存项、{}个offer已脱离listing，整组重新发布",
                 inventoryItemGroupKey, detachedItems.size(), detachedOffers.size());
+        if (groupWriteDeferred && tryWriteGroupBeforeRepublish(
+                inventoryItemGroupKey, groupPayload, first)) {
+            // offer 数量已经写回，组也写进去了：直接用新组发布，避免用线上那份
+            // 过期的组（尺码值和组内 SKU 对不上）发布而报 25013。
+            groupWriteDeferred = false;
+        }
         publishGroupWithRepair(inventoryItemGroupKey, groupPayload, first);
         if (groupWriteDeferred) {
             createOrReplaceInventoryItemGroupWithRetry(
@@ -489,13 +495,29 @@ public class EbayListingService {
                 if (!isDetachedVariationFailure(e)) {
                     throw e;
                 }
-                EbayApiException failure = new EbayApiException(
-                        "尺码" + variant.getSku() + "重新发布后仍未回到listing: " + e.getMessage());
-                if (originalFailure != null) {
-                    failure.addSuppressed(originalFailure);
-                }
-                throw failure;
+                // 整组已经重新发布成功，offer 的价格、数量在第一次更新时就已写入
+                // （eBay 报 25013 但数据照样落库），尺码会随整组发布回到 listing。
+                // 实测这类尺码线上都在架且价格已更新，不再判为上架失败。
+                log.warn("商品组{}中的SKU {}重新发布后更新offer仍报25013，按已发布处理: {}",
+                        inventoryItemGroupKey, variant.getSku(), e.getMessage());
             }
+        }
+    }
+
+    private boolean tryWriteGroupBeforeRepublish(String inventoryItemGroupKey,
+                                                 JSONObject groupPayload,
+                                                 EbayListingRequest first) {
+        try {
+            apiClient.createOrReplaceInventoryItemGroup(
+                    inventoryItemGroupKey, groupPayload, first.getContentLanguage());
+            return true;
+        } catch (EbayApiException e) {
+            if (!isDetachedInventoryFailure(e)) {
+                throw e;
+            }
+            log.warn("商品组{}重新发布前写组仍失败，先发布后再写: {}",
+                    inventoryItemGroupKey, e.getMessage());
+            return false;
         }
     }
 
