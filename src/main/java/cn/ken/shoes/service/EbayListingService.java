@@ -643,6 +643,27 @@ public class EbayListingService {
         return updated;
     }
 
+    /** 读取商品组当前在 eBay 上的数据；不存在时返回空。 */
+    public java.util.Optional<JSONObject> getGroup(String inventoryItemGroupKey) {
+        return apiClient.getInventoryItemGroup(inventoryItemGroupKey);
+    }
+
+    /**
+     * 只改已在架商品组的标题：其它字段保持 eBay 上的原值，eBay 会同步修改在线 listing。
+     */
+    public void replaceGroupTitle(String inventoryItemGroupKey, JSONObject group, String title,
+                                  String contentLanguage) {
+        JSONObject groupPayload = new JSONObject(true);
+        for (String field : List.of("title", "subtitle", "description", "imageUrls", "aspects",
+                "variantSKUs", "variesBy", "videoIds")) {
+            if (group.containsKey(field)) {
+                groupPayload.put(field, group.get(field));
+            }
+        }
+        groupPayload.put("title", title);
+        createOrReplaceInventoryItemGroupWithRetry(inventoryItemGroupKey, groupPayload, contentLanguage);
+    }
+
     public JSONObject getPrerequisites(String marketplaceId) {
         JSONObject result = new JSONObject(true);
         result.put("environment", properties.getEnvironment());

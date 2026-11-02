@@ -27,6 +27,10 @@ public interface EbayListingMapper extends BaseMapper<EbayListingDO> {
     /** 整组下架后把同一货号、同一区域的在架映射全部标记为 ended。 */
     int markGroupEnded(@Param("styleId") String styleId, @Param("region") String region);
 
+    /** 标题回填后同步同一货号、同一区域在架映射的标题快照。 */
+    int updateGroupTitle(@Param("styleId") String styleId, @Param("region") String region,
+                         @Param("title") String title);
+
     /** 更新价格/库存快照；传 null 的字段保持原值（定时改价只改价格时不能把库存写成 NULL）。 */
     int updatePriceAndQuantity(@Param("sku") String sku,
                                @Param("price") BigDecimal price,

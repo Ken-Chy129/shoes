@@ -74,4 +74,11 @@
         WHERE sku = #{sku}
     </update>
 
+    <update id="updateGroupTitle">
+        UPDATE ebay_listing SET title = #{title}
+        WHERE style_id = #{styleId}
+          AND COALESCE(region, 'hk') = #{region}
+          AND status = 'active'
+    </update>
+
 </mapper>
