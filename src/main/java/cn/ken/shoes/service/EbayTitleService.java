@@ -9,6 +9,9 @@ import java.util.Locale;
 public class EbayTitleService {
 
     private static final int MAX_TITLE_LENGTH = 80;
+    private static final String GRADE_SCHOOL = "Grade School";
+    private static final String PRESCHOOL = "Preschool";
+    private static final String TODDLER = "Toddler";
 
     public String generate(String rawStyleId, String sizeSystem,
                            EbayProductMetadata metadata) {
@@ -17,8 +20,9 @@ public class EbayTitleService {
 
     /**
      * 生成 eBay 标题：KC 标题 + 性别 + 货号，例如 "Nike Dunk Low Men's DD1391-100"。
-     * 性别取自已解析出的 eBay Department；男女同款(Unisex)按 Men's 处理，
-     * 童鞋用 Kids'。手工标题保持原样。
+     * 性别取自已解析出的 eBay Department：Men's / Women's，男女同款(Unisex)按 Men's；
+     * 童鞋再按标题里的年龄段标记细分为 Grade School(GS 大童) / Preschool(PS 小童) /
+     * Toddler(TD 婴幼童)。手工标题保持原样。
      */
     public String generate(String rawStyleId, String sizeSystem,
                            EbayProductMetadata metadata, String department) {
@@ -32,7 +36,7 @@ public class EbayTitleService {
         }
 
         String styleId = clean(rawStyleId).toUpperCase(Locale.ROOT);
-        String gender = genderLabel(department, sizeSystem);
+        String gender = genderLabel(department, sizeSystem, sourceTitle);
         if (!present(styleId)) {
             return limitAtWord(sourceTitle, MAX_TITLE_LENGTH);
         }
@@ -59,14 +63,32 @@ public class EbayTitleService {
 
     /** 去掉标题末尾已有的性别词，避免出现 "... Men's Men's DD1391-100"。 */
     private String stripTrailingGender(String title) {
-        return title.replaceAll("(?i)\\s*\\b(men's|women's|mens|womens|kids')\\s*$", "").trim();
+        return title.replaceAll("(?i)\\s*\\b(men's|women's|mens|womens|kids'|grade school|preschool|pre-school|toddler)\\s*$", "").trim();
     }
 
     String genderLabel(String department, String sizeSystem) {
+        return genderLabel(department, sizeSystem, null);
+    }
+
+    String genderLabel(String department, String sizeSystem, String title) {
         String normalized = department == null ? "" : department.toLowerCase(Locale.ROOT);
-        if (normalized.contains("kid") || normalized.contains("baby")
-                || normalized.contains("toddler") || normalized.contains("youth")) {
-            return "Kids'";
+        String normalizedTitle = title == null ? "" : title.toLowerCase(Locale.ROOT);
+        boolean baby = normalized.contains("baby") || normalized.contains("toddler")
+                || normalized.contains("infant");
+        boolean kids = baby || normalized.contains("kid") || normalized.contains("youth")
+                || normalized.contains("grade school");
+        if (kids) {
+            // eBay Department 只分 Kids / Baby & Toddler，具体年龄段看标题标记。
+            if (hasToddlerMarker(normalizedTitle)) {
+                return TODDLER;
+            }
+            if (hasPreschoolMarker(normalizedTitle)) {
+                return PRESCHOOL;
+            }
+            if (hasGradeSchoolMarker(normalizedTitle)) {
+                return GRADE_SCHOOL;
+            }
+            return baby ? TODDLER : GRADE_SCHOOL;
         }
         if (normalized.contains("women") || normalized.contains("female")) {
             return "Women's";
@@ -82,6 +104,21 @@ public class EbayTitleService {
             return "Men's";
         }
         return null;
+    }
+
+    private boolean hasToddlerMarker(String title) {
+        return title.contains("(td)") || title.contains("toddler") || title.contains("infant")
+                || title.contains("(baby)") || title.contains("crib");
+    }
+
+    private boolean hasPreschoolMarker(String title) {
+        return title.contains("(ps)") || title.contains("preschool")
+                || title.contains("pre-school") || title.contains("little kid");
+    }
+
+    private boolean hasGradeSchoolMarker(String title) {
+        return title.contains("(gs)") || title.contains("grade school")
+                || title.contains("big kid") || title.contains("(youth)");
     }
 
     private boolean containsPhrase(String existing, String candidate) {

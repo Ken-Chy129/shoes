@@ -69,7 +69,29 @@ class EbayTitleServiceTest {
         assertThat(service.generate("DD1391-100", "EU", metadata, "Unisex Adults"))
                 .isEqualTo("Nike Dunk Low Retro White Black Men's DD1391-100");
         assertThat(service.generate("DD1391-100", "EU", metadata, "Unisex Kids"))
-                .isEqualTo("Nike Dunk Low Retro White Black Kids' DD1391-100");
+                .isEqualTo("Nike Dunk Low Retro White Black Grade School DD1391-100");
+        assertThat(service.generate("DD1391-100", "EU", metadata, "Unisex Baby & Toddler"))
+                .isEqualTo("Nike Dunk Low Retro White Black Toddler DD1391-100");
+    }
+
+    @Test
+    void splitsKidsIntoGradeSchoolPreschoolAndToddlerByTitleMarker() {
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle("Jordan 4 Retro Red Cement (GS)");
+        assertThat(service.generate("408452-161", "EU", metadata, "Unisex Kids"))
+                .isEqualTo("Jordan 4 Retro Red Cement (GS) Grade School 408452-161");
+
+        metadata.setTitle("Jordan 4 Retro Red Cement (PS)");
+        assertThat(service.generate("BQ7669-161", "EU", metadata, "Unisex Baby & Toddler"))
+                .isEqualTo("Jordan 4 Retro Red Cement (PS) Preschool BQ7669-161");
+
+        metadata.setTitle("Jordan 4 Retro Red Cement (TD)");
+        assertThat(service.generate("BQ7670-161", "EU", metadata, "Unisex Baby & Toddler"))
+                .isEqualTo("Jordan 4 Retro Red Cement (TD) Toddler BQ7670-161");
+
+        metadata.setTitle("Jordan 4 Retro Red Cement Toddler");
+        assertThat(service.generate("BQ7670-161", "EU", metadata, "Unisex Baby & Toddler"))
+                .isEqualTo("Jordan 4 Retro Red Cement Toddler BQ7670-161");
     }
 
     @Test
