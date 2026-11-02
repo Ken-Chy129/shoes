@@ -57,13 +57,37 @@ public class EbayTitleService {
         if (!present(head)) {
             return limitAtWord(suffix, MAX_TITLE_LENGTH);
         }
-        int titleLimit = MAX_TITLE_LENGTH - suffix.length() - 1;
-        return limitAtWord(head, Math.max(1, titleLimit)) + " " + suffix;
+        int titleLimit = Math.max(1, MAX_TITLE_LENGTH - suffix.length() - 1);
+        String limited = limitAtWord(head, titleLimit);
+        if (!limited.equals(clean(head)) && hasUnclosedQuote(limited)) {
+            // 截断把 'Light Celadon Safety Yellow' 这类配色名截成半个引号时补上闭合引号。
+            limited = limitAtWord(head, Math.max(1, titleLimit - 1));
+            limited = hasUnclosedQuote(limited) ? limited + "'" : limited;
+        }
+        return limited + " " + suffix;
+    }
+
+    /** 以空格或开头紧跟的 ' 视为开引号，单词内部的 '（如 Women's）不算。 */
+    private boolean hasUnclosedQuote(String value) {
+        boolean open = false;
+        for (int i = 0; i < value.length(); i++) {
+            if (value.charAt(i) != '\'') {
+                continue;
+            }
+            boolean startsWord = i == 0 || value.charAt(i - 1) == ' ';
+            boolean endsWord = i == value.length() - 1 || value.charAt(i + 1) == ' ';
+            if (!open && startsWord) {
+                open = true;
+            } else if (open && endsWord) {
+                open = false;
+            }
+        }
+        return open;
     }
 
     /** 去掉标题末尾已有的性别词，避免出现 "... Men's Men's DD1391-100"。 */
     private String stripTrailingGender(String title) {
-        return title.replaceAll("(?i)\\s*\\b(men's|women's|mens|womens|kids'|grade school|preschool|pre-school|toddler)\\s*$", "").trim();
+        return title.replaceAll("(?i)\\s*\\(?\\b(men's|women's|mens|womens|kids'|grade school|preschool|pre-school|toddler)\\)?\\s*$", "").trim();
     }
 
     String genderLabel(String department, String sizeSystem) {

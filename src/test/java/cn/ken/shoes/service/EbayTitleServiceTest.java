@@ -117,4 +117,24 @@ class EbayTitleServiceTest {
 
         assertThat(title).hasSizeLessThanOrEqualTo(80).endsWith(" Women's HQ6316");
     }
+
+    @Test
+    void closesAQuotedColorwayCutByTruncation() {
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle("(WMNS) ASICS Gel-Nimbus 26 Sneakers 'Light Celadon Safety Yellow' 1012B601-301");
+
+        String title = service.generate("1012B601-301", "USW", metadata, "Women");
+
+        assertThat(title).hasSizeLessThanOrEqualTo(80)
+                .isEqualTo("(WMNS) ASICS Gel-Nimbus 26 Sneakers 'Light Celadon Safety' Women's 1012B601-301");
+    }
+
+    @Test
+    void replacesATrailingParenthesizedGender() {
+        EbayProductMetadata metadata = new EbayProductMetadata();
+        metadata.setTitle("ASICS GT-1000 13 White Coral Reef (Women's) 1012B663-101");
+
+        assertThat(service.generate("1012B663-101", "USW", metadata, "Women"))
+                .isEqualTo("ASICS GT-1000 13 White Coral Reef Women's 1012B663-101");
+    }
 }
