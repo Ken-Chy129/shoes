@@ -63,13 +63,14 @@ public class EbayListingFactory {
 
         EbayListingRequest request = new EbayListingRequest();
         request.setSku(sku(styleId, size.normalized(), effectiveRegion));
-        request.setTitle(titleService.generate(styleId, size.system(), metadata));
         request.setDescription(required(metadata.getDescription(), "描述"));
         request.setImageUrls(metadata.getImageUrls().stream().limit(12).toList());
         request.setQuantity(row.getQuantity());
         request.setCondition("NEW");
         EbayListingTaxonomyService.ResolvedTaxonomy taxonomy = taxonomyService.resolve(
                 row.getCategoryId(), styleId, metadata, size.system(), size.value());
+        request.setTitle(titleService.generate(styleId, size.system(), metadata,
+                department(taxonomy)));
         request.setCategoryId(taxonomy.categoryId());
         request.setMarketplaceId(properties.getDefaultMarketplaceId());
         request.setCurrency(properties.getDefaultCurrency());
@@ -85,6 +86,14 @@ public class EbayListingFactory {
         request.setAspects(taxonomy.aspects());
         request.setContentLanguage(properties.getDefaultContentLanguage());
         return request;
+    }
+
+    private String department(EbayListingTaxonomyService.ResolvedTaxonomy taxonomy) {
+        if (taxonomy.department() != null && !taxonomy.department().isBlank()) {
+            return taxonomy.department();
+        }
+        List<String> values = taxonomy.aspects() == null ? null : taxonomy.aspects().get("Department");
+        return values == null || values.isEmpty() ? null : values.get(0);
     }
 
     ParsedSize parseSize(String rawSize) {

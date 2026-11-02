@@ -57,7 +57,7 @@ public class EbayListingTaxonomyService {
         Map<String, List<String>> aspects = rules.isEmpty()
                 ? fallbackAspects(metadata, styleCode, sizeSystem, sizeValue, department)
                 : buildAspects(rules, metadata, styleCode, sizeSystem, sizeValue, department);
-        return new ResolvedTaxonomy(category.id(), category.name(), aspects);
+        return new ResolvedTaxonomy(category.id(), category.name(), aspects, department);
     }
 
     private CategoryChoice resolveCategory(EbayProductMetadata metadata, String department) {
@@ -593,7 +593,12 @@ public class EbayListingTaxonomyService {
     }
 
     public record ResolvedTaxonomy(String categoryId, String categoryName,
-                                   Map<String, List<String>> aspects) {
+                                   Map<String, List<String>> aspects, String department) {
+
+        public ResolvedTaxonomy(String categoryId, String categoryName,
+                                Map<String, List<String>> aspects) {
+            this(categoryId, categoryName, aspects, null);
+        }
     }
 
     private record CategoryChoice(String id, String name) {

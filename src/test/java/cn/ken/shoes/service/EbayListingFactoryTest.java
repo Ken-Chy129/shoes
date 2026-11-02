@@ -74,7 +74,7 @@ class EbayListingFactoryTest {
         assertThat(request.getFulfillmentPolicyId()).isEqualTo("6246174000");
         assertThat(request.getCondition()).isEqualTo("NEW");
         assertThat(request.getTitle()).isEqualTo(
-                "Nike Dunk Low Retro White Black DD1391-100");
+                "Nike Dunk Low Retro White Black Men's DD1391-100");
     }
 
     @Test
