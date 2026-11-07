@@ -35,7 +35,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
 /**
- * eBay Trading API（XML）只读调用：订单、留下的信用评价、运送服务名称。
+ * eBay Trading API（XML）调用：订单、留下的信用评价、运送服务名称、按 listing 改价。
  *
  * <p>订单主体走 Trading API（只需通用 scope）；买家/课税地址、促销标记与发货时间
  * 由 {@link EbayFulfillmentApiClient} 补充（需要 sell.fulfillment.readonly 授权）。
@@ -211,6 +211,54 @@ public class EbayTradingApiClient {
         } catch (NumberFormatException ignored) {
             // 价格异常的 SKU 跳过，不参与改价
         }
+    }
+
+    /** ReviseInventoryStatus 单次最多改 4 个 SKU。 */
+    public static final int REVISE_INVENTORY_LIMIT = 4;
+
+    /**
+     * 按 listing + SKU 改价格/可售数量。price 或 quantity 为 null 表示不改该项；
+     * quantity 是可售数量（eBay 会自动加上已售数量）。
+     */
+    public record InventoryRevision(String itemId, String sku, java.math.BigDecimal price, Integer quantity) {
+    }
+
+    /**
+     * ReviseInventoryStatus：直接按 listing 号改价格和库存，不依赖 Inventory API 的 offer。
+     * 用于 eBay 后台「重新上架」出来的 listing：它们复用了系统的 SKU，但不属于系统的 offer，
+     * 只能这样改。整次调用失败时抛出 {@link EbayApiException}；价格库存未变化的 Warning 视为成功。
+     */
+    public void reviseInventoryStatus(List<InventoryRevision> revisions) {
+        if (revisions == null || revisions.isEmpty()) {
+            return;
+        }
+        if (revisions.size() > REVISE_INVENTORY_LIMIT) {
+            throw new IllegalArgumentException("ReviseInventoryStatus单次最多" + REVISE_INVENTORY_LIMIT + "个SKU");
+        }
+        StringBuilder statuses = new StringBuilder();
+        for (InventoryRevision revision : revisions) {
+            if (revision.itemId() == null || revision.itemId().isBlank()
+                    || revision.sku() == null || revision.sku().isBlank()
+                    || (revision.price() == null && revision.quantity() == null)) {
+                throw new IllegalArgumentException("改价参数不完整");
+            }
+            statuses.append("  <InventoryStatus>\n")
+                    .append("    <ItemID>").append(escapeXml(revision.itemId())).append("</ItemID>\n")
+                    .append("    <SKU>").append(escapeXml(revision.sku())).append("</SKU>\n");
+            if (revision.price() != null) {
+                statuses.append("    <StartPrice>").append(revision.price().toPlainString()).append("</StartPrice>\n");
+            }
+            if (revision.quantity() != null) {
+                statuses.append("    <Quantity>").append(revision.quantity()).append("</Quantity>\n");
+            }
+            statuses.append("  </InventoryStatus>\n");
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <ReviseInventoryStatusRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                %s</ReviseInventoryStatusRequest>
+                """.formatted(statuses);
+        call("ReviseInventoryStatus", payload);
     }
 
     /** GetOrders 按 OrderID 查询时单次最多携带的订单数。 */

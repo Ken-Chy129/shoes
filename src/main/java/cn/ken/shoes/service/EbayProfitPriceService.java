@@ -75,6 +75,7 @@ public class EbayProfitPriceService {
     private static final int PARALLEL_BATCHES = 4;
     private static final int MAX_OVERRIDE_ROWS = 20000;
     private static final BigDecimal HUNDRED = new BigDecimal("100");
+    static final String RELISTED_PREFIX = "[重新上架链接] ";
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -489,8 +490,16 @@ public class EbayProfitPriceService {
         Set<String> modelNos = new HashSet<>();
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
             EbayListingDO mapping = bySku.get(current.sku());
-            // 不在港区映射里的（美区或非本系统上架）不处理；已在前面页处理过的跳过，避免一轮内重复降价。
-            if (mapping == null || !processed.add(current.sku())) {
+            // 不在港区映射里的（美区或非本系统上架）不处理。
+            if (mapping == null) {
+                continue;
+            }
+            // eBay 后台「重新上架」出来的 listing 复用了系统 SKU，但 listing 号和映射里的不同，
+            // 改 offer 改不到它，要按 listing 号单独改。去重键带上 listing 号，和系统 listing 互不影响。
+            boolean relisted = isRelistedCopy(mapping, current);
+            String dedupKey = relisted ? current.listingId() + "|" + current.sku() : current.sku();
+            // 已在前面页处理过的跳过，避免一轮内重复降价。
+            if (!processed.add(dedupKey)) {
                 continue;
             }
             String euSize = firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
@@ -501,7 +510,7 @@ public class EbayProfitPriceService {
             String styleId = mapping.getStyleId().trim();
             contexts.add(new Context(mapping, current, euSize, styleId,
                     adRates.getOrDefault(current.listingId(), BigDecimal.ZERO),
-                    targets.getOrDefault(normalizeStyleId(styleId), defaultProfit), subsidyRate));
+                    targets.getOrDefault(normalizeStyleId(styleId), defaultProfit), subsidyRate, relisted));
             modelNos.add(styleId);
         }
         if (contexts.isEmpty()) {
@@ -542,7 +551,8 @@ public class EbayProfitPriceService {
                         taskId, context.mapping().getSku(), e);
                 recordItem(taskId, round, context, poisonPrice, null, null,
                         context.live().availableQuantity(),
-                        truncate("失败(计算盈利价：" + safeError(e) + ")，价格和库存未改动", 250));
+                        truncate((context.relisted() ? RELISTED_PREFIX : "")
+                                + "失败(计算盈利价：" + safeError(e) + ")，价格和库存未改动", 250));
                 continue;
             }
             if (decision.action() == Action.KEEP) {
@@ -553,6 +563,10 @@ public class EbayProfitPriceService {
                 planned.add(new Planned(context, poisonPrice, decision));
             }
         }
+
+        List<Planned> relistedPlans = planned.stream().filter(p -> p.context().relisted()).toList();
+        planned = planned.stream().filter(p -> !p.context().relisted()).toList();
+        reviseRelistedCopies(taskId, round, relistedPlans, counters, cancelled);
 
         List<List<Planned>> batches = partition(planned, EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT);
         for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
@@ -571,6 +585,110 @@ public class EbayProfitPriceService {
             }
             for (int b = 0; b < wave.size(); b++) {
                 recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
+            }
+        }
+    }
+
+    /** 映射里记着系统 listing 号、而 eBay 上这条 SKU 挂在另一个 listing 上：是后台重新上架出来的副本。 */
+    private static boolean isRelistedCopy(EbayListingDO mapping, EbayTradingApiClient.ActiveSku current) {
+        return !isBlank(mapping.getListingId()) && !isBlank(current.listingId())
+                && !mapping.getListingId().trim().equals(current.listingId().trim());
+    }
+
+    /**
+     * 重新上架副本按 listing 号 + SKU 用 ReviseInventoryStatus 改价改库存，价格算法与系统 listing 完全一致。
+     * 每次最多 4 个 SKU；整批失败时逐个重试，只让真正有问题的 SKU 失败。不回写映射快照（映射记的是系统 listing）。
+     */
+    private void reviseRelistedCopies(Long taskId, int round, List<Planned> plans, Counters counters,
+                                      AtomicBoolean cancelled) {
+        if (plans.isEmpty()) {
+            return;
+        }
+        List<List<Planned>> batches = partition(plans, EbayTradingApiClient.REVISE_INVENTORY_LIMIT);
+        for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
+            ensureNotCancelled(cancelled);
+            List<List<Planned>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
+            List<Future<Map<Planned, String>>> futures = new ArrayList<>();
+            for (List<Planned> batch : wave) {
+                futures.add(updateExecutor.submit(() -> reviseBatch(batch)));
+            }
+            for (int b = 0; b < wave.size(); b++) {
+                Map<Planned, String> errors;
+                try {
+                    errors = futures.get(b).get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new TaskCancelledException();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    String error = e.getCause() instanceof Exception cause ? safeError(cause) : "系统异常";
+                    errors = new java.util.IdentityHashMap<>();
+                    for (Planned plan : wave.get(b)) {
+                        errors.put(plan, error);
+                    }
+                }
+                for (Planned plan : wave.get(b)) {
+                    recordRelisted(taskId, round, plan, errors.get(plan), counters);
+                }
+            }
+        }
+    }
+
+    /** 返回失败的 SKU 及原因；成功的不在结果里。 */
+    private Map<Planned, String> reviseBatch(List<Planned> batch) {
+        Map<Planned, String> errors = new java.util.IdentityHashMap<>();
+        try {
+            tradingClient.reviseInventoryStatus(batch.stream().map(this::revision).toList());
+            return errors;
+        } catch (RuntimeException e) {
+            if (batch.size() == 1) {
+                errors.put(batch.getFirst(), safeError(e));
+                return errors;
+            }
+        }
+        for (Planned plan : batch) {
+            try {
+                tradingClient.reviseInventoryStatus(List.of(revision(plan)));
+            } catch (RuntimeException e) {
+                errors.put(plan, safeError(e));
+            }
+        }
+        return errors;
+    }
+
+    private EbayTradingApiClient.InventoryRevision revision(Planned plan) {
+        return new EbayTradingApiClient.InventoryRevision(plan.context().live().listingId(),
+                plan.context().live().sku(), plan.decision().newPrice(), plan.decision().newQuantity());
+    }
+
+    private void recordRelisted(Long taskId, int round, Planned plan, String error, Counters counters) {
+        counters.relisted++;
+        String detail = detail(plan);
+        String operateResult;
+        if (error != null) {
+            counters.failed++;
+            operateResult = "失败(" + error + ") " + detail;
+        } else {
+            countAction(plan.decision().action(), counters);
+            operateResult = label(plan.decision().action()) + " " + detail;
+        }
+        recordItem(taskId, round, plan, truncate(RELISTED_PREFIX + operateResult, 250));
+    }
+
+    private static void countAction(Action action, Counters counters) {
+        switch (action) {
+            case LOWER_PRICE -> counters.lowered++;
+            case RAISE_PRICE -> counters.raised++;
+            case RESTORE -> counters.restored++;
+            case LOWER_AND_RESTORE -> {
+                counters.lowered++;
+                counters.restored++;
+            }
+            case RAISE_AND_RESTORE -> {
+                counters.raised++;
+                counters.restored++;
+            }
+            case ZERO_STOCK -> counters.zeroed++;
+            default -> {
             }
         }
     }
@@ -626,22 +744,7 @@ public class EbayProfitPriceService {
                 counters.detached++;
                 operateResult = result.note() + " " + detail;
             } else {
-                switch (decision.action()) {
-                    case LOWER_PRICE -> counters.lowered++;
-                    case RAISE_PRICE -> counters.raised++;
-                    case RESTORE -> counters.restored++;
-                    case LOWER_AND_RESTORE -> {
-                        counters.lowered++;
-                        counters.restored++;
-                    }
-                    case RAISE_AND_RESTORE -> {
-                        counters.raised++;
-                        counters.restored++;
-                    }
-                    case ZERO_STOCK -> counters.zeroed++;
-                    default -> {
-                    }
-                }
+                countAction(decision.action(), counters);
                 operateResult = label(decision.action()) + " " + detail
                         + (result.note() == null ? "" : "；" + result.note());
                 rememberSnapshot(plan);
@@ -745,6 +848,7 @@ public class EbayProfitPriceService {
                     .fluentPut("groupWithdrawn", c.groupWithdrawn)
                     .fluentPut("removedByEbay", c.removedByEbay)
                     .fluentPut("detached", c.detached)
+                    .fluentPut("relisted", c.relisted)
                     .fluentPut("skipped", c.skipped)
                     .fluentPut("skippedUsRegion", c.skippedUsRegion)
                     .fluentPut("notListed", c.notListed)
@@ -925,8 +1029,10 @@ public class EbayProfitPriceService {
         return batches;
     }
 
+    /** relisted：eBay 后台重新上架出来的副本 listing，按 listing 号改，不走 offer。 */
     private record Context(EbayListingDO mapping, EbayTradingApiClient.ActiveSku live, String euSize,
-                           String styleId, BigDecimal adRate, BigDecimal targetProfit, BigDecimal subsidyRate) {
+                           String styleId, BigDecimal adRate, BigDecimal targetProfit, BigDecimal subsidyRate,
+                           boolean relisted) {
     }
 
     private record Planned(Context context, BigDecimal poisonPrice, Decision decision) {
@@ -952,6 +1058,8 @@ public class EbayProfitPriceService {
         int groupWithdrawn;
         int removedByEbay;
         int detached;
+        /** 本轮处理的重新上架副本 SKU 数（含成功、失败），也计入 total 等统计。 */
+        int relisted;
 
         Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;

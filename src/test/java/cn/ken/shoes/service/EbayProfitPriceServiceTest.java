@@ -554,6 +554,70 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void revisesRelistedCopyByListingIdAndKeepsManagedListingOnOfferPath() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L-MAIN");
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
+                    .toList();
+        });
+        pages(List.of(sku("SKU-A", "L-MAIN", "150", 1), sku("SKU-A", "L-COPY", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        ArgumentCaptor<List<EbaySellApiClient.OfferPriceQuantity>> offers = ArgumentCaptor.forClass(List.class);
+        verify(sellClient).bulkUpdatePriceQuantity(offers.capture());
+        assertThat(offers.getValue()).extracting(EbaySellApiClient.OfferPriceQuantity::offerId)
+                .containsExactly("offer-A");
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(tradingClient).reviseInventoryStatus(revisions.capture());
+        EbayTradingApiClient.InventoryRevision revision = revisions.getValue().getFirst();
+        assertThat(revision.itemId()).isEqualTo("L-COPY");
+        assertThat(revision.sku()).isEqualTo("SKU-A");
+        assertThat(revision.price()).isEqualByComparingTo(offers.getValue().getFirst().price());
+        // 映射快照只按系统 listing 回写一次
+        verify(listingMapper, times(1)).updatePriceAndQuantity(eq("SKU-A"), any(), any());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(2)).insert(items.capture());
+        assertThat(items.getAllValues()).extracting(TaskItemDO::getOperateResult)
+                .anySatisfy(r -> assertThat(r).startsWith(EbayProfitPriceService.RELISTED_PREFIX + "降价"))
+                .anySatisfy(r -> assertThat(r).startsWith("降价"));
+    }
+
+    @Test
+    void relistedCopyBatchFailureRetriesEachSkuAndOnlyFailsTheBadOne() {
+        EbayListingDO a = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        a.setListingId("L-MAIN");
+        EbayListingDO b = listing("SKU-B", "offer-B", "AAA-1", "HK");
+        b.setListingId("L-MAIN");
+        when(listingMapper.selectActive()).thenReturn(List.of(a, b));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        doAnswer(invocation -> {
+            List<EbayTradingApiClient.InventoryRevision> list = invocation.getArgument(0);
+            if (list.stream().anyMatch(r -> r.sku().equals("SKU-B"))) {
+                throw new cn.ken.shoes.client.EbayApiException("eBay ReviseInventoryStatus失败：bad");
+            }
+            return null;
+        }).when(tradingClient).reviseInventoryStatus(anyList());
+        pages(List.of(sku("SKU-A", "L-COPY", "150", 1), sku("SKU-B", "L-COPY", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(tradingClient, times(3)).reviseInventoryStatus(anyList());
+        verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(2)).insert(items.capture());
+        assertThat(items.getAllValues())
+                .anySatisfy(i -> assertThat(i.getOperateResult()).contains("降价").doesNotContain("失败"))
+                .anySatisfy(i -> assertThat(i.getOperateResult()).contains("失败(").contains("bad"));
+    }
+
+    @Test
     void rejectsInvalidExcelRows() {
         EbayProfitTargetExcel row = new EbayProfitTargetExcel();
         row.setStyleId("AAA");
