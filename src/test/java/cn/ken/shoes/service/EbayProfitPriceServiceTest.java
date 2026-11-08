@@ -621,6 +621,35 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void revisesBatchesOfTheSameRelistedListingSequentially() {
+        List<EbayListingDO> mappings = new ArrayList<>();
+        List<EbayTradingApiClient.ActiveSku> live = new ArrayList<>();
+        for (int i = 0; i < 9; i++) {
+            EbayListingDO m = listing("SKU-" + i, "offer-" + i, "AAA-1", "HK");
+            m.setListingId("L-MAIN");
+            mappings.add(m);
+            live.add(sku("SKU-" + i, "L-COPY", "150", 1));
+        }
+        when(listingMapper.selectActive()).thenReturn(mappings);
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
+        java.util.concurrent.atomic.AtomicInteger maxInFlight = new java.util.concurrent.atomic.AtomicInteger();
+        doAnswer(invocation -> {
+            maxInFlight.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
+            Thread.sleep(30);
+            inFlight.decrementAndGet();
+            return null;
+        }).when(tradingClient).reviseInventoryStatus(anyList());
+        pages(live);
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(tradingClient, times(3)).reviseInventoryStatus(anyList());
+        assertThat(maxInFlight.get()).isEqualTo(1);
+    }
+
+    @Test
     void relistedCopyBatchFailureRetriesEachSkuAndOnlyFailsTheBadOne() {
         EbayListingDO a = listing("SKU-A", "offer-A", "AAA-1", "HK");
         a.setListingId("L-MAIN");

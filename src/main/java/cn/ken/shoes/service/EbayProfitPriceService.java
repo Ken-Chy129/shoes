@@ -610,19 +610,26 @@ public class EbayProfitPriceService {
     /**
      * 重新上架副本按 listing 号 + SKU 用 ReviseInventoryStatus 改价改库存，价格算法与系统 listing 完全一致。
      * 每次最多 4 个 SKU；整批失败时逐个重试，只让真正有问题的 SKU 失败。不回写映射快照（映射记的是系统 listing）。
+     *
+     * <p>同一 listing 的多次修改必须串行：eBay 对同一 listing 的并发修改会互相覆盖，只有最后一次生效
+     * （实测 4 批并发改同一 listing，13 个尺码只有 4 个落地）。不同 listing 之间并行。
      */
     private void reviseRelistedCopies(Long taskId, int round, List<Planned> plans, Counters counters,
                                       AtomicBoolean cancelled) {
         if (plans.isEmpty()) {
             return;
         }
-        List<List<Planned>> batches = partition(plans, EbayTradingApiClient.REVISE_INVENTORY_LIMIT);
-        for (int i = 0; i < batches.size(); i += PARALLEL_BATCHES) {
+        Map<String, List<Planned>> byListing = new LinkedHashMap<>();
+        for (Planned plan : plans) {
+            byListing.computeIfAbsent(plan.context().live().listingId(), ignored -> new ArrayList<>()).add(plan);
+        }
+        List<List<Planned>> listings = new ArrayList<>(byListing.values());
+        for (int i = 0; i < listings.size(); i += PARALLEL_BATCHES) {
             ensureNotCancelled(cancelled);
-            List<List<Planned>> wave = batches.subList(i, Math.min(i + PARALLEL_BATCHES, batches.size()));
+            List<List<Planned>> wave = listings.subList(i, Math.min(i + PARALLEL_BATCHES, listings.size()));
             List<Future<Map<Planned, String>>> futures = new ArrayList<>();
-            for (List<Planned> batch : wave) {
-                futures.add(updateExecutor.submit(() -> reviseBatch(batch)));
+            for (List<Planned> listing : wave) {
+                futures.add(updateExecutor.submit(() -> reviseListing(listing)));
             }
             for (int b = 0; b < wave.size(); b++) {
                 Map<Planned, String> errors;
@@ -643,6 +650,15 @@ public class EbayProfitPriceService {
                 }
             }
         }
+    }
+
+    /** 同一 listing 的尺码按每批 4 个依次修改。 */
+    private Map<Planned, String> reviseListing(List<Planned> plans) {
+        Map<Planned, String> errors = new java.util.IdentityHashMap<>();
+        for (List<Planned> batch : partition(plans, EbayTradingApiClient.REVISE_INVENTORY_LIMIT)) {
+            errors.putAll(reviseBatch(batch));
+        }
+        return errors;
     }
 
     /** 返回失败的 SKU 及原因；成功的不在结果里。 */
