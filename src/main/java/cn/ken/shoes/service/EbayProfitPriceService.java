@@ -90,6 +90,11 @@ public class EbayProfitPriceService {
     private final Map<Long, RunHandle> running = new java.util.concurrent.ConcurrentHashMap<>();
     private final ExecutorService updateExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final EbayRepricingRecovery recovery;
+    /**
+     * 发现过 offer 与刊登价格脱钩的 SKU。脱钩后 offer 改价永远不会再同步到刊登，下次价格变化时快照和
+     * 刊登仍是一致的、看不出来，所以记住它们，之后每次改价都直接改刊登。服务重启后清空，再脱钩时重新发现。
+     */
+    private final Set<String> decoupledSkus = java.util.concurrent.ConcurrentHashMap.newKeySet();
 
     @Autowired
     public EbayProfitPriceService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
@@ -585,10 +590,97 @@ public class EbayProfitPriceService {
                                 !pricedListings.contains(p.context().live().listingId()))).toList();
                 futures.add(updateExecutor.submit(() -> recoveryRound.apply(batchTargets)));
             }
+            List<List<EbayRepricingRecovery.Resolution>> results = new ArrayList<>();
             for (int b = 0; b < wave.size(); b++) {
-                recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
+                results.add(await(futures.get(b), wave.get(b)));
+            }
+            Map<Planned, String> syncErrors = syncDriftedListings(wave, results, cancelled);
+            for (int b = 0; b < wave.size(); b++) {
+                recordBatch(taskId, round, wave.get(b), results.get(b), counters, syncErrors);
             }
         }
+    }
+
+    /**
+     * offer 记录的价格（映射快照）和买家看到的刊登价格对不上，说明这个尺码改 offer 已经不会同步到刊登了
+     * （实测 eBay 返回成功、刊登价不变，每轮重复「降价」）。这种尺码在 offer 改成功后，再按 listing 号
+     * + SKU 用 ReviseInventoryStatus 直接改刊登，把两边拉回一致。两边一致的尺码不额外调用，省 Trading API 额度。
+     *
+     * @return 需要同步的尺码 → 同步失败原因（成功为 null）
+     */
+    private Map<Planned, String> syncDriftedListings(List<List<Planned>> wave,
+                                                     List<List<EbayRepricingRecovery.Resolution>> results,
+                                                     AtomicBoolean cancelled) {
+        Map<Planned, String> outcome = new java.util.IdentityHashMap<>();
+        Map<String, List<Planned>> byListing = new LinkedHashMap<>();
+        for (int b = 0; b < wave.size(); b++) {
+            Map<String, EbayRepricingRecovery.Resolution> byOfferId = byOfferId(results.get(b));
+            for (Planned plan : wave.get(b)) {
+                EbayRepricingRecovery.Resolution result = byOfferId.get(plan.context().mapping().getOfferId());
+                if (result != null && result.kind() == EbayRepricingRecovery.Kind.UPDATED && drifted(plan)) {
+                    byListing.computeIfAbsent(plan.context().live().listingId(), ignored -> new ArrayList<>()).add(plan);
+                }
+            }
+        }
+        if (byListing.isEmpty()) {
+            return outcome;
+        }
+        ensureNotCancelled(cancelled);
+        List<List<Planned>> listings = new ArrayList<>(byListing.values());
+        for (int i = 0; i < listings.size(); i += PARALLEL_BATCHES) {
+            List<List<Planned>> group = listings.subList(i, Math.min(i + PARALLEL_BATCHES, listings.size()));
+            List<Future<Map<Planned, String>>> futures = new ArrayList<>();
+            for (List<Planned> listing : group) {
+                futures.add(updateExecutor.submit(() -> reviseListing(listing)));
+            }
+            for (int b = 0; b < group.size(); b++) {
+                Map<Planned, String> errors;
+                try {
+                    errors = futures.get(b).get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new TaskCancelledException();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    String error = e.getCause() instanceof Exception cause ? safeError(cause) : "系统异常";
+                    errors = new java.util.IdentityHashMap<>();
+                    for (Planned plan : group.get(b)) {
+                        errors.put(plan, error);
+                    }
+                }
+                for (Planned plan : group.get(b)) {
+                    outcome.put(plan, errors.get(plan));
+                }
+            }
+        }
+        return outcome;
+    }
+
+    /** 映射快照记的是上次写进 offer 的价格；和刊登实际价格不同即为脱钩。 */
+    static boolean drifted(EbayListingDO mapping, BigDecimal livePrice) {
+        return mapping.getPrice() != null && livePrice != null && mapping.getPrice().compareTo(livePrice) != 0;
+    }
+
+    private boolean drifted(Planned plan) {
+        if (isBlank(plan.context().live().listingId()) || isBlank(plan.context().live().sku())) {
+            return false;
+        }
+        String sku = plan.context().live().sku();
+        if (drifted(plan.context().mapping(), plan.context().live().price())) {
+            decoupledSkus.add(sku);
+            return true;
+        }
+        return decoupledSkus.contains(sku);
+    }
+
+    private static Map<String, EbayRepricingRecovery.Resolution> byOfferId(
+            List<EbayRepricingRecovery.Resolution> results) {
+        Map<String, EbayRepricingRecovery.Resolution> byOfferId = new HashMap<>();
+        for (EbayRepricingRecovery.Resolution result : results) {
+            if (result != null) {
+                byOfferId.putIfAbsent(result.offerId(), result);
+            }
+        }
+        return byOfferId;
     }
 
     /**
@@ -747,13 +839,9 @@ public class EbayProfitPriceService {
     }
 
     private void recordBatch(Long taskId, int round, List<Planned> batch,
-                             List<EbayRepricingRecovery.Resolution> results, Counters counters) {
-        Map<String, EbayRepricingRecovery.Resolution> byOfferId = new HashMap<>();
-        for (EbayRepricingRecovery.Resolution result : results) {
-            if (result != null) {
-                byOfferId.putIfAbsent(result.offerId(), result);
-            }
-        }
+                             List<EbayRepricingRecovery.Resolution> results, Counters counters,
+                             Map<Planned, String> syncErrors) {
+        Map<String, EbayRepricingRecovery.Resolution> byOfferId = byOfferId(results);
         for (Planned plan : batch) {
             EbayRepricingRecovery.Resolution result = byOfferId.get(plan.context().mapping().getOfferId());
             Decision decision = plan.decision();
@@ -771,10 +859,20 @@ public class EbayProfitPriceService {
             } else if (result.kind() == EbayRepricingRecovery.Kind.DETACHED) {
                 counters.detached++;
                 operateResult = result.note() + " " + detail;
+            } else if (syncErrors.containsKey(plan) && syncErrors.get(plan) != null) {
+                // offer 改了但刊登没跟上，买家看到的仍是旧价：算失败，不更新快照，下轮继续同步。
+                counters.failed++;
+                counters.synced++;
+                operateResult = "失败(刊登价同步：" + syncErrors.get(plan) + ") " + detail;
             } else {
                 countAction(decision.action(), counters);
+                boolean synced = syncErrors.containsKey(plan);
+                if (synced) {
+                    counters.synced++;
+                }
                 operateResult = label(decision.action()) + " " + detail
-                        + (result.note() == null ? "" : "；" + result.note());
+                        + (result.note() == null ? "" : "；" + result.note())
+                        + (synced ? "；已同步刊登价" : "");
                 rememberSnapshot(plan);
             }
             recordItem(taskId, round, plan, truncate(operateResult, 250));
@@ -877,6 +975,7 @@ public class EbayProfitPriceService {
                     .fluentPut("removedByEbay", c.removedByEbay)
                     .fluentPut("detached", c.detached)
                     .fluentPut("relisted", c.relisted)
+                    .fluentPut("synced", c.synced)
                     .fluentPut("skipped", c.skipped)
                     .fluentPut("skippedUsRegion", c.skippedUsRegion)
                     .fluentPut("notListed", c.notListed)
@@ -1088,6 +1187,8 @@ public class EbayProfitPriceService {
         int detached;
         /** 本轮处理的重新上架副本 SKU 数（含成功、失败），也计入 total 等统计。 */
         int relisted;
+        /** 本轮 offer 与刊登价格脱钩、额外直接改刊登价的尺码数（含失败）。 */
+        int synced;
 
         Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;

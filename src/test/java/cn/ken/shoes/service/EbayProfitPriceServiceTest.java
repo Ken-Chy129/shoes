@@ -694,6 +694,86 @@ class EbayProfitPriceServiceTest {
         }).when(tradingClient).forEachActiveSkuPage(any(), any());
     }
 
+    @Test
+    void offerPriceDriftedFromListingAlsoRevisesListingDirectlyAndKeepsDoingSo() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L-MAIN");
+        // 快照记着上次写进 offer 的 130.85，买家看到的仍是 140.18：offer 和刊登已经脱钩
+        mapping.setPrice(new BigDecimal("130.85"));
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
+                    .toList();
+        });
+        pages(List.of(sku("SKU-A", "L-MAIN", "140.18", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        ArgumentCaptor<List<EbaySellApiClient.OfferPriceQuantity>> offers = ArgumentCaptor.forClass(List.class);
+        verify(sellClient).bulkUpdatePriceQuantity(offers.capture());
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(tradingClient).reviseInventoryStatus(revisions.capture());
+        assertThat(revisions.getValue().getFirst().itemId()).isEqualTo("L-MAIN");
+        assertThat(revisions.getValue().getFirst().sku()).isEqualTo("SKU-A");
+        assertThat(revisions.getValue().getFirst().price()).isEqualByComparingTo(offers.getValue().getFirst().price());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(items.capture());
+        assertThat(items.getValue().getOperateResult()).contains("已同步刊登价");
+
+        // 下一轮快照已和刊登一致，但这个 SKU 已知脱钩，仍然直接改刊登
+        mapping.setPrice(new BigDecimal("140.18"));
+        service.runSingleRound(7L, 2, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+        verify(tradingClient, times(2)).reviseInventoryStatus(anyList());
+    }
+
+    @Test
+    void driftSyncFailureIsReportedAndSnapshotNotUpdated() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L-MAIN");
+        mapping.setPrice(new BigDecimal("130.85"));
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
+                    .toList();
+        });
+        org.mockito.Mockito.doThrow(new cn.ken.shoes.client.EbayApiException("eBay ReviseInventoryStatus失败：boom"))
+                .when(tradingClient).reviseInventoryStatus(anyList());
+        pages(List.of(sku("SKU-A", "L-MAIN", "140.18", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(listingMapper, never()).updatePriceAndQuantity(eq("SKU-A"), any(), any());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(items.capture());
+        assertThat(items.getValue().getOperateResult()).startsWith("失败(刊登价同步");
+    }
+
+    @Test
+    void consistentOfferAndListingDoesNotCallTradingApi() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L-MAIN");
+        mapping.setPrice(new BigDecimal("150"));
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
+            List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
+            return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
+                    .toList();
+        });
+        pages(List.of(sku("SKU-A", "L-MAIN", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(tradingClient, never()).reviseInventoryStatus(anyList());
+    }
+
     private static EbayTradingApiClient.ActiveSku sku(String sku, String listingId, String price, int quantity) {
         return new EbayTradingApiClient.ActiveSku(sku, listingId, new BigDecimal(price), quantity);
     }
