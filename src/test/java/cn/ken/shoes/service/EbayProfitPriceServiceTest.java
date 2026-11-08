@@ -589,6 +589,38 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void repricesRelistedSizeMissingFromMappingByDerivingStyleAndSizeFromSku() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "CZ1055-100", "HK");
+        mapping.setListingId("L-MAIN");
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        PoisonPriceDO eu38 = poison("CZ1055-100", 300);
+        eu38.setEuSize("38");
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(eu38));
+        String groupKey = EbayListingFactory.inventoryGroupKey("CZ1055-100", cn.ken.shoes.model.ebay.EbayListingRegion.HK);
+        // 映射里没有 EU38，但它挂在本系统商品组的重新上架 listing 上
+        pages(List.of(new EbayTradingApiClient.ActiveSku("EBAYCZ1055100EU38NEW31790D34", "L-COPY",
+                new BigDecimal("76"), 1, groupKey),
+                new EbayTradingApiClient.ActiveSku("FOREIGN-SKU", "L-OTHER", new BigDecimal("76"), 1, "OTHER-GROUP")));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(tradingClient).reviseInventoryStatus(revisions.capture());
+        EbayTradingApiClient.InventoryRevision revision = revisions.getValue().getFirst();
+        assertThat(revision.itemId()).isEqualTo("L-COPY");
+        assertThat(revision.sku()).isEqualTo("EBAYCZ1055100EU38NEW31790D34");
+        assertThat(revision.price()).isGreaterThan(new BigDecimal("76"));
+        verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+        verify(listingMapper, never()).updatePriceAndQuantity(any(), any(), any());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper).insert(items.capture());
+        assertThat(items.getValue().getStyleId()).isEqualTo("CZ1055-100");
+        assertThat(items.getValue().getEuSize()).isEqualTo("38");
+        assertThat(items.getValue().getOperateResult()).startsWith(EbayProfitPriceService.RELISTED_PREFIX);
+    }
+
+    @Test
     void relistedCopyBatchFailureRetriesEachSkuAndOnlyFailsTheBadOne() {
         EbayListingDO a = listing("SKU-A", "offer-A", "AAA-1", "HK");
         a.setListingId("L-MAIN");

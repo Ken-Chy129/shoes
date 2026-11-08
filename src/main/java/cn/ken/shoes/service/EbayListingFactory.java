@@ -115,6 +115,11 @@ public class EbayListingFactory {
      * 因为同一 listing 的所有尺码只能共用一个发货地点和物流政策。
      */
     String sku(String styleId, String normalizedSize, EbayListingRegion region) {
+        return variantSku(styleId, normalizedSize, region);
+    }
+
+    /** 单个尺码的 SKU 只由货号、规范化尺码（如 EU42.5/USM10）和区域决定。 */
+    public static String variantSku(String styleId, String normalizedSize, EbayListingRegion region) {
         String source = region == EbayListingRegion.US
                 ? String.join("|", "EBAY", "US", styleId, normalizedSize, "NEW")
                 : String.join("|", "EBAY", styleId, normalizedSize, "NEW");

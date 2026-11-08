@@ -442,6 +442,8 @@ public class EbayProfitPriceService {
             return;
         }
 
+        RelistedSkuResolver resolver = new RelistedSkuResolver(bySku.values());
+
         Map<String, BigDecimal> adRates = marketingClient.getRunningAdRates();
         ensureNotCancelled(cancelled);
 
@@ -451,7 +453,7 @@ public class EbayProfitPriceService {
         try {
             tradingClient.forEachActiveSkuPage(cancelled::get, page -> {
                 ensureNotCancelled(cancelled);
-                processPage(taskId, round, page, bySku, processed, adRates, targets, defaultProfit,
+                processPage(taskId, round, page, bySku, resolver, processed, adRates, targets, defaultProfit,
                         exchangeRate, freight, subsidyRate, counters, cancelled, recoveryRound);
                 counters.pages = page.pageNumber();
                 counters.totalPages = page.totalPages();
@@ -481,29 +483,29 @@ public class EbayProfitPriceService {
     }
 
     private void processPage(Long taskId, int round, EbayTradingApiClient.ActiveSkuPage page,
-                             Map<String, EbayListingDO> bySku, Set<String> processed,
-                             Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
+                             Map<String, EbayListingDO> bySku, RelistedSkuResolver resolver,
+                             Set<String> processed, Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
                              BigDecimal defaultProfit, BigDecimal exchangeRate, BigDecimal freight,
                              BigDecimal subsidyRate, Counters counters, AtomicBoolean cancelled,
                              EbayRepricingRecovery.Round recoveryRound) {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
-            EbayListingDO mapping = bySku.get(current.sku());
-            // 不在港区映射里的（美区或非本系统上架）不处理。
+            EbayListingDO mapping = mappingOf(current, bySku, resolver);
+            // 不在港区映射里、也推不出货号尺码的（美区或非本系统上架）不处理。
             if (mapping == null) {
                 continue;
             }
             // eBay 后台「重新上架」出来的 listing 复用了系统 SKU，但 listing 号和映射里的不同，
             // 改 offer 改不到它，要按 listing 号单独改。去重键带上 listing 号，和系统 listing 互不影响。
-            boolean relisted = isRelistedCopy(mapping, current);
+            boolean relisted = RelistedSkuResolver.isDerived(mapping) || isRelistedCopy(mapping, current);
             String dedupKey = relisted ? current.listingId() + "|" + current.sku() : current.sku();
             // 已在前面页处理过的跳过，避免一轮内重复降价。
             if (!processed.add(dedupKey)) {
                 continue;
             }
             String euSize = firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
-            if (isBlank(mapping.getOfferId()) || isBlank(mapping.getStyleId()) || euSize == null) {
+            if ((!relisted && isBlank(mapping.getOfferId())) || isBlank(mapping.getStyleId()) || euSize == null) {
                 counters.skipped++;
                 continue;
             }
@@ -536,7 +538,7 @@ public class EbayProfitPriceService {
         }
 
         counters.total += contexts.size();
-        Set<String> pricedListings = pricedListings(page, bySku, prices);
+        Set<String> pricedListings = pricedListings(page, bySku, resolver, prices);
         List<Planned> planned = new ArrayList<>();
         for (Context context : contexts) {
             BigDecimal poisonPrice = prices.get(priceKey(context.styleId(), context.euSize()));
@@ -587,6 +589,16 @@ public class EbayProfitPriceService {
                 recordBatch(taskId, round, wave.get(b), await(futures.get(b), wave.get(b)), counters);
             }
         }
+    }
+
+    /**
+     * 先按 SKU 查映射；查不到时，若它挂在系统商品组的 listing 上（eBay 重新上架出来的副本里常有
+     * 系统早已不再上架、映射里已没有的尺码），按货号反推出它对应的尺码。
+     */
+    private static EbayListingDO mappingOf(EbayTradingApiClient.ActiveSku current, Map<String, EbayListingDO> bySku,
+                                           RelistedSkuResolver resolver) {
+        EbayListingDO mapping = bySku.get(current.sku());
+        return mapping != null ? mapping : resolver.resolve(current.parentSku(), current.sku());
     }
 
     /** 映射里记着系统 listing 号、而 eBay 上这条 SKU 挂在另一个 listing 上：是后台重新上架出来的副本。 */
@@ -698,10 +710,10 @@ public class EbayProfitPriceService {
      * 因此可以据此判断「整组都无价」。不在港区映射里或缺货号/尺码的 SKU 价格未知，保守地算作有价。
      */
     private Set<String> pricedListings(EbayTradingApiClient.ActiveSkuPage page, Map<String, EbayListingDO> bySku,
-                                       Map<String, BigDecimal> prices) {
+                                       RelistedSkuResolver resolver, Map<String, BigDecimal> prices) {
         Set<String> priced = new HashSet<>();
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
-            EbayListingDO mapping = bySku.get(current.sku());
+            EbayListingDO mapping = mappingOf(current, bySku, resolver);
             String euSize = mapping == null ? null : firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
             if (mapping == null || isBlank(mapping.getStyleId()) || euSize == null
                     || prices.containsKey(priceKey(mapping.getStyleId().trim(), euSize))) {

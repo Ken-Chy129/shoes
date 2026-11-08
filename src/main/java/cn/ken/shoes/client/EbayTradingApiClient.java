@@ -122,7 +122,11 @@ public class EbayTradingApiClient {
     private static final int MAX_SELLER_LIST_PAGES = 500;
 
     /** eBay 上一个 SKU 的实时价格与可售数量（可售 = Quantity - QuantitySold）。 */
-    public record ActiveSku(String sku, String listingId, java.math.BigDecimal price, int availableQuantity) {
+    public record ActiveSku(String sku, String listingId, java.math.BigDecimal price, int availableQuantity,
+                            String parentSku) {
+        public ActiveSku(String sku, String listingId, java.math.BigDecimal price, int availableQuantity) {
+            this(sku, listingId, price, availableQuantity, null);
+        }
     }
 
     /** GetSellerList 的一页：页码从 1 开始，totalPages 为 eBay 当次返回的总页数。 */
@@ -182,11 +186,12 @@ public class EbayTradingApiClient {
                 List<Element> variations = children(firstElement(item, "Variations"), "Variation");
                 if (variations.isEmpty()) {
                     addActiveSku(skus, text(item, "SKU"), itemId, text(item, "StartPrice"),
-                            text(item, "Quantity"), text(item, "SellingStatus/QuantitySold"));
+                            text(item, "Quantity"), text(item, "SellingStatus/QuantitySold"), null);
                 }
+                String parentSku = variations.isEmpty() ? null : text(item, "SKU");
                 for (Element variation : variations) {
                     addActiveSku(skus, text(variation, "SKU"), itemId, text(variation, "StartPrice"),
-                            text(variation, "Quantity"), text(variation, "SellingStatus/QuantitySold"));
+                            text(variation, "Quantity"), text(variation, "SellingStatus/QuantitySold"), parentSku);
                 }
             }
             int totalPages = parseInt(text(root, "PaginationResult/TotalNumberOfPages"));
@@ -201,13 +206,13 @@ public class EbayTradingApiClient {
     }
 
     private static void addActiveSku(List<ActiveSku> result, String sku, String itemId, String price,
-                                     String quantity, String sold) {
+                                     String quantity, String sold, String parentSku) {
         if (sku == null || itemId == null || price == null) {
             return;
         }
         try {
             int available = Math.max(0, parseInt(quantity) - parseInt(sold));
-            result.add(new ActiveSku(sku, itemId, new java.math.BigDecimal(price), available));
+            result.add(new ActiveSku(sku, itemId, new java.math.BigDecimal(price), available, parentSku));
         } catch (NumberFormatException ignored) {
             // 价格异常的 SKU 跳过，不参与改价
         }
