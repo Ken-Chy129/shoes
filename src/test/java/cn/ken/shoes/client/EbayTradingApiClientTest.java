@@ -222,4 +222,78 @@ class EbayTradingApiClientTest {
 
         assertThat(seen).containsExactly("1/2:S1 requests=1", "2/2:S2 requests=2");
     }
+
+    @Test
+    void parsesSellerListingsWithSizesWatchersAndRelistLinks() throws Exception {
+        server.enqueue(xml("""
+                <GetSellerListResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <PaginationResult><TotalNumberOfPages>3</TotalNumberOfPages>
+                    <TotalNumberOfEntries>450</TotalNumberOfEntries></PaginationResult>
+                  <ItemArray>
+                    <Item><ItemID>407333465699</ItemID><Title>Nike Air Force 1 CZ1055-100</Title>
+                      <SKU>GROUP-1</SKU><TimeLeft>P2DT10H37M34S</TimeLeft><WatchCount>7</WatchCount>
+                      <RelistParentID>407100000000</RelistParentID>
+                      <ListingDetails><StartTime>2026-11-03T08:00:00.000Z</StartTime>
+                        <EndTime>2026-12-03T08:00:00.000Z</EndTime>
+                        <ViewItemURL>https://www.ebay.com/itm/407333465699</ViewItemURL></ListingDetails>
+                      <SellingStatus><ListingStatus>Active</ListingStatus></SellingStatus>
+                      <Variations>
+                        <Variation><SKU>V-9</SKU><StartPrice>105.64</StartPrice><Quantity>2</Quantity>
+                          <VariationSpecifics><NameValueList><Name>US Shoe Size</Name><Value>9</Value></NameValueList></VariationSpecifics>
+                          <SellingStatus><QuantitySold>1</QuantitySold></SellingStatus></Variation>
+                        <Variation><SKU>V-10</SKU><StartPrice>120</StartPrice><Quantity>1</Quantity>
+                          <VariationSpecifics><NameValueList><Name>US Shoe Size</Name><Value>10</Value></NameValueList></VariationSpecifics>
+                        </Variation>
+                      </Variations></Item>
+                  </ItemArray>
+                </GetSellerListResponse>
+                """));
+
+        EbayTradingApiClient.SellerListingPage page = client.getSellerListings(
+                java.time.Instant.parse("2026-11-09T00:00:00Z"), java.time.Instant.parse("2027-03-08T00:00:00Z"), 1);
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("GetSellerList");
+        assertThat(request.getBody().readUtf8()).contains("<IncludeWatchCount>true</IncludeWatchCount>")
+                .contains("<EndTimeFrom>2026-11-09T00:00:00Z</EndTimeFrom>").contains("<PageNumber>1</PageNumber>");
+        assertThat(page.totalPages()).isEqualTo(3);
+        assertThat(page.totalEntries()).isEqualTo(450);
+        EbayTradingApiClient.SellerListing listing = page.listings().get(0);
+        assertThat(listing.active()).isTrue();
+        assertThat(listing.hasVariations()).isTrue();
+        assertThat(listing.watchCount()).isEqualTo(7);
+        assertThat(listing.relistParentId()).isEqualTo("407100000000");
+        assertThat(listing.timeLeft()).isEqualTo("P2DT10H37M34S");
+        assertThat(listing.variations()).extracting(EbayTradingApiClient.ListingVariation::size).containsExactly("9", "10");
+        assertThat(listing.variations().get(0).available()).isEqualTo(1);
+        assertThat(listing.variations().get(0).price()).isEqualByComparingTo("105.64");
+    }
+
+    @Test
+    void endItemTreatsAlreadyEndedAsNotEnded() {
+        server.enqueue(xml("""
+                <EndItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack>
+                  <Errors><ShortMessage>The auction has already been closed.</ShortMessage>
+                    <ErrorCode>1047</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                </EndItemResponse>
+                """));
+        server.enqueue(xml("""
+                <EndItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></EndItemResponse>
+                """));
+
+        assertThat(client.endItem("1")).isFalse();
+        assertThat(client.endItem("2")).isTrue();
+    }
+
+    @Test
+    void relistReturnsNewItemId() throws Exception {
+        server.enqueue(xml("""
+                <RelistFixedPriceItemResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack>
+                  <ItemID>407999999999</ItemID></RelistFixedPriceItemResponse>
+                """));
+
+        assertThat(client.relistFixedPriceItem("407100000000")).isEqualTo("407999999999");
+        assertThat(server.takeRequest().getBody().readUtf8()).contains("<ItemID>407100000000</ItemID>");
+    }
 }

@@ -24,6 +24,10 @@ public class EbayProperties {
     public static final String MARKETING_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly";
 
+    /** 只读流量报表（刊登浏览量）。 */
+    public static final String ANALYTICS_READ_SCOPE =
+            "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly";
+
     private String environment = "sandbox";
     private String clientId = "";
     private String clientSecret = "";
@@ -122,6 +126,10 @@ public class EbayProperties {
         return apiRoot() + "/sell/marketing/v1/";
     }
 
+    public String getAnalyticsApiEndpoint() {
+        return apiRoot() + "/sell/analytics/v1/";
+    }
+
     /** eBay 已下线 Trading API 的 UploadSiteHostedPictures，图片托管改走 Media API。 */
     public String getMediaApiEndpoint() {
         return isSandbox()
@@ -148,6 +156,7 @@ public class EbayProperties {
         effective.add(IDENTITY_READ_SCOPE);
         effective.add(FULFILLMENT_READ_SCOPE);
         effective.add(MARKETING_READ_SCOPE);
+        effective.add(ANALYTICS_READ_SCOPE);
         return String.join(" ", effective);
     }
 

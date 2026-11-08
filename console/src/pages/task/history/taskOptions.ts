@@ -18,6 +18,10 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   ebay_add_tracking: 'eBay添加追踪号码',
   ebay_profit_price: 'eBay盈利改价',
   ebay_promo_profit_price: 'eBay活动改价',
+  ebay_fetch_listings: 'eBay获取刊登',
+  ebay_end_listings: 'eBay按编号下架',
+  ebay_relist_listings: 'eBay按编号重新上架',
+  ebay_set_price: 'eBay指定尺码改价',
 };
 
 export const EBAY_TASK_OPTIONS = [
@@ -30,6 +34,10 @@ export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_zero_stock, value: 'ebay_zero_stock'},
   {label: TASK_TYPE_LABELS.ebay_fetch_orders, value: 'ebay_fetch_orders'},
   {label: TASK_TYPE_LABELS.ebay_add_tracking, value: 'ebay_add_tracking'},
+  {label: TASK_TYPE_LABELS.ebay_fetch_listings, value: 'ebay_fetch_listings'},
+  {label: TASK_TYPE_LABELS.ebay_end_listings, value: 'ebay_end_listings'},
+  {label: TASK_TYPE_LABELS.ebay_relist_listings, value: 'ebay_relist_listings'},
+  {label: TASK_TYPE_LABELS.ebay_set_price, value: 'ebay_set_price'},
 ];
 
 export const STOCKX_TASK_OPTIONS = [

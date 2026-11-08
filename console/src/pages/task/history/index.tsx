@@ -135,6 +135,27 @@ const BidFeeMonitorFields = ({includeOutsideExcel = false}: {includeOutsideExcel
     </Form.Item>
 </>;
 
+const EBAY_MANAGE_UPLOADS: Record<string, {
+    name: string; api: string; template: string; requiredFields: string[]; optionalFields?: string[]; note: string;
+}> = {
+    ebay_end_listings: {
+        name: 'eBay按编号下架', api: TASK_API.EBAY_START_END_LISTINGS, template: TASK_API.EBAY_END_LISTINGS_TEMPLATE,
+        requiredFields: ['物品编号'],
+        note: '只读第一列，填物品编号或商品链接都行；可直接上传「eBay获取刊登」导出的表。',
+    },
+    ebay_relist_listings: {
+        name: 'eBay按编号重新上架', api: TASK_API.EBAY_START_RELIST_LISTINGS,
+        template: TASK_API.EBAY_RELIST_LISTINGS_TEMPLATE,
+        requiredFields: ['物品编号'],
+        note: '填已结束刊登的物品编号；重新上架后eBay会生成新编号，任务明细里可以看到。仍在售或已重新上架过的会跳过。',
+    },
+    ebay_set_price: {
+        name: 'eBay指定尺码改价', api: TASK_API.EBAY_START_SET_PRICE, template: TASK_API.EBAY_SET_PRICE_TEMPLATE,
+        requiredFields: ['物品编号', '尺码', '新价格(USD)'], optionalFields: ['SKU'],
+        note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「eBay获取刊登」导出表，在「尺码明细」里填新价格。',
+    },
+};
+
 const TaskPage = () => {
     const [conditionForm] = Form.useForm();
     const [taskList, setTaskList] = useState<TaskRecord[]>([]);
@@ -334,6 +355,41 @@ const TaskPage = () => {
                         setCreating(false);
                     },
                     onError: () => { message.error('货号Excel上传失败'); setCreating(false); },
+                });
+            } else if (createPlatform === 'ebay' && EBAY_MANAGE_UPLOADS[createTaskType]) {
+                const config = EBAY_MANAGE_UPLOADS[createTaskType];
+                const file = values.ebayManageExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传物品编号Excel'); setCreating(false); return; }
+                doUploadRequestWithParams(config.api, file, {}, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || `${config.name}任务创建失败`);
+                            setCreating(false);
+                            return;
+                        }
+                        message.success(`${config.name}任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                        setCreating(false);
+                    },
+                    onError: () => { message.error('Excel上传失败'); setCreating(false); },
+                });
+            } else if (createPlatform === 'ebay' && createTaskType === 'ebay_fetch_listings') {
+                doPostRequest(TASK_API.EBAY_START_FETCH_LISTINGS, {
+                    scope: values.ebayListingScope || 'active',
+                    viewDays: values.ebayViewDays ?? 30,
+                }, {
+                    onSuccess: (res: any) => {
+                        if (!res.success) {
+                            message.error(res.errorMsg || 'eBay获取刊登任务创建失败');
+                            return;
+                        }
+                        message.success(`eBay获取刊登任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        setCreateModalVisible(false);
+                        queryTaskList();
+                    },
+                    onError: (res: any) => message.error(res.errorMsg || 'eBay获取刊登任务创建失败'),
+                    onFinally: () => setCreating(false),
                 });
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_add_tracking') {
                 const file = values.ebayTrackingExcel?.[0]?.originFileObj;
@@ -860,6 +916,34 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'ebay_fetch_listings' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        if (attrs.active == null) {
+                            return <span>已获取 {attrs.fetched ?? 0}</span>;
+                        }
+                        return <Tooltip title={`共 ${attrs.total ?? 0} | 其中重新上架出来的 ${attrs.relisted ?? 0}${attrs.viewsAvailable === false ? ' | 浏览人数未获取' : ''}`}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                在售 {attrs.active ?? 0}<br/>已结束 {attrs.ended ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
+                if ((record.taskType === 'ebay_end_listings' || record.taskType === 'ebay_relist_listings'
+                    || record.taskType === 'ebay_set_price') && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        const ok = record.taskType === 'ebay_end_listings' ? (attrs.ended ?? 0) + (attrs.alreadyEnded ?? 0)
+                            : record.taskType === 'ebay_relist_listings' ? (attrs.relisted ?? 0)
+                            : (attrs.changed ?? 0) + (attrs.unchanged ?? 0);
+                        const extra = record.taskType === 'ebay_relist_listings' ? ` | 跳过 ${attrs.skipped ?? 0}` : '';
+                        return <Tooltip title={`进度 ${attrs.done ?? 0}/${attrs.total ?? 0}${extra}`}>
+                            <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
+                                成功 {ok}<br/>失败 {attrs.failed ?? 0}
+                            </span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'ebay_add_tracking' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
@@ -1078,6 +1162,50 @@ const TaskPage = () => {
                 <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
                     <Button href={TASK_API.EBAY_POISON_LISTING_TEMPLATE} icon={<DownloadOutlined/>}>
                         下载货号模板
+                    </Button>
+                </div>
+            </>;
+        }
+
+        if (createPlatform === 'ebay' && createTaskType === 'ebay_fetch_listings') {
+            return <>
+                <Form.Item name="ebayListingScope" label="刊登范围" initialValue="active"
+                           extra="已结束：eBay只能查到最近119天内结束的刊登">
+                    <Radio.Group>
+                        <Radio.Button value="active">在售</Radio.Button>
+                        <Radio.Button value="ended">已结束</Radio.Button>
+                        <Radio.Button value="all">全部</Radio.Button>
+                    </Radio.Group>
+                </Form.Item>
+                <Form.Item name="ebayViewDays" label="浏览人数" initialValue={30}
+                           rules={[
+                               {required: true, message: '请输入天数'},
+                               {type: 'number', min: 1, max: 90, message: 'eBay最多提供最近90天的浏览数据'},
+                           ]}
+                           extra="导出两个表：刊登概要（品牌、货号、在售尺码、库存、剩余时间、浏览、收藏、售出、价格区间等）和尺码明细（填上新价格可直接用于「指定尺码改价」）">
+                    <InputNumber min={1} max={90} precision={0} addonBefore="最近" addonAfter="天" style={{width: 200}}/>
+                </Form.Item>
+            </>;
+        }
+
+        if (createPlatform === 'ebay' && EBAY_MANAGE_UPLOADS[createTaskType]) {
+            const config = EBAY_MANAGE_UPLOADS[createTaskType];
+            return <>
+                <Form.Item name="ebayManageExcel" label="Excel" valuePropName="fileList"
+                           getValueFromEvent={(e: any) => e?.fileList}
+                           rules={[{required: true, message: '请上传Excel'}]}
+                           extra={<ExcelFieldHint
+                               requiredFields={config.requiredFields}
+                               optionalFields={config.optionalFields}
+                               note={config.note}
+                           />}>
+                    <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                        <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                    </Upload>
+                </Form.Item>
+                <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
+                    <Button href={config.template} icon={<DownloadOutlined/>}>
+                        下载模板
                     </Button>
                 </div>
             </>;
@@ -1575,7 +1703,7 @@ const TaskPage = () => {
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
-        trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数',
+        trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数', scope: '刊登范围', viewDays: '浏览人数天数',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -1595,6 +1723,8 @@ const TaskPage = () => {
             return labels[v] || String(v);
         }
         if (k === 'region') return v === 'us' ? '美区' : '港区';
+        if (k === 'scope') return v === 'ended' ? '已结束' : v === 'all' ? '全部' : '在售';
+        if (k === 'viewDays') return `最近${v}天`;
         if (k === 'delistMode') return v === 'all' ? '全量下架' : 'Excel下架';
         if (k === 'deleteMode') return v === 'style_ids' ? '指定货号' : '全部撤销';
         if (k === 'inputCount') return `${v}行`;

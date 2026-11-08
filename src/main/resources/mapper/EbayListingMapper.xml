@@ -60,6 +60,17 @@
         UPDATE ebay_listing SET status = 'ended' WHERE sku = #{sku}
     </update>
 
+    <update id="markListingEnded">
+        UPDATE ebay_listing SET status = 'ended'
+        WHERE listing_id = #{listingId}
+          AND status = 'active'
+    </update>
+
+    <update id="relinkListing">
+        UPDATE ebay_listing SET listing_id = #{newListingId}, status = 'active'
+        WHERE listing_id = #{oldListingId}
+    </update>
+
     <update id="markGroupEnded">
         UPDATE ebay_listing SET status = 'ended'
         WHERE style_id = #{styleId}

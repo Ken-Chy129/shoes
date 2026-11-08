@@ -243,13 +243,15 @@ public class EbayTradingApiClient {
         StringBuilder statuses = new StringBuilder();
         for (InventoryRevision revision : revisions) {
             if (revision.itemId() == null || revision.itemId().isBlank()
-                    || revision.sku() == null || revision.sku().isBlank()
                     || (revision.price() == null && revision.quantity() == null)) {
                 throw new IllegalArgumentException("改价参数不完整");
             }
             statuses.append("  <InventoryStatus>\n")
-                    .append("    <ItemID>").append(escapeXml(revision.itemId())).append("</ItemID>\n")
-                    .append("    <SKU>").append(escapeXml(revision.sku())).append("</SKU>\n");
+                    .append("    <ItemID>").append(escapeXml(revision.itemId())).append("</ItemID>\n");
+            // 单品刊登可以没有 SKU，只按刊登号改；多尺码刊登必须带 SKU 指定尺码。
+            if (revision.sku() != null && !revision.sku().isBlank()) {
+                statuses.append("    <SKU>").append(escapeXml(revision.sku())).append("</SKU>\n");
+            }
             if (revision.price() != null) {
                 statuses.append("    <StartPrice>").append(revision.price().toPlainString()).append("</StartPrice>\n");
             }
@@ -264,6 +266,195 @@ public class EbayTradingApiClient {
                 %s</ReviseInventoryStatusRequest>
                 """.formatted(statuses);
         call("ReviseInventoryStatus", payload);
+    }
+
+    // ==================== 刊登列表 / 单个刊登 / 下架 / 重新上架 ====================
+
+    /** 刊登里的一个尺码（多属性刊登的 Variation；单品刊登时只有一个，size 为空）。 */
+    public record ListingVariation(String sku, String size, java.math.BigDecimal price, int quantity, int sold) {
+        /** 可售数量 = 总数量 - 已售。 */
+        public int available() {
+            return Math.max(0, quantity - sold);
+        }
+    }
+
+    /**
+     * 一个刊登的概要（GetSellerList / GetItem 通用）。listingStatus 为 eBay 原值：Active / Completed / Ended。
+     * relistParentId：它是从哪条旧刊登重新上架来的；relistedItemId：它已被重新上架成哪条新刊登。
+     */
+    public record SellerListing(String itemId, String title, String sku, String listingStatus,
+                                Instant startTime, Instant endTime, String timeLeft, int watchCount,
+                                String categoryName, String viewItemUrl, String listingType,
+                                String relistParentId, String relistedItemId, String endingReason,
+                                List<ListingVariation> variations) {
+        public boolean active() {
+            return "Active".equalsIgnoreCase(listingStatus);
+        }
+
+        public boolean hasVariations() {
+            return variations.size() > 1 || (variations.size() == 1 && variations.get(0).size() != null);
+        }
+    }
+
+    public record SellerListingPage(int pageNumber, int totalPages, int totalEntries, List<SellerListing> listings) {
+    }
+
+    private static final List<String> SELLER_LISTING_SELECTORS = List.of(
+            "ItemArray.Item.ItemID", "ItemArray.Item.Title", "ItemArray.Item.SKU",
+            "ItemArray.Item.Quantity", "ItemArray.Item.StartPrice", "ItemArray.Item.TimeLeft",
+            "ItemArray.Item.WatchCount", "ItemArray.Item.ListingType", "ItemArray.Item.RelistParentID",
+            "ItemArray.Item.ListingDetails", "ItemArray.Item.SellingStatus",
+            "ItemArray.Item.PrimaryCategory.CategoryName", "ItemArray.Item.Variations.Variation",
+            "PaginationResult", "HasMoreItems");
+
+    /**
+     * 按结束时间窗口读取一页刊登（含每个尺码、收藏人数、剩余时间）。eBay 限制窗口不超过 120 天：
+     * 在售的 GTC 刊登每 30 天续期，结束时间都在未来 30 天内；已结束的取过去 119 天。
+     */
+    public SellerListingPage getSellerListings(Instant endTimeFrom, Instant endTimeTo, int pageNumber) {
+        StringBuilder selectors = new StringBuilder();
+        for (String selector : SELLER_LISTING_SELECTORS) {
+            selectors.append("  <OutputSelector>").append(selector).append("</OutputSelector>\n");
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <GetSellerListRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <EndTimeFrom>%s</EndTimeFrom>
+                  <EndTimeTo>%s</EndTimeTo>
+                  <GranularityLevel>Coarse</GranularityLevel>
+                  <IncludeVariations>true</IncludeVariations>
+                  <IncludeWatchCount>true</IncludeWatchCount>
+                  <Pagination>
+                    <EntriesPerPage>%d</EntriesPerPage>
+                    <PageNumber>%d</PageNumber>
+                  </Pagination>
+                %s</GetSellerListRequest>
+                """.formatted(endTimeFrom.truncatedTo(ChronoUnit.SECONDS), endTimeTo.truncatedTo(ChronoUnit.SECONDS),
+                SELLER_LIST_PAGE_SIZE, pageNumber, selectors);
+        Element root = call("GetSellerList", payload).getDocumentElement();
+        List<SellerListing> listings = new ArrayList<>();
+        for (Element item : children(firstElement(root, "ItemArray"), "Item")) {
+            SellerListing listing = parseListing(item);
+            if (listing != null) {
+                listings.add(listing);
+            }
+        }
+        return new SellerListingPage(pageNumber, parseInt(text(root, "PaginationResult/TotalNumberOfPages")),
+                parseInt(text(root, "PaginationResult/TotalNumberOfEntries")), List.copyOf(listings));
+    }
+
+    /** 读取单个刊登（含尺码）；刊登不存在时抛出 {@link EbayApiException}。 */
+    public SellerListing getItem(String itemId) {
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <ItemID>%s</ItemID>
+                  <IncludeVariations>true</IncludeVariations>
+                  <IncludeWatchCount>true</IncludeWatchCount>
+                </GetItemRequest>
+                """.formatted(escapeXml(itemId));
+        Element item = firstElement(call("GetItem", payload).getDocumentElement(), "Item");
+        SellerListing listing = item == null ? null : parseListing(item);
+        if (listing == null) {
+            throw new EbayApiException("eBay GetItem失败：未返回刊登" + itemId);
+        }
+        return listing;
+    }
+
+    /**
+     * 结束刊登（EndItem）。刊登早已结束时返回 false，不算失败。
+     * 只用于不是系统 offer 发布的刊登；系统刊登要走 Inventory API 的 withdraw，否则 offer 状态会对不上。
+     */
+    public boolean endItem(String itemId) {
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <EndItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <ItemID>%s</ItemID>
+                  <EndingReason>NotAvailable</EndingReason>
+                </EndItemRequest>
+                """.formatted(escapeXml(itemId));
+        try {
+            call("EndItem", payload);
+            return true;
+        } catch (EbayApiException e) {
+            // 1047：刊登已结束
+            if (e.getMessage() != null && e.getMessage().contains("：1047 ")) {
+                return false;
+            }
+            throw e;
+        }
+    }
+
+    /** 重新上架已结束的一口价刊登（RelistFixedPriceItem），返回新刊登号。 */
+    public String relistFixedPriceItem(String itemId) {
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <RelistFixedPriceItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Item>
+                    <ItemID>%s</ItemID>
+                  </Item>
+                </RelistFixedPriceItemRequest>
+                """.formatted(escapeXml(itemId));
+        String newItemId = text(call("RelistFixedPriceItem", payload).getDocumentElement(), "ItemID");
+        if (newItemId == null) {
+            throw new EbayApiException("eBay RelistFixedPriceItem失败：未返回新刊登号");
+        }
+        return newItemId;
+    }
+
+    private static SellerListing parseListing(Element item) {
+        String itemId = text(item, "ItemID");
+        if (itemId == null) {
+            return null;
+        }
+        List<ListingVariation> variations = new ArrayList<>();
+        for (Element variation : children(firstElement(item, "Variations"), "Variation")) {
+            String size = null;
+            for (Element nameValue : children(firstElement(variation, "VariationSpecifics"), "NameValueList")) {
+                String value = text(nameValue, "Value");
+                if (value != null) {
+                    size = value;
+                    break;
+                }
+            }
+            variations.add(new ListingVariation(text(variation, "SKU"), size, decimal(text(variation, "StartPrice")),
+                    parseInt(text(variation, "Quantity")), parseInt(text(variation, "SellingStatus/QuantitySold"))));
+        }
+        if (variations.isEmpty()) {
+            String price = text(item, "StartPrice");
+            if (price == null) {
+                price = text(item, "SellingStatus/CurrentPrice");
+            }
+            variations.add(new ListingVariation(text(item, "SKU"), null, decimal(price),
+                    parseInt(text(item, "Quantity")), parseInt(text(item, "SellingStatus/QuantitySold"))));
+        }
+        return new SellerListing(itemId, text(item, "Title"), text(item, "SKU"),
+                text(item, "SellingStatus/ListingStatus"),
+                instant(text(item, "ListingDetails/StartTime")), instant(text(item, "ListingDetails/EndTime")),
+                text(item, "TimeLeft"), parseInt(text(item, "WatchCount")),
+                text(item, "PrimaryCategory/CategoryName"), text(item, "ListingDetails/ViewItemURL"),
+                text(item, "ListingType"), text(item, "RelistParentID"),
+                text(item, "ListingDetails/RelistedItemID"), text(item, "ListingDetails/EndingReason"),
+                List.copyOf(variations));
+    }
+
+    private static java.math.BigDecimal decimal(String value) {
+        if (value == null) {
+            return null;
+        }
+        try {
+            return new java.math.BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static Instant instant(String value) {
+        try {
+            return value == null ? null : Instant.parse(value);
+        } catch (RuntimeException e) {
+            return null;
+        }
     }
 
     /** GetOrders 按 OrderID 查询时单次最多携带的订单数。 */

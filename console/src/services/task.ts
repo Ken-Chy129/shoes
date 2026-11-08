@@ -18,6 +18,10 @@ const TASK_TYPE = {
     EBAY_ADD_TRACKING: 'ebay_add_tracking',
     EBAY_PROFIT_PRICE: 'ebay_profit_price',
     EBAY_PROMO_PROFIT_PRICE: 'ebay_promo_profit_price',
+    EBAY_FETCH_LISTINGS: 'ebay_fetch_listings',
+    EBAY_END_LISTINGS: 'ebay_end_listings',
+    EBAY_RELIST_LISTINGS: 'ebay_relist_listings',
+    EBAY_SET_PRICE: 'ebay_set_price',
 };
 
 enum TASK_API {
@@ -86,6 +90,14 @@ enum TASK_API {
     EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate',
     // eBay 活动改价：盈利改价基础上，到手再扣卖家承担的折扣补贴（标价 × 折扣% × 卖家承担%）
     EBAY_START_PROMO_PROFIT_PRICE = '/api/task/ebay/startPromoProfitPrice',
+    // eBay 刊登管理：获取刊登 / 按编号下架 / 按编号重新上架 / 指定尺码改价
+    EBAY_START_FETCH_LISTINGS = '/api/task/ebay/startFetchListings',
+    EBAY_START_END_LISTINGS = '/api/task/ebay/startEndListings',
+    EBAY_END_LISTINGS_TEMPLATE = '/api/task/ebay/endListingsTemplate',
+    EBAY_START_RELIST_LISTINGS = '/api/task/ebay/startRelistListings',
+    EBAY_RELIST_LISTINGS_TEMPLATE = '/api/task/ebay/relistListingsTemplate',
+    EBAY_START_SET_PRICE = '/api/task/ebay/startSetPrice',
+    EBAY_SET_PRICE_TEMPLATE = '/api/task/ebay/setPriceTemplate',
 }
 
 export {TASK_API, TASK_TYPE}

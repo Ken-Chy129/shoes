@@ -29,6 +29,10 @@ public enum TaskTypeEnum {
     EBAY_ZERO_STOCK("ebay_zero_stock", "eBay库存清零", false),
     EBAY_FETCH_ORDERS("ebay_fetch_orders", "eBay获取订单", false),
     EBAY_ADD_TRACKING("ebay_add_tracking", "eBay添加追踪号码", false),
+    EBAY_FETCH_LISTINGS("ebay_fetch_listings", "eBay获取刊登", false),
+    EBAY_END_LISTINGS("ebay_end_listings", "eBay按编号下架", false),
+    EBAY_RELIST_LISTINGS("ebay_relist_listings", "eBay按编号重新上架", false),
+    EBAY_SET_PRICE("ebay_set_price", "eBay指定尺码改价", false),
     ;
 
     private final String code;

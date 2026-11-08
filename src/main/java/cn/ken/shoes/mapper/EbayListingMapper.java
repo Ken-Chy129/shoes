@@ -24,6 +24,12 @@ public interface EbayListingMapper extends BaseMapper<EbayListingDO> {
 
     int markEnded(@Param("sku") String sku);
 
+    /** 按编号下架系统刊登后，把挂在该刊登上的在架映射标记为 ended。 */
+    int markListingEnded(@Param("listingId") String listingId);
+
+    /** 系统刊登重新发布后换了刊登号：把旧刊登号的映射指向新刊登号并恢复为 active。 */
+    int relinkListing(@Param("oldListingId") String oldListingId, @Param("newListingId") String newListingId);
+
     /** 整组下架后把同一货号、同一区域的在架映射全部标记为 ended。 */
     int markGroupEnded(@Param("styleId") String styleId, @Param("region") String region);
 

@@ -47,6 +47,9 @@ public class TaskItemController {
     @Resource
     private EbayOrderFetchService ebayOrderFetchService;
 
+    @Resource
+    private cn.ken.shoes.service.EbayListingManageService ebayListingManageService;
+
     @GetMapping("page")
     public PageResult<List<TaskItemDO>> queryTaskItems(
             @RequestParam Long taskId,
@@ -105,6 +108,45 @@ public class TaskItemController {
                         item.getOperateTime() == null ? "" : trackingDateFormat.format(item.getOperateTime())));
             }
             EasyExcel.write(response.getOutputStream()).head(head).sheet("eBay追踪号码").doWrite(data);
+            return;
+        }
+
+        if (task != null && cn.ken.shoes.service.EbayListingManageService.FETCH_TASK_TYPE.equals(task.getTaskType())) {
+            writeEbayListingReport(response, taskId, items);
+            return;
+        }
+
+        if (task != null && (cn.ken.shoes.service.EbayListingManageService.END_TASK_TYPE.equals(task.getTaskType())
+                || cn.ken.shoes.service.EbayListingManageService.RELIST_TASK_TYPE.equals(task.getTaskType())
+                || cn.ken.shoes.service.EbayListingManageService.SET_PRICE_TASK_TYPE.equals(task.getTaskType()))) {
+            SimpleDateFormat manageDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            boolean relist = cn.ken.shoes.service.EbayListingManageService.RELIST_TASK_TYPE.equals(task.getTaskType());
+            boolean setPrice = cn.ken.shoes.service.EbayListingManageService.SET_PRICE_TASK_TYPE.equals(task.getTaskType());
+            List<List<String>> head = new ArrayList<>(List.of(List.of("物品编号")));
+            if (relist) {
+                head.add(List.of("新物品编号"));
+            }
+            if (setPrice) {
+                head.addAll(List.of(List.of("尺码"), List.of("SKU"), List.of("原价格($)"), List.of("新价格($)")));
+            }
+            head.addAll(List.of(List.of("货号"), List.of("标题"), List.of("执行结果"), List.of("执行时间")));
+            List<List<String>> data = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                List<String> row = new ArrayList<>(List.of(StrUtil.nullToEmpty(item.getListingId())));
+                if (relist) {
+                    row.add(StrUtil.nullToEmpty(item.getOfferId()));
+                }
+                if (setPrice) {
+                    row.addAll(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getSize()),
+                            StrUtil.nullToEmpty(item.getSku()), plain(item.getCurrentPrice()),
+                            plain(item.getTargetPrice())));
+                }
+                row.addAll(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getStyleId()),
+                        StrUtil.nullToEmpty(item.getTitle()), StrUtil.nullToEmpty(item.getOperateResult()),
+                        item.getOperateTime() == null ? "" : manageDateFormat.format(item.getOperateTime())));
+                data.add(row);
+            }
+            EasyExcel.write(response.getOutputStream()).head(head).sheet("执行明细").doWrite(data);
             return;
         }
 
@@ -423,6 +465,48 @@ public class TaskItemController {
             sb.append("_").append(new SimpleDateFormat("MMdd_HHmm").format(task.getStartTime()));
         }
         return sb.toString();
+    }
+
+    /** 两个 sheet：刊登概要（一行一个刊登）+ 尺码明细（一行一个尺码，填好「新价格」即可作为改价模板上传）。 */
+    private void writeEbayListingReport(HttpServletResponse response, Long taskId, List<TaskItemDO> items)
+            throws IOException {
+        java.util.Set<String> wanted = new java.util.HashSet<>();
+        for (TaskItemDO item : items) {
+            wanted.add(item.getListingId());
+        }
+        List<cn.ken.shoes.service.EbayListingManageService.ListingRow> rows = ebayListingManageService
+                .loadReport(taskId).orElse(List.of()).stream().filter(row -> wanted.contains(row.itemId())).toList();
+        List<List<String>> head = java.util.stream.Stream.of("物品编号", "状态", "品牌", "货号", "标题", "在售尺码",
+                "在售尺码数", "总库存", "已售", "最低价($)", "最高价($)", "剩余时间", "结束时间", "浏览人数",
+                "收藏人数", "开始时间", "商品组SKU", "来源", "原刊登编号", "重新上架后编号", "分类", "链接")
+                .map(List::of).toList();
+        List<List<String>> data = new ArrayList<>();
+        List<List<String>> sizeData = new ArrayList<>();
+        for (var row : rows) {
+            data.add(java.util.Arrays.asList(row.itemId(), row.status(), StrUtil.nullToEmpty(row.brand()),
+                    StrUtil.nullToEmpty(row.styleId()), StrUtil.nullToEmpty(row.title()),
+                    StrUtil.nullToEmpty(row.sizes()), String.valueOf(row.sizeCount()), String.valueOf(row.quantity()),
+                    String.valueOf(row.sold()), plain(row.minPrice()), plain(row.maxPrice()),
+                    StrUtil.nullToEmpty(row.timeLeft()), StrUtil.nullToEmpty(row.endTime()),
+                    row.views() == null ? "未获取" : String.valueOf(row.views()), String.valueOf(row.watchers()),
+                    StrUtil.nullToEmpty(row.startTime()), StrUtil.nullToEmpty(row.sku()),
+                    StrUtil.nullToEmpty(row.source()), StrUtil.nullToEmpty(row.relistParentId()),
+                    StrUtil.nullToEmpty(row.relistedItemId()), StrUtil.nullToEmpty(row.category()),
+                    StrUtil.nullToEmpty(row.url())));
+            for (var size : row.sizeRows() == null ? List.<cn.ken.shoes.service.EbayListingManageService.SizeRow>of()
+                    : row.sizeRows()) {
+                sizeData.add(java.util.Arrays.asList(size.itemId(), StrUtil.nullToEmpty(size.size()), "",
+                        StrUtil.nullToEmpty(size.sku()), plain(size.price()), String.valueOf(size.quantity()),
+                        String.valueOf(size.sold()), StrUtil.nullToEmpty(size.euSize()),
+                        StrUtil.nullToEmpty(row.styleId()), row.status()));
+            }
+        }
+        List<List<String>> sizeHead = java.util.stream.Stream.of("物品编号", "尺码", "新价格(USD)", "SKU", "当前价($)",
+                "库存", "已售", "EU码", "货号", "状态").map(List::of).toList();
+        try (com.alibaba.excel.ExcelWriter writer = EasyExcel.write(response.getOutputStream()).build()) {
+            writer.write(data, EasyExcel.writerSheet(0, "刊登概要").head(head).build());
+            writer.write(sizeData, EasyExcel.writerSheet(1, "尺码明细").head(sizeHead).build());
+        }
     }
 
     private static String plain(Object value) {

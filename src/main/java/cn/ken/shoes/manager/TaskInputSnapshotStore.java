@@ -13,6 +13,8 @@ import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.model.excel.EbayTrackingExcel;
 import cn.ken.shoes.model.excel.EbayPoisonListingExcel;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
+import cn.ken.shoes.model.excel.EbayItemIdExcel;
+import cn.ken.shoes.model.excel.EbaySetPriceExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
@@ -43,6 +45,8 @@ public class TaskInputSnapshotStore {
     private static final String EBAY_POISON_LISTING_FILE = "ebay-poison-listing.json";
     private static final String EBAY_TRACKING_FILE = "ebay-tracking.json";
     private static final String EBAY_PROFIT_TARGETS_FILE = "ebay-profit-targets.json";
+    private static final String EBAY_ITEM_ID_FILE = "ebay-item-ids.json";
+    private static final String EBAY_SET_PRICE_FILE = "ebay-set-price.json";
 
     private final Path root;
 
@@ -195,6 +199,22 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<EbayProfitTargetExcel>> loadEbayProfitTargets(Long taskId) {
         return loadList(taskId, EBAY_PROFIT_TARGETS_FILE, EbayProfitTargetExcel.class, "eBay盈利改价");
+    }
+
+    public void saveEbayItemIdInput(Long taskId, List<EbayItemIdExcel> input) {
+        write(taskPath(taskId, EBAY_ITEM_ID_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbayItemIdExcel>> loadEbayItemIdInput(Long taskId) {
+        return loadList(taskId, EBAY_ITEM_ID_FILE, EbayItemIdExcel.class, "eBay物品编号");
+    }
+
+    public void saveEbaySetPriceInput(Long taskId, List<EbaySetPriceExcel> input) {
+        write(taskPath(taskId, EBAY_SET_PRICE_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbaySetPriceExcel>> loadEbaySetPriceInput(Long taskId) {
+        return loadList(taskId, EBAY_SET_PRICE_FILE, EbaySetPriceExcel.class, "eBay指定尺码改价");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {
