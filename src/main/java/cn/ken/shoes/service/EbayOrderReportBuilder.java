@@ -56,9 +56,12 @@ public class EbayOrderReportBuilder {
     public static final String COL_EU_SIZE = "eu码";
     public static final String COL_ORDER_DATE = "订单日期";
     public static final String COL_SHIP_BY = "发货截止日期(北京时间)";
+    public static final String COL_FEES = "手续费(USD)";
+    public static final String COL_AD_FEES = "推广费(USD)";
+    public static final String COL_NET = "到手金额(USD)";
 
     public static final List<String> EXTRA_COLUMNS = List.of(
-            COL_STYLE_ID, COL_US_SIZE, COL_EU_SIZE, COL_ORDER_DATE, COL_SHIP_BY);
+            COL_STYLE_ID, COL_US_SIZE, COL_EU_SIZE, COL_ORDER_DATE, COL_SHIP_BY, COL_FEES, COL_AD_FEES, COL_NET);
 
     public static List<String> allColumns() {
         List<String> columns = new ArrayList<>(REPORT_COLUMNS);
@@ -84,7 +87,8 @@ public class EbayOrderReportBuilder {
                        String orderId, String itemId, String sku, String title,
                        String styleId, String usSize, String euSize,
                        BigDecimal price, Instant createdTime, Instant shipBy,
-                       String status, int salesRecordNumber) {
+                       String status, int salesRecordNumber,
+                       BigDecimal fees, BigDecimal adFees, BigDecimal net) {
     }
 
     /** 本地映射：按 SKU 精确匹配，或按 eBay 物品编号找到同一商品组。 */
@@ -95,15 +99,22 @@ public class EbayOrderReportBuilder {
     }
 
     /**
-     * Fulfillment API 补充数据：按订单号索引的订单 JSON，以及按 lineItemId（即 TransactionID）索引的实际发货时间。
-     * 没有 sell.fulfillment 授权或调用失败时为空，相关列沿用 Trading API 的结果或留空。
+     * Fulfillment API 补充数据：按订单号索引的订单 JSON，以及按 lineItemId（即 TransactionID）索引的实际发货时间；
+     * Finances API 补充数据：按订单号汇总的手续费、推广费与到手金额。
+     * 没有对应授权或调用失败时为空，相关列沿用 Trading API 的结果或留空。
      */
-    public record Enrichment(Map<String, JSONObject> ordersById, Map<String, Instant> shippedByLineItemId) {
-        public static final Enrichment NONE = new Enrichment(Map.of(), Map.of());
+    public record Enrichment(Map<String, JSONObject> ordersById, Map<String, Instant> shippedByLineItemId,
+                             Map<String, EbayOrderFinances.OrderFinance> financesByOrderId) {
+        public static final Enrichment NONE = new Enrichment(Map.of(), Map.of(), Map.of());
+
+        public Enrichment(Map<String, JSONObject> ordersById, Map<String, Instant> shippedByLineItemId) {
+            this(ordersById, shippedByLineItemId, Map.of());
+        }
 
         public Enrichment {
             ordersById = ordersById == null ? Map.of() : ordersById;
             shippedByLineItemId = shippedByLineItemId == null ? Map.of() : shippedByLineItemId;
+            financesByOrderId = financesByOrderId == null ? Map.of() : financesByOrderId;
         }
     }
 
@@ -263,9 +274,50 @@ public class EbayOrderReportBuilder {
         row.put(COL_EU_SIZE, nz(resolved.euSize()));
         row.put(COL_ORDER_DATE, created == null ? "" : BEIJING_DATE_TIME.format(created));
         row.put(COL_SHIP_BY, shipBy == null ? "" : BEIJING_DATE_TIME.format(shipBy));
+        Payout payout = payout(enrichment.financesByOrderId().get(orderId), transactionId, singleLineOrder);
+        row.put(COL_FEES, plain(payout == null ? null : payout.fees()));
+        row.put(COL_AD_FEES, plain(payout == null ? null : payout.adFees()));
+        row.put(COL_NET, plain(payout == null ? null : payout.net()));
 
         return new Line(row, orderId, itemId, sku, title, resolved.styleId(), usSize, resolved.euSize(),
-                price, created, shipBy, status(order, tx, shipped, cancelled), parseInt(recordNumber));
+                price, created, shipBy, status(order, tx, shipped, cancelled), parseInt(recordNumber),
+                payout == null ? null : payout.fees(), payout == null ? null : payout.adFees(),
+                payout == null ? null : payout.net());
+    }
+
+    private record Payout(BigDecimal fees, BigDecimal adFees, BigDecimal net) {
+    }
+
+    /**
+     * 单商品订单直接取订单汇总；多商品订单按 Finances 中该行的计费基数分摊，
+     * 手续费优先取该行实际的 marketplaceFees。
+     */
+    private static Payout payout(EbayOrderFinances.OrderFinance finance, String lineItemId,
+                                 boolean singleLineOrder) {
+        if (finance == null) {
+            return null;
+        }
+        if (singleLineOrder) {
+            return scaled(finance.fees(), finance.adFees(), finance.net());
+        }
+        BigDecimal weight = lineItemId == null ? null : finance.lineWeights().get(lineItemId);
+        BigDecimal totalWeight = finance.lineWeights().values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (weight == null || totalWeight.signum() <= 0) {
+            return null;
+        }
+        BigDecimal share = weight.divide(totalWeight, 10, RoundingMode.HALF_UP);
+        BigDecimal lineFee = finance.lineFees().get(lineItemId);
+        BigDecimal fees = lineFee != null ? lineFee : finance.fees().multiply(share);
+        return scaled(fees, finance.adFees().multiply(share), finance.net().multiply(share));
+    }
+
+    private static Payout scaled(BigDecimal fees, BigDecimal adFees, BigDecimal net) {
+        return new Payout(fees.setScale(2, RoundingMode.HALF_UP), adFees.setScale(2, RoundingMode.HALF_UP),
+                net.setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private static String plain(BigDecimal value) {
+        return value == null ? "" : value.setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private record Resolved(String styleId, String euSize) {

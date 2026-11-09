@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.client.EbayFinancesApiClient;
 import cn.ken.shoes.client.EbayFulfillmentApiClient;
 import cn.ken.shoes.client.EbayTradingApiClient;
 import cn.ken.shoes.config.EbayProperties;
@@ -18,6 +19,7 @@ import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -61,6 +63,7 @@ public class EbayOrderFetchService {
     private final EbayListingMapper ebayListingMapper;
     private final EbayTradingApiClient tradingClient;
     private final EbayFulfillmentApiClient fulfillmentClient;
+    private final EbayFinancesApiClient financesClient;
     private final EbayProperties properties;
     private final Executor executor;
     private final Clock clock;
@@ -70,21 +73,24 @@ public class EbayOrderFetchService {
     @Autowired
     public EbayOrderFetchService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                                  EbayListingMapper ebayListingMapper, EbayTradingApiClient tradingClient,
-                                 EbayFulfillmentApiClient fulfillmentClient, EbayProperties properties) {
-        this(taskMapper, taskItemMapper, ebayListingMapper, tradingClient, fulfillmentClient, properties,
+                                 EbayFulfillmentApiClient fulfillmentClient, EbayFinancesApiClient financesClient,
+                                 EbayProperties properties) {
+        this(taskMapper, taskItemMapper, ebayListingMapper, tradingClient, fulfillmentClient, financesClient,
+                properties,
                 command -> Thread.ofVirtual().name("Ebay-Fetch-Orders").start(command),
                 Clock.systemUTC(), Paths.get("files/task-input"));
     }
 
     EbayOrderFetchService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                           EbayListingMapper ebayListingMapper, EbayTradingApiClient tradingClient,
-                          EbayFulfillmentApiClient fulfillmentClient,
+                          EbayFulfillmentApiClient fulfillmentClient, EbayFinancesApiClient financesClient,
                           EbayProperties properties, Executor executor, Clock clock, Path reportRoot) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
         this.ebayListingMapper = ebayListingMapper;
         this.tradingClient = tradingClient;
         this.fulfillmentClient = fulfillmentClient;
+        this.financesClient = financesClient;
         this.properties = properties;
         this.executor = executor;
         this.clock = clock;
@@ -156,8 +162,12 @@ public class EbayOrderFetchService {
             Set<String> feedbackLeft = optional("信用评价", tradingClient::getFeedbackLeftLineItemIds, Set.of());
             Map<String, String> shippingNames = optional("运送服务名称",
                     tradingClient::getShippingServiceDescriptions, Map.of());
-            EbayOrderReportBuilder.Enrichment enrichment = optional("Fulfillment API补充数据",
+            EbayOrderReportBuilder.Enrichment fulfillment = optional("Fulfillment API补充数据",
                     () -> enrichment(fetchFrom, to, cancelled), EbayOrderReportBuilder.Enrichment.NONE);
+            Map<String, EbayOrderFinances.OrderFinance> finances = optional("Finances API手续费/推广费",
+                    () -> finances(fetchFrom, clock.instant()), Map.of());
+            EbayOrderReportBuilder.Enrichment enrichment = new EbayOrderReportBuilder.Enrichment(
+                    fulfillment.ordersById(), fulfillment.shippedByLineItemId(), finances);
             EbayOrderReportBuilder builder = new EbayOrderReportBuilder(feedbackLeft, shippingNames,
                     mappingLookup(orders), enrichment);
             List<EbayOrderReportBuilder.Line> lines = new ArrayList<>();
@@ -179,7 +189,19 @@ public class EbayOrderFetchService {
                     .fluentPut("orders", orders.size())
                     .fluentPut("lines", lines.size())
                     .fluentPut("days", days)
-                    .fluentPut("fulfillmentApi", !enrichment.ordersById().isEmpty());
+                    .fluentPut("fulfillmentApi", !enrichment.ordersById().isEmpty())
+                    .fluentPut("financesApi", !finances.isEmpty());
+            BigDecimal fees = BigDecimal.ZERO;
+            BigDecimal adFees = BigDecimal.ZERO;
+            BigDecimal net = BigDecimal.ZERO;
+            for (EbayOrderReportBuilder.Line line : lines) {
+                fees = line.fees() == null ? fees : fees.add(line.fees());
+                adFees = line.adFees() == null ? adFees : adFees.add(line.adFees());
+                net = line.net() == null ? net : net.add(line.net());
+            }
+            if (!finances.isEmpty()) {
+                attributes.fluentPut("totalFees", fees).fluentPut("totalAdFees", adFees).fluentPut("totalNet", net);
+            }
             statusCounts.forEach(attributes::put);
             taskMapper.updateTaskAttributes(taskId, attributes.toJSONString());
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
@@ -247,6 +269,7 @@ public class EbayOrderFetchService {
         item.setSize(truncate(line.usSize(), 16));
         item.setEuSize(truncate(line.euSize(), 16));
         item.setSalePrice(line.price());
+        item.setPayoutAmount(line.net());
         item.setCurrencyCode("USD");
         item.setSoldOn(line.createdTime() == null ? null : Date.from(line.createdTime()));
         // 与 StockX 获取订单一致：operateTime 存发货截止时间。
@@ -254,6 +277,16 @@ public class EbayOrderFetchService {
         item.setOrderStatus(line.status());
         item.setOperateResult(line.status());
         return item;
+    }
+
+    /**
+     * Finances API：从订单窗口开始到现在的全部资金流水（广告费、退款可能晚于下单时间入账），按订单汇总。
+     */
+    private Map<String, EbayOrderFinances.OrderFinance> finances(Instant from, Instant to) {
+        if (financesClient == null) {
+            return Map.of();
+        }
+        return EbayOrderFinances.byOrder(financesClient.getTransactions(from, to));
     }
 
     /** Fulfillment API：订单 JSON + 每个已发货订单的实际发货时间（按 lineItemId）。 */

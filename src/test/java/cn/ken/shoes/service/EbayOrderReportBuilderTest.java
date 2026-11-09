@@ -184,6 +184,29 @@ class EbayOrderReportBuilderTest {
     }
 
     @Test
+    void fillsFeesAdFeesAndNetPayoutFromTheFinancesApi() throws Exception {
+        var finance = new EbayOrderFinances.OrderFinance(new java.math.BigDecimal("210.115"),
+                new java.math.BigDecimal("27.014"), new java.math.BigDecimal("9.88"), Map.of(), Map.of());
+        var enrichment = new EbayOrderReportBuilder.Enrichment(Map.of(), Map.of(),
+                Map.of("07-15295-85293", finance));
+        var line = new EbayOrderReportBuilder(Set.of(), Map.of(), lookup(Map.of()), enrichment)
+                .build(order(ORDER)).get(0);
+
+        assertThat(line.columns().get("手续费(USD)")).isEqualTo("27.01");
+        assertThat(line.columns().get("推广费(USD)")).isEqualTo("9.88");
+        assertThat(line.columns().get("到手金额(USD)")).isEqualTo("210.12");
+        assertThat(line.net()).isEqualByComparingTo("210.12");
+    }
+
+    @Test
+    void leavesPayoutColumnsBlankWithoutFinanceData() throws Exception {
+        var line = new EbayOrderReportBuilder(Set.of(), Map.of(), lookup(Map.of())).build(order(ORDER)).get(0);
+
+        assertThat(line.columns().get("到手金额(USD)")).isEmpty();
+        assertThat(line.net()).isNull();
+    }
+
+    @Test
     void extractsStyleIdsFromListingTitles() {
         assertThat(EbayOrderReportBuilder.styleFromTitle("Nike Kobe 8 Protro  Shanghai Fireworks (2026)IO6259-800[10]"))
                 .isEqualTo("IO6259-800");

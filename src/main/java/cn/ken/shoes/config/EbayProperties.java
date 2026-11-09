@@ -24,6 +24,10 @@ public class EbayProperties {
     public static final String MARKETING_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/sell.marketing.readonly";
 
+    /** 只读财务流水（订单实际扣除的成交费、广告费）。 */
+    public static final String FINANCES_READ_SCOPE =
+            "https://api.ebay.com/oauth/api_scope/sell.finances";
+
     /** 只读流量报表（刊登浏览量）。 */
     public static final String ANALYTICS_READ_SCOPE =
             "https://api.ebay.com/oauth/api_scope/sell.analytics.readonly";
@@ -130,6 +134,13 @@ public class EbayProperties {
         return apiRoot() + "/sell/analytics/v1/";
     }
 
+    /** Finances API 只在 apiz 域名提供。 */
+    public String getFinancesApiEndpoint() {
+        return isSandbox()
+                ? "https://apiz.sandbox.ebay.com/sell/finances/v1/"
+                : "https://apiz.ebay.com/sell/finances/v1/";
+    }
+
     /** eBay 已下线 Trading API 的 UploadSiteHostedPictures，图片托管改走 Media API。 */
     public String getMediaApiEndpoint() {
         return isSandbox()
@@ -157,6 +168,7 @@ public class EbayProperties {
         effective.add(FULFILLMENT_READ_SCOPE);
         effective.add(MARKETING_READ_SCOPE);
         effective.add(ANALYTICS_READ_SCOPE);
+        effective.add(FINANCES_READ_SCOPE);
         return String.join(" ", effective);
     }
 

@@ -510,6 +510,10 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             title: '成交价', dataIndex: 'salePrice', key: 'salePrice', width: 100,
             render: (value: number, record: TaskItemRecord) => formatOrderMoney(value, record.currencyCode || 'USD'),
         },
+        {
+            title: '到手(扣手续费/推广费)', dataIndex: 'payoutAmount', key: 'payoutAmount', width: 160,
+            render: (value: number | null | undefined) => formatOrderMoney(value, 'USD'),
+        },
         {title: '订单日期', dataIndex: 'soldOn', key: 'soldOn', width: 165},
         {title: '发货截止日期', dataIndex: 'operateTime', key: 'operateTime', width: 165},
         {title: '状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 120},
@@ -763,7 +767,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                                 const statuses = ['待发货', '已发货', '已取消', '买家申请取消']
                                     .filter(key => attrs[key]).map(key => `${key} ${attrs[key]}`);
                                 return <span style={{color: '#1677ff', fontWeight: 500}}>
-                                    {`最近${attrs.days ?? 90}天 | 订单 ${attrs.orders ?? 0} | 明细 ${attrs.lines ?? 0}${statuses.length ? ` | ${statuses.join(' | ')}` : ''}`}
+                                    {`最近${attrs.days ?? 90}天 | 订单 ${attrs.orders ?? 0} | 明细 ${attrs.lines ?? 0}${statuses.length ? ` | ${statuses.join(' | ')}` : ''}${attrs.totalNet !== undefined ? ` | 手续费 $${attrs.totalFees} | 推广费 $${attrs.totalAdFees} | 到手 $${attrs.totalNet}` : ''}`}
                                 </span>;
                             } catch { return null; }
                         })()}
@@ -790,7 +794,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 dataSource={taskItems}
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1980
-                        : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1700
+                        : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1860
                         : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 1400
                         : taskType === 'ebay_fetch_listings' ? 1900
                         : (taskType === 'ebay_end_listings' || taskType === 'ebay_relist_listings' || taskType === 'ebay_set_price') ? 1400
