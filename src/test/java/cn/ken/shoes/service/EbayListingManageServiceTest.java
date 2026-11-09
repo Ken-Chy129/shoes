@@ -194,26 +194,78 @@ class EbayListingManageServiceTest {
     }
 
     @Test
-    void endUsesEndItemForNonSystemListingAndSkipsEndedOnes() {
-        when(trading.getItem("1")).thenReturn(listing("1", "Active", "9", new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0)));
-        when(trading.getItem("2")).thenReturn(listing("2", "Completed", null, new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0)));
-        when(trading.endItem("1")).thenReturn(true);
+    void endBatchesNonSystemListingsWithEndItemsAndNeverReadsThem() {
+        List<String> ids = java.util.stream.IntStream.rangeClosed(1, 12).mapToObj(String::valueOf).toList();
+        when(trading.endItems(anyList())).thenAnswer(invocation -> {
+            List<String> batch = invocation.getArgument(0);
+            return batch.stream().map(id -> "2".equals(id)
+                    ? new EbayTradingApiClient.EndItemResult(id, false, true, null)
+                    : "3".equals(id) ? new EbayTradingApiClient.EndItemResult(id, false, false, "291 not allowed")
+                    : new EbayTradingApiClient.EndItemResult(id, true, false, null)).toList();
+        });
 
-        service.runEnd(8L, List.of("1", "2"), new AtomicBoolean());
+        service.runEnd(8L, ids, new AtomicBoolean());
 
-        verify(trading).endItem("1");
-        verify(trading, never()).endItem("2");
-        verify(sell, never()).withdrawOfferByInventoryItemGroup(anyString(), anyString());
+        ArgumentCaptor<List<String>> batches = ArgumentCaptor.forClass(List.class);
+        verify(trading, org.mockito.Mockito.times(2)).endItems(batches.capture());
+        assertThat(batches.getAllValues().get(0)).hasSize(10);
+        assertThat(batches.getAllValues().get(1)).containsExactly("11", "12");
+        verify(trading, never()).getItem(anyString());
+        verify(trading, never()).endItem(anyString());
+        verify(listingMapper).markListingEnded("2");
+        verify(listingMapper, never()).markListingEnded("3");
+        verify(taskMapper).updateTaskFailed(eq(8L), org.mockito.ArgumentMatchers.contains("成功 11，失败 1"));
+    }
+
+    @Test
+    void endWithdrawsSystemListingByGroupWithoutTradingCalls() {
+        EbayListingDO mapping = new EbayListingDO();
+        mapping.setSku("S9");
+        mapping.setOfferId("OF1");
+        mapping.setListingId("1");
+        mapping.setStyleId("DD1391-100");
+        mapping.setRegion("us");
+        when(listingMapper.selectByListingIds(anyList())).thenReturn(List.of(mapping));
+
+        service.runEnd(8L, List.of("1"), new AtomicBoolean());
+
+        verify(sell).withdrawOfferByInventoryItemGroup(
+                eq(EbayListingFactory.inventoryGroupKey("DD1391-100", cn.ken.shoes.model.ebay.EbayListingRegion.US)),
+                any());
+        verify(trading, never()).endItems(anyList());
+        verify(trading, never()).getItem(anyString());
+        verify(listingMapper).markListingEnded("1");
         verify(taskMapper).updateTaskStatus(8L, "success");
     }
 
     @Test
-    void relistReturnsNewItemIdAndRelinksMapping() {
-        when(trading.getItem("1")).thenReturn(listing("1", "Completed", null, new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0)));
+    void endFallsBackToEndItemsWhenSystemWithdrawFails() {
+        EbayListingDO mapping = new EbayListingDO();
+        mapping.setSku("S9");
+        mapping.setListingId("1");
+        mapping.setStyleId("DD1391-100");
+        when(listingMapper.selectByListingIds(anyList())).thenReturn(List.of(mapping, new EbayListingDO() {{
+            setSku("S10");
+            setListingId("1");
+        }}));
+        org.mockito.Mockito.doThrow(new EbayApiException("boom")).when(sell)
+                .withdrawOfferByInventoryItemGroup(anyString(), any());
+        when(trading.endItems(List.of("1"))).thenReturn(List.of(
+                new EbayTradingApiClient.EndItemResult("1", true, false, null)));
+
+        service.runEnd(8L, List.of("1"), new AtomicBoolean());
+
+        verify(trading).endItems(List.of("1"));
+        verify(taskMapper).updateTaskStatus(8L, "success");
+    }
+
+    @Test
+    void relistDoesNotReadListingFirst() {
         when(trading.relistFixedPriceItem("1")).thenReturn("99");
 
         service.runRelist(9L, List.of("1"), new AtomicBoolean());
 
+        verify(trading, never()).getItem(anyString());
         verify(listingMapper).relinkListing("1", "99");
         ArgumentCaptor<TaskItemDO> item = ArgumentCaptor.forClass(TaskItemDO.class);
         verify(taskItemMapper).updateById(item.capture());
@@ -221,7 +273,7 @@ class EbayListingManageServiceTest {
     }
 
     @Test
-    void setPriceRevisesListingAndSyncsSystemOffer() {
+    void setPriceReadsListingOnceAndSyncsSystemOffer() {
         EbayListingDO mapping = new EbayListingDO();
         mapping.setSku("S9");
         mapping.setOfferId("OF1");
@@ -238,13 +290,63 @@ class EbayListingManageServiceTest {
                 new EbayListingManageService.PriceTarget("1", "10", null, new BigDecimal("150.00"))),
                 new AtomicBoolean());
 
+        verify(trading).getItem("1");
         ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
         verify(trading).reviseInventoryStatus(revisions.capture());
+        assertThat(revisions.getValue()).hasSize(1);
         assertThat(revisions.getValue().get(0).sku()).isEqualTo("S9");
         assertThat(revisions.getValue().get(0).price()).isEqualByComparingTo("130.85");
         verify(sell).bulkUpdatePriceQuantity(anyList());
         verify(taskMapper).updateTaskStatus(10L, "success");
         verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(10L), anyString());
+    }
+
+    @Test
+    void setPriceUsesSkuFromLatestFetchReportAndBatchesFourPerCall() throws Exception {
+        java.util.List<EbayListingManageService.SizeRow> sizes = new java.util.ArrayList<>();
+        for (int i = 4; i <= 9; i++) {
+            sizes.add(new EbayListingManageService.SizeRow("1", String.valueOf(i), new BigDecimal("100"),
+                    "S" + i, 1, 0, null));
+        }
+        EbayListingManageService.ListingRow row = new EbayListingManageService.ListingRow("1", "在售", null, null,
+                "Nike Dunk Low DD1391-100", "", 6, 6, 0, null, null, null, null, null, 0, null, "G1", null, null,
+                null, null, null, sizes);
+        java.nio.file.Files.createDirectories(tempDir.resolve("77"));
+        java.nio.file.Files.writeString(tempDir.resolve("77").resolve("ebay-listings.json"),
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(List.of(row)));
+        cn.ken.shoes.model.entity.TaskDO task = new cn.ken.shoes.model.entity.TaskDO();
+        task.setId(77L);
+        when(taskMapper.selectByCondition(any())).thenReturn(List.of(task));
+
+        List<EbayListingManageService.PriceTarget> targets = new java.util.ArrayList<>();
+        for (int i = 4; i <= 9; i++) {
+            targets.add(new EbayListingManageService.PriceTarget("1", String.valueOf(i), null, new BigDecimal("120")));
+        }
+        service.runSetPrice(10L, targets, new AtomicBoolean());
+
+        verify(trading, never()).getItem(anyString());
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(trading, org.mockito.Mockito.times(2)).reviseInventoryStatus(revisions.capture());
+        assertThat(revisions.getAllValues().get(0)).hasSize(4);
+        assertThat(revisions.getAllValues().get(1)).extracting(EbayTradingApiClient.InventoryRevision::sku)
+                .containsExactly("S8", "S9");
+        verify(taskMapper).updateTaskStatus(10L, "success");
+    }
+
+    @Test
+    void setPriceRetriesOneByOneWhenBatchFails() {
+        org.mockito.Mockito.doThrow(new EbayApiException("eBay ReviseInventoryStatus失败：21916 bad sku"))
+                .doNothing().doThrow(new EbayApiException("eBay ReviseInventoryStatus失败：21916 bad sku"))
+                .when(trading).reviseInventoryStatus(anyList());
+
+        service.runSetPrice(10L, List.of(
+                new EbayListingManageService.PriceTarget("1", null, "S9", new BigDecimal("120")),
+                new EbayListingManageService.PriceTarget("1", null, "BAD", new BigDecimal("120"))),
+                new AtomicBoolean());
+
+        verify(trading, never()).getItem(anyString());
+        verify(trading, org.mockito.Mockito.times(3)).reviseInventoryStatus(anyList());
+        verify(taskMapper).updateTaskFailed(eq(10L), org.mockito.ArgumentMatchers.contains("成功 1，失败 1"));
     }
 
     @Test

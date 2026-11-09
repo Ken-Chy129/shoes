@@ -16,6 +16,8 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayItemIdExcel;
 import cn.ken.shoes.model.excel.EbaySetPriceExcel;
+import cn.ken.shoes.model.ebay.EbayListingRegion;
+import cn.ken.shoes.model.task.TaskRequest;
 import com.alibaba.fastjson.JSONObject;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -459,79 +461,140 @@ public class EbayListingManageService {
 
     // ==================== 按编号下架 ====================
 
+    /**
+     * 按编号下架，尽量少占 Trading API 每日额度：
+     * 系统刊登按本地映射直接撤回 offer（Inventory API，不占额度）；其余刊登用 EndItems 每次 10 条。
+     */
     void runEnd(Long taskId, List<String> itemIds, AtomicBoolean cancelled) {
-        int ended = 0;
-        int already = 0;
-        int failed = 0;
+        Map<String, List<EbayListingDO>> mappings = mappingsByListing(itemIds);
+        int[] counters = new int[3]; // ended, already, failed
         int done = 0;
+        List<String> viaTrading = new ArrayList<>();
         for (String itemId : itemIds) {
             if (cancelled.get()) {
                 break;
             }
-            SellerListing listing = null;
+            List<EbayListingDO> own = mappings.getOrDefault(itemId, List.of());
+            if (own.isEmpty()) {
+                viaTrading.add(itemId);
+                continue;
+            }
             String result;
             try {
-                listing = tradingClient.getItem(itemId);
-                if (!listing.active()) {
-                    already++;
-                    result = "已是下架状态";
-                } else {
-                    Lookup lookup = lookup(List.of(listing));
-                    if (isSystemListing(listing, lookup)) {
-                        endSystemListing(listing, lookup);
-                        result = "下架成功(系统刊登)";
-                    } else {
-                        result = tradingClient.endItem(itemId) ? "下架成功" : "已是下架状态";
-                    }
-                    if (result.startsWith("下架成功")) {
-                        ended++;
-                    } else {
-                        already++;
-                    }
-                    markEnded(itemId);
+                Boolean withdrawn = withdrawSystemListing(itemId, own);
+                if (withdrawn == null) {
+                    viaTrading.add(itemId);
+                    continue;
                 }
+                result = withdrawn ? "下架成功(系统刊登)" : "已是下架状态";
+                counters[withdrawn ? 0 : 1]++;
+                markEnded(itemId);
             } catch (Exception e) {
-                failed++;
+                counters[2]++;
                 result = "下架失败(" + safeError(e) + ")";
                 log.warn("按编号下架失败, taskId:{}, itemId:{}", taskId, itemId, e);
             }
-            recordListing(taskId, itemId, listing, result);
+            recordEnd(taskId, itemId, own, result);
             done++;
-            writeProgress(taskId, itemIds.size(), done, new JSONObject(true)
-                    .fluentPut("ended", ended).fluentPut("alreadyEnded", already).fluentPut("failed", failed));
+            writeProgress(taskId, itemIds.size(), done, endAttrs(counters));
         }
-        finish(taskId, cancelled, failed, "下架完成：成功 " + (ended + already) + "，失败 " + failed);
+        for (int from = 0; from < viaTrading.size() && !cancelled.get();
+             from += EbayTradingApiClient.END_ITEMS_LIMIT) {
+            List<String> batch = viaTrading.subList(from,
+                    Math.min(from + EbayTradingApiClient.END_ITEMS_LIMIT, viaTrading.size()));
+            List<EbayTradingApiClient.EndItemResult> results;
+            try {
+                results = tradingClient.endItems(batch);
+            } catch (Exception e) {
+                log.warn("批量下架失败, taskId:{}, itemIds:{}", taskId, batch, e);
+                String error = "下架失败(" + safeError(e) + ")";
+                results = batch.stream().map(id -> new EbayTradingApiClient.EndItemResult(id, false, false,
+                        error)).toList();
+            }
+            for (EbayTradingApiClient.EndItemResult endResult : results) {
+                String result;
+                if (endResult.ended()) {
+                    counters[0]++;
+                    result = "下架成功";
+                    markEnded(endResult.itemId());
+                } else if (endResult.alreadyEnded()) {
+                    counters[1]++;
+                    result = "已是下架状态";
+                    markEnded(endResult.itemId());
+                } else {
+                    counters[2]++;
+                    result = endResult.error() != null && endResult.error().startsWith("下架失败")
+                            ? endResult.error() : "下架失败(" + endResult.error() + ")";
+                }
+                recordEnd(taskId, endResult.itemId(), mappings.getOrDefault(endResult.itemId(), List.of()), result);
+                done++;
+            }
+            writeProgress(taskId, itemIds.size(), done, endAttrs(counters));
+        }
+        finish(taskId, cancelled, counters[2],
+                "下架完成：成功 " + (counters[0] + counters[1]) + "，失败 " + counters[2]);
+    }
+
+    private static JSONObject endAttrs(int[] counters) {
+        return new JSONObject(true).fluentPut("ended", counters[0]).fluentPut("alreadyEnded", counters[1])
+                .fluentPut("failed", counters[2]);
     }
 
     /**
-     * 系统刊登：先撤回挂在该刊登上的 offer（多尺码按商品组整组撤回），让 offer 记录和刊登一起结束；
-     * 撤回后 eBay 仍显示在售时，再用 EndItem 兜底。
+     * 系统刊登：先按商品组整组撤回，不行再撤回单个 offer，让 offer 记录和刊登一起结束。
+     * 返回 true 已撤回，false 本来就已下架，null 撤不了（交给 EndItems）。
      */
-    private void endSystemListing(SellerListing listing, Lookup lookup) {
-        String groupKey = listing.hasVariations() ? listing.sku() : null;
-        boolean withdrawn = false;
-        if (groupKey != null) {
+    private Boolean withdrawSystemListing(String itemId, List<EbayListingDO> own) {
+        EbayListingDO first = own.get(0);
+        if (notBlank(first.getStyleId())) {
             try {
+                String groupKey = EbayListingFactory.inventoryGroupKey(first.getStyleId().trim(),
+                        EbayListingRegion.fromCode(first.getRegion()));
                 sellClient.withdrawOfferByInventoryItemGroup(groupKey, properties.getDefaultMarketplaceId());
-                withdrawn = true;
-            } catch (EbayApiException e) {
-                log.warn("eBay整组撤回失败，改用EndItem, itemId:{}, group:{}, {}", listing.itemId(), groupKey,
-                        safeError(e));
+                return true;
+            } catch (RuntimeException e) {
+                log.warn("eBay整组撤回失败, itemId:{}, styleId:{}, {}", itemId, first.getStyleId(), safeError(e));
             }
-        } else {
-            EbayListingDO mapping = lookup.bySku.get(listing.sku());
-            if (mapping != null && notBlank(mapping.getOfferId())) {
-                try {
-                    sellClient.withdrawOffer(mapping.getOfferId());
-                    withdrawn = true;
-                } catch (EbayApiException e) {
-                    log.warn("eBay撤回offer失败，改用EndItem, itemId:{}, {}", listing.itemId(), safeError(e));
+        }
+        if (own.size() == 1 && notBlank(first.getOfferId())) {
+            try {
+                return sellClient.withdrawOffer(first.getOfferId());
+            } catch (RuntimeException e) {
+                log.warn("eBay撤回offer失败, itemId:{}, {}", itemId, safeError(e));
+            }
+        }
+        return null;
+    }
+
+    private Map<String, List<EbayListingDO>> mappingsByListing(java.util.Collection<String> itemIds) {
+        Map<String, List<EbayListingDO>> result = new HashMap<>();
+        try {
+            for (List<String> batch : batches(new LinkedHashSet<>(itemIds))) {
+                for (EbayListingDO mapping : listingMapper.selectByListingIds(batch)) {
+                    if (mapping.getListingId() != null) {
+                        result.computeIfAbsent(mapping.getListingId().trim(), key -> new ArrayList<>()).add(mapping);
+                    }
                 }
             }
+        } catch (RuntimeException e) {
+            log.warn("eBay刊登管理：读取本地上架映射失败", e);
         }
-        if (!withdrawn) {
-            tradingClient.endItem(listing.itemId());
+        return result;
+    }
+
+    private TaskItemDO recordEnd(Long taskId, String itemId, List<EbayListingDO> own, String result) {
+        TaskItemDO item = new TaskItemDO();
+        item.setTaskId(taskId);
+        item.setRound(0);
+        item.setListingId(itemId);
+        if (!own.isEmpty()) {
+            item.setTitle(truncate(own.get(0).getTitle(), 255));
+            item.setStyleId(truncate(own.get(0).getStyleId(), 64));
         }
+        item.setOperateResult(truncate(result, 255));
+        item.setOperateTime(new Date());
+        taskItemMapper.insert(item);
+        return item;
     }
 
     private void markEnded(String itemId) {
@@ -544,7 +607,12 @@ public class EbayListingManageService {
 
     // ==================== 按编号重新上架 ====================
 
+    /**
+     * 重新上架：不再先读一遍刊登。系统多尺码刊登按商品组重新发布（不占 Trading 额度），
+     * 其余用 RelistFixedPriceItem，每条 1 次。仍在售 / 已重新上架过的由 eBay 报错，记为失败。
+     */
     void runRelist(Long taskId, List<String> itemIds, AtomicBoolean cancelled) {
+        Map<String, List<EbayListingDO>> mappings = mappingsByListing(itemIds);
         int relisted = 0;
         int skipped = 0;
         int failed = 0;
@@ -553,35 +621,23 @@ public class EbayListingManageService {
             if (cancelled.get()) {
                 break;
             }
-            SellerListing listing = null;
+            List<EbayListingDO> own = mappings.getOrDefault(itemId, List.of());
             String result;
             String newItemId = null;
             try {
-                listing = tradingClient.getItem(itemId);
-                if (listing.active()) {
-                    skipped++;
-                    result = "跳过(刊登仍在售)";
-                } else if (notBlank(listing.relistedItemId())) {
-                    skipped++;
-                    result = "跳过(已重新上架为 " + listing.relistedItemId() + ")";
-                } else {
-                    Lookup lookup = lookup(List.of(listing));
-                    newItemId = isSystemListing(listing, lookup) && listing.hasVariations()
-                            ? republishSystemGroup(listing)
-                            : null;
-                    if (newItemId == null) {
-                        newItemId = tradingClient.relistFixedPriceItem(itemId);
-                    }
-                    relink(itemId, newItemId);
-                    relisted++;
-                    result = "重新上架成功，新编号 " + newItemId;
+                newItemId = own.isEmpty() ? null : republishSystemGroup(itemId, own.get(0));
+                if (newItemId == null) {
+                    newItemId = tradingClient.relistFixedPriceItem(itemId);
                 }
+                relink(itemId, newItemId);
+                relisted++;
+                result = "重新上架成功，新编号 " + newItemId;
             } catch (Exception e) {
                 failed++;
                 result = "重新上架失败(" + safeError(e) + ")";
                 log.warn("按编号重新上架失败, taskId:{}, itemId:{}", taskId, itemId, e);
             }
-            TaskItemDO item = recordListing(taskId, itemId, listing, result);
+            TaskItemDO item = recordEnd(taskId, itemId, own, result);
             if (newItemId != null && item != null) {
                 // offerId 列在该任务里存新编号，便于导出对照。
                 item.setOfferId(newItemId);
@@ -595,16 +651,21 @@ public class EbayListingManageService {
     }
 
     /**
-     * 系统多尺码刊登按商品组重新发布，offer 记录跟着恢复。发布出来的仍是原编号时说明 eBay
-     * 不认这个组了，返回 null 交给 RelistFixedPriceItem。
+     * 系统刊登按商品组重新发布，offer 记录跟着恢复。发布出来的仍是原编号（说明还在售）
+     * 或发布失败时返回 null，交给 RelistFixedPriceItem。
      */
-    private String republishSystemGroup(SellerListing listing) {
+    private String republishSystemGroup(String itemId, EbayListingDO mapping) {
+        if (!notBlank(mapping.getStyleId())) {
+            return null;
+        }
         try {
-            String listingId = sellClient.publishOfferByInventoryItemGroup(listing.sku(),
+            String groupKey = EbayListingFactory.inventoryGroupKey(mapping.getStyleId().trim(),
+                    EbayListingRegion.fromCode(mapping.getRegion()));
+            String listingId = sellClient.publishOfferByInventoryItemGroup(groupKey,
                     properties.getDefaultMarketplaceId());
-            return notBlank(listingId) && !listingId.equals(listing.itemId()) ? listingId : null;
-        } catch (EbayApiException e) {
-            log.warn("eBay整组重新发布失败，改用RelistFixedPriceItem, itemId:{}, {}", listing.itemId(), safeError(e));
+            return notBlank(listingId) && !listingId.equals(itemId) ? listingId : null;
+        } catch (RuntimeException e) {
+            log.warn("eBay整组重新发布失败，改用RelistFixedPriceItem, itemId:{}, {}", itemId, safeError(e));
             return null;
         }
     }
@@ -631,64 +692,242 @@ public class EbayListingManageService {
         }
     }
 
+    /** 一个改价目标解析后的结果：要改的 SKU（单品刊登可为空）和改前价格（未知时为空）。 */
+    private record Resolved(PriceTarget target, String sku, String size, BigDecimal currentPrice, String title,
+                            boolean singleItem) {
+    }
+
+    /**
+     * 指定尺码改价，尽量少占 Trading API 每日额度：
+     * SKU 先看 Excel 里填的，再看最近一次「获取刊登」的结果，都没有才读一次该刊登（每条刊登最多 1 次）；
+     * 改价用 ReviseInventoryStatus 每次 4 个尺码；系统刊登的 offer 用 Inventory API 每批 25 个同步（不占额度）。
+     */
     void runSetPrice(Long taskId, List<PriceTarget> targets, AtomicBoolean cancelled) {
-        Map<String, List<PriceTarget>> byItem = new LinkedHashMap<>();
-        for (PriceTarget target : targets) {
-            byItem.computeIfAbsent(target.itemId(), key -> new ArrayList<>()).add(target);
-        }
-        int changed = 0;
-        int unchanged = 0;
-        int failed = 0;
+        Map<String, SellerListing> report = latestReportListings();
+        Map<String, SellerListing> fetched = new HashMap<>();
+        Map<String, String> readErrors = new HashMap<>();
+        int[] counters = new int[3]; // changed, unchanged, failed
         int done = 0;
-        for (Map.Entry<String, List<PriceTarget>> entry : byItem.entrySet()) {
+
+        List<Resolved> pending = new ArrayList<>();
+        for (PriceTarget target : targets) {
             if (cancelled.get()) {
                 break;
             }
-            String itemId = entry.getKey();
-            SellerListing listing;
-            Lookup lookup;
             try {
-                listing = tradingClient.getItem(itemId);
-                lookup = lookup(List.of(listing));
+                Resolved resolved = resolve(target, report, fetched, readErrors);
+                if (resolved.currentPrice() != null && resolved.currentPrice().compareTo(target.price()) == 0
+                        && fetched.containsKey(target.itemId())) {
+                    // 只有刚读到的实时价格才可信，报告里的旧价格不用来跳过。
+                    counters[1]++;
+                    recordPrice(taskId, resolved, "价格未变($" + target.price().toPlainString() + ")");
+                    done++;
+                } else {
+                    pending.add(resolved);
+                }
             } catch (Exception e) {
-                for (PriceTarget target : entry.getValue()) {
-                    failed++;
-                    recordPrice(taskId, target, null, null, "改价失败(读取刊登：" + safeError(e) + ")");
-                }
-                done += entry.getValue().size();
-                writeProgress(taskId, targets.size(), done, priceAttrs(changed, unchanged, failed));
-                continue;
-            }
-            for (PriceTarget target : entry.getValue()) {
-                if (cancelled.get()) {
-                    break;
-                }
-                String result;
-                ListingVariation variation = null;
-                try {
-                    if (!listing.active()) {
-                        throw new IllegalStateException("刊登已结束");
-                    }
-                    variation = match(listing, target);
-                    if (variation.price() != null && variation.price().compareTo(target.price()) == 0) {
-                        unchanged++;
-                        result = "价格未变($" + target.price().toPlainString() + ")";
-                    } else {
-                        setPrice(listing, variation, target.price(), lookup);
-                        changed++;
-                        result = "改价成功 $" + plain(variation.price()) + "→$" + target.price().toPlainString();
-                    }
-                } catch (Exception e) {
-                    failed++;
-                    result = "改价失败(" + safeError(e) + ")";
-                    log.warn("指定尺码改价失败, taskId:{}, itemId:{}, size:{}", taskId, itemId, target.size(), e);
-                }
-                recordPrice(taskId, target, listing, variation, result);
+                counters[2]++;
+                recordPrice(taskId, new Resolved(target, target.sku(), target.size(), null, null, false),
+                        "改价失败(" + safeError(e) + ")");
                 done++;
-                writeProgress(taskId, targets.size(), done, priceAttrs(changed, unchanged, failed));
             }
         }
-        finish(taskId, cancelled, failed, "改价完成：成功 " + (changed + unchanged) + "，失败 " + failed);
+        writeProgress(taskId, targets.size(), done, priceAttrs(counters[0], counters[1], counters[2]));
+
+        List<Resolved> succeeded = new ArrayList<>();
+        int limit = EbayTradingApiClient.REVISE_INVENTORY_LIMIT;
+        for (int from = 0; from < pending.size() && !cancelled.get(); from += limit) {
+            List<Resolved> batch = pending.subList(from, Math.min(from + limit, pending.size()));
+            Map<Resolved, String> errors = revise(batch);
+            for (Resolved resolved : batch) {
+                String error = errors.get(resolved);
+                if (error == null) {
+                    counters[0]++;
+                    succeeded.add(resolved);
+                    recordPrice(taskId, resolved, "改价成功 $" + plain(resolved.currentPrice()) + "→$"
+                            + resolved.target().price().toPlainString());
+                } else {
+                    counters[2]++;
+                    recordPrice(taskId, resolved, "改价失败(" + error + ")");
+                }
+                done++;
+            }
+            writeProgress(taskId, targets.size(), done, priceAttrs(counters[0], counters[1], counters[2]));
+        }
+        syncSystemOffers(succeeded);
+        finish(taskId, cancelled, counters[2], "改价完成：成功 " + (counters[0] + counters[1]) + "，失败 " + counters[2]);
+    }
+
+    private Resolved resolve(PriceTarget target, Map<String, SellerListing> report,
+                             Map<String, SellerListing> fetched, Map<String, String> readErrors) {
+        SellerListing known = fetched.containsKey(target.itemId()) ? fetched.get(target.itemId())
+                : report.get(target.itemId());
+        if (known != null && !known.active()) {
+            throw new IllegalStateException("刊登已结束");
+        }
+        if (known != null) {
+            try {
+                ListingVariation variation = match(known, target);
+                return resolved(target, known, variation);
+            } catch (IllegalArgumentException e) {
+                if (fetched.containsKey(target.itemId())) {
+                    throw e;
+                }
+                // 报告可能过时（尺码有增减），读一次实时刊登再匹配。
+            }
+        }
+        if (notBlank(target.sku()) && known == null) {
+            return new Resolved(target, target.sku(), target.size(), null, null, false);
+        }
+        String readError = readErrors.get(target.itemId());
+        if (readError != null) {
+            throw new IllegalStateException("读取刊登：" + readError);
+        }
+        SellerListing live = fetched.get(target.itemId());
+        if (live == null) {
+            try {
+                live = tradingClient.getItem(target.itemId());
+            } catch (RuntimeException e) {
+                readErrors.put(target.itemId(), safeError(e));
+                throw new IllegalStateException("读取刊登：" + safeError(e), e);
+            }
+            fetched.put(target.itemId(), live);
+        }
+        if (!live.active()) {
+            throw new IllegalStateException("刊登已结束");
+        }
+        return resolved(target, live, match(live, target));
+    }
+
+    private static Resolved resolved(PriceTarget target, SellerListing listing, ListingVariation variation) {
+        if (listing.hasVariations() && !notBlank(variation.sku())) {
+            throw new IllegalArgumentException("该尺码没有SKU，无法改价");
+        }
+        return new Resolved(target, variation.sku(), variation.size() != null ? variation.size() : target.size(),
+                variation.price(), listing.title(), !listing.hasVariations());
+    }
+
+    /** 改一批（最多 4 个），返回失败的及原因；整批失败时逐个重试，找出具体是哪个尺码有问题。 */
+    private Map<Resolved, String> revise(List<Resolved> batch) {
+        Map<Resolved, String> errors = new HashMap<>();
+        try {
+            tradingClient.reviseInventoryStatus(batch.stream().map(this::revision).toList());
+            return errors;
+        } catch (Exception e) {
+            if (batch.size() == 1 || isQuotaError(e)) {
+                batch.forEach(resolved -> errors.put(resolved, safeError(e)));
+                return errors;
+            }
+            log.warn("批量改价失败，逐个重试, {}", safeError(e));
+        }
+        for (Resolved resolved : batch) {
+            try {
+                tradingClient.reviseInventoryStatus(List.of(revision(resolved)));
+            } catch (Exception e) {
+                errors.put(resolved, safeError(e));
+            }
+        }
+        return errors;
+    }
+
+    private EbayTradingApiClient.InventoryRevision revision(Resolved resolved) {
+        // 单品刊登只按刊登号改；多尺码刊登必须带 SKU 指定尺码。
+        return new EbayTradingApiClient.InventoryRevision(resolved.target().itemId(),
+                resolved.singleItem() ? null : resolved.sku(),
+                resolved.target().price(), null);
+    }
+
+    /** 518：应用当天的调用次数用完了，重试也没用。 */
+    private static boolean isQuotaError(Exception e) {
+        return e.getMessage() != null && e.getMessage().contains("：518 ");
+    }
+
+    /**
+     * 系统刊登再把 offer 记录同步成同一个价，避免之后按 offer 的改价把价格改回去。
+     * 走 Inventory API，不占 Trading 额度；失败只记日志（刊登已经改好）。
+     */
+    private void syncSystemOffers(List<Resolved> succeeded) {
+        Set<String> skus = new LinkedHashSet<>();
+        succeeded.forEach(resolved -> {
+            if (notBlank(resolved.sku())) {
+                skus.add(resolved.sku());
+            }
+        });
+        if (skus.isEmpty()) {
+            return;
+        }
+        Map<String, EbayListingDO> bySku = new HashMap<>();
+        try {
+            for (List<String> batch : batches(skus)) {
+                for (EbayListingDO mapping : listingMapper.selectBySkus(batch)) {
+                    bySku.putIfAbsent(mapping.getSku(), mapping);
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("eBay offer价格同步：读取本地映射失败", e);
+            return;
+        }
+        List<EbaySellApiClient.OfferPriceQuantity> updates = new ArrayList<>();
+        for (Resolved resolved : succeeded) {
+            EbayListingDO mapping = resolved.sku() == null ? null : bySku.get(resolved.sku());
+            if (mapping != null && notBlank(mapping.getOfferId())
+                    && resolved.target().itemId().equals(nullToEmpty(mapping.getListingId()).trim())) {
+                updates.add(new EbaySellApiClient.OfferPriceQuantity(resolved.sku(), mapping.getOfferId(),
+                        resolved.target().price(), properties.getDefaultCurrency(), null));
+            }
+        }
+        int limit = EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT;
+        for (int from = 0; from < updates.size(); from += limit) {
+            List<EbaySellApiClient.OfferPriceQuantity> batch = updates.subList(from,
+                    Math.min(from + limit, updates.size()));
+            try {
+                for (EbaySellApiClient.OfferUpdateResult result : sellClient.bulkUpdatePriceQuantity(batch)) {
+                    if (!result.success()) {
+                        log.warn("eBay offer价格同步失败(刊登已改好), sku:{}, {}", result.sku(), result.error());
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("eBay offer价格同步失败(刊登已改好), {}个SKU", batch.size(), e);
+            }
+            for (EbaySellApiClient.OfferPriceQuantity update : batch) {
+                try {
+                    listingMapper.updatePriceAndQuantity(update.sku(), update.price(), null);
+                } catch (Exception e) {
+                    log.warn("eBay映射价格更新失败, sku:{}", update.sku(), e);
+                }
+            }
+        }
+    }
+
+    /** 最近一次成功的「获取刊登」结果，按物品编号索引；没有或读取失败时返回空。 */
+    private Map<String, SellerListing> latestReportListings() {
+        Map<String, SellerListing> result = new HashMap<>();
+        try {
+            TaskRequest request = new TaskRequest();
+            request.setPlatform("ebay");
+            request.setTaskType(FETCH_TASK_TYPE);
+            request.setStatus(TaskDO.TaskStatusEnum.SUCCESS.getCode());
+            request.setPageSize(1);
+            List<TaskDO> tasks = taskMapper.selectByCondition(request);
+            if (tasks == null || tasks.isEmpty()) {
+                return result;
+            }
+            for (ListingRow row : loadReport(tasks.get(0).getId()).orElse(List.of())) {
+                List<ListingVariation> variations = new ArrayList<>();
+                for (SizeRow size : row.sizeRows() == null ? List.<SizeRow>of() : row.sizeRows()) {
+                    variations.add(new ListingVariation(size.sku(), size.size(), size.price(), size.quantity(),
+                            size.sold()));
+                }
+                if (!variations.isEmpty()) {
+                    result.put(row.itemId(), new SellerListing(row.itemId(), row.title(), row.sku(),
+                            "在售".equals(row.status()) ? "Active" : "Completed", null, null, null, 0, null, null,
+                            null, null, null, null, List.copyOf(variations)));
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("读取最近一次获取刊登结果失败，改为逐条读取刊登", e);
+        }
+        return result;
     }
 
     private static JSONObject priceAttrs(int changed, int unchanged, int failed) {
@@ -732,32 +971,6 @@ public class EbayListingManageService {
             throw new IllegalArgumentException("尺码 " + target.size() + " 匹配到多个，请填写SKU");
         }
         return matches.get(0);
-    }
-
-    /**
-     * 先改刊登本身（买家看到的价格，以它为准）；系统刊登再把 offer 记录同步成同一个价，
-     * 避免之后按 offer 的改价把价格改回去。实测过 offer 改了刊登却没跟着变的情况，所以两边都改。
-     */
-    private void setPrice(SellerListing listing, ListingVariation variation, BigDecimal price, Lookup lookup) {
-        tradingClient.reviseInventoryStatus(List.of(new EbayTradingApiClient.InventoryRevision(listing.itemId(),
-                listing.hasVariations() ? variation.sku() : null, price, null)));
-        EbayListingDO mapping = variation.sku() == null ? null : lookup.bySku.get(variation.sku());
-        boolean systemOffer = mapping != null && notBlank(mapping.getOfferId())
-                && listing.itemId().equals(nullToEmpty(mapping.getListingId()).trim());
-        if (!systemOffer) {
-            return;
-        }
-        try {
-            List<EbaySellApiClient.OfferUpdateResult> results = sellClient.bulkUpdatePriceQuantity(List.of(
-                    new EbaySellApiClient.OfferPriceQuantity(variation.sku(), mapping.getOfferId(), price,
-                            properties.getDefaultCurrency(), null)));
-            if (!results.isEmpty() && !results.get(0).success()) {
-                log.warn("eBay offer价格同步失败(刊登已改好), sku:{}, {}", variation.sku(), results.get(0).error());
-            }
-            listingMapper.updatePriceAndQuantity(variation.sku(), price, null);
-        } catch (Exception e) {
-            log.warn("eBay offer价格同步失败(刊登已改好), sku:{}", variation.sku(), e);
-        }
     }
 
     // ==================== 公共 ====================
@@ -810,36 +1023,19 @@ public class EbayListingManageService {
         return false;
     }
 
-    private TaskItemDO recordListing(Long taskId, String itemId, SellerListing listing, String result) {
-        TaskItemDO item = new TaskItemDO();
-        item.setTaskId(taskId);
-        item.setRound(0);
-        item.setListingId(itemId);
-        if (listing != null) {
-            item.setTitle(truncate(listing.title(), 255));
-            item.setSku(truncate(listing.sku(), 50));
-            item.setStyleId(truncate(styleFromTitle(listing.title()), 64));
-            item.setOrderStatus(listing.active() ? "在售" : "已结束");
-        }
-        item.setOperateResult(truncate(result, 255));
-        item.setOperateTime(new Date());
-        taskItemMapper.insert(item);
-        return item;
-    }
-
-    private void recordPrice(Long taskId, PriceTarget target, SellerListing listing, ListingVariation variation,
-                             String result) {
+    private void recordPrice(Long taskId, Resolved resolved, String result) {
+        PriceTarget target = resolved.target();
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(0);
         item.setListingId(target.itemId());
-        item.setSize(truncate(variation != null && variation.size() != null ? variation.size() : target.size(), 16));
-        item.setSku(truncate(variation != null && variation.sku() != null ? variation.sku() : target.sku(), 50));
-        if (listing != null) {
-            item.setTitle(truncate(listing.title(), 255));
-            item.setStyleId(truncate(styleFromTitle(listing.title()), 64));
+        item.setSize(truncate(resolved.size(), 16));
+        item.setSku(truncate(resolved.sku(), 50));
+        if (resolved.title() != null) {
+            item.setTitle(truncate(resolved.title(), 255));
+            item.setStyleId(truncate(styleFromTitle(resolved.title()), 64));
         }
-        item.setCurrentPrice(variation == null ? null : variation.price());
+        item.setCurrentPrice(resolved.currentPrice());
         item.setTargetPrice(target.price());
         item.setOperateResult(truncate(result, 255));
         item.setOperateTime(new Date());

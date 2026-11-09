@@ -385,6 +385,93 @@ public class EbayTradingApiClient {
         }
     }
 
+    /** EndItems 单次最多结束 10 条刊登。 */
+    public static final int END_ITEMS_LIMIT = 10;
+
+    /** 批量下架中单条刊登的结果：ended=true 本次结束；alreadyEnded=true 早已结束；都为 false 时看 error。 */
+    public record EndItemResult(String itemId, boolean ended, boolean alreadyEnded, String error) {
+    }
+
+    /**
+     * 批量结束刊登（EndItems，一次最多 10 条，只算一次调用）。返回顺序与入参一致。
+     * 部分失败不抛异常，逐条给出结果；整次调用失败（网络、限流、鉴权等）抛出 {@link EbayApiException}。
+     */
+    public List<EndItemResult> endItems(List<String> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return List.of();
+        }
+        if (itemIds.size() > END_ITEMS_LIMIT) {
+            throw new IllegalArgumentException("EndItems单次最多" + END_ITEMS_LIMIT + "条");
+        }
+        StringBuilder containers = new StringBuilder();
+        for (int i = 0; i < itemIds.size(); i++) {
+            containers.append("  <EndItemRequestContainer>\n")
+                    .append("    <MessageID>").append(i).append("</MessageID>\n")
+                    .append("    <ItemID>").append(escapeXml(itemIds.get(i))).append("</ItemID>\n")
+                    .append("    <EndingReason>NotAvailable</EndingReason>\n")
+                    .append("  </EndItemRequestContainer>\n");
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <EndItemsRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                %s</EndItemsRequest>
+                """.formatted(containers);
+        Document document = call("EndItems", payload, false);
+        Map<Integer, Element> byMessage = new java.util.HashMap<>();
+        for (Element container : children(document.getDocumentElement(), "EndItemResponseContainer")) {
+            Integer index = parseIndex(text(container, "CorrelationID"));
+            if (index != null) {
+                byMessage.put(index, container);
+            }
+        }
+        String ack = text(document.getDocumentElement(), "Ack");
+        if (byMessage.isEmpty() && !SUCCESS_ACKS.contains(ack)) {
+            throw new EbayApiException("eBay EndItems失败：" + firstError(document));
+        }
+        List<EndItemResult> results = new ArrayList<>();
+        for (int i = 0; i < itemIds.size(); i++) {
+            Element container = byMessage.get(i);
+            String itemId = itemIds.get(i);
+            if (container == null) {
+                results.add(new EndItemResult(itemId, false, false, "eBay未返回结果"));
+                continue;
+            }
+            String error = errorOf(container);
+            if (error == null) {
+                results.add(new EndItemResult(itemId, true, false, null));
+            } else if (error.startsWith("1047 ")) {
+                results.add(new EndItemResult(itemId, false, true, null));
+            } else {
+                results.add(new EndItemResult(itemId, false, false, error));
+            }
+        }
+        return results;
+    }
+
+    private static Integer parseIndex(String value) {
+        try {
+            return value == null ? null : Integer.valueOf(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** 容器里第一条 Error 级别的错误（「错误码 描述」），没有时返回 null。 */
+    private static String errorOf(Element container) {
+        for (Element error : children(container, "Errors")) {
+            if (!"Error".equals(text(error, "SeverityCode"))) {
+                continue;
+            }
+            String code = text(error, "ErrorCode");
+            String message = text(error, "ShortMessage");
+            if (message == null) {
+                message = text(error, "LongMessage");
+            }
+            return (code == null ? "" : code + " ") + (message == null ? "" : message);
+        }
+        return null;
+    }
+
     /** 重新上架已结束的一口价刊登（RelistFixedPriceItem），返回新刊登号。 */
     public String relistFixedPriceItem(String itemId) {
         String payload = """
@@ -587,6 +674,11 @@ public class EbayTradingApiClient {
     }
 
     private Document call(String callName, String payload) {
+        return call(callName, payload, true);
+    }
+
+    /** requireSuccess=false 时 Ack 为 Failure/PartialFailure 也返回响应，由调用方逐条解析。 */
+    private Document call(String callName, String payload, boolean requireSuccess) {
         for (int attempt = 1; ; attempt++) {
             Request request = new Request.Builder()
                     .url(endpoint)
@@ -609,7 +701,7 @@ public class EbayTradingApiClient {
                 }
                 Document document = parseXml(responseText, callName);
                 String ack = text(document.getDocumentElement(), "Ack");
-                if (!SUCCESS_ACKS.contains(ack)) {
+                if (requireSuccess && !SUCCESS_ACKS.contains(ack)) {
                     throw new EbayApiException("eBay " + callName + "失败：" + firstError(document));
                 }
                 return document;

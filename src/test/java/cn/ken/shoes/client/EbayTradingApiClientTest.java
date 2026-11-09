@@ -64,6 +64,43 @@ class EbayTradingApiClientTest {
     }
 
     @Test
+    void endItemsParsesPerItemResultsOnPartialFailure() throws Exception {
+        server.enqueue(xml("""
+                <EndItemsResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>PartialFailure</Ack>
+                  <EndItemResponseContainer><EndTime>2026-11-09T00:00:00Z</EndTime><CorrelationID>0</CorrelationID></EndItemResponseContainer>
+                  <EndItemResponseContainer><CorrelationID>1</CorrelationID>
+                    <Errors><ShortMessage>Auction ended.</ShortMessage><ErrorCode>1047</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                  </EndItemResponseContainer>
+                  <EndItemResponseContainer><CorrelationID>2</CorrelationID>
+                    <Errors><ShortMessage>Not allowed.</ShortMessage><ErrorCode>291</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                  </EndItemResponseContainer>
+                </EndItemsResponse>
+                """));
+
+        var results = client.endItems(java.util.List.of("11", "22", "33"));
+
+        assertThat(results).extracting(EbayTradingApiClient.EndItemResult::ended).containsExactly(true, false, false);
+        assertThat(results.get(1).alreadyEnded()).isTrue();
+        assertThat(results.get(2).error()).isEqualTo("291 Not allowed.");
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("EndItems");
+        assertThat(request.getBody().readUtf8()).contains("<MessageID>2</MessageID>").contains("<ItemID>33</ItemID>");
+    }
+
+    @Test
+    void endItemsThrowsWhenWholeCallFails() {
+        server.enqueue(xml("""
+                <EndItemsResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors><ShortMessage>Call usage limit reached.</ShortMessage><ErrorCode>518</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                </EndItemsResponse>
+                """));
+
+        assertThatThrownBy(() -> client.endItems(java.util.List.of("11"))).hasMessageContaining("518");
+    }
+
+    @Test
     void collectsLineItemsThatAlreadyHaveFeedbackLeft() {
         server.enqueue(xml("""
                 <GetFeedbackResponse xmlns="urn:ebay:apis:eBLBaseComponents">
