@@ -330,7 +330,8 @@ public class EbayListingManageService {
 
     private Map<String, Integer> fetchViews(List<String> itemIds, int viewDays, AtomicBoolean cancelled) {
         Map<String, Integer> views = new HashMap<>();
-        LocalDate to = LocalDate.now(clock.withZone(BEIJING));
+        // eBay 流量报表按美国太平洋时间算日期，结束日期不能是「未来」：北京时间已到第二天时按北京算会被拒绝。
+        LocalDate to = LocalDate.now(clock.withZone(ZoneId.of("America/Los_Angeles")));
         LocalDate from = to.minusDays(viewDays - 1L);
         for (List<String> batch : EbayAnalyticsApiClient.batches(itemIds)) {
             if (cancelled.get()) {

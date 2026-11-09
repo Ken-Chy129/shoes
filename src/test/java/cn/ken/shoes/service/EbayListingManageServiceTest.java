@@ -179,6 +179,21 @@ class EbayListingManageServiceTest {
     }
 
     @Test
+    void viewsDateRangeUsesPacificDateSoEndIsNeverInTheFuture() {
+        SellerListing active = listing("1", "Active", null, new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0));
+        when(trading.getSellerListings(any(), any(), anyInt()))
+                .thenReturn(new EbayTradingApiClient.SellerListingPage(1, 1, 1, List.of(active)));
+        when(analytics.getListingViews(anyList(), any(), any(), anyString())).thenReturn(java.util.Map.of("1", 42));
+
+        // 固定时钟 2026-11-09T00:00Z：北京已是 11-09 08:00，美西还是 11-08
+        service.runFetch(11L, EbayListingManageService.SCOPE_ACTIVE, 30, new AtomicBoolean());
+
+        verify(analytics).getListingViews(anyList(), eq(java.time.LocalDate.parse("2026-10-10")),
+                eq(java.time.LocalDate.parse("2026-11-08")), anyString());
+        assertThat(service.loadReport(11L).orElseThrow().get(0).views()).isEqualTo(42);
+    }
+
+    @Test
     void endUsesEndItemForNonSystemListingAndSkipsEndedOnes() {
         when(trading.getItem("1")).thenReturn(listing("1", "Active", "9", new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0)));
         when(trading.getItem("2")).thenReturn(listing("2", "Completed", null, new ListingVariation("S9", "9", BigDecimal.TEN, 1, 0)));
