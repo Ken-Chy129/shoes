@@ -139,20 +139,20 @@ const EBAY_MANAGE_UPLOADS: Record<string, {
     name: string; api: string; template: string; requiredFields: string[]; optionalFields?: string[]; note: string;
 }> = {
     ebay_end_listings: {
-        name: 'eBay按编号下架', api: TASK_API.EBAY_START_END_LISTINGS, template: TASK_API.EBAY_END_LISTINGS_TEMPLATE,
+        name: '按编号下架', api: TASK_API.EBAY_START_END_LISTINGS, template: TASK_API.EBAY_END_LISTINGS_TEMPLATE,
         requiredFields: ['物品编号'],
-        note: '只读第一列，填物品编号或商品链接都行；可直接上传「eBay获取刊登」导出的表。',
+        note: '只读第一列，填物品编号或商品链接都行；可直接上传「获取刊登」导出的表。',
     },
     ebay_relist_listings: {
-        name: 'eBay按编号重新上架', api: TASK_API.EBAY_START_RELIST_LISTINGS,
+        name: '按编号重新上架', api: TASK_API.EBAY_START_RELIST_LISTINGS,
         template: TASK_API.EBAY_RELIST_LISTINGS_TEMPLATE,
         requiredFields: ['物品编号'],
         note: '填已结束刊登的物品编号；重新上架后eBay会生成新编号，任务明细里可以看到。仍在售或已重新上架过的会跳过。',
     },
     ebay_set_price: {
-        name: 'eBay指定尺码改价', api: TASK_API.EBAY_START_SET_PRICE, template: TASK_API.EBAY_SET_PRICE_TEMPLATE,
+        name: '指定尺码改价', api: TASK_API.EBAY_START_SET_PRICE, template: TASK_API.EBAY_SET_PRICE_TEMPLATE,
         requiredFields: ['物品编号', '尺码', '新价格(USD)'], optionalFields: ['SKU'],
-        note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「eBay获取刊登」导出表，在「尺码明细」里填新价格。',
+        note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「获取刊登」导出表，在「尺码明细」里填新价格。',
     },
 };
 
@@ -381,14 +381,14 @@ const TaskPage = () => {
                 }, {
                     onSuccess: (res: any) => {
                         if (!res.success) {
-                            message.error(res.errorMsg || 'eBay获取刊登任务创建失败');
+                            message.error(res.errorMsg || '获取刊登任务创建失败');
                             return;
                         }
-                        message.success(`eBay获取刊登任务已创建${res.data ? ` #${res.data}` : ''}`);
+                        message.success(`获取刊登任务已创建${res.data ? ` #${res.data}` : ''}`);
                         setCreateModalVisible(false);
                         queryTaskList();
                     },
-                    onError: (res: any) => message.error(res.errorMsg || 'eBay获取刊登任务创建失败'),
+                    onError: (res: any) => message.error(res.errorMsg || '获取刊登任务创建失败'),
                     onFinally: () => setCreating(false),
                 });
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_add_tracking') {

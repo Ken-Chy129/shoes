@@ -18,10 +18,10 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   ebay_add_tracking: 'eBay添加追踪号码',
   ebay_profit_price: 'eBay盈利改价',
   ebay_promo_profit_price: 'eBay活动改价',
-  ebay_fetch_listings: 'eBay获取刊登',
-  ebay_end_listings: 'eBay按编号下架',
-  ebay_relist_listings: 'eBay按编号重新上架',
-  ebay_set_price: 'eBay指定尺码改价',
+  ebay_fetch_listings: '获取刊登',
+  ebay_end_listings: '按编号下架',
+  ebay_relist_listings: '按编号重新上架',
+  ebay_set_price: '指定尺码改价',
 };
 
 export const EBAY_TASK_OPTIONS = [

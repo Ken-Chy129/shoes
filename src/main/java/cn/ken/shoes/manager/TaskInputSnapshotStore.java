@@ -214,7 +214,7 @@ public class TaskInputSnapshotStore {
     }
 
     public Optional<List<EbaySetPriceExcel>> loadEbaySetPriceInput(Long taskId) {
-        return loadList(taskId, EBAY_SET_PRICE_FILE, EbaySetPriceExcel.class, "eBay指定尺码改价");
+        return loadList(taskId, EBAY_SET_PRICE_FILE, EbaySetPriceExcel.class, "指定尺码改价");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {

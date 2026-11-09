@@ -273,7 +273,7 @@ public class EbayListingManageService {
             views = fetchViews(new ArrayList<>(byId.keySet()), viewDays, cancelled);
         } catch (RuntimeException e) {
             viewsProblem = "浏览人数获取失败：" + safeError(e);
-            log.warn("eBay获取刊登：浏览人数获取失败, taskId:{}", taskId, e);
+            log.warn("获取刊登：浏览人数获取失败, taskId:{}", taskId, e);
         }
         Lookup lookup = lookup(byId.values());
         List<ListingRow> rows = new ArrayList<>();
@@ -308,7 +308,7 @@ public class EbayListingManageService {
             taskMapper.updateTaskFailReason(taskId, viewsProblem + "（其余数据正常，可在系统设置重新授权eBay后重跑）");
         }
         taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
-        log.info("eBay获取刊登完成, taskId:{}, total:{}, active:{}, ended:{}", taskId, rows.size(), active, ended);
+        log.info("获取刊登完成, taskId:{}, total:{}, active:{}, ended:{}", taskId, rows.size(), active, ended);
     }
 
     private void fetchWindow(Long taskId, Instant from, Instant to, List<SellerListing> sink, AtomicBoolean cancelled,
@@ -492,7 +492,7 @@ public class EbayListingManageService {
             } catch (Exception e) {
                 failed++;
                 result = "下架失败(" + safeError(e) + ")";
-                log.warn("eBay按编号下架失败, taskId:{}, itemId:{}", taskId, itemId, e);
+                log.warn("按编号下架失败, taskId:{}, itemId:{}", taskId, itemId, e);
             }
             recordListing(taskId, itemId, listing, result);
             done++;
@@ -578,7 +578,7 @@ public class EbayListingManageService {
             } catch (Exception e) {
                 failed++;
                 result = "重新上架失败(" + safeError(e) + ")";
-                log.warn("eBay按编号重新上架失败, taskId:{}, itemId:{}", taskId, itemId, e);
+                log.warn("按编号重新上架失败, taskId:{}, itemId:{}", taskId, itemId, e);
             }
             TaskItemDO item = recordListing(taskId, itemId, listing, result);
             if (newItemId != null && item != null) {
@@ -680,7 +680,7 @@ public class EbayListingManageService {
                 } catch (Exception e) {
                     failed++;
                     result = "改价失败(" + safeError(e) + ")";
-                    log.warn("eBay指定尺码改价失败, taskId:{}, itemId:{}, size:{}", taskId, itemId, target.size(), e);
+                    log.warn("指定尺码改价失败, taskId:{}, itemId:{}, size:{}", taskId, itemId, target.size(), e);
                 }
                 recordPrice(taskId, target, listing, variation, result);
                 done++;

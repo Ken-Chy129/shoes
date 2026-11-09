@@ -53,47 +53,47 @@ public class EbayListingManageController {
 
     @PostMapping("startEndListings")
     public Result<String> startEndListings(@RequestParam("file") MultipartFile file) {
-        return startWithExcel(file, EbayItemIdExcel.class, "eBay按编号下架模板", null, service::startEnd);
+        return startWithExcel(file, EbayItemIdExcel.class, "按编号下架模板", null, service::startEnd);
     }
 
     @PostMapping("startRelistListings")
     public Result<String> startRelistListings(@RequestParam("file") MultipartFile file) {
-        return startWithExcel(file, EbayItemIdExcel.class, "eBay按编号重新上架模板", null, service::startRelist);
+        return startWithExcel(file, EbayItemIdExcel.class, "按编号重新上架模板", null, service::startRelist);
     }
 
     @PostMapping("startSetPrice")
     public Result<String> startSetPrice(@RequestParam("file") MultipartFile file) {
-        return startWithExcel(file, EbaySetPriceExcel.class, "eBay指定尺码改价模板", "尺码明细", service::startSetPrice);
+        return startWithExcel(file, EbaySetPriceExcel.class, "指定尺码改价模板", "尺码明细", service::startSetPrice);
     }
 
     @GetMapping("endListingsTemplate")
     public void endListingsTemplate(HttpServletResponse response) throws IOException {
-        writeTemplate(response, "eBay按编号下架模板", "物品编号", EbayItemIdExcel.class, List.of(
+        writeTemplate(response, "按编号下架模板", "物品编号", EbayItemIdExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；eBay物品编号(例如 407333465699)，也可以直接粘贴商品链接"),
-                List.of("来源", "可直接上传「eBay获取刊登」导出表的「刊登概要」sheet，只读第一列"),
+                List.of("来源", "可直接上传「获取刊登」导出表的「刊登概要」sheet，只读第一列"),
                 List.of("已下架", "已经结束的刊登会标记为「已是下架状态」，不算失败")));
     }
 
     @GetMapping("relistListingsTemplate")
     public void relistListingsTemplate(HttpServletResponse response) throws IOException {
-        writeTemplate(response, "eBay按编号重新上架模板", "物品编号", EbayItemIdExcel.class, List.of(
+        writeTemplate(response, "按编号重新上架模板", "物品编号", EbayItemIdExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；已结束刊登的eBay物品编号，也可以直接粘贴商品链接"),
-                List.of("来源", "可直接上传「eBay获取刊登」(范围选已结束) 导出表的「刊登概要」sheet，只读第一列"),
+                List.of("来源", "可直接上传「获取刊登」(范围选已结束) 导出表的「刊登概要」sheet，只读第一列"),
                 List.of("新编号", "重新上架后eBay会生成新的物品编号，任务明细里会列出"),
                 List.of("跳过", "仍在售、或已经重新上架过的刊登会跳过")));
     }
 
     @GetMapping("setPriceTemplate")
     public void setPriceTemplate(HttpServletResponse response) throws IOException {
-        writeTemplate(response, "eBay指定尺码改价模板", "改价", EbaySetPriceExcel.class, List.of(
+        writeTemplate(response, "指定尺码改价模板", "改价", EbaySetPriceExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；eBay物品编号，也可以直接粘贴商品链接"),
                 List.of("尺码", "多尺码刊登必填；填eBay页面上显示的尺码，例如 9.5"),
                 List.of("新价格(USD)", "必填；美元，最多两位小数。为空的行会忽略"),
                 List.of("SKU", "选填；填了优先按SKU匹配尺码"),
-                List.of("来源", "可直接上传「eBay获取刊登」导出表的「尺码明细」sheet，只要在「新价格」列填上价格")));
+                List.of("来源", "可直接上传「获取刊登」导出表的「尺码明细」sheet，只要在「新价格」列填上价格")));
     }
 
     /** preferredSheet：上传的是「获取刊登」导出表时优先读这个 sheet，没有就读第一个。 */
