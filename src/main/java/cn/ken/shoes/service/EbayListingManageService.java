@@ -232,7 +232,7 @@ public class EbayListingManageService {
 
     // ==================== 获取刊登 ====================
 
-    /** 导出用的一行刊登概要（同时存成任务快照）。 */
+    /** 一个刊登的信息（存成任务快照，导出时按尺码展开）。 */
     public record ListingRow(String itemId, String status, String brand, String styleId, String title,
                              String sizes, int sizeCount, int quantity, int sold, BigDecimal minPrice,
                              BigDecimal maxPrice, String timeLeft, String endTime, Integer views, int watchers,

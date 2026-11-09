@@ -63,7 +63,7 @@ public class EbayListingManageController {
 
     @PostMapping("startSetPrice")
     public Result<String> startSetPrice(@RequestParam("file") MultipartFile file) {
-        return startWithExcel(file, EbaySetPriceExcel.class, "指定尺码改价模板", "尺码明细", service::startSetPrice);
+        return startWithExcel(file, EbaySetPriceExcel.class, "指定尺码改价模板", null, service::startSetPrice);
     }
 
     @GetMapping("endListingsTemplate")
@@ -71,7 +71,7 @@ public class EbayListingManageController {
         writeTemplate(response, "按编号下架模板", "物品编号", EbayItemIdExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；eBay物品编号(例如 407333465699)，也可以直接粘贴商品链接"),
-                List.of("来源", "可直接上传「获取刊登」导出表的「刊登概要」sheet，只读第一列"),
+                List.of("来源", "可直接上传「获取刊登」导出的表，只读第一列，同一编号多行自动去重"),
                 List.of("已下架", "已经结束的刊登会标记为「已是下架状态」，不算失败")));
     }
 
@@ -80,7 +80,7 @@ public class EbayListingManageController {
         writeTemplate(response, "按编号重新上架模板", "物品编号", EbayItemIdExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；已结束刊登的eBay物品编号，也可以直接粘贴商品链接"),
-                List.of("来源", "可直接上传「获取刊登」(范围选已结束) 导出表的「刊登概要」sheet，只读第一列"),
+                List.of("来源", "可直接上传「获取刊登」(范围选已结束) 导出的表，只读第一列，同一编号多行自动去重"),
                 List.of("新编号", "重新上架后eBay会生成新的物品编号，任务明细里会列出"),
                 List.of("跳过", "仍在售、或已经重新上架过的刊登会跳过")));
     }
@@ -93,7 +93,7 @@ public class EbayListingManageController {
                 List.of("尺码", "多尺码刊登必填；填eBay页面上显示的尺码，例如 9.5"),
                 List.of("新价格(USD)", "必填；美元，最多两位小数。为空的行会忽略"),
                 List.of("SKU", "选填；填了优先按SKU匹配尺码"),
-                List.of("来源", "可直接上传「获取刊登」导出表的「尺码明细」sheet，只要在「新价格」列填上价格")));
+                List.of("来源", "可直接上传「获取刊登」导出的表，只要在「新价格」列填上价格")));
     }
 
     /** preferredSheet：上传的是「获取刊登」导出表时优先读这个 sheet，没有就读第一个。 */

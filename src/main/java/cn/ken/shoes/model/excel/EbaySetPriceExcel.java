@@ -4,7 +4,7 @@ import com.alibaba.excel.annotation.ExcelProperty;
 import lombok.Data;
 
 /**
- * eBay 指定尺码改价的输入行。列顺序与「获取刊登」导出的「尺码明细」表一致，填好新价格即可直接上传；
+ * eBay 指定尺码改价的输入行。列顺序与「获取刊登」导出表的前 4 列一致，填好新价格即可直接上传；
  * 新价格为空的行忽略。
  */
 @Data

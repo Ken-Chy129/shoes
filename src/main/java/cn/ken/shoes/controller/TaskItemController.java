@@ -467,7 +467,10 @@ public class TaskItemController {
         return sb.toString();
     }
 
-    /** 两个 sheet：刊登概要（一行一个刊登）+ 尺码明细（一行一个尺码，填好「新价格」即可作为改价模板上传）。 */
+    /**
+     * 一张表，一个尺码一行，每行都带上所在链接的信息。前 4 列（物品编号、尺码、新价格、SKU）与「指定尺码改价」
+     * 模板一致：填好「新价格」即可直接上传改价；第一列物品编号也可直接用于按编号下架 / 重新上架。
+     */
     private void writeEbayListingReport(HttpServletResponse response, Long taskId, List<TaskItemDO> items)
             throws IOException {
         java.util.Set<String> wanted = new java.util.HashSet<>();
@@ -476,14 +479,14 @@ public class TaskItemController {
         }
         List<cn.ken.shoes.service.EbayListingManageService.ListingRow> rows = ebayListingManageService
                 .loadReport(taskId).orElse(List.of()).stream().filter(row -> wanted.contains(row.itemId())).toList();
-        List<List<String>> head = java.util.stream.Stream.of("物品编号", "状态", "品牌", "货号", "标题", "在售尺码",
-                "在售尺码数", "总库存", "已售", "最低价($)", "最高价($)", "剩余时间", "结束时间", "浏览人数",
-                "收藏人数", "开始时间", "商品组SKU", "来源", "原刊登编号", "重新上架后编号", "分类", "链接")
+        List<List<String>> head = java.util.stream.Stream.of("物品编号", "尺码", "新价格(USD)", "SKU", "当前价($)",
+                "库存", "已售", "EU码", "状态", "品牌", "货号", "标题", "链接在售尺码", "链接在售尺码数", "链接总库存",
+                "链接已售", "链接最低价($)", "链接最高价($)", "剩余时间", "结束时间", "浏览人数", "收藏人数", "开始时间",
+                "商品组SKU", "来源", "原刊登编号", "重新上架后编号", "分类", "链接")
                 .map(List::of).toList();
         List<List<String>> data = new ArrayList<>();
-        List<List<String>> sizeData = new ArrayList<>();
         for (var row : rows) {
-            data.add(java.util.Arrays.asList(row.itemId(), row.status(), StrUtil.nullToEmpty(row.brand()),
+            List<String> listingCols = java.util.Arrays.asList(row.status(), StrUtil.nullToEmpty(row.brand()),
                     StrUtil.nullToEmpty(row.styleId()), StrUtil.nullToEmpty(row.title()),
                     StrUtil.nullToEmpty(row.sizes()), String.valueOf(row.sizeCount()), String.valueOf(row.quantity()),
                     String.valueOf(row.sold()), plain(row.minPrice()), plain(row.maxPrice()),
@@ -492,21 +495,21 @@ public class TaskItemController {
                     StrUtil.nullToEmpty(row.startTime()), StrUtil.nullToEmpty(row.sku()),
                     StrUtil.nullToEmpty(row.source()), StrUtil.nullToEmpty(row.relistParentId()),
                     StrUtil.nullToEmpty(row.relistedItemId()), StrUtil.nullToEmpty(row.category()),
-                    StrUtil.nullToEmpty(row.url())));
-            for (var size : row.sizeRows() == null ? List.<cn.ken.shoes.service.EbayListingManageService.SizeRow>of()
-                    : row.sizeRows()) {
-                sizeData.add(java.util.Arrays.asList(size.itemId(), StrUtil.nullToEmpty(size.size()), "",
-                        StrUtil.nullToEmpty(size.sku()), plain(size.price()), String.valueOf(size.quantity()),
-                        String.valueOf(size.sold()), StrUtil.nullToEmpty(size.euSize()),
-                        StrUtil.nullToEmpty(row.styleId()), row.status()));
+                    StrUtil.nullToEmpty(row.url()));
+            var sizes = row.sizeRows() == null || row.sizeRows().isEmpty()
+                    ? List.of(new cn.ken.shoes.service.EbayListingManageService.SizeRow(row.itemId(), null, null,
+                    null, 0, 0, null))
+                    : row.sizeRows();
+            for (var size : sizes) {
+                List<String> line = new ArrayList<>(java.util.Arrays.asList(row.itemId(),
+                        StrUtil.nullToEmpty(size.size()), "", StrUtil.nullToEmpty(size.sku()), plain(size.price()),
+                        String.valueOf(size.quantity()), String.valueOf(size.sold()),
+                        StrUtil.nullToEmpty(size.euSize())));
+                line.addAll(listingCols);
+                data.add(line);
             }
         }
-        List<List<String>> sizeHead = java.util.stream.Stream.of("物品编号", "尺码", "新价格(USD)", "SKU", "当前价($)",
-                "库存", "已售", "EU码", "货号", "状态").map(List::of).toList();
-        try (com.alibaba.excel.ExcelWriter writer = EasyExcel.write(response.getOutputStream()).build()) {
-            writer.write(data, EasyExcel.writerSheet(0, "刊登概要").head(head).build());
-            writer.write(sizeData, EasyExcel.writerSheet(1, "尺码明细").head(sizeHead).build());
-        }
+        EasyExcel.write(response.getOutputStream()).head(head).sheet("刊登明细").doWrite(data);
     }
 
     private static String plain(Object value) {

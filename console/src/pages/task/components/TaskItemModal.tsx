@@ -665,7 +665,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                                 : taskType === 'purchase_guidance' ? '购买价格参考明细'
                                 : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 'eBay订单明细'
                                 : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 'eBay追踪号码明细'
-                                : taskType === 'ebay_fetch_listings' ? '刊登列表（导出可得完整字段和尺码明细）'
+                                : taskType === 'ebay_fetch_listings' ? '刊登列表（导出为一个尺码一行的完整明细）'
                                 : taskType === 'ebay_end_listings' ? '按编号下架明细'
                                 : taskType === 'ebay_relist_listings' ? '按编号重新上架明细'
                                 : taskType === 'ebay_set_price' ? '指定尺码改价明细'

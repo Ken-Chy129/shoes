@@ -152,7 +152,7 @@ const EBAY_MANAGE_UPLOADS: Record<string, {
     ebay_set_price: {
         name: '指定尺码改价', api: TASK_API.EBAY_START_SET_PRICE, template: TASK_API.EBAY_SET_PRICE_TEMPLATE,
         requiredFields: ['物品编号', '尺码', '新价格(USD)'], optionalFields: ['SKU'],
-        note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「获取刊登」导出表，在「尺码明细」里填新价格。',
+        note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「获取刊登」导出的表，在「新价格」列填上价格即可。',
     },
 };
 
@@ -1182,7 +1182,7 @@ const TaskPage = () => {
                                {required: true, message: '请输入天数'},
                                {type: 'number', min: 1, max: 90, message: 'eBay最多提供最近90天的浏览数据'},
                            ]}
-                           extra="导出两个表：刊登概要（品牌、货号、在售尺码、库存、剩余时间、浏览、收藏、售出、价格区间等）和尺码明细（填上新价格可直接用于「指定尺码改价」）">
+                           extra="导出一张表，一个尺码一行，每行带上链接的品牌、货号、库存、剩余时间、浏览、收藏、售出、价格区间等；在「新价格」列填上价格即可直接用于「指定尺码改价」">
                     <InputNumber min={1} max={90} precision={0} addonBefore="最近" addonAfter="天" style={{width: 200}}/>
                 </Form.Item>
             </>;
