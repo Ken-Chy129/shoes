@@ -3,6 +3,7 @@ package cn.ken.shoes.service;
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.lang.Pair;
 import cn.ken.shoes.client.DunkClient;
+import cn.ken.shoes.client.KickScrewClient;
 import cn.ken.shoes.client.StockXClient;
 import cn.ken.shoes.config.StockXConfig;
 import cn.ken.shoes.model.stockx.StockXAccount;
@@ -16,6 +17,8 @@ import cn.ken.shoes.model.dunk.DunkSalesHistory;
 import cn.ken.shoes.model.dunk.DunkSearchRequest;
 import cn.ken.shoes.model.entity.SearchTaskDO;
 import cn.ken.shoes.model.excel.DunkPriceExcel;
+import cn.ken.shoes.model.excel.KickScrewSearchExcel;
+import cn.ken.shoes.model.kickscrew.KickScrewKeywordSearchPage;
 import cn.ken.shoes.model.excel.StockXPriceExcel;
 import cn.ken.shoes.model.search.SearchTaskRequest;
 import cn.ken.shoes.model.search.SearchTaskVO;
@@ -49,6 +52,8 @@ public class SearchService {
     /** 执行中增量落盘的最小间隔，避免大任务（多排序×多页）频繁全量重写 Excel。 */
     private static final long PARTIAL_FLUSH_INTERVAL_MS = 30_000L;
 
+    static final String PLATFORM_KICKSCREW = "kickscrew";
+
     /** taskId -> 最近一次增量落盘时间 */
     private final Map<Long, Long> partialFlushAt = new ConcurrentHashMap<>();
 
@@ -60,6 +65,9 @@ public class SearchService {
 
     @Resource
     private DunkClient dunkClient;
+
+    @Resource
+    private KickScrewClient kickScrewClient;
 
     @Resource
     private PriceManager priceManager;
@@ -107,7 +115,9 @@ public class SearchService {
             String type = searchTask.getType();
 
             // 根据 type 执行不同逻辑
-            if ("modelNo".equals(type)) {
+            if (PLATFORM_KICKSCREW.equals(searchTask.getPlatform())) {
+                executeKickScrewKeywordSearch(taskId, searchTask);
+            } else if ("modelNo".equals(type)) {
                 executeModelNoSearch(taskId, searchTask);
             } else {
                 executeKeywordSearch(taskId, searchTask);
@@ -241,6 +251,77 @@ public class SearchService {
         // 更新任务状态为SUCCESS
         searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
         log.info("executeKeywordSearch success, taskId:{}, query:{}, resultCount:{}", taskId, query, resultList.size());
+    }
+
+    /**
+     * KC 关键词搜索：只为拿到关键词对应的货号，按货号去重，每个货号一行。
+     * Storefront 是游标分页（每页 250 条），每个排序方式独立翻页，最多 pageCount 页。
+     */
+    private void executeKickScrewKeywordSearch(Long taskId, SearchTaskDO searchTask) {
+        String platform = searchTask.getPlatform();
+        String query = searchTask.getQuery();
+        String searchType = searchTask.getSearchType();
+        int pageCount = Math.max(1, Optional.ofNullable(searchTask.getPageCount()).orElse(1));
+        List<String> sortsList = Arrays.stream(Optional.ofNullable(searchTask.getSorts()).orElse("relevance").split(","))
+                .map(String::trim)
+                .filter(sort -> !sort.isEmpty())
+                .distinct()
+                .toList();
+        if (sortsList.isEmpty()) {
+            sortsList = List.of("relevance");
+        }
+
+        Map<String, JSONObject> resultMap = new LinkedHashMap<>();
+        String filePath = buildFilePath(platform, searchTask.getType(), query);
+        int totalQueries = sortsList.size() * pageCount;
+        int completedQueries = 0;
+
+        for (String sort : sortsList) {
+            String cursor = null;
+            for (int page = 1; page <= pageCount; page++) {
+                if (isCancelled(taskId)) {
+                    cancelledTaskIds.remove(taskId);
+                    flushPartialResult(taskId, platform, filePath, resultMap, true);
+                    return;
+                }
+                KickScrewKeywordSearchPage result = kickScrewClient.searchByKeyword(query, sort, searchType, cursor);
+                for (KickScrewKeywordSearchPage.Item item : result.items()) {
+                    if (item.modelNo() == null || item.modelNo().isBlank()) {
+                        continue;
+                    }
+                    String key = item.modelNo().trim().toUpperCase(Locale.ROOT);
+                    resultMap.computeIfAbsent(key, ignored -> toKickScrewRow(item));
+                }
+                completedQueries++;
+                boolean lastPage = !result.hasNextPage() || result.endCursor() == null;
+                if (lastPage) {
+                    // 实际页数不足 pageCount 时，从总量里扣掉剩余页，进度才能走到 100%
+                    totalQueries -= (pageCount - page);
+                }
+                searchTaskMapper.updateProgress(taskId, (int) ((completedQueries * 100.0) / Math.max(totalQueries, 1)));
+                flushPartialResult(taskId, platform, filePath, resultMap);
+                if (lastPage) {
+                    break;
+                }
+                cursor = result.endCursor();
+            }
+        }
+
+        List<JSONObject> resultList = new ArrayList<>(resultMap.values());
+        saveItemsToExcel(platform, filePath, resultList);
+        searchTaskMapper.updateStatus(taskId, SearchTaskDO.StatusEnum.SUCCESS.getCode(), new Date(), filePath);
+        log.info("executeKickScrewKeywordSearch success, taskId:{}, query:{}, modelNoCount:{}", taskId, query, resultList.size());
+    }
+
+    private JSONObject toKickScrewRow(KickScrewKeywordSearchPage.Item item) {
+        KickScrewSearchExcel row = new KickScrewSearchExcel();
+        row.setModelNo(item.modelNo().trim());
+        row.setBrand(item.brand());
+        row.setTitle(item.title());
+        row.setProductType(item.productType());
+        row.setAvailable(item.availableForSale() == null ? null : (item.availableForSale() ? "是" : "否"));
+        row.setUrl(item.handle() == null ? null : "https://www.kickscrew.com/products/" + item.handle());
+        return (JSONObject) JSONObject.toJSON(row);
     }
 
     /**
@@ -437,7 +518,14 @@ public class SearchService {
         }
 
         try (ExcelWriter excelWriter = EasyExcel.write(filepath).build()) {
-            if ("stockx".equals(platform)) {
+            if (PLATFORM_KICKSCREW.equals(platform)) {
+                List<KickScrewSearchExcel> excels = new ArrayList<>();
+                for (JSONObject jsonObject : items) {
+                    excels.add(jsonObject.toJavaObject(KickScrewSearchExcel.class));
+                }
+                WriteSheet writeSheet = EasyExcel.writerSheet(0, "结果").head(KickScrewSearchExcel.class).build();
+                excelWriter.write(excels, writeSheet);
+            } else if ("stockx".equals(platform)) {
                 List<StockXPriceExcel> excels = new ArrayList<>();
                 for (JSONObject jsonObject : items) {
                     excels.add(jsonObject.toJavaObject(StockXPriceExcel.class));

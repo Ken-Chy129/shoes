@@ -9,6 +9,7 @@ import cn.ken.shoes.model.entity.KickScrewPriceDO;
 import cn.ken.shoes.model.ebay.EbayProductMetadata;
 import cn.ken.shoes.model.kickscrew.KickScrewAlgoliaRequest;
 import cn.ken.shoes.model.kickscrew.KickScrewCategory;
+import cn.ken.shoes.model.kickscrew.KickScrewKeywordSearchPage;
 import cn.ken.shoes.model.entity.KickScrewItemDO;
 import cn.ken.shoes.model.kickscrew.KickScrewSizePrice;
 import cn.ken.shoes.model.kickscrew.KickScrewUploadItem;
@@ -437,6 +438,97 @@ public class KickScrewClient {
                 .filter(StrUtil::isNotBlank)
                 .toList();
         return matchHandle(modelNo, handles);
+    }
+
+    /** Storefront 单页最多 250 条。 */
+    public static final int KEYWORD_SEARCH_PAGE_SIZE = 250;
+
+    private static final Map<String, String> KEYWORD_SORT_KEYS = Map.of(
+            "relevance", "RELEVANCE",
+            "best_selling", "BEST_SELLING",
+            "newest", "CREATED_AT"
+    );
+
+    /**
+     * 按关键词搜索 KC 商品（Shopify Storefront，游标分页），主要用于拿到关键词对应的货号。
+     * KC 原先的 Algolia 已下线、站内 marqo 搜索被 Cloudflare 拦截，Storefront 是目前唯一可用的服务端搜索入口。
+     *
+     * @param sort       relevance / best_selling / newest
+     * @param searchType shoes 只搜鞋类，其余不限类型
+     * @param cursor     上一页的 endCursor，首页传 null
+     */
+    public KickScrewKeywordSearchPage searchByKeyword(String keyword, String sort, String searchType, String cursor) {
+        if (StrUtil.isBlank(keyword)) {
+            throw new IllegalArgumentException("关键词不能为空");
+        }
+        String gql = """
+                query KeywordSearch($query: String!, $first: Int!, $after: String, $sortKey: ProductSortKeys, $reverse: Boolean) {
+                  products(first: $first, after: $after, query: $query, sortKey: $sortKey, reverse: $reverse) {
+                    pageInfo { hasNextPage endCursor }
+                    edges { node {
+                      handle title vendor productType availableForSale
+                      metafield(namespace: "product", key: "model_no") { value }
+                    } }
+                  }
+                }
+                """;
+        String sortKey = KEYWORD_SORT_KEYS.getOrDefault(StrUtil.blankToDefault(sort, "relevance").trim(), "RELEVANCE");
+        Map<String, Object> variables = new HashMap<>();
+        variables.put("query", buildKeywordQuery(keyword, searchType));
+        variables.put("first", KEYWORD_SEARCH_PAGE_SIZE);
+        variables.put("after", StrUtil.isBlank(cursor) ? null : cursor);
+        variables.put("sortKey", sortKey);
+        variables.put("reverse", "CREATED_AT".equals(sortKey));
+        String raw = HttpUtil.doPost(KickScrewApiConstant.SEARCH_ITEM_SIZE_PRICE,
+                JSON.toJSONString(Map.of("query", gql, "variables", variables)), getStorefrontHeaders());
+        return parseKeywordSearchPage(raw);
+    }
+
+    static String buildKeywordQuery(String keyword, String searchType) {
+        String trimmed = keyword.trim();
+        if ("shoes".equals(searchType)) {
+            return "(" + trimmed + ") AND (product_type:Sneakers OR product_type:Shoes OR product_type:Slippers)";
+        }
+        return trimmed;
+    }
+
+    static KickScrewKeywordSearchPage parseKeywordSearchPage(String raw) {
+        if (StrUtil.isBlank(raw)) {
+            throw new IllegalStateException("KC搜索无响应");
+        }
+        JSONObject json;
+        try {
+            json = JSON.parseObject(raw);
+        } catch (Exception e) {
+            throw new IllegalStateException("KC搜索返回非JSON响应，可能被拦截");
+        }
+        JSONObject products = Optional.ofNullable(json.getJSONObject("data"))
+                .map(data -> data.getJSONObject("products"))
+                .orElse(null);
+        if (products == null) {
+            String errors = Optional.ofNullable(json.getString("errors")).orElse(StrUtil.sub(raw, 0, 300));
+            throw new IllegalStateException("KC搜索失败: " + StrUtil.sub(errors, 0, 300));
+        }
+        List<KickScrewKeywordSearchPage.Item> items = new ArrayList<>();
+        Optional.ofNullable(products.getJSONArray("edges"))
+                .map(array -> array.toJavaList(JSONObject.class))
+                .orElse(List.of())
+                .stream()
+                .map(edge -> edge.getJSONObject("node"))
+                .filter(Objects::nonNull)
+                .forEach(node -> items.add(new KickScrewKeywordSearchPage.Item(
+                        Optional.ofNullable(node.getJSONObject("metafield"))
+                                .map(field -> StrUtil.trim(field.getString("value")))
+                                .orElse(null),
+                        node.getString("title"),
+                        node.getString("vendor"),
+                        node.getString("productType"),
+                        node.getString("handle"),
+                        node.getBoolean("availableForSale"))));
+        JSONObject pageInfo = products.getJSONObject("pageInfo");
+        boolean hasNext = pageInfo != null && Boolean.TRUE.equals(pageInfo.getBoolean("hasNextPage"));
+        String endCursor = pageInfo == null ? null : pageInfo.getString("endCursor");
+        return new KickScrewKeywordSearchPage(items, hasNext, endCursor);
     }
 
     static String matchHandle(String modelNo, List<String> handles) {

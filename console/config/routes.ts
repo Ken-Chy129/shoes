@@ -45,6 +45,11 @@ export default [
         path: '/kc/order',
         layout: true,
         component: "./kc/order"
+      },
+      {
+        path: '/kc/search',
+        layout: true,
+        component: "./kc/search"
       }
     ]
   },
