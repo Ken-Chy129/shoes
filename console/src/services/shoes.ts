@@ -16,6 +16,7 @@ enum SETTING_API {
     SPECIAL_MODEL_PAGE = '/api/setting/specialModelPage',
     ADD_SPECIAL_MODEL = '/api/setting/addSpecialModel',
     DELETE_SPECIAL_MODEL = '/api/setting/deleteSpecialModel',
+    DELETE_ALL_SPECIAL_MODELS = '/api/setting/deleteAllSpecialModels',
     IMPORT_SPECIAL_MODEL_EXCEL = '/api/setting/importSpecialModelExcel',
     SPECIAL_MODEL_TEMPLATE = '/api/setting/specialModelTemplate',
 }

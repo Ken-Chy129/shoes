@@ -23,6 +23,9 @@ import com.alibaba.excel.EasyExcel;
 import com.alibaba.fastjson.JSONObject;
 import jakarta.annotation.Resource;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.CollectionUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -362,6 +365,23 @@ public class SettingController {
             return Result.buildError("无效的category: " + category);
         }
         return Result.buildSuccess(true);
+    }
+
+    @DeleteMapping("deleteAllSpecialModels")
+    @Transactional(rollbackFor = Exception.class)
+    public Result<Integer> deleteAllSpecialModels() {
+        int count = mustCrawlMapper.deleteByPlatform("kc");
+        count += customModelMapper.clearByType(CustomPriceTypeEnum.FLAWS.getCode());
+        count += customModelMapper.clearByType(CustomPriceTypeEnum.NOT_COMPARE.getCode());
+        // 数据库提交后才清缓存，避免回滚后规则失效。
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                CustomPriceTypeEnum.FLAWS.getClearRunnable().run();
+                CustomPriceTypeEnum.NOT_COMPARE.getClearRunnable().run();
+            }
+        });
+        return Result.buildSuccess(count);
     }
 
     @PostMapping("importSpecialModelExcel")

@@ -40,6 +40,8 @@ const ModelPage = () => {
     const [addCategory, setAddCategory] = useState('mustCrawl');
     const [addModelNos, setAddModelNos] = useState('');
     const [adding, setAdding] = useState(false);
+    const [deleteAllModalVisible, setDeleteAllModalVisible] = useState(false);
+    const [deletingAll, setDeletingAll] = useState(false);
 
 
     useEffect(() => {
@@ -81,6 +83,21 @@ const ModelPage = () => {
                 message.success('删除成功');
                 queryList();
             },
+        });
+    };
+
+    const handleDeleteAll = () => {
+        if (deletingAll) return;
+        setDeletingAll(true);
+        doDeleteRequest(SETTING_API.DELETE_ALL_SPECIAL_MODELS, {}, {
+            onSuccess: res => {
+                message.success(`已删除全部特殊货号，共 ${res.data} 条`);
+                setDeleteAllModalVisible(false);
+                if (pageIndex === 1) queryList();
+                else setPageIndex(1);
+            },
+            onError: res => message.error(res.errorMsg || '全部删除失败'),
+            onFinally: () => setDeletingAll(false),
         });
     };
 
@@ -138,7 +155,7 @@ const ModelPage = () => {
     ];
 
     return <>
-        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
+        <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16}}>
             <Form form={conditionForm} layout="inline" style={{flex: 1, flexWrap: 'wrap', gap: 8}}>
                 <Form.Item name="category" label="类型">
                     <Select style={{width: 120}} placeholder="全部" allowClear options={CATEGORY_OPTIONS.filter(o => o.value !== '')}/>
@@ -153,7 +170,7 @@ const ModelPage = () => {
                     </Space>
                 </Form.Item>
             </Form>
-            <Space>
+            <Space wrap>
                 <Button href={SETTING_API.SPECIAL_MODEL_TEMPLATE} icon={<DownloadOutlined/>}>
                     下载模板
                 </Button>
@@ -162,6 +179,9 @@ const ModelPage = () => {
                 </Upload>
                 <Button type="primary" icon={<PlusOutlined/>} onClick={() => setAddModalVisible(true)}>
                     添加
+                </Button>
+                <Button danger loading={deletingAll} onClick={() => setDeleteAllModalVisible(true)}>
+                    全部删除
                 </Button>
             </Space>
         </div>
@@ -178,6 +198,17 @@ const ModelPage = () => {
                 onChange: (c, s) => { setPageIndex(c); setPageSize(s); },
             }}
         />
+
+        <Modal
+            title="确认删除全部特殊货号？" open={deleteAllModalVisible}
+            onCancel={() => { if (!deletingAll) setDeleteAllModalVisible(false); }}
+            onOk={handleDeleteAll} confirmLoading={deletingAll}
+            okText="确认全部删除" cancelText="取消" okButtonProps={{danger: true}}
+            cancelButtonProps={{disabled: deletingAll}} closable={!deletingAll} maskClosable={false}
+        >
+            <p>将删除全部必爬、禁爬、不比价记录（包含指定尺码），不受当前筛选条件和分页影响。</p>
+            <p>删除后对应规则立即失效，且无法撤销。得物3.5、无价等其他配置不受影响。</p>
+        </Modal>
 
         {/* 添加 Modal */}
         <Modal
