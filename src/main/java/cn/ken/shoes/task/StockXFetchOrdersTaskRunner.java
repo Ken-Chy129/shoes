@@ -39,6 +39,9 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     private final PriceManager priceManager;
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
+    private final boolean shipments;
+    private final String stateKey;
+    private final String recordLabel;
     private StockXPurchaseOrigin purchaseOrigin;
 
     public StockXFetchOrdersTaskRunner(StockXAccount account, Long taskId,
@@ -52,11 +55,14 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         this.priceManager = priceManager;
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
+        this.shipments = categories.getFirst().isShipment();
+        this.stateKey = TaskSwitch.fetchOrdersKey(account.getName(), shipments);
+        this.recordLabel = shipments ? "货运明细" : "订单";
     }
 
     @Override
     public void run() {
-        TaskSwitch.setFetchOrdersRunning(account.getName(), true);
+        TaskSwitch.setFetchOrdersRunning(stateKey, true);
         long startTime = System.currentTimeMillis();
         int totalPages = 0;
         int totalOrders = 0;
@@ -81,7 +87,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             String cost = TimeUtil.getCostMin(startTime);
             taskMapper.updateTaskStatus(taskId, TaskDO.TaskStatusEnum.SUCCESS.getCode());
             taskMapper.updateTaskCost(taskId, cost);
-            taskMapper.updateTaskFailReason(taskId, "共获取" + totalOrders + "条订单");
+            taskMapper.updateTaskFailReason(taskId, "共获取" + totalOrders + "条" + recordLabel);
             log.info("[{}] 获取订单任务完成, categories:{}, total:{}, 耗时:{}",
                     account.getName(), categories, totalOrders, cost);
         } catch (TaskCancelledException ignored) {
@@ -95,7 +101,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             taskMapper.updateTaskCost(taskId, TimeUtil.getCostMin(startTime));
             taskMapper.updateTaskFailed(taskId, reason != null ? reason : "未知异常");
         } finally {
-            TaskSwitch.clearFetchOrdersState(account.getName());
+            TaskSwitch.clearFetchOrdersState(stateKey);
         }
     }
 
@@ -103,6 +109,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         int count = 0;
         int pages = 0;
         int pageNumber = 1;
+        Set<String> seenListings = new HashSet<>();
         boolean hasNextPage;
         do {
             ensureNotCancelled();
@@ -110,12 +117,25 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             JSONObject result = queryPageWithRetry(category.getLabel(), currentPage,
                     () -> stockXClient.queryOrderListings(category, currentPage, account));
             JSONArray edges = result.getJSONArray("edges");
+            JSONObject pageInfo = result.getJSONObject("pageInfo");
+            if (shipments && (pageInfo == null || !(pageInfo.get("hasNextPage") instanceof Boolean)
+                    || (edges.isEmpty() && pageInfo.getBooleanValue("hasNextPage")))) {
+                throw new IllegalStateException("StockX货运分页信息无效");
+            }
             List<TaskItemDO> items = new ArrayList<>();
             for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
-                JSONObject node = edge.getJSONObject("node");
+                JSONObject node = edge == null ? null : edge.getJSONObject("node");
+                if (shipments && (node == null || StrUtil.isBlank(node.getString("id")))) {
+                    throw new IllegalStateException("StockX货运明细缺少商品ID");
+                }
                 if (node != null) {
+                    if (shipments && !seenListings.add(node.getString("id"))) {
+                        throw new IllegalStateException("StockX货运分页重复返回商品");
+                    }
                     TaskItemDO item = StockXOrderItemConverter.convert(taskId, node, category);
-                    purchaseOrigin.enrich(item);
+                    if (!shipments) {
+                        purchaseOrigin.enrich(item);
+                    }
                     if (category == StockXOrderCategory.COMPLETED && StrUtil.isNotBlank(item.getListingId())) {
                         ensureNotCancelled();
                         item.setPayoutAmount(stockXClient.queryOrderPayout(item.getListingId(), account));
@@ -127,7 +147,6 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             count += items.size();
             pages++;
             taskMapper.updateTaskRound(taskId, completedPages + pages);
-            JSONObject pageInfo = result.getJSONObject("pageInfo");
             hasNextPage = pageInfo != null && pageInfo.getBooleanValue("hasNextPage");
             pageNumber++;
         } while (hasNextPage);
@@ -200,14 +219,14 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             }
 
             if (attempt < MAX_PAGE_ATTEMPTS) {
-                String retryMessage = categoryLabel + "订单第" + pageNumber + "页请求异常，"
+                String retryMessage = categoryLabel + recordLabel + "第" + pageNumber + "页请求异常，"
                         + (delayMs / 1000) + "秒后重试（" + attempt + "/" + (MAX_PAGE_ATTEMPTS - 1) + "）";
                 taskMapper.updateTaskFailReason(taskId, retryMessage);
                 log.warn("[{}] {}, 原因:{}", account.getName(), retryMessage, lastFailure);
                 waitBeforeRetry(delayMs);
             }
         }
-        throw new IllegalStateException(categoryLabel + "订单第" + pageNumber
+        throw new IllegalStateException(categoryLabel + recordLabel + "第" + pageNumber
                 + "页查询失败（已重试" + (MAX_PAGE_ATTEMPTS - 1) + "次：" + lastFailure + "）",
                 lastException);
     }
@@ -257,7 +276,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     }
 
     private void ensureNotCancelled() {
-        if (TaskSwitch.isFetchOrdersCancelled(account.getName()) || Thread.currentThread().isInterrupted()) {
+        if (TaskSwitch.isFetchOrdersCancelled(stateKey) || Thread.currentThread().isInterrupted()) {
             throw new TaskCancelledException();
         }
     }

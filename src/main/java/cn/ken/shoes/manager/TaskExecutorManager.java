@@ -470,8 +470,12 @@ public class TaskExecutorManager {
                         ? null : startDelist(account, inventoryType, mode, snapshot.get());
             }
             case FETCH_ORDERS -> {
-                List<StockXOrderCategory> categories = parseOrderCategories(params);
+                List<StockXOrderCategory> categories = parseOrderCategories(params, false);
                 yield categories.isEmpty() ? null : startFetchOrders(account, categories);
+            }
+            case FETCH_SHIPMENTS -> {
+                List<StockXOrderCategory> categories = parseOrderCategories(params, true);
+                yield categories.isEmpty() ? null : startFetchShipments(account, categories);
             }
             case PURCHASE -> {
                 StockXPurchaseOperation operation = StockXPurchaseOperation.fromCode(params.getString("operation"));
@@ -741,13 +745,21 @@ public class TaskExecutorManager {
         return value == null || value.isBlank() ? defaultValue : value;
     }
 
-    private List<StockXOrderCategory> parseOrderCategories(JSONObject params) {
+    private List<StockXOrderCategory> parseOrderCategories(JSONObject params, boolean shipments) {
         List<StockXOrderCategory> categories = new ArrayList<>();
-        if (params.getJSONArray("orderTypes") == null) {
+        String key = shipments ? "shipmentTypes" : "orderTypes";
+        if (!(params.get(key) instanceof List<?> types)) {
             return categories;
         }
-        for (String code : params.getJSONArray("orderTypes").toJavaList(String.class)) {
-            StockXOrderCategory.fromCode(code).ifPresent(categories::add);
+        for (Object type : types) {
+            StockXOrderCategory category = type instanceof String code
+                    ? StockXOrderCategory.fromCode(code).orElse(null) : null;
+            if (category == null || category.isShipment() != shipments) {
+                return List.of();
+            }
+            if (!categories.contains(category)) {
+                categories.add(category);
+            }
         }
         return categories;
     }
@@ -1423,7 +1435,16 @@ public class TaskExecutorManager {
     // ==================== StockX 获取订单 ====================
 
     public Long startFetchOrders(String accountId, List<StockXOrderCategory> categories) {
-        if (categories == null || categories.isEmpty()) {
+        return startFetchOrders(accountId, categories, false);
+    }
+
+    public Long startFetchShipments(String accountId, List<StockXOrderCategory> categories) {
+        return startFetchOrders(accountId, categories, true);
+    }
+
+    private Long startFetchOrders(String accountId, List<StockXOrderCategory> categories, boolean shipments) {
+        if (categories == null || categories.isEmpty()
+                || categories.stream().anyMatch(category -> category == null || category.isShipment() != shipments)) {
             return null;
         }
         StockXAccount account = StockXConfig.getAccount(accountId);
@@ -1431,28 +1452,32 @@ public class TaskExecutorManager {
             log.error("账号不存在: {}", accountId);
             return null;
         }
-        if (!TaskSwitch.tryStartFetchOrders(accountId)) {
-            log.info("获取订单任务已在运行: {}", accountId);
+        String stateKey = TaskSwitch.fetchOrdersKey(account.getName(), shipments);
+        TaskTypeEnum taskType = shipments ? TaskTypeEnum.FETCH_SHIPMENTS : TaskTypeEnum.FETCH_ORDERS;
+        if (!TaskSwitch.tryStartFetchOrders(stateKey)) {
+            log.info("{}任务已在运行: {}", taskType.getDesc(), accountId);
             return null;
         }
         String params = new JSONObject()
-                .fluentPut("orderTypes", categories.stream().map(StockXOrderCategory::getCode).toList())
+                .fluentPut(shipments ? "shipmentTypes" : "orderTypes",
+                        categories.stream().map(StockXOrderCategory::getCode).distinct().toList())
                 .toJSONString();
         Long taskId = null;
         try {
-            taskId = createTask("stockx", TaskTypeEnum.FETCH_ORDERS.getCode(), account.getName(), params);
-            TaskSwitch.resetFetchOrdersCancel(accountId);
+            taskId = createTask("stockx", taskType.getCode(), account.getName(), params);
+            TaskSwitch.resetFetchOrdersCancel(stateKey);
 
             StockXFetchOrdersTaskRunner runner = new StockXFetchOrdersTaskRunner(
-                    account, taskId, categories, stockXClient, priceManager, taskMapper, taskItemMapper);
-            new Thread(runner, "StockX-FetchOrders-" + account.getName()).start();
-            log.info("获取订单任务已启动: [{}], categories:{}", account.getName(), categories);
+                    account, taskId, categories.stream().distinct().toList(),
+                    stockXClient, priceManager, taskMapper, taskItemMapper);
+            new Thread(runner, "StockX-" + taskType.getCode() + "-" + account.getName()).start();
+            log.info("{}任务已启动: [{}], categories:{}", taskType.getDesc(), account.getName(), categories);
             return taskId;
         } catch (RuntimeException e) {
             if (taskId != null) {
                 taskMapper.updateTaskFailed(taskId, "任务启动失败: " + e.getMessage());
             }
-            TaskSwitch.clearFetchOrdersState(accountId);
+            TaskSwitch.clearFetchOrdersState(stateKey);
             throw e;
         }
     }

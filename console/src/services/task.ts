@@ -55,6 +55,7 @@ enum TASK_API {
     START_EXCEL_DELIST = '/api/task/stockx/startExcelDelist',
     // StockX 获取订单（待处理/已完成/已取消/待付款）
     START_FETCH_ORDERS = '/api/task/stockx/startFetchOrders',
+    START_FETCH_SHIPMENTS = '/api/task/stockx/startFetchShipments',
     // StockX 购买（出价/进行中订单/历史记录）
     START_PURCHASE = '/api/task/stockx/startPurchase',
     // StockX 创建出价（Excel：货号/尺码/价格）

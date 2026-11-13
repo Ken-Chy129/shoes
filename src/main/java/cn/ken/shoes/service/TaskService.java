@@ -255,6 +255,11 @@ public class TaskService {
             case "fetch_listings" -> { if (clearState) TaskSwitch.clearFetchListingsState(key); else TaskSwitch.cancelFetchListings(key); }
             case "excel_delist" -> { if (clearState) TaskSwitch.clearExcelDelistState(key); else TaskSwitch.cancelExcelDelist(key); }
             case "fetch_orders" -> { if (clearState) TaskSwitch.clearFetchOrdersState(accountName); else TaskSwitch.cancelFetchOrders(accountName); }
+            case "fetch_shipments" -> {
+                String shipmentKey = TaskSwitch.fetchOrdersKey(accountName, true);
+                if (clearState) TaskSwitch.clearFetchOrdersState(shipmentKey);
+                else TaskSwitch.cancelFetchOrders(shipmentKey);
+            }
             case "purchase" -> {
                 if (purchaseOperation == null) {
                     if (clearState) TaskSwitch.clearAllPurchaseStates(accountName); else TaskSwitch.cancelAllPurchases(accountName);

@@ -604,7 +604,7 @@ public class TaskController {
         LinkedHashSet<StockXOrderCategory> categories = new LinkedHashSet<>();
         for (String code : orderTypes.toJavaList(String.class)) {
             StockXOrderCategory category = StockXOrderCategory.fromCode(code).orElse(null);
-            if (category == null) {
+            if (category == null || category.isShipment()) {
                 return Result.buildError("无效的订单类型: " + code);
             }
             categories.add(category);
@@ -614,6 +614,29 @@ public class TaskController {
             return Result.buildError("任务已在运行或账号不存在");
         }
         return Result.buildSuccess(String.valueOf(taskId));
+    }
+
+    // ==================== StockX 获取货运信息 ====================
+
+    @PostMapping("stockx/startFetchShipments")
+    public Result<String> startFetchShipments(@RequestBody JSONObject body) {
+        if (body == null || !(body.get("accountId") instanceof String accountId)
+                || StrUtil.isBlank(accountId)
+                || !(body.get("shipmentTypes") instanceof List<?> types) || types.isEmpty()) {
+            return Result.buildError("accountId和shipmentTypes不能为空，shipmentTypes必须为数组");
+        }
+        LinkedHashSet<StockXOrderCategory> categories = new LinkedHashSet<>();
+        for (Object type : types) {
+            StockXOrderCategory category = type instanceof String code
+                    ? StockXOrderCategory.fromCode(code).orElse(null) : null;
+            if (category == null || !category.isShipment()) {
+                return Result.buildError("无效的货运类型，仅支持packed、shipped、received");
+            }
+            categories.add(category);
+        }
+        Long taskId = taskExecutorManager.startFetchShipments(accountId, new ArrayList<>(categories));
+        return taskId == null ? Result.buildError("货运任务已在运行或账号不存在")
+                : Result.buildSuccess(String.valueOf(taskId));
     }
 
     // ==================== StockX 购买 ====================

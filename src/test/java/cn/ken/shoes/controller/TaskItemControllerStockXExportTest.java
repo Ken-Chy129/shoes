@@ -8,6 +8,7 @@ import cn.ken.shoes.model.excel.StockXPurchaseGuidanceExcel;
 import cn.ken.shoes.model.excel.StockXPurchaseOrderExcel;
 import cn.ken.shoes.model.excel.StockXOrderTaskExcel;
 import cn.ken.shoes.model.excel.StockXListingTaskExcel;
+import cn.ken.shoes.model.excel.StockXShipmentTaskExcel;
 import com.alibaba.excel.EasyExcel;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
@@ -23,6 +24,35 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TaskItemControllerStockXExportTest {
+
+    @Test
+    void exportsShipmentIdentifiersStatusAndDeadlineWithoutOrderOnlyColumns() throws Exception {
+        TaskDO task = new TaskDO();
+        task.setId(96L);
+        task.setTaskType("fetch_shipments");
+        task.setPlatform("stockx");
+        TaskItemDO item = new TaskItemDO();
+        item.setListingId("listing-1");
+        item.setOrderNumber("ORD-1");
+        item.setShipmentId("S-123");
+        item.setTrackingNumber("TRACK-123");
+        item.setOrderStatus("已打包");
+        item.setSalePrice(new BigDecimal("125"));
+        item.setCurrencyCode("USD");
+        item.setOperateTime(new Date(1788400000000L));
+        List<StockXShipmentTaskExcel> rows = EasyExcel.read(new ByteArrayInputStream(
+                export(task, item).getContentAsByteArray())).head(StockXShipmentTaskExcel.class).sheet().doReadSync();
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.getShipmentId()).isEqualTo("S-123");
+            assertThat(row.getTrackingNumber()).isEqualTo("TRACK-123");
+            assertThat(row.getOrderNumber()).isEqualTo("ORD-1");
+            assertThat(row.getId()).isEqualTo("listing-1");
+            assertThat(row.getStatus()).isEqualTo("已打包");
+            assertThat(row.getSalePrice()).isEqualTo("$125");
+            assertThat(row.getShipByDate()).isNotBlank().isNotEqualTo("-");
+            assertThat(row.getSoldOn()).isEqualTo("-");
+        });
+    }
 
     @Test
     void exportsSalesPurchaseOriginWithIndependentCurrency() throws Exception {

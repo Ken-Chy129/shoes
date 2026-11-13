@@ -5,6 +5,7 @@ import cn.ken.shoes.common.PageResult;
 import cn.ken.shoes.common.TaskTypeEnum;
 import cn.ken.shoes.common.ModelSearchOperation;
 import cn.ken.shoes.common.StockXPurchaseOperation;
+import cn.ken.shoes.model.excel.StockXShipmentTaskExcel;
 import cn.ken.shoes.mapper.TaskItemMapper;
 import cn.ken.shoes.mapper.TaskMapper;
 import cn.ken.shoes.model.entity.TaskDO;
@@ -201,6 +202,31 @@ public class TaskItemController {
             EasyExcel.write(response.getOutputStream(), EbayListingTaskExcel.class)
                     .sheet("eBay商品明细")
                     .doWrite(ebayRows);
+            return;
+        }
+
+        if (task != null && TaskTypeEnum.FETCH_SHIPMENTS.getCode().equals(task.getTaskType())) {
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+            List<StockXShipmentTaskExcel> rows = new ArrayList<>();
+            for (TaskItemDO item : items) {
+                StockXShipmentTaskExcel row = new StockXShipmentTaskExcel();
+                row.setShipmentId(item.getShipmentId());
+                row.setTrackingNumber(item.getTrackingNumber());
+                row.setStatus(item.getOrderStatus());
+                row.setOrderNumber(item.getOrderNumber());
+                row.setId(item.getListingId());
+                row.setProductId(item.getProductId());
+                row.setTitle(item.getTitle());
+                row.setStyleId(item.getStyleId());
+                row.setSize(item.getSize());
+                row.setEuSize(item.getEuSize());
+                row.setSalePrice(formatMoney(item.getSalePrice(), item.getCurrencyCode()));
+                row.setSoldOn(item.getSoldOn() == null ? "-" : dateFormat.format(item.getSoldOn()));
+                row.setShipByDate(item.getOperateTime() == null ? "-" : dateFormat.format(item.getOperateTime()));
+                rows.add(row);
+            }
+            EasyExcel.write(response.getOutputStream(), StockXShipmentTaskExcel.class)
+                    .sheet("货运明细").doWrite(rows);
             return;
         }
 

@@ -27,6 +27,13 @@ public enum StockXOrderCategory {
             "待付款",
             List.of("MATCHED"),
             List.of("PAYOUTPENDING", "PAYOUTCOMPLETED", "PAYOUTFAILED")),
+    SHIPMENT_PACKED("packed", "已打包", "已打包",
+            List.of("READY_TO_SHIP"), List.of("CREATED")),
+    SHIPMENT_SHIPPED("shipped", "已发货", "已发货",
+            List.of("MATCHED", "READY_TO_SHIP", "IN_TRANSIT_TO_WAREHOUSE"), List.of("SHIPPED")),
+    SHIPMENT_RECEIVED("received", "已收到", "已收到",
+            List.of("MATCHED", "READY_TO_SHIP"),
+            List.of("RECEIVED", "AUTHENTICATING", "AUTHENTICATED", "AUTHFAILED")),
     ;
 
     private final String code;
@@ -34,6 +41,10 @@ public enum StockXOrderCategory {
     private final String displayStatus;
     private final List<String> listingStatuses;
     private final List<String> orderStatuses;
+
+    public boolean isShipment() {
+        return this == SHIPMENT_PACKED || this == SHIPMENT_SHIPPED || this == SHIPMENT_RECEIVED;
+    }
 
     public static Optional<StockXOrderCategory> fromCode(String code) {
         for (StockXOrderCategory category : values()) {

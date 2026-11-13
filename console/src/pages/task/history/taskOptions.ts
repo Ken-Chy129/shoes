@@ -5,6 +5,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   excel_delist: '下架',
   fetch_listings: '获取上架商品',
   fetch_orders: '获取订单',
+  fetch_shipments: '获取货运信息',
   purchase: '购买',
   purchase_guidance: '购买价格参考',
   extend_shipping: '订单延期',
@@ -47,6 +48,7 @@ export const STOCKX_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.excel_delist, value: 'excel_delist'},
   {label: TASK_TYPE_LABELS.fetch_listings, value: 'fetch_listings'},
   {label: TASK_TYPE_LABELS.fetch_orders, value: 'fetch_orders'},
+  {label: TASK_TYPE_LABELS.fetch_shipments, value: 'fetch_shipments'},
   {label: TASK_TYPE_LABELS.purchase, value: 'purchase'},
   {label: TASK_TYPE_LABELS.purchase_guidance, value: 'purchase_guidance'},
   {label: TASK_TYPE_LABELS.extend_shipping, value: 'extend_shipping'},
@@ -63,6 +65,12 @@ export const STOCKX_ORDER_TYPE_OPTIONS = [
   {label: '已完成', value: 'completed'},
   {label: '已取消', value: 'cancelled'},
   {label: '待付款', value: 'pending_payout'},
+];
+
+export const STOCKX_SHIPMENT_TYPE_OPTIONS = [
+  {label: '已打包', value: 'packed'},
+  {label: '已发货', value: 'shipped'},
+  {label: '已收到', value: 'received'},
 ];
 
 export const STOCKX_PURCHASE_OPERATION_OPTIONS = [

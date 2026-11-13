@@ -410,6 +410,10 @@ public class TaskSwitch {
     private static final ConcurrentHashMap<String, Boolean> FETCH_ORDERS_CANCELLED_MAP = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, Boolean> FETCH_ORDERS_RUNNING_MAP = new ConcurrentHashMap<>();
 
+    public static String fetchOrdersKey(String accountId, boolean shipments) {
+        return shipments ? accountId + ":shipments" : accountId;
+    }
+
     public static boolean isFetchOrdersCancelled(String accountId) {
         return Boolean.TRUE.equals(FETCH_ORDERS_CANCELLED_MAP.get(accountId));
     }

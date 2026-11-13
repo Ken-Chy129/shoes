@@ -240,6 +240,7 @@ CREATE TABLE task_item
     eu_size        VARCHAR(16)  NULL     COMMENT 'EU码',
     order_number   VARCHAR(64)  NULL     COMMENT 'StockX订单号',
     tracking_number VARCHAR(64) NULL     COMMENT '物流追踪号码',
+    shipment_id VARCHAR(64) NULL         COMMENT 'StockX展示货运号',
     shipping_carrier VARCHAR(64) NULL    COMMENT '物流公司',
     order_status   VARCHAR(32)  NULL     COMMENT 'StockX订单状态',
     currency_code  VARCHAR(8)   NULL     COMMENT '订单币种',

@@ -142,6 +142,10 @@ public class StockXClient {
         JSONObject data = response.getJSONObject("data");
         JSONObject viewer = data != null ? data.getJSONObject("viewer") : null;
         JSONObject sellerListings = viewer != null ? viewer.getJSONObject("sellerListings") : null;
+        if (category.isShipment() && response.getJSONArray("errors") != null
+                && !response.getJSONArray("errors").isEmpty()) {
+            throw new IllegalStateException("StockX货运查询返回错误，请稍后重试");
+        }
         if (sellerListings == null) {
             log.error("queryOrderListings[{}] 响应无sellerListings, category:{}, page:{}, response:{}",
                     account.getName(), category, pageNumber,
@@ -191,9 +195,37 @@ public class StockXClient {
             filters.put("orderStatus", Map.of("in", category.getOrderStatuses()));
         }
         filters.put("spreadCurrency", "USD");
+        if (category.isShipment()) {
+            filters.put("inventoryType", Map.of("in", List.of("STANDARD")));
+            filters.put("optionalVerification", Map.of("is", true));
+        }
         variables.put("filters", filters);
         request.put("variables", variables);
-        request.put("extensions", persistedQuery("0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733"));
+        if (category.isShipment()) {
+            // 货运明细显式选择所需字段，不依赖历史订单 persisted query 的字段集合。
+            request.put("query", """
+                    query SellerListings($filters: SellerListingFilters, $pageSize: Int, $pageNumber: Int,
+                        $sort: SellerListingSortField, $order: AscDescOrderInput) {
+                      viewer {
+                        sellerListings(filters: $filters, pageSize: $pageSize, pageNumber: $pageNumber,
+                            sort: $sort, order: $order) {
+                          pageInfo { hasNextPage endCursor totalCount }
+                          edges { node {
+                            id amount currency soldOn
+                            associatedOrders { standardizedSellOrder { orderNumber shipByDate status } }
+                            shipment { displayId trackingNumber deleted }
+                            productVariant {
+                              id traits { size } sizeChart { displayOptions { size } }
+                              product { title styleId }
+                            }
+                          } }
+                        }
+                      }
+                    }
+                    """);
+        } else {
+            request.put("extensions", persistedQuery("0be46d884e6e6945514543ade66ea6f8c7d081bdd799623ac1d7b4e16348b733"));
+        }
         return request;
     }
 

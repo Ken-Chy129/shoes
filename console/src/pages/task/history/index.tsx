@@ -12,6 +12,7 @@ import moment from "moment";
 import TaskItemModal from "../components/TaskItemModal";
 import {
     STOCKX_ORDER_TYPE_OPTIONS,
+    STOCKX_SHIPMENT_TYPE_OPTIONS,
     STOCKX_PURCHASE_OPERATION_OPTIONS,
     STOCKX_TASK_OPTIONS,
     EBAY_TASK_OPTIONS,
@@ -599,6 +600,14 @@ const TaskPage = () => {
                     onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'fetch_shipments') {
+                doPostRequest(TASK_API.START_FETCH_SHIPMENTS, {
+                    accountId: values.accountId,
+                    shipmentTypes: values.shipmentTypes || [],
+                }, {
+                    onSuccess: () => { message.success('获取货运信息任务已创建'); setCreateModalVisible(false); queryTaskList(); },
+                    onFinally: () => setCreating(false),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'purchase') {
                 const operation = values.purchaseOperation || 'bids';
                 if (operation === 'create_bids') {
@@ -1003,6 +1012,7 @@ const TaskPage = () => {
                 }
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
+                    fetch_shipments: '页',
                     excel_delist: '批',
                     purchase: '页',
                 };
@@ -1600,6 +1610,14 @@ const TaskPage = () => {
             </>;
         }
 
+        if (createPlatform === 'stockx' && createTaskType === 'fetch_shipments') {
+            return <Form.Item name="shipmentTypes" label="货运类型" initialValue={['packed']}
+                              rules={[{required: true, message: '请至少选择一种货运类型'}]}
+                              extra="每件商品一行，附带货运号和追踪号码；可同时获取多种类型">
+                <Select mode="multiple" options={STOCKX_SHIPMENT_TYPE_OPTIONS} placeholder="选择货运类型"/>
+            </Form.Item>;
+        }
+
         if (createPlatform === 'stockx' && createTaskType === 'purchase') {
             return <>
                 <Form.Item name="purchaseOperation" label="操作" initialValue="bids"
@@ -1701,7 +1719,7 @@ const TaskPage = () => {
         inventoryType: '库存类型', keywords: '关键词', sorts: '排序方式',
         pageCount: '查询页数', searchType: '搜索类型', interval: '执行间隔',
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
-        orderTypes: '订单类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
+        orderTypes: '订单类型', shipmentTypes: '货运类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
         trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数', scope: '刊登范围', viewDays: '浏览人数天数',
     };
@@ -1744,6 +1762,11 @@ const TaskPage = () => {
             const labels: Record<string, string> = {pending: '待处理', completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};
             const values = Array.isArray(v) ? v : String(v).split(',');
             return values.map((value: string) => labels[value] || value).join(', ');
+        }
+        if (k === 'shipmentTypes') {
+            const values = Array.isArray(v) ? v : String(v).split(',');
+            return values.map((value: string) =>
+                STOCKX_SHIPMENT_TYPE_OPTIONS.find(option => option.value === value)?.label || value).join(', ');
         }
         if (k === 'maxListCount') return v && v > 0 ? `${v}条` : '不限';
         if (k === 'interval') return `${v}秒`;

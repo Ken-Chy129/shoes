@@ -81,6 +81,9 @@ public class TaskItemDO {
     /** 物流追踪号码（eBay 添加追踪号码任务）。 */
     private String trackingNumber;
 
+    /** StockX 展示货运号（shipment.displayId），不是商品 listing ID。 */
+    private String shipmentId;
+
     /** 物流公司（eBay 添加追踪号码任务）。 */
     private String shippingCarrier;
 

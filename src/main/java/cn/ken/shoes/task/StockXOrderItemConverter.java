@@ -55,6 +55,16 @@ public final class StockXOrderItemConverter {
         Date soldOn = parseDate(order.getString("soldOn"));
         item.setSoldOn(soldOn);
         item.setOperateTime(soldOn);
+        if (category.isShipment()) {
+            item.setPurchaseOrderNumber(null);
+            item.setOperateTime(standardizedSellOrder == null ? null
+                    : parseDate(standardizedSellOrder.getString("shipByDate")));
+            JSONObject shipment = order.getJSONObject("shipment");
+            if (shipment != null && !shipment.getBooleanValue("deleted")) {
+                item.setShipmentId(shipment.getString("displayId"));
+                item.setTrackingNumber(shipment.getString("trackingNumber"));
+            }
+        }
         return item;
     }
 

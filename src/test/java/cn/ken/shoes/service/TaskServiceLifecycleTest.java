@@ -26,6 +26,25 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TaskServiceLifecycleTest {
 
     @Test
+    void cancellingShipmentsDoesNotCancelOrdersOnTheSameAccount() {
+        TaskDO running = task(18L, "running");
+        running.setTaskType("fetch_shipments");
+        TaskService service = new TaskService(
+                mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
+        String key = TaskSwitch.fetchOrdersKey("account-a", true);
+        TaskSwitch.clearFetchOrdersState(key);
+        TaskSwitch.clearFetchOrdersState("account-a");
+        try {
+            service.cancelTaskById(18L);
+            assertThat(TaskSwitch.isFetchOrdersCancelled(key)).isTrue();
+            assertThat(TaskSwitch.isFetchOrdersCancelled("account-a")).isFalse();
+        } finally {
+            TaskSwitch.clearFetchOrdersState(key);
+            TaskSwitch.clearFetchOrdersState("account-a");
+        }
+    }
+
+    @Test
     void returnsRealOperationCountsAndPausedStatusForTaskList() {
         TaskDO task = task(7L, "paused");
         TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> switch (method) {
