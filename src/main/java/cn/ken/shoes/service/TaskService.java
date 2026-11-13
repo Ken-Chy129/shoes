@@ -239,6 +239,11 @@ public class TaskService {
         switch (taskType) {
             case "price_down" -> {
                 if (clearState) {
+                    if ("CUSTODIAL".equals(inventoryType)
+                            && !java.util.Objects.equals(task.getId(),
+                            TaskSwitch.getExcelTaskId(accountName, inventoryType, fetchMode))) {
+                        return;
+                    }
                     TaskSwitch.clearExcelState(accountName, inventoryType, fetchMode);
                 } else {
                     TaskSwitch.cancelExcel(accountName, inventoryType, fetchMode);
@@ -253,6 +258,12 @@ public class TaskService {
                 }
             }
             case "fetch_listings" -> { if (clearState) TaskSwitch.clearFetchListingsState(key); else TaskSwitch.cancelFetchListings(key); }
+            case "update_custodial_prices" -> {
+                // 删除历史任务不能释放另一个正在执行的改价任务的锁。
+                if (!clearState && TaskDO.TaskStatusEnum.RUNNING.getCode().equals(task.getStatus())) {
+                    TaskSwitch.cancelCustodialPriceUpdate(accountName);
+                }
+            }
             case "excel_delist" -> { if (clearState) TaskSwitch.clearExcelDelistState(key); else TaskSwitch.cancelExcelDelist(key); }
             case "fetch_orders" -> { if (clearState) TaskSwitch.clearFetchOrdersState(accountName); else TaskSwitch.cancelFetchOrders(accountName); }
             case "fetch_shipments" -> {

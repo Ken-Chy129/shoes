@@ -600,6 +600,27 @@ const TaskPage = () => {
                     onSuccess: () => { message.success('获取订单任务已创建'); setCreateModalVisible(false); queryTaskList(); },
                     onFinally: () => setCreating(false),
                 });
+            } else if (createPlatform === 'stockx' && createTaskType === 'update_custodial_prices') {
+                const file = values.custodialPriceExcel?.[0]?.originFileObj;
+                if (!file) { message.error('请上传寄存改价Excel'); setCreating(false); return; }
+                if (file.size > 10 * 1024 * 1024) { message.error('Excel不能超过10MB'); setCreating(false); return; }
+                Modal.confirm({
+                    title: '确认修改寄存商品价格',
+                    content: `账号：${values.accountId}；文件：${file.name}。仅修改Excel内的寄存挂单为表内目标售价（整数美元），执行一次。已提交的改价不能通过取消撤回。`,
+                    okText: '确认改价', cancelText: '取消',
+                    onCancel: () => setCreating(false),
+                    onOk: () => doUploadRequestWithParams(TASK_API.START_UPDATE_CUSTODIAL_PRICES,
+                        file, {accountId: values.accountId}, {
+                            onSuccess: (res: any) => {
+                                setCreating(false);
+                                if (!res.success) { message.error(res.errorMsg || '寄存改价任务创建失败'); return; }
+                                message.success('寄存改价任务已创建');
+                                setCreateModalVisible(false);
+                                queryTaskList();
+                            },
+                            onError: () => { message.error('寄存改价Excel上传失败'); setCreating(false); },
+                        }),
+                });
             } else if (createPlatform === 'stockx' && createTaskType === 'fetch_shipments') {
                 doPostRequest(TASK_API.START_FETCH_SHIPMENTS, {
                     accountId: values.accountId,
@@ -925,6 +946,14 @@ const TaskPage = () => {
                         </Tooltip>;
                     } catch { return '-'; }
                 }
+                if (record.taskType === 'update_custodial_prices' && record.attributes) {
+                    try {
+                        const attrs = JSON.parse(record.attributes);
+                        return <Tooltip title={`跳过 ${attrs.skipped ?? 0} | 未确认 ${attrs.unconfirmed ?? 0}`}>
+                            <span>成功 {attrs.success ?? 0}<br/>失败 {attrs.failed ?? 0}</span>
+                        </Tooltip>;
+                    } catch { return '-'; }
+                }
                 if (record.taskType === 'ebay_fetch_listings' && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
@@ -1013,6 +1042,7 @@ const TaskPage = () => {
                 const unitMap: Record<string, string> = {
                     fetch_listings: '页',
                     fetch_shipments: '页',
+                    update_custodial_prices: '条',
                     excel_delist: '批',
                     purchase: '页',
                 };
@@ -1608,6 +1638,18 @@ const TaskPage = () => {
                     <Select mode="multiple" options={STOCKX_ORDER_TYPE_OPTIONS} placeholder="选择订单类型"/>
                 </Form.Item>
             </>;
+        }
+
+        if (createPlatform === 'stockx' && createTaskType === 'update_custodial_prices') {
+            return <Form.Item name="custodialPriceExcel" label="寄存改价Excel" valuePropName="fileList"
+                              getValueFromEvent={(e: any) => e?.fileList}
+                              rules={[{required: true, message: '请上传寄存改价Excel'}]}
+                              extra={<ExcelFieldHint requiredFields={['listingId', '价格']}
+                                  note="使用寄存商品导出表，新增“价格”列填写目标售价（正整数美元）；其他列不参与匹配。只执行一次，先停止同账号寄存压价。支持.xls/.xlsx，最大10MB。"/>}>
+                <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                    <Button icon={<UploadOutlined/>}>选择文件</Button>
+                </Upload>
+            </Form.Item>;
         }
 
         if (createPlatform === 'stockx' && createTaskType === 'fetch_shipments') {

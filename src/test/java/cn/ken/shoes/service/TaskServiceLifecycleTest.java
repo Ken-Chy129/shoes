@@ -26,6 +26,42 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class TaskServiceLifecycleTest {
 
     @Test
+    void deletingHistoricalCustodialAutoPriceTaskCannotUnlockCurrentRun() {
+        TaskDO old = task(20L, "success");
+        old.setTaskType("price_down");
+        old.setParams("{\"inventoryType\":\"CUSTODIAL\"}");
+        TaskSwitch.tryStartExcel("account-a", "CUSTODIAL");
+        TaskSwitch.setExcelTaskId("account-a", "CUSTODIAL", 21L);
+        try {
+            new TaskService(mapperReturning(old), emptyTaskItemMapper(), new FakeTaskExecutorManager()).deleteTask(20L);
+            assertThat(TaskSwitch.tryStartCustodialPriceUpdate("account-a")).isFalse();
+        } finally {
+            TaskSwitch.clearExcelState("account-a", "CUSTODIAL");
+            TaskSwitch.removeExcelTaskId("account-a", "CUSTODIAL");
+            TaskSwitch.clearCustodialPriceUpdate("account-a");
+        }
+    }
+
+    @Test
+    void custodialPriceCancellationKeepsReservationUntilRunnerExits() {
+        TaskDO running = task(19L, "running");
+        running.setTaskType("update_custodial_prices");
+        TaskService service = new TaskService(
+                mapperReturning(running), emptyTaskItemMapper(), new FakeTaskExecutorManager());
+        TaskSwitch.tryStartCustodialPriceUpdate("account-a");
+        try {
+            service.cancelTaskById(19L);
+            assertThat(TaskSwitch.isCustodialPriceUpdateCancelled("account-a")).isTrue();
+            assertThat(TaskSwitch.tryStartExcel("account-a", "CUSTODIAL")).isFalse();
+            running.setStatus("success");
+            service.deleteTask(19L);
+            assertThat(TaskSwitch.tryStartCustodialPriceUpdate("account-a")).isFalse();
+        } finally {
+            TaskSwitch.clearCustodialPriceUpdate("account-a");
+        }
+    }
+
+    @Test
     void cancellingShipmentsDoesNotCancelOrdersOnTheSameAccount() {
         TaskDO running = task(18L, "running");
         running.setTaskType("fetch_shipments");

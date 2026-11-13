@@ -12,6 +12,34 @@ import static org.assertj.core.api.Assertions.*;
 
 class StockXClientCustodialPriceTest {
     @Test
+    void strictReadbackRejectsUnexpectedDuplicateAndPartialResults() {
+        AtomicReference<JSONObject> response = new AtomicReference<>();
+        StockXClient client = new StockXClient() {
+            @Override protected JSONObject queryPro(String body, Headers headers, String accountName) {
+                assertThat(accountName).isEqualTo("fixture");
+                assertThat(JSONObject.parseObject(body).getJSONObject("variables").getJSONObject("filters")
+                        .getJSONObject("listingIds").getJSONArray("in")).containsExactly("listing-1");
+                return response.get();
+            }
+        };
+        StockXAccount account = new StockXAccount();
+        account.setName("fixture");
+        account.setAuthorization("test-only");
+        for (String listings : List.of(
+                "{\"edges\":[{\"node\":{\"id\":\"other\"}}],\"pageInfo\":{\"hasNextPage\":false}}",
+                "{\"edges\":[{\"node\":{\"id\":\"listing-1\"}},{\"node\":{\"id\":\"listing-1\"}}],\"pageInfo\":{\"hasNextPage\":false}}",
+                "{\"edges\":[{\"node\":{\"id\":\"listing-1\"}}],\"pageInfo\":{\"hasNextPage\":true}}")) {
+            response.set(JSONObject.parseObject("{\"data\":{\"viewer\":{\"sellerListings\":" + listings + "}}}"));
+            assertThatThrownBy(() -> client.verifyListingsByListingIds(List.of("listing-1"), account, true))
+                    .isInstanceOf(IllegalStateException.class);
+        }
+        response.set(JSONObject.parseObject("""
+                {"data":{"viewer":{"sellerListings":{"edges":[],"pageInfo":{"hasNextPage":false}}}}}
+                """));
+        assertThat(client.verifyListingsByListingIds(List.of("listing-1"), account, true)).isEmpty();
+    }
+
+    @Test
     void queriesOnlyCustodialInventoryWithTheSelectedAccountAndRejectsPartialResponses() {
         AtomicReference<String> response = new AtomicReference<>("""
                 {"data":{"viewer":{"sellerListings":{

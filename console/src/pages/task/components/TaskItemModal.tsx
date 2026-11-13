@@ -348,6 +348,17 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         },
     ];
 
+    const custodialPriceColumns = [
+        {title: 'listingId', dataIndex: 'listingId', key: 'listingId', width: 220},
+        {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
+        {title: '尺码', dataIndex: 'size', key: 'size', width: 80},
+        {title: '标题', dataIndex: 'title', key: 'title', width: 230},
+        {title: '原价($)', dataIndex: 'currentPrice', key: 'currentPrice', width: 100},
+        {title: '目标价($)', dataIndex: 'targetPrice', key: 'targetPrice', width: 100},
+        {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 320},
+        {title: '执行时间', dataIndex: 'operateTime', key: 'operateTime', width: 170},
+    ];
+
     const shipmentColumns = [
         {title: '货运号', dataIndex: 'shipmentId', key: 'shipmentId', width: 150},
         {title: '追踪号码', dataIndex: 'trackingNumber', key: 'trackingNumber', width: 170},
@@ -654,6 +665,8 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         ? orderColumns
         : taskType === 'fetch_shipments'
         ? shipmentColumns
+        : taskType === 'update_custodial_prices'
+        ? custodialPriceColumns
         : taskType === 'extend_shipping'
             ? shippingExtensionColumns
             : taskType === 'replenishment'
@@ -678,6 +691,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         <Modal
             title={taskType === 'extend_shipping' ? '订单延期明细'
                 : taskType === 'fetch_shipments' ? '货运明细'
+                : taskType === 'update_custodial_prices' ? '寄存改价明细'
                 : taskType === 'replenishment' ? '补单明细'
                             : taskType === 'purchase' ? '购买明细'
                                 : taskType === 'purchase_guidance' ? '购买价格参考明细'
@@ -698,7 +712,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         >
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16}}>
                 <Space wrap>
-                    {taskType !== 'fetch_orders' && taskType !== 'fetch_shipments' && taskType !== 'extend_shipping' && taskType !== 'replenishment' && <Input
+                    {taskType !== 'fetch_orders' && taskType !== 'fetch_shipments' && taskType !== 'update_custodial_prices' && taskType !== 'extend_shipping' && taskType !== 'replenishment' && <Input
                         placeholder="轮次"
                         value={filterRound}
                         onChange={e => { setFilterRound(e.target.value); setPageIndex(1); }}
@@ -809,6 +823,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 loading={loading}
                 scroll={{x: taskType === 'fetch_orders' ? 1980
                     : taskType === 'fetch_shipments' ? 1900
+                    : taskType === 'update_custodial_prices' ? 1350
                         : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1860
                         : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 1400
                         : taskType === 'ebay_fetch_listings' ? 1900

@@ -205,6 +205,20 @@ public class TaskItemController {
             return;
         }
 
+        if (task != null && TaskTypeEnum.UPDATE_CUSTODIAL_PRICES.getCode().equals(task.getTaskType())) {
+            List<List<String>> head = List.of(List.of("listingId"), List.of("货号"), List.of("尺码"),
+                    List.of("标题"), List.of("原价格($)"), List.of("目标价格($)"), List.of("执行结果"), List.of("执行时间"));
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+            List<List<String>> data = items.stream().map(item -> List.of(
+                    StrUtil.nullToEmpty(item.getListingId()), StrUtil.nullToEmpty(item.getStyleId()),
+                    StrUtil.nullToEmpty(item.getSize()), StrUtil.nullToEmpty(item.getTitle()),
+                    plain(item.getCurrentPrice()), plain(item.getTargetPrice()),
+                    StrUtil.nullToEmpty(item.getOperateResult()),
+                    item.getOperateTime() == null ? "" : dateFormat.format(item.getOperateTime()))).toList();
+            EasyExcel.write(response.getOutputStream()).head(head).sheet("寄存改价明细").doWrite(data);
+            return;
+        }
+
         if (task != null && TaskTypeEnum.FETCH_SHIPMENTS.getCode().equals(task.getTaskType())) {
             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
             List<StockXShipmentTaskExcel> rows = new ArrayList<>();

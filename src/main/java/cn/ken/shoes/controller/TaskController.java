@@ -25,6 +25,7 @@ import cn.ken.shoes.model.excel.StockXPriceDownInputExcel;
 import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
+import cn.ken.shoes.model.excel.StockXCustodialPriceInputExcel;
 import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
 import cn.ken.shoes.model.task.TaskRequest;
 import cn.ken.shoes.service.TaskService;
@@ -231,6 +232,38 @@ public class TaskController {
     public Result<Void> cancelEbayDelist(@RequestParam Long taskId) {
         taskExecutorManager.cancelEbayDelist(taskId);
         return Result.buildSuccess();
+    }
+
+    @PostMapping("stockx/startUpdateCustodialPrices")
+    public Result<String> startUpdateCustodialPrices(@RequestParam("file") MultipartFile file,
+                                                     @RequestParam("accountId") String accountId) throws IOException {
+        if (StrUtil.isBlank(accountId)) return Result.buildError("accountId不能为空");
+        String fileError = validateExcelFile(file, "寄存改价Excel");
+        if (fileError != null) return Result.buildError(fileError);
+        List<StockXCustodialPriceInputExcel> rows;
+        try {
+            rows = EasyExcel.read(file.getInputStream()).head(StockXCustodialPriceInputExcel.class).sheet().doReadSync();
+        } catch (RuntimeException e) {
+            return Result.buildError("无法读取寄存改价Excel，请确认表头为listingId、价格");
+        }
+        if (rows == null || rows.isEmpty()) return Result.buildError("Excel中未找到寄存改价数据");
+        Set<String> ids = new HashSet<>();
+        for (int i = 0; i < rows.size(); i++) {
+            StockXCustodialPriceInputExcel row = rows.get(i);
+            String prefix = "寄存改价Excel第" + (i + 2) + "行：";
+            if (row == null || StrUtil.isBlank(row.getListingId())) return Result.buildError(prefix + "listingId必填");
+            row.setListingId(row.getListingId().trim());
+            if (!ids.add(row.getListingId().toLowerCase(Locale.ROOT))) return Result.buildError(prefix + "listingId重复");
+            BigDecimal price = row.getPrice();
+            if (price == null || price.signum() <= 0 || price.stripTrailingZeros().scale() > 0
+                    || price.compareTo(BigDecimal.valueOf(Integer.MAX_VALUE)) > 0) {
+                return Result.buildError(prefix + "价格必须为大于0且不超过2147483647的整数美元");
+            }
+            row.setPrice(price.setScale(0));
+        }
+        Long taskId = taskExecutorManager.startUpdateCustodialPrices(accountId, rows);
+        return taskId == null ? Result.buildError("账号不存在或已停用，或该账号寄存压价/改价任务仍在运行")
+                : Result.buildSuccess(String.valueOf(taskId));
     }
 
     // ==================== StockX Excel 压价 ====================

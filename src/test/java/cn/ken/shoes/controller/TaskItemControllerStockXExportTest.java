@@ -26,6 +26,25 @@ import static org.mockito.Mockito.when;
 class TaskItemControllerStockXExportTest {
 
     @Test
+    void exportsCustodialOriginalAndTargetPricesAndFailureResults() throws Exception {
+        TaskDO task = new TaskDO();
+        task.setId(97L);
+        task.setTaskType("update_custodial_prices");
+        TaskItemDO item = new TaskItemDO();
+        item.setListingId("listing-1");
+        item.setCurrentPrice(new BigDecimal("100"));
+        item.setTargetPrice(new BigDecimal("120"));
+        item.setOperateResult("未确认-已受理但未查到目标价格");
+        List<java.util.Map<Integer, String>> rows = EasyExcel.read(new ByteArrayInputStream(
+                export(task, item).getContentAsByteArray())).headRowNumber(0).sheet().doReadSync();
+        assertThat(rows.getFirst().values()).contains("listingId", "原价格($)", "目标价格($)", "执行结果");
+        assertThat(rows.get(1).get(0)).isEqualTo("listing-1");
+        assertThat(rows.get(1).get(4)).isEqualTo("100");
+        assertThat(rows.get(1).get(5)).isEqualTo("120");
+        assertThat(rows.get(1).get(6)).startsWith("未确认");
+    }
+
+    @Test
     void exportsShipmentIdentifiersStatusAndDeadlineWithoutOrderOnlyColumns() throws Exception {
         TaskDO task = new TaskDO();
         task.setId(96L);

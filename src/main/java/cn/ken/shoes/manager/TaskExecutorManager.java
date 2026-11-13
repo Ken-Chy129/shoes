@@ -24,6 +24,7 @@ import cn.ken.shoes.model.excel.ModelSearchListingExcel;
 import cn.ken.shoes.model.excel.StockXBidDeleteInputExcel;
 import cn.ken.shoes.model.excel.StockXBidInputExcel;
 import cn.ken.shoes.model.excel.StockXBidUpdateInputExcel;
+import cn.ken.shoes.model.excel.StockXCustodialPriceInputExcel;
 import cn.ken.shoes.model.search.ModelNoSearchSizeFilter;
 import cn.ken.shoes.model.stockx.StockXAccount;
 import cn.ken.shoes.model.stockx.StockXBidFeePolicy;
@@ -70,6 +71,9 @@ public class TaskExecutorManager {
 
     @Resource
     private StockXClient stockXClient;
+
+    @Resource
+    private StockXPriceUpdateCoordinator priceUpdateCoordinator;
 
     @Resource
     private KcTaskRunner kcTaskRunner;
@@ -315,7 +319,7 @@ public class TaskExecutorManager {
             return false;
         }
         TaskTypeEnum taskType = TaskTypeEnum.fromCode(task.getTaskType());
-        if (taskType == null) {
+        if (taskType == null || taskType == TaskTypeEnum.UPDATE_CUSTODIAL_PRICES) {
             return false;
         }
         if ("stockx".equals(task.getPlatform())) {
@@ -459,6 +463,7 @@ public class TaskExecutorManager {
                                 readModelNoSizeFilters(params));
             }
             case FETCH_LISTINGS -> startFetchListings(account, inventoryType(params));
+            case UPDATE_CUSTODIAL_PRICES -> null;
             case EXCEL_DELIST -> {
                 String inventoryType = inventoryType(params);
                 DelistMode mode = delistMode(params);
@@ -789,6 +794,26 @@ public class TaskExecutorManager {
         return taskDO.getId();
     }
 
+
+    public Long startUpdateCustodialPrices(String accountId, List<StockXCustodialPriceInputExcel> rows) {
+        StockXAccount account = StockXConfig.getAccount(accountId);
+        if (account == null || !account.isEnabled() || rows == null || rows.isEmpty()
+                || !TaskSwitch.tryStartCustodialPriceUpdate(account.getName())) return null;
+        Long taskId = null;
+        try {
+            String params = new JSONObject().fluentPut("inventoryType", "CUSTODIAL")
+                    .fluentPut("inputCount", rows.size()).toJSONString();
+            taskId = createTask("stockx", TaskTypeEnum.UPDATE_CUSTODIAL_PRICES.getCode(), account.getName(), params);
+            new Thread(new StockXCustodialPriceTaskRunner(account, taskId, List.copyOf(rows),
+                    stockXClient, priceUpdateCoordinator, taskMapper, taskItemMapper),
+                    "StockX-CustodialPrice-" + account.getName()).start();
+            return taskId;
+        } catch (RuntimeException e) {
+            TaskSwitch.clearCustodialPriceUpdate(account.getName());
+            if (taskId != null) taskMapper.updateTaskFailed(taskId, "寄存改价任务启动失败");
+            throw e;
+        }
+    }
 
     // ==================== StockX Excel 多账号压价 ====================
 

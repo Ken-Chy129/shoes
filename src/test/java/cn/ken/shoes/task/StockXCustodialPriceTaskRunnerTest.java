@@ -85,6 +85,60 @@ class StockXCustodialPriceTaskRunnerTest {
         assertThat(TaskSwitch.tryStartCustodialPriceUpdate(account.getName())).isTrue();
     }
 
+    @Test void completesOnlyWhenAllChangedPricesAreConfirmed() {
+        when(client.queryCustodialPricePage(1, account)).thenReturn(page(false, node("change", 100)));
+        when(client.verifyListingsByListingIds(List.of("change"), account, true))
+                .thenReturn(Map.of("change", node("change", 120)));
+        run(row("change", 120));
+        verify(tasks).updateTaskStatus(81L, "success");
+        assertThat(saved.getFirst().getOperateResult()).isEqualTo("改价成功");
+    }
+
+    @Test void laterPageErrorNeverReachesWriteApi() {
+        when(client.queryCustodialPricePage(1, account)).thenReturn(page(true, node("change", 100)));
+        when(client.queryCustodialPricePage(2, account)).thenThrow(new IllegalStateException("query failed"));
+        run(row("change", 120));
+        verifyNoInteractions(coordinator);
+    }
+
+    @Test void rejectsWrongCurrencyBeforeAnyWrite() {
+        when(client.queryCustodialPricePage(1, account))
+                .thenReturn(page(false, node("change", 100).fluentPut("currency", "HKD")));
+        run(row("change", 120));
+        verifyNoInteractions(coordinator);
+    }
+
+    @Test void rejectsStandardInventoryBeforeAnyWrite() {
+        when(client.queryCustodialPricePage(1, account))
+                .thenReturn(page(false, node("change", 100).fluentPut("inventoryType", "STANDARD")));
+        run(row("change", 120));
+        verifyNoInteractions(coordinator);
+    }
+
+    @Test void cancellationAfterSubmissionPreservesUncertainResult() {
+        when(client.queryCustodialPricePage(1, account)).thenReturn(page(false, node("change", 100)));
+        when(coordinator.submit(anyList(), eq(account), any(), any(), any(), any())).thenAnswer(call -> {
+            TaskSwitch.cancelCustodialPriceUpdate(account.getName());
+            return new StockXPriceUpdateCoordinator.Submission("batch", call.getArgument(0));
+        });
+        run(row("change", 120));
+        assertThat(saved.getFirst().getOperateResult()).startsWith("未确认");
+        verify(tasks).updateTaskStatus(81L, "cancel");
+        verify(client, never()).verifyListingsByListingIds(any(), any(), anyBoolean());
+    }
+
+    @Test void recordsRejectedItemsWithoutMarkingThemSuccessful() {
+        when(client.queryCustodialPricePage(1, account)).thenReturn(page(false, node("change", 100)));
+        when(coordinator.submit(anyList(), eq(account), any(), any(), any(), any())).thenAnswer(call -> {
+            java.util.function.BiConsumer<Map<String, String>, String> failed = call.getArgument(3);
+            failed.accept(Map.of("listingId", "change"), "rejected");
+            return new StockXPriceUpdateCoordinator.Submission("batch", List.of());
+        });
+        run(row("change", 120));
+        assertThat(saved.getFirst().getOperateResult()).startsWith("失败");
+        verify(tasks).updateTaskFailed(eq(81L), contains("失败1"));
+    }
+
     private void run(StockXCustodialPriceInputExcel... rows) {
         new StockXCustodialPriceTaskRunner(account, 81L, List.of(rows), client, coordinator, tasks, items) {
             @Override protected void waitForSync() { }
