@@ -3,6 +3,7 @@ package cn.ken.shoes.task;
 import cn.ken.shoes.common.StockXOrderCategory;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.util.BrandUtil;
+import cn.ken.shoes.util.ShoesUtil;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 
@@ -77,7 +78,7 @@ public final class StockXOrderItemConverter {
         for (JSONObject option : displayOptions.toJavaList(JSONObject.class)) {
             String size = option.getString("size");
             if (size != null && size.startsWith("EU ")) {
-                return size.substring(3).trim();
+                return ShoesUtil.normalizeUnicodeFraction(size.substring(3));
             }
         }
         return null;

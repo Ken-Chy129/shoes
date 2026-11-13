@@ -6,12 +6,42 @@ import cn.ken.shoes.task.StockXOrderItemConverter;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.math.BigDecimal;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class StockXOrderItemConverterTest {
+
+    @ParameterizedTest
+    @CsvSource({
+            "39 1/3, 39",
+            "42 2/3, 42.5",
+            "39⅓, 39",
+            "42⅔, 42.5",
+            "43, 43",
+            "35.5, 35.5"
+    })
+    void normalizesEuSizesForPendingAndHistoricalOrders(String rawSize, String expectedSize) {
+        JSONObject order = JSON.parseObject("""
+                {
+                  "productVariant": {
+                    "traits": {"size": "9.5"},
+                    "sizeChart": {"displayOptions": [{"size": "US M 9.5"}, {"size": "EU %s"}]}
+                  }
+                }
+                """.formatted(rawSize));
+
+        TaskItemDO pending = StockXOrderItemConverter.convertPending(90L, order);
+        TaskItemDO historical = StockXOrderItemConverter.convert(90L, order, StockXOrderCategory.COMPLETED);
+
+        assertThat(pending.getEuSize()).isEqualTo(expectedSize);
+        assertThat(historical.getEuSize()).isEqualTo(expectedSize);
+        assertThat(pending.getSize()).isEqualTo("9.5");
+        assertThat(historical.getSize()).isEqualTo("9.5");
+    }
 
     @Test
     void convertsPendingAskIntoOrderFieldsAndShippingDeadline() {
