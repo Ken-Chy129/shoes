@@ -66,6 +66,8 @@ class StockXFetchOrdersTaskRunnerTest {
         assertThat(client.requestedCursors).containsExactly(null, "cursor-1");
         assertThat(priceManager.loadedStyles).containsExactlyInAnyOrder("STYLE-1", "STYLE-2");
         assertThat(recordedItems).hasSize(2);
+        assertThat(client.salesRequests).containsExactly("variant-ask-1", "variant-ask-2");
+        assertThat(recordedItems).extracting(TaskItemDO::getReplenishmentOrder).containsExactly(true, true);
         assertThat(recordedItems).extracting(TaskItemDO::getOperateResult)
                 .containsExactly("未延期", "已延期");
         assertThat(recordedItems).extracting(TaskItemDO::getPoisonPrice)
@@ -101,6 +103,8 @@ class StockXFetchOrdersTaskRunnerTest {
         assertThat(priceManager.loadedStyles).isEmpty();
         assertThat(priceManager.priceLookups).isEmpty();
         assertThat(client.payoutRequests).isEmpty();
+        assertThat(client.salesRequests).isEmpty();
+        assertThat(recordedItems.getFirst().getReplenishmentOrder()).isNull();
     }
 
     @Test
@@ -133,6 +137,7 @@ class StockXFetchOrdersTaskRunnerTest {
         assertThat(recordedItems.getFirst().getPoisonPrice()).isNull();
         assertThat(priceManager.loadedStyles).isEmpty();
         assertThat(priceManager.priceLookups).isEmpty();
+        assertThat(client.salesRequests).isEmpty();
     }
 
     @Test
@@ -331,8 +336,16 @@ class StockXFetchOrdersTaskRunnerTest {
         private final List<JSONObject> historicalPages = new ArrayList<>();
         private final List<String> requestedCursors = new ArrayList<>();
         private final List<String> payoutRequests = new ArrayList<>();
+        private final List<String> salesRequests = new ArrayList<>();
         private int historicalRequests;
         private Map<String, BigDecimal> payouts = Map.of();
+
+        @Override
+        public JSONObject queryVariantSalesPage(String variantId, String currencyCode, String after,
+                                                StockXAccount account) {
+            salesRequests.add(variantId);
+            return StockXPendingOrderClassifierTest.page(0, null);
+        }
 
         @Override
         public JSONObject queryPendingAsks(String after, StockXAccount account) {

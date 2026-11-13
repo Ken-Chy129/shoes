@@ -43,6 +43,7 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
     private final String stateKey;
     private final String recordLabel;
     private StockXPurchaseOrigin purchaseOrigin;
+    private StockXPendingOrderClassifier pendingOrderClassifier;
 
     public StockXFetchOrdersTaskRunner(StockXAccount account, Long taskId,
                                        List<StockXOrderCategory> categories,
@@ -69,6 +70,10 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         Map<String, Integer> counts = new LinkedHashMap<>();
         purchaseOrigin = new StockXPurchaseOrigin(cursor -> queryPageWithRetry("购买历史", 1,
                 () -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account)),
+                this::ensureNotCancelled);
+        pendingOrderClassifier = new StockXPendingOrderClassifier((variantId, currencyCode, cursor) ->
+                queryPageWithRetry("买家成交历史", 1,
+                        () -> stockXClient.queryVariantSalesPage(variantId, currencyCode, cursor, account)),
                 this::ensureNotCancelled);
         try {
             for (StockXOrderCategory category : categories) {
@@ -168,7 +173,9 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
             for (JSONObject edge : edges.toJavaList(JSONObject.class)) {
                 JSONObject node = edge.getJSONObject("node");
                 if (node != null) {
-                    items.add(StockXOrderItemConverter.convertPending(taskId, node));
+                    TaskItemDO item = StockXOrderItemConverter.convertPending(taskId, node);
+                    pendingOrderClassifier.enrich(item);
+                    items.add(item);
                 }
             }
             storeWithPoisonPrices(items);

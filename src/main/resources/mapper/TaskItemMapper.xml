@@ -22,6 +22,7 @@
         <result property="purchasePrice" column="purchase_price"/>
         <result property="purchaseCurrencyCode" column="purchase_currency_code"/>
         <result property="orderStatus" column="order_status"/>
+        <result property="replenishmentOrder" column="replenishment_order"/>
         <result property="currencyCode" column="currency_code"/>
         <result property="salePrice" column="sale_price"/>
         <result property="payoutAmount" column="payout_amount"/>

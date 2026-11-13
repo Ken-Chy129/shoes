@@ -104,6 +104,10 @@ public class TaskItemDO {
     @TableField("order_status")
     private String orderStatus;
 
+    /** 待处理订单：true 补单，false 正常单，null 未判定或不适用。 */
+    @TableField("replenishment_order")
+    private Boolean replenishmentOrder;
+
     /**
      * 订单币种
      */

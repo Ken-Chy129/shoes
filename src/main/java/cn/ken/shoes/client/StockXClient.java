@@ -391,6 +391,35 @@ public class StockXClient {
         return sales;
     }
 
+    /** 待处理订单按原币种匹配成交记录；返回 null 交由任务重试，不能等同于空历史。 */
+    public JSONObject queryVariantSalesPage(String variantId, String currencyCode, String after,
+                                            StockXAccount account) {
+        if (StrUtil.isBlank(variantId) || currencyCode == null || !currencyCode.matches("[A-Z]{3}")) {
+            throw new IllegalArgumentException("成交记录查询缺少有效variant或币种");
+        }
+        String market = StrUtil.blankToDefault(account != null ? account.getCountry() : null, "US");
+        String request = buildVariantSalesRequest(variantId, market, after, currencyCode).toJSONString();
+        JSONObject response = account != null && StrUtil.isNotBlank(account.getApiKey())
+                ? queryDirectPro(request, market, account) : queryReadPro(request, market, account);
+        if (response == null) return null;
+        JSONArray errors = response.getJSONArray("errors");
+        if (errors != null && !errors.isEmpty()) {
+            throw new IllegalStateException("StockX成交记录查询失败");
+        }
+        JSONObject data = response.getJSONObject("data");
+        JSONObject variant = data == null ? null : data.getJSONObject("variant");
+        JSONObject marketData = variant == null ? null : variant.getJSONObject("market");
+        if (variant == null || !variantId.equals(variant.getString("id"))
+                || marketData == null || !currencyCode.equals(marketData.getString("currencyCode"))) {
+            throw new IllegalStateException("StockX成交记录variant或币种不匹配");
+        }
+        JSONObject sales = marketData.getJSONObject("sales");
+        if (sales == null || sales.getJSONArray("edges") == null) {
+            throw new IllegalStateException("StockX成交记录响应缺少sales字段");
+        }
+        return sales;
+    }
+
     /** 成交明细为只读请求；直连可避免共享网页代理连接数耗尽导致整项任务失败。 */
     protected JSONObject queryDirectPro(String body, String country, StockXAccount account) {
         acquireReadPermit(account.getName());
@@ -420,10 +449,15 @@ public class StockXClient {
     }
 
     static JSONObject buildVariantSalesRequest(String variantId, String market, String after) {
+        return buildVariantSalesRequest(variantId, market, after, "USD");
+    }
+
+    private static JSONObject buildVariantSalesRequest(String variantId, String market, String after,
+                                                       String currencyCode) {
         return new JSONObject(true)
                 .fluentPut("operationName", "VariantSales")
                 .fluentPut("variables", new JSONObject(true).fluentPut("id", variantId)
-                        .fluentPut("currencyCode", "USD").fluentPut("market", market)
+                        .fluentPut("currencyCode", currencyCode).fluentPut("market", market)
                         .fluentPut("after", after).fluentPut("viewerContext", "BUYER"))
                 .fluentPut("query", "query VariantSales($id:String!,$currencyCode:CurrencyCode,$market:String,$after:String,$viewerContext:MarketViewerContext){variant(id:$id){id market(currencyCode:$currencyCode){currencyCode sales(market:$market,after:$after,viewerContext:$viewerContext){edges{cursor node{amount createdAt orderType}} pageInfo{total startCursor endCursor}}}}}");
     }

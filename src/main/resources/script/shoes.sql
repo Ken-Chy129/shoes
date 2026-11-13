@@ -243,6 +243,7 @@ CREATE TABLE task_item
     shipment_id VARCHAR(64) NULL         COMMENT 'StockX展示货运号',
     shipping_carrier VARCHAR(64) NULL    COMMENT '物流公司',
     order_status   VARCHAR(32)  NULL     COMMENT 'StockX订单状态',
+    replenishment_order TINYINT(1) NULL COMMENT '待处理订单补单判定：1补单，0正常单，NULL未判定或不适用',
     currency_code  VARCHAR(8)   NULL     COMMENT '订单币种',
     sale_price     DECIMAL(12,2) NULL    COMMENT '出售价格',
     payout_amount  DECIMAL(12,2) NULL    COMMENT '预计或实际货款',

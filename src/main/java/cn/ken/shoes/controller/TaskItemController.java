@@ -269,6 +269,8 @@ public class TaskItemController {
                         ? "¥" + item.getPoisonPrice() : "-");
                 excel.setStatus(item.getOrderStatus());
                 excel.setExtensionStatus(pending ? item.getOperateResult() : "-");
+                excel.setReplenishmentOrder(!pending ? "-" : item.getReplenishmentOrder() == null
+                        ? "未判定" : item.getReplenishmentOrder() ? "补单" : "正常单");
                 orderExcelList.add(excel);
             }
             EasyExcel.write(response.getOutputStream(), StockXOrderTaskExcel.class)

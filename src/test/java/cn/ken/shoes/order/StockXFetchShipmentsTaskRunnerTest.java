@@ -58,6 +58,7 @@ class StockXFetchShipmentsTaskRunnerTest {
         verifyNoInteractions(prices);
         verify(client, never()).queryPurchasePage(any(), any(), any());
         verify(client, never()).queryOrderPayout(any(), any());
+        verify(client, never()).queryVariantSalesPage(any(), any(), any(), any());
         assertThat(TaskSwitch.isFetchOrdersRunning(account.getName() + ":shipments")).isFalse();
     }
 

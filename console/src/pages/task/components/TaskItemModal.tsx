@@ -40,6 +40,7 @@ interface TaskItemRecord {
     purchasePrice?: number | null;
     purchaseCurrencyCode?: string | null;
     orderStatus: string;
+    replenishmentOrder?: boolean | null;
     currencyCode: string;
     salePrice: number;
     payoutAmount: number;
@@ -342,6 +343,11 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             render: (value: string, record: TaskItemRecord) => record.orderStatus === '待处理' ? value : '-',
         },
         {title: '订单状态', dataIndex: 'orderStatus', key: 'orderStatus', width: 100},
+        {
+            title: '是否补单', dataIndex: 'replenishmentOrder', key: 'replenishmentOrder', width: 110,
+            render: (value: boolean | null | undefined, record: TaskItemRecord) => record.orderStatus !== '待处理'
+                ? '-' : value === true ? '补单' : value === false ? '正常单' : '未判定',
+        },
         {
             title: '延期状态', dataIndex: 'operateResult', key: 'extensionStatus', width: 100,
             render: (value: string, record: TaskItemRecord) => record.orderStatus === '待处理' ? value : '-',
@@ -821,7 +827,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                 columns={columns}
                 dataSource={taskItems}
                 loading={loading}
-                scroll={{x: taskType === 'fetch_orders' ? 1980
+                scroll={{x: taskType === 'fetch_orders' ? 2090
                     : taskType === 'fetch_shipments' ? 1900
                     : taskType === 'update_custodial_prices' ? 1350
                         : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1860

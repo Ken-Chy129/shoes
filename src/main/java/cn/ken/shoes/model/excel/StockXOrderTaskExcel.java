@@ -53,4 +53,7 @@ public class StockXOrderTaskExcel {
 
     @ExcelProperty("购买价格")
     private String purchasePrice;
+
+    @ExcelProperty("是否补单")
+    private String replenishmentOrder;
 }
