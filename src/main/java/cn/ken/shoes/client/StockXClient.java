@@ -2155,6 +2155,34 @@ public class StockXClient {
         return result;
     }
 
+    /** 改价前必须取得完整可信的寄存列表，不沿用展示查询中跳过异常商品的行为。 */
+    public JSONObject queryCustodialPricePage(int pageNumber, StockXAccount account) {
+        String country = StrUtil.isNotBlank(account.getCountry()) ? account.getCountry() : "US";
+        return requirePriceListings(queryPro(
+                buildSellingItemsRequest("CUSTODIAL", pageNumber, country).toJSONString(),
+                buildViperHeaders(account), account.getName()));
+    }
+
+    private static JSONObject requirePriceListings(JSONObject response) {
+        if (response != null && "Unauthorized".equals(response.getString("message"))) {
+            throw new IllegalStateException("Token已过期，请更新Token");
+        }
+        if (response == null || (response.getJSONArray("errors") != null
+                && !response.getJSONArray("errors").isEmpty())) {
+            throw new IllegalStateException("寄存商品查询失败，未取得完整数据");
+        }
+        JSONObject data = response.getJSONObject("data");
+        JSONObject viewer = data == null ? null : data.getJSONObject("viewer");
+        JSONObject listings = viewer == null ? null : viewer.getJSONObject("sellerListings");
+        JSONObject page = listings == null ? null : listings.getJSONObject("pageInfo");
+        JSONArray edges = listings == null ? null : listings.getJSONArray("edges");
+        if (page == null || !(page.get("hasNextPage") instanceof Boolean) || edges == null
+                || (edges.isEmpty() && page.getBooleanValue("hasNextPage"))) {
+            throw new IllegalStateException("寄存商品分页信息无效");
+        }
+        return listings;
+    }
+
     private static JSONObject buildSellingItemsRequest(String inventoryType, Integer pageNumber, String country) {
         JSONObject requestJson = new JSONObject(true);
         requestJson.put("operationName", "SellerListings");
@@ -2740,6 +2768,11 @@ public class StockXClient {
      * <p>返回 null = 查询失败(无法判定)；空 Map = 这些 listing 当前都查不到。
      */
     public Map<String, JSONObject> verifyListingsByListingIds(List<String> listingIds, StockXAccount account) {
+        return verifyListingsByListingIds(listingIds, account, false);
+    }
+
+    public Map<String, JSONObject> verifyListingsByListingIds(List<String> listingIds, StockXAccount account,
+                                                             boolean strict) {
         Map<String, JSONObject> resultMap = new HashMap<>();
         if (CollectionUtils.isEmpty(listingIds) || account == null) {
             return resultMap;
@@ -2766,6 +2799,20 @@ public class StockXClient {
         requestJson.put("extensions", extensions);
 
         JSONObject jsonObject = queryPro(requestJson.toJSONString(), buildViperHeaders(account), account.getName());
+        if (strict) {
+            JSONObject listings = requirePriceListings(jsonObject);
+            if (listings.getJSONObject("pageInfo").getBooleanValue("hasNextPage")) {
+                throw new IllegalStateException("改价回查结果不完整");
+            }
+            for (JSONObject edge : listings.getJSONArray("edges").toJavaList(JSONObject.class)) {
+                JSONObject node = edge == null ? null : edge.getJSONObject("node");
+                String id = node == null ? null : node.getString("id");
+                if (StrUtil.isBlank(id) || !listingIds.contains(id) || resultMap.putIfAbsent(id, node) != null) {
+                    throw new IllegalStateException("改价回查商品数据无效");
+                }
+            }
+            return resultMap;
+        }
         if (jsonObject == null) {
             log.warn("verifyListingsByListingIds 查询失败(响应为null), account:{}, cnt:{}", account.getName(), listingIds.size());
             return null;

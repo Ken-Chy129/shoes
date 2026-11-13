@@ -176,8 +176,32 @@ public class TaskSwitch {
         return tryStartExcel(accountId, inventoryType, ListingFetchMode.ALL);
     }
 
-    public static boolean tryStartExcel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+    public static synchronized boolean tryStartExcel(String accountId, String inventoryType, ListingFetchMode fetchMode) {
+        if ("CUSTODIAL".equals(inventoryType) && CUSTODIAL_PRICE_RUNS.containsKey(accountId)) {
+            return false;
+        }
         return tryStart(EXCEL_RUNNING_MAP, buildExcelKey(accountId, inventoryType, fetchMode));
+    }
+
+    private static final ConcurrentHashMap<String, AtomicBoolean> CUSTODIAL_PRICE_RUNS = new ConcurrentHashMap<>();
+
+    public static synchronized boolean tryStartCustodialPriceUpdate(String accountId) {
+        return !isAnyExcelRunning(accountId, "CUSTODIAL")
+                && CUSTODIAL_PRICE_RUNS.putIfAbsent(accountId, new AtomicBoolean()) == null;
+    }
+
+    public static boolean isCustodialPriceUpdateCancelled(String accountId) {
+        AtomicBoolean cancelled = CUSTODIAL_PRICE_RUNS.get(accountId);
+        return cancelled == null || cancelled.get();
+    }
+
+    public static void cancelCustodialPriceUpdate(String accountId) {
+        AtomicBoolean cancelled = CUSTODIAL_PRICE_RUNS.get(accountId);
+        if (cancelled != null) cancelled.set(true);
+    }
+
+    public static void clearCustodialPriceUpdate(String accountId) {
+        CUSTODIAL_PRICE_RUNS.remove(accountId);
     }
 
     public static void setExcelRunning(String accountId, String inventoryType, boolean running) {
