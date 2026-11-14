@@ -36,12 +36,12 @@ public final class StockXPendingOrderClassifier {
             return;
         }
         MarketKey market = new MarketKey(item.getProductId(), item.getCurrencyCode());
-        SaleKey target = new SaleKey(item.getSoldOn().toInstant().getEpochSecond(),
+        SaleKey target = new SaleKey(minute(item.getSoldOn().toInstant()),
                 item.getSalePrice().stripTrailingZeros());
         History history = histories.computeIfAbsent(market, ignored -> new History());
-        // 同一秒可能跨页，只有读到更早的一秒或全部读完，才能确认没有匹配。
+        // 同一 UTC 分钟可能跨页，只有读到更早的一分钟或全部读完，才能确认没有匹配。
         while (!history.sales.contains(target) && !history.exhausted && !history.failed
-                && (history.oldest == null || history.oldest.getEpochSecond() >= target.second())) {
+                && (history.oldest == null || minute(history.oldest) >= target.minute())) {
             ensureNotCancelled.run();
             try {
                 JSONObject page = query.query(market.variantId(), market.currencyCode(), history.after);
@@ -62,7 +62,11 @@ public final class StockXPendingOrderClassifier {
     }
 
     private record MarketKey(String variantId, String currencyCode) {}
-    private record SaleKey(long second, BigDecimal amount) {}
+    private static long minute(Instant time) {
+        return Math.floorDiv(time.getEpochSecond(), 60);
+    }
+
+    private record SaleKey(long minute, BigDecimal amount) {}
 
     private static final class History {
         private final Set<SaleKey> sales = new HashSet<>();
@@ -99,7 +103,7 @@ public final class StockXPendingOrderClassifier {
                 if (last != null && createdAt.isAfter(last)) {
                     throw new IllegalStateException("成交记录未按时间倒序返回");
                 }
-                parsed.add(new SaleKey(createdAt.getEpochSecond(), amount.stripTrailingZeros()));
+                parsed.add(new SaleKey(minute(createdAt), amount.stripTrailingZeros()));
                 last = createdAt;
             }
             boolean complete = newCount == pageTotal;

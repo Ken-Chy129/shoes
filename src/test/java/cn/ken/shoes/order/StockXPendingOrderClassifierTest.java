@@ -19,9 +19,9 @@ class StockXPendingOrderClassifierTest {
     private static final String SOLD_AT = "2026-07-16T03:04:05Z";
 
     @Test
-    void matchesSameSecondAndNumericPriceIgnoringFractionalSeconds() {
+    void matchesSameUtcMinuteAndNumericPrice() {
         StockXPendingOrderClassifier classifier = classifier(page(1, null,
-                sale("200.00", "2026-07-16T03:04:05.999Z")));
+                sale("200.00", "2026-07-16T03:04:59.999Z")));
         TaskItemDO item = order("variant-1", "USD", "200", SOLD_AT);
 
         classifier.enrich(item);
@@ -30,10 +30,11 @@ class StockXPendingOrderClassifierTest {
     }
 
     @Test
-    void differentPriceOrSecondAndEmptyHistoryAreReplenishmentOrders() {
+    void differentPriceOrMinuteAndEmptyHistoryAreReplenishmentOrders() {
         for (JSONObject history : List.of(page(0, null),
                 page(1, null, sale("201", SOLD_AT)),
-                page(1, null, sale("200", "2026-07-16T03:04:04Z")))) {
+                page(1, null, sale("200", "2026-07-16T03:05:00Z")),
+                page(1, null, sale("200", "2026-07-16T03:03:59Z")))) {
             TaskItemDO item = order("variant-1", "USD", "200", SOLD_AT);
             classifier(history).enrich(item);
             assertThat(item.getReplenishmentOrder()).isTrue();
@@ -41,16 +42,16 @@ class StockXPendingOrderClassifierTest {
     }
 
     @Test
-    void readsAcrossSameSecondBoundaryAndReusesFetchedPages() {
+    void readsAcrossSameMinuteBoundaryAndReusesFetchedPages() {
         List<String> cursors = new ArrayList<>();
         StockXPendingOrderClassifier classifier = new StockXPendingOrderClassifier((variant, currency, after) -> {
             cursors.add(after);
             return after == null
-                    ? page(3, "next", sale("201", SOLD_AT))
-                    : page(3, null, sale("200", SOLD_AT), sale("180", "2026-07-16T03:04:04Z"));
+                    ? page(3, "next", sale("201", "2026-07-16T03:04:30Z"))
+                    : page(3, null, sale("200", "2026-07-16T03:04:00Z"), sale("180", "2026-07-16T03:03:59Z"));
         }, () -> {});
         TaskItemDO first = order("variant-1", "USD", "200", SOLD_AT);
-        TaskItemDO second = order("variant-1", "USD", "180", "2026-07-16T03:04:04Z");
+        TaskItemDO second = order("variant-1", "USD", "180", "2026-07-16T03:03:01Z");
         classifier.enrich(first);
         classifier.enrich(second);
 
@@ -64,7 +65,7 @@ class StockXPendingOrderClassifierTest {
         AtomicInteger calls = new AtomicInteger();
         StockXPendingOrderClassifier classifier = new StockXPendingOrderClassifier((variant, currency, after) ->
                 calls.getAndIncrement() == 0
-                        ? page(2, "next", sale("190", "2026-07-16T03:04:04Z"))
+                        ? page(2, "next", sale("190", "2026-07-16T03:03:59Z"))
                         : page(2, null, sale("150", "2026-01-01T00:00:00Z")), () -> {});
         TaskItemDO recent = order("variant-1", "USD", "200", SOLD_AT);
         classifier.enrich(recent);
