@@ -10,15 +10,17 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Function;
+import java.util.function.BiFunction;
 
 /** 单次任务、单个账号内的购买来源索引。没有来源时不查询，不能用货号/尺码猜配。 */
 public final class StockXPurchaseOrigin {
-    private final Function<String, JSONObject> queryHistoryPage;
+    /** 参数为 (cursor, pageNumber)，pageNumber 从 1 开始，仅用于日志与重试提示。 */
+    private final BiFunction<String, Integer, JSONObject> queryHistoryPage;
     private final Runnable ensureNotCancelled;
     private Map<String, PurchasePrice> prices;
 
-    public StockXPurchaseOrigin(Function<String, JSONObject> queryHistoryPage, Runnable ensureNotCancelled) {
+    public StockXPurchaseOrigin(BiFunction<String, Integer, JSONObject> queryHistoryPage,
+                                Runnable ensureNotCancelled) {
         this.queryHistoryPage = queryHistoryPage;
         this.ensureNotCancelled = ensureNotCancelled;
     }
@@ -63,9 +65,10 @@ public final class StockXPurchaseOrigin {
         Map<String, PurchasePrice> result = new HashMap<>();
         Set<String> cursors = new HashSet<>();
         String after = null;
+        int pageNumber = 0;
         do {
             ensureNotCancelled.run();
-            JSONObject page = queryHistoryPage.apply(after);
+            JSONObject page = queryHistoryPage.apply(after, ++pageNumber);
             if (page != null && page.getBooleanValue("_unauthorized")) {
                 throw new IllegalStateException("获取购买历史失败：StockX Token已过期，请更新Token");
             }

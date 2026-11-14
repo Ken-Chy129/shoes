@@ -31,7 +31,7 @@ class StockXPurchaseOriginTest {
     @Test
     void loadsHistoryOnceAcrossPagesAndMatchesOrderIdNotChainOrSize() {
         List<String> cursors = new ArrayList<>();
-        StockXPurchaseOrigin origin = new StockXPurchaseOrigin(cursor -> {
+        StockXPurchaseOrigin origin = new StockXPurchaseOrigin((cursor, pageNumber) -> {
             cursors.add(cursor);
             return cursor == null ? page(true, "next", """
                     {"orderId":"03-A","orderNumber":"DISPLAY-A","chainId":"chain-A","amount":141,"currencyCode":"USD"}
@@ -56,7 +56,7 @@ class StockXPurchaseOriginTest {
 
     @Test
     void doesNotQueryForItemsWithoutBuyingSource() {
-        StockXPurchaseOrigin origin = new StockXPurchaseOrigin(cursor -> {
+        StockXPurchaseOrigin origin = new StockXPurchaseOrigin((cursor, pageNumber) -> {
             throw new AssertionError("Ordinary listings must not fetch buying history");
         }, () -> {});
         origin.enrich(item(null));
@@ -64,9 +64,9 @@ class StockXPurchaseOriginTest {
 
     @Test
     void keepsTaskAccountIndexesIsolatedAndRejectsAmbiguousSources() {
-        StockXPurchaseOrigin first = new StockXPurchaseOrigin(c -> page(false, null,
+        StockXPurchaseOrigin first = new StockXPurchaseOrigin((c, p) -> page(false, null,
                 "{\"orderId\":\"03-A\",\"amount\":141}"), () -> {});
-        StockXPurchaseOrigin second = new StockXPurchaseOrigin(c -> page(false, null,
+        StockXPurchaseOrigin second = new StockXPurchaseOrigin((c, p) -> page(false, null,
                 "{\"orderId\":\"03-A\",\"amount\":99}"), () -> {});
         TaskItemDO a = item("03-A");
         TaskItemDO b = item("03-A");
@@ -82,10 +82,10 @@ class StockXPurchaseOriginTest {
 
     @Test
     void rejectsIncompletePagesAndRepeatedCursors() {
-        StockXPurchaseOrigin incomplete = new StockXPurchaseOrigin(cursor -> new JSONObject(), () -> {});
+        StockXPurchaseOrigin incomplete = new StockXPurchaseOrigin((cursor, pageNumber) -> new JSONObject(), () -> {});
         assertThatThrownBy(() -> incomplete.enrich(item("03-A")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("购买历史");
-        StockXPurchaseOrigin repeated = new StockXPurchaseOrigin(cursor -> page(true, "same", ""), () -> {});
+        StockXPurchaseOrigin repeated = new StockXPurchaseOrigin((cursor, pageNumber) -> page(true, "same", ""), () -> {});
         assertThatThrownBy(() -> repeated.enrich(item("03-A")))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("游标");
     }
@@ -93,9 +93,9 @@ class StockXPurchaseOriginTest {
     @Test
     void rejectsUnauthorizedAndHonorsCancellation() {
         StockXPurchaseOrigin unauthorized = new StockXPurchaseOrigin(
-                cursor -> new JSONObject().fluentPut("_unauthorized", true), () -> {});
+                (cursor, pageNumber) -> new JSONObject().fluentPut("_unauthorized", true), () -> {});
         assertThatThrownBy(() -> unauthorized.enrich(item("03-A"))).hasMessageContaining("Token");
-        StockXPurchaseOrigin cancelled = new StockXPurchaseOrigin(cursor -> page(false, null, ""),
+        StockXPurchaseOrigin cancelled = new StockXPurchaseOrigin((cursor, pageNumber) -> page(false, null, ""),
                 () -> { throw new IllegalStateException("cancelled"); });
         assertThatThrownBy(() -> cancelled.enrich(item("03-A"))).hasMessage("cancelled");
     }

@@ -52,7 +52,7 @@ public class StockXFetchListingsTaskRunner implements Runnable {
             boolean hasMore = true;
             int totalCount = 0;
             StockXPurchaseOrigin purchaseOrigin = new StockXPurchaseOrigin(
-                    cursor -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account),
+                    (cursor, historyPage) -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account),
                     () -> {
                         if (TaskSwitch.isFetchListingsCancelled(key) || Thread.currentThread().isInterrupted()) {
                             throw new TaskCancelledException();

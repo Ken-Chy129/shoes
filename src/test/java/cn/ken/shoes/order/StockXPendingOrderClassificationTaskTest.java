@@ -70,6 +70,18 @@ class StockXPendingOrderClassificationTaskTest {
         assertThat(TaskSwitch.isFetchOrdersCancelled(account.getName())).isFalse();
     }
 
+    @Test
+    void retryMessageUsesActualSalesHistoryPageNumber() {
+        when(client.queryVariantSalesPage("variant-1", "USD", null, account))
+                .thenReturn(page(2, "next", sale("201", "2026-07-16T03:04:30Z")));
+        when(client.queryVariantSalesPage("variant-1", "USD", "next", account)).thenReturn(null,
+                page(2, null, sale("200", "2026-07-16T03:04:05Z")));
+        run();
+        assertThat(saved().getReplenishmentOrder()).isFalse();
+        verify(tasks).updateTaskFailReason(eq(81L), startsWith("买家成交历史订单第2页请求异常"));
+        verify(tasks, never()).updateTaskFailReason(eq(81L), startsWith("买家成交历史订单第1页"));
+    }
+
     private TaskItemDO saved() {
         ArgumentCaptor<TaskItemDO> saved = ArgumentCaptor.forClass(TaskItemDO.class);
         verify(items).insert(saved.capture());

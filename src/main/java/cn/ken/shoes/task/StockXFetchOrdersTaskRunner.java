@@ -68,11 +68,11 @@ public class StockXFetchOrdersTaskRunner implements Runnable {
         int totalPages = 0;
         int totalOrders = 0;
         Map<String, Integer> counts = new LinkedHashMap<>();
-        purchaseOrigin = new StockXPurchaseOrigin(cursor -> queryPageWithRetry("购买历史", 1,
+        purchaseOrigin = new StockXPurchaseOrigin((cursor, pageNumber) -> queryPageWithRetry("购买历史", pageNumber,
                 () -> stockXClient.queryPurchasePage(StockXPurchaseOperation.HISTORY, cursor, account)),
                 this::ensureNotCancelled);
-        pendingOrderClassifier = new StockXPendingOrderClassifier((variantId, currencyCode, cursor) ->
-                queryPageWithRetry("买家成交历史", 1,
+        pendingOrderClassifier = new StockXPendingOrderClassifier((variantId, currencyCode, cursor, pageNumber) ->
+                queryPageWithRetry("买家成交历史", pageNumber,
                         () -> stockXClient.queryVariantSalesPage(variantId, currencyCode, cursor, account)),
                 this::ensureNotCancelled);
         try {
