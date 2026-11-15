@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayAnalyticsApiClient;
+import cn.ken.shoes.client.EbayQuotaExceededException;
 import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.client.EbayTradingApiClient;
@@ -839,7 +840,8 @@ public class EbayListingManageService {
 
     /** 518：应用当天的调用次数用完了，重试也没用。 */
     private static boolean isQuotaError(Exception e) {
-        return e.getMessage() != null && e.getMessage().contains("：518 ");
+        return e instanceof EbayQuotaExceededException
+                || (e.getMessage() != null && e.getMessage().contains("：518 "));
     }
 
     /**

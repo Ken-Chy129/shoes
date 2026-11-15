@@ -57,20 +57,28 @@ public class EbayTradingApiClient {
     private final EbayOAuthService oauthService;
     private final OkHttpClient httpClient;
     private final HttpUrl endpoint;
+    private final EbayTradingQuotaGuard quotaGuard;
 
     @Autowired
-    public EbayTradingApiClient(EbayProperties properties, EbayOAuthService oauthService) {
+    public EbayTradingApiClient(EbayProperties properties, EbayOAuthService oauthService,
+                                EbayTradingQuotaGuard quotaGuard) {
         this(oauthService, new OkHttpClient.Builder()
                         .connectTimeout(30, TimeUnit.SECONDS)
                         .readTimeout(60, TimeUnit.SECONDS)
                         .writeTimeout(30, TimeUnit.SECONDS)
                         .build(),
-                properties.getTradingApiEndpoint());
+                properties.getTradingApiEndpoint(), quotaGuard);
     }
 
     EbayTradingApiClient(EbayOAuthService oauthService, OkHttpClient httpClient, String endpoint) {
+        this(oauthService, httpClient, endpoint, new EbayTradingQuotaGuard());
+    }
+
+    EbayTradingApiClient(EbayOAuthService oauthService, OkHttpClient httpClient, String endpoint,
+                         EbayTradingQuotaGuard quotaGuard) {
         this.oauthService = oauthService;
         this.httpClient = httpClient;
+        this.quotaGuard = quotaGuard;
         HttpUrl parsed = HttpUrl.parse(endpoint);
         if (parsed == null || !("https".equals(parsed.scheme())
                 || ("http".equals(parsed.scheme())
@@ -677,8 +685,12 @@ public class EbayTradingApiClient {
         return call(callName, payload, true);
     }
 
-    /** requireSuccess=false 时 Ack 为 Failure/PartialFailure 也返回响应，由调用方逐条解析。 */
+    /**
+     * requireSuccess=false 时 Ack 为 Failure/PartialFailure 也返回响应，由调用方逐条解析。
+     * 额度用完(518)时不论 requireSuccess 都抛 {@link EbayQuotaExceededException}，并暂停后续所有 Trading 调用。
+     */
     private Document call(String callName, String payload, boolean requireSuccess) {
+        quotaGuard.checkAvailable(callName);
         for (int attempt = 1; ; attempt++) {
             Request request = new Request.Builder()
                     .url(endpoint)
@@ -689,23 +701,34 @@ public class EbayTradingApiClient {
                     .header("X-EBAY-API-IAF-TOKEN", oauthService.getValidAccessToken())
                     .post(RequestBody.create(XML_MEDIA_TYPE, payload))
                     .build();
+            quotaGuard.recordRequest(callName);
             try (Response response = httpClient.newCall(request).execute()) {
                 ResponseBody body = response.body();
                 String responseText = body == null ? "" : body.string();
                 if (response.code() >= 500 && attempt < MAX_ATTEMPTS) {
+                    quotaGuard.recordFailure(callName);
                     sleep(attempt);
                     continue;
                 }
                 if (!response.isSuccessful()) {
+                    quotaGuard.recordFailure(callName);
                     throw new EbayApiException("eBay " + callName + "失败(HTTP " + response.code() + ")");
                 }
                 Document document = parseXml(responseText, callName);
+                if (hasErrorCode(document, EbayTradingQuotaGuard.QUOTA_ERROR_CODE)) {
+                    quotaGuard.recordFailure(callName);
+                    throw quotaGuard.tripped(callName);
+                }
                 String ack = text(document.getDocumentElement(), "Ack");
-                if (requireSuccess && !SUCCESS_ACKS.contains(ack)) {
-                    throw new EbayApiException("eBay " + callName + "失败：" + firstError(document));
+                if (!SUCCESS_ACKS.contains(ack)) {
+                    quotaGuard.recordFailure(callName);
+                    if (requireSuccess) {
+                        throw new EbayApiException("eBay " + callName + "失败：" + firstError(document));
+                    }
                 }
                 return document;
             } catch (IOException e) {
+                quotaGuard.recordFailure(callName);
                 if (attempt < MAX_ATTEMPTS) {
                     sleep(attempt);
                     continue;
@@ -713,6 +736,18 @@ public class EbayTradingApiClient {
                 throw new EbayApiException("eBay " + callName + "失败：网络异常", e);
             }
         }
+    }
+
+    /** 响应里是否有指定错误码的 Error（Warning 不算）。 */
+    private static boolean hasErrorCode(Document document, String code) {
+        NodeList errors = document.getElementsByTagNameNS("*", "Errors");
+        for (int i = 0; i < errors.getLength(); i++) {
+            Element error = (Element) errors.item(i);
+            if ("Error".equals(text(error, "SeverityCode")) && code.equals(text(error, "ErrorCode"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void sleep(int attempt) {

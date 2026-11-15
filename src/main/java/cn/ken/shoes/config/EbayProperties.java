@@ -148,6 +148,11 @@ public class EbayProperties {
                 : "https://apim.ebay.com/commerce/media/v1_beta/";
     }
 
+    /** Developer Analytics API：查询应用各 API 的调用额度与剩余次数。 */
+    public String getDeveloperAnalyticsApiEndpoint() {
+        return apiRoot() + "/developer/analytics/v1_beta/";
+    }
+
     public String getTradingApiEndpoint() {
         return apiRoot() + "/ws/api.dll";
     }

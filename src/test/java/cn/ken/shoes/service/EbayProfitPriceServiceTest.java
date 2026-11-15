@@ -650,6 +650,28 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void relistedCopyBatchQuotaErrorDoesNotRetryEachSku() {
+        EbayListingDO a = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        a.setListingId("L-MAIN");
+        EbayListingDO b = listing("SKU-B", "offer-B", "AAA-1", "HK");
+        b.setListingId("L-MAIN");
+        when(listingMapper.selectActive()).thenReturn(List.of(a, b));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        doThrow(new cn.ken.shoes.client.EbayQuotaExceededException(
+                "eBay ReviseInventoryStatus失败：518 Trading API今日调用额度已用完"))
+                .when(tradingClient).reviseInventoryStatus(anyList());
+        pages(List.of(sku("SKU-A", "L-COPY", "150", 1), sku("SKU-B", "L-COPY", "150", 1)));
+
+        service.runSingleRound(7L, 1, new BigDecimal("100"), Map.of(), new AtomicBoolean());
+
+        verify(tradingClient, times(1)).reviseInventoryStatus(anyList());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, times(2)).insert(items.capture());
+        assertThat(items.getAllValues()).allSatisfy(i -> assertThat(i.getOperateResult()).contains("518"));
+    }
+
+    @Test
     void relistedCopyBatchFailureRetriesEachSkuAndOnlyFailsTheBadOne() {
         EbayListingDO a = listing("SKU-A", "offer-A", "AAA-1", "HK");
         a.setListingId("L-MAIN");

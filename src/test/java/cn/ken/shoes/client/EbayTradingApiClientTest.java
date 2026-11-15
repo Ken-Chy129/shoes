@@ -333,4 +333,79 @@ class EbayTradingApiClientTest {
         assertThat(client.relistFixedPriceItem("407100000000")).isEqualTo("407999999999");
         assertThat(server.takeRequest().getBody().readUtf8()).contains("<ItemID>407100000000</ItemID>");
     }
+
+    @Test
+    void quotaErrorTripsGuardAndBlocksFurtherCallsWithoutRequests() {
+        EbayTradingQuotaGuard guard = new EbayTradingQuotaGuard();
+        EbayOAuthService oauthService = mock(EbayOAuthService.class);
+        when(oauthService.getValidAccessToken()).thenReturn("seller-access-token");
+        EbayTradingApiClient guarded = new EbayTradingApiClient(oauthService, new OkHttpClient(),
+                server.url("/ws/api.dll").toString(), guard);
+        server.enqueue(xml("""
+                <GetOrdersResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors><ShortMessage>Call usage limit has been reached.</ShortMessage><ErrorCode>518</ErrorCode>
+                    <SeverityCode>Error</SeverityCode></Errors>
+                </GetOrdersResponse>
+                """));
+
+        assertThatThrownBy(() -> guarded.getOrders(Instant.now(), Instant.now(), 1))
+                .isInstanceOf(EbayQuotaExceededException.class)
+                .hasMessageContaining("：518 ");
+        assertThat(guard.getBlockedUntil()).isNotNull();
+        assertThat(guard.getBlockedBy()).isEqualTo("GetOrders");
+
+        assertThatThrownBy(() -> guarded.getShippingServiceDescriptions())
+                .isInstanceOf(EbayQuotaExceededException.class)
+                .hasMessageContaining("已暂停调用");
+        assertThat(server.getRequestCount()).isEqualTo(1);
+        assertThat(guard.snapshot().get("GetOrders")).containsEntry("requests", 1L).containsEntry("quotaErrors", 1L);
+        assertThat(guard.snapshot().get("GeteBayDetails")).containsEntry("requests", 0L)
+                .containsEntry("skippedByGuard", 1L);
+    }
+
+    @Test
+    void endItemsQuotaErrorAlsoTripsGuardEvenWithoutRequireSuccess() {
+        EbayTradingQuotaGuard guard = new EbayTradingQuotaGuard();
+        EbayOAuthService oauthService = mock(EbayOAuthService.class);
+        when(oauthService.getValidAccessToken()).thenReturn("t");
+        EbayTradingApiClient guarded = new EbayTradingApiClient(oauthService, new OkHttpClient(),
+                server.url("/ws/api.dll").toString(), guard);
+        server.enqueue(xml("""
+                <EndItemsResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Failure</Ack>
+                  <Errors><ShortMessage>Call usage limit reached.</ShortMessage><ErrorCode>518</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                </EndItemsResponse>
+                """));
+
+        assertThatThrownBy(() -> guarded.endItems(java.util.List.of("11")))
+                .isInstanceOf(EbayQuotaExceededException.class);
+        assertThat(guard.getBlockedUntil()).isNotNull();
+    }
+
+    @Test
+    void countsEveryRequestPerCallName() {
+        EbayTradingQuotaGuard guard = new EbayTradingQuotaGuard();
+        EbayOAuthService oauthService = mock(EbayOAuthService.class);
+        when(oauthService.getValidAccessToken()).thenReturn("t");
+        EbayTradingApiClient guarded = new EbayTradingApiClient(oauthService, new OkHttpClient(),
+                server.url("/ws/api.dll").toString(), guard);
+        server.enqueue(xml("""
+                <GetFeedbackResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></GetFeedbackResponse>
+                """));
+        server.enqueue(xml("""
+                <GetOrdersResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Failure</Ack>
+                  <Errors><ShortMessage>Bad.</ShortMessage><ErrorCode>21843</ErrorCode><SeverityCode>Error</SeverityCode></Errors>
+                </GetOrdersResponse>
+                """));
+
+        guarded.getFeedbackLeftLineItemIds();
+        assertThatThrownBy(() -> guarded.getOrders(Instant.now(), Instant.now(), 1))
+                .isNotInstanceOf(EbayQuotaExceededException.class);
+
+        assertThat(guard.snapshot().get("GetFeedback")).containsEntry("requests", 1L).containsEntry("failures", 0L);
+        assertThat(guard.snapshot().get("GetOrders")).containsEntry("requests", 1L).containsEntry("failures", 1L);
+        assertThat(guard.totalRequests()).isEqualTo(2);
+        assertThat(guard.getBlockedUntil()).isNull();
+    }
 }

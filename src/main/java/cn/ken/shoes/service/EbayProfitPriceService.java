@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayMarketingApiClient;
+import cn.ken.shoes.client.EbayQuotaExceededException;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.client.EbayTradingApiClient;
 import cn.ken.shoes.client.PoisonClient;
@@ -760,8 +761,9 @@ public class EbayProfitPriceService {
             tradingClient.reviseInventoryStatus(batch.stream().map(this::revision).toList());
             return errors;
         } catch (RuntimeException e) {
-            if (batch.size() == 1) {
-                errors.put(batch.getFirst(), safeError(e));
+            // 额度用完(518)时逐个重试只会一起失败，整批直接记失败。
+            if (batch.size() == 1 || e instanceof EbayQuotaExceededException) {
+                batch.forEach(plan -> errors.put(plan, safeError(e)));
                 return errors;
             }
         }
