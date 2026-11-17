@@ -81,6 +81,24 @@ ebay:
   # Production keyset compliance callback. Keep the verification token in private config only.
   notificationEndpoint: https://your-domain.example/api/ebay/notifications/account-deletion
   notificationVerificationToken: your_32_to_80_character_verification_token
+  # 买家提问（Ask Seller a Question）推送 + 自动回复。先 enabled=true、autoReply=false 观察记录，确认规则后再开自动回复。
+  messages:
+    enabled: false
+    autoReply: false
+    # Production keyset 的 Dev ID，用于校验推送签名（AppID/CertID 用上面的 clientId/clientSecret）
+    devId: your_ebay_dev_id
+    deliveryUrl: https://your-domain.example/api/ebay/notifications/trading
+    # 消息相关 Trading 调用每天上限，避免挤占改价、订单等接口的共用额度
+    dailyCallLimit: 200
+    reconcileDays: 3
+    # 按顺序匹配第一条命中的规则；关键词不区分大小写、按整词匹配。未命中的转人工。
+    rules:
+      - name: shipping
+        keywords: [ship, shipping, delivery, arrive, tracking]
+        reply: "Hi, thanks for your message. Orders ship within 2 business days and tracking is uploaded to eBay once shipped."
+      - name: authenticity
+        keywords: [authentic, real, genuine, fake]
+        reply: "Hi, all our items are 100% authentic and brand new with the original box."
 
 proxy:
   host: your_proxy_host

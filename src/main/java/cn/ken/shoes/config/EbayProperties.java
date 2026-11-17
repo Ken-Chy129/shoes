@@ -57,6 +57,33 @@ public class EbayProperties {
     private String notificationVerificationToken = "";
     /** 美区上架：发货地点与物流政策必须单独配置；付款/退货政策未配置时沿用默认值。 */
     private RegionSettings us = new RegionSettings();
+    /** 买家提问（Ask Seller a Question）推送与自动回复。 */
+    private MessageSettings messages = new MessageSettings();
+
+    @Data
+    public static class MessageSettings {
+        /** 是否接收推送并处理买家提问；关闭时推送端点直接返回 200 不做处理。 */
+        private boolean enabled = false;
+        /** 是否自动回复命中规则的提问；关闭时只记录，全部转人工。 */
+        private boolean autoReply = false;
+        /** 校验推送签名用的 Production DevID（AppID/CertID 即 clientId/clientSecret）。 */
+        private String devId = "";
+        /** 推送地址，订阅时写入 eBay。 */
+        private String deliveryUrl = "";
+        /** 消息功能每天（太平洋时间）最多消耗的 Trading 调用次数，防止挤占改价、订单等接口的额度。 */
+        private int dailyCallLimit = 200;
+        /** 兜底对账回溯天数。 */
+        private int reconcileDays = 3;
+        /** 按顺序匹配，第一条命中的规则生效；关键词不区分大小写，按整词匹配。 */
+        private java.util.List<ReplyRule> rules = new java.util.ArrayList<>();
+    }
+
+    @Data
+    public static class ReplyRule {
+        private String name = "";
+        private java.util.List<String> keywords = new java.util.ArrayList<>();
+        private String reply = "";
+    }
 
     @Data
     public static class RegionSettings {

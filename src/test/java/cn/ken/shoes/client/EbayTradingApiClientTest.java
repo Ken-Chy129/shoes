@@ -190,6 +190,80 @@ class EbayTradingApiClientTest {
                 .hasMessageContaining("21916");
     }
 
+
+    @Test
+    void fetchesUnansweredMemberMessagesInTimeWindow() throws Exception {
+        server.enqueue(xml("""
+                <GetMemberMessagesResponse xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <Ack>Success</Ack>
+                  <MemberMessage>
+                    <MemberMessageExchange>
+                      <Item><ItemID>111</ItemID><Title>Dunk Low</Title></Item>
+                      <Question>
+                        <MessageType>AskSellerQuestion</MessageType>
+                        <SenderID>buyer1</SenderID>
+                        <Body>Is it authentic?</Body>
+                        <MessageID>9001</MessageID>
+                      </Question>
+                      <MessageStatus>Unanswered</MessageStatus>
+                      <CreationDate>2026-11-17T10:00:00.000Z</CreationDate>
+                    </MemberMessageExchange>
+                  </MemberMessage>
+                  <PaginationResult><TotalNumberOfPages>1</TotalNumberOfPages></PaginationResult>
+                </GetMemberMessagesResponse>
+                """));
+
+        var page = client.getUnansweredMessages(Instant.parse("2026-11-15T00:00:00.5Z"),
+                Instant.parse("2026-11-18T00:00:00Z"), 1);
+
+        assertThat(page.totalPages()).isEqualTo(1);
+        assertThat(page.questions()).singleElement().satisfies(q -> {
+            assertThat(q.messageId()).isEqualTo("9001");
+            assertThat(q.itemId()).isEqualTo("111");
+            assertThat(q.senderId()).isEqualTo("buyer1");
+            assertThat(q.createdAt()).isEqualTo(Instant.parse("2026-11-17T10:00:00Z"));
+        });
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("GetMemberMessages");
+        assertThat(request.getBody().readUtf8())
+                .contains("<MessageStatus>Unanswered</MessageStatus>")
+                .contains("<StartCreationTime>2026-11-15T00:00:00Z</StartCreationTime>");
+    }
+
+    @Test
+    void answersQuestionPrivatelyWithEscapedBody() throws Exception {
+        server.enqueue(xml("""
+                <AddMemberMessageRTQResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></AddMemberMessageRTQResponse>
+                """));
+
+        client.answerQuestion("111", "9001", "buyer1", "Yes <100%> & ships fast");
+
+        RecordedRequest request = server.takeRequest();
+        assertThat(request.getHeader("X-EBAY-API-CALL-NAME")).isEqualTo("AddMemberMessageRTQ");
+        assertThat(request.getBody().readUtf8())
+                .contains("<ItemID>111</ItemID>")
+                .contains("<Body>Yes &lt;100%&gt; &amp; ships fast</Body>")
+                .contains("<DisplayToPublic>false</DisplayToPublic>")
+                .contains("<ParentMessageID>9001</ParentMessageID>")
+                .contains("<RecipientID>buyer1</RecipientID>");
+    }
+
+    @Test
+    void subscribesAskSellerQuestionOnlyOverHttps() throws Exception {
+        assertThatThrownBy(() -> client.subscribeAskSellerQuestion("http://x.example/hook"))
+                .isInstanceOf(IllegalArgumentException.class);
+        server.enqueue(xml("""
+                <SetNotificationPreferencesResponse xmlns="urn:ebay:apis:eBLBaseComponents"><Ack>Success</Ack></SetNotificationPreferencesResponse>
+                """));
+
+        client.subscribeAskSellerQuestion("https://shoes.example/api/ebay/notifications/trading");
+
+        String body = server.takeRequest().getBody().readUtf8();
+        assertThat(body).contains("<ApplicationURL>https://shoes.example/api/ebay/notifications/trading</ApplicationURL>")
+                .contains("<EventType>AskSellerQuestion</EventType>")
+                .contains("<EventEnable>Enable</EventEnable>");
+    }
+
     private static MockResponse xml(String body) {
         return new MockResponse().setHeader("Content-Type", "text/xml").setBody(body);
     }

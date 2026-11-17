@@ -660,6 +660,150 @@ public class EbayTradingApiClient {
         return lineItemIds;
     }
 
+    // ==================== 买家提问（Ask Seller a Question） ====================
+
+    /** 消息相关的 Trading 调用名，用于单独统计和限额。 */
+    public static final Set<String> MESSAGE_CALLS = Set.of(
+            "GetMemberMessages", "AddMemberMessageRTQ", "SetNotificationPreferences", "GetNotificationPreferences");
+    public static final String ASK_SELLER_QUESTION = "AskSellerQuestion";
+    private static final int MEMBER_MESSAGES_PAGE_SIZE = 100;
+    /** AddMemberMessageRTQ 的 Body 上限。 */
+    public static final int MAX_REPLY_LENGTH = 2000;
+
+    public record MemberQuestion(String messageId, String messageType, String questionType, String itemId,
+                                 String itemTitle, String senderId, String subject, String body,
+                                 String status, Instant createdAt) {
+    }
+
+    public record MemberQuestionPage(List<MemberQuestion> questions, int totalPages) {
+    }
+
+    /** 解析 GetMemberMessagesResponse（含 AskSellerQuestion 推送的 SOAP Body）里的 MemberMessageExchange。 */
+    public static List<MemberQuestion> parseMemberQuestions(Element response) {
+        List<MemberQuestion> questions = new ArrayList<>();
+        for (Element exchange : children(firstElement(response, "MemberMessage"), "MemberMessageExchange")) {
+            Element question = firstElement(exchange, "Question");
+            String messageId = text(question, "MessageID");
+            if (messageId == null) {
+                continue;
+            }
+            Instant createdAt = null;
+            String creation = text(exchange, "CreationDate");
+            if (creation != null) {
+                try {
+                    createdAt = Instant.parse(creation);
+                } catch (RuntimeException ignored) {
+                    // 时间格式异常不影响处理
+                }
+            }
+            questions.add(new MemberQuestion(messageId, text(question, "MessageType"), text(question, "QuestionType"),
+                    text(exchange, "Item/ItemID"), text(exchange, "Item/Title"), text(question, "SenderID"),
+                    text(question, "Subject"), text(question, "Body"), text(exchange, "MessageStatus"), createdAt));
+        }
+        return questions;
+    }
+
+    /** 按创建时间拉取一页未回复的买家消息（MailMessageType=All，由调用方按 MessageType 过滤）。 */
+    public MemberQuestionPage getUnansweredMessages(Instant from, Instant to, int pageNumber) {
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <GetMemberMessagesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <MailMessageType>All</MailMessageType>
+                  <MessageStatus>Unanswered</MessageStatus>
+                  <StartCreationTime>%s</StartCreationTime>
+                  <EndCreationTime>%s</EndCreationTime>
+                  <Pagination>
+                    <EntriesPerPage>%d</EntriesPerPage>
+                    <PageNumber>%d</PageNumber>
+                  </Pagination>
+                </GetMemberMessagesRequest>
+                """.formatted(from.truncatedTo(ChronoUnit.SECONDS), to.truncatedTo(ChronoUnit.SECONDS),
+                MEMBER_MESSAGES_PAGE_SIZE, pageNumber);
+        Element root = call("GetMemberMessages", payload).getDocumentElement();
+        return new MemberQuestionPage(parseMemberQuestions(root),
+                parseInt(text(root, "PaginationResult/TotalNumberOfPages")));
+    }
+
+    /** 回复买家提问（AddMemberMessageRTQ），不公开展示在刊登页。 */
+    public void answerQuestion(String itemId, String parentMessageId, String recipientId, String body) {
+        if (parentMessageId == null || parentMessageId.isBlank() || recipientId == null || recipientId.isBlank()) {
+            throw new IllegalArgumentException("回复买家提问需要原消息ID和买家ID");
+        }
+        if (body == null || body.isBlank() || body.length() > MAX_REPLY_LENGTH) {
+            throw new IllegalArgumentException("回复内容不能为空且不超过" + MAX_REPLY_LENGTH + "字符");
+        }
+        String item = itemId == null || itemId.isBlank()
+                ? "" : "  <ItemID>" + escapeXml(itemId) + "</ItemID>\n";
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <AddMemberMessageRTQRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                %s  <MemberMessage>
+                    <Body>%s</Body>
+                    <DisplayToPublic>false</DisplayToPublic>
+                    <ParentMessageID>%s</ParentMessageID>
+                    <RecipientID>%s</RecipientID>
+                  </MemberMessage>
+                </AddMemberMessageRTQRequest>
+                """.formatted(item, escapeXml(body), escapeXml(parentMessageId), escapeXml(recipientId));
+        call("AddMemberMessageRTQ", payload);
+    }
+
+    /**
+     * 订阅 AskSellerQuestion 推送：设置应用级推送地址并为当前授权卖家开启该事件。
+     * 注意 ApplicationURL 是应用级配置，会覆盖原有的 Platform Notifications 地址。
+     */
+    public void subscribeAskSellerQuestion(String deliveryUrl) {
+        HttpUrl url = HttpUrl.parse(deliveryUrl == null ? "" : deliveryUrl);
+        if (url == null || !"https".equals(url.scheme())) {
+            throw new IllegalArgumentException("推送地址必须是 HTTPS");
+        }
+        String payload = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <SetNotificationPreferencesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <ApplicationDeliveryPreferences>
+                    <ApplicationEnable>Enable</ApplicationEnable>
+                    <ApplicationURL>%s</ApplicationURL>
+                    <DeviceType>Platform</DeviceType>
+                    <PayloadVersion>%s</PayloadVersion>
+                  </ApplicationDeliveryPreferences>
+                  <UserDeliveryPreferenceArray>
+                    <NotificationEnable>
+                      <EventType>AskSellerQuestion</EventType>
+                      <EventEnable>Enable</EventEnable>
+                    </NotificationEnable>
+                  </UserDeliveryPreferenceArray>
+                </SetNotificationPreferencesRequest>
+                """.formatted(escapeXml(url.toString()), COMPATIBILITY_LEVEL);
+        call("SetNotificationPreferences", payload);
+    }
+
+    /** 当前推送配置：level = Application（推送地址）或 User（已订阅事件），返回 name -> value 的扁平结果。 */
+    public Map<String, String> getNotificationPreferences(String level) {
+        if (!"Application".equals(level) && !"User".equals(level)) {
+            throw new IllegalArgumentException("level 只能是 Application 或 User");
+        }
+        Element root = call("GetNotificationPreferences", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <GetNotificationPreferencesRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+                  <PreferenceLevel>%s</PreferenceLevel>
+                </GetNotificationPreferencesRequest>
+                """.formatted(level)).getDocumentElement();
+        Map<String, String> result = new LinkedHashMap<>();
+        Element app = firstElement(root, "ApplicationDeliveryPreferences");
+        if (app != null) {
+            for (String field : List.of("ApplicationEnable", "ApplicationURL", "DeviceType", "PayloadVersion")) {
+                result.put(field, text(app, field));
+            }
+        }
+        for (Element enable : children(firstElement(root, "UserDeliveryPreferenceArray"), "NotificationEnable")) {
+            String event = text(enable, "EventType");
+            if (event != null) {
+                result.put("event." + event, text(enable, "EventEnable"));
+            }
+        }
+        return result;
+    }
+
     /** 运送服务代码 -> 展示名称，例如 ExpressInternationalShipping_2 -> Express International Shipping。 */
     public Map<String, String> getShippingServiceDescriptions() {
         Document document = call("GeteBayDetails", """
