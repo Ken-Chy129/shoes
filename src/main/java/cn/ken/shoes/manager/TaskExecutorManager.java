@@ -340,7 +340,8 @@ public class TaskExecutorManager {
                 || taskType == TaskTypeEnum.EBAY_FETCH_LISTINGS
                 || taskType == TaskTypeEnum.EBAY_END_LISTINGS
                 || taskType == TaskTypeEnum.EBAY_RELIST_LISTINGS
-                || taskType == TaskTypeEnum.EBAY_SET_PRICE));
+                || taskType == TaskTypeEnum.EBAY_SET_PRICE
+                || taskType == TaskTypeEnum.EBAY_SET_QUANTITY));
     }
 
     public Long rerunTask(TaskDO source) {
@@ -394,6 +395,11 @@ public class TaskExecutorManager {
             var snapshot = taskInputSnapshotStore.loadEbaySetPriceInput(source.getId());
             return snapshot.isEmpty() || snapshot.get().isEmpty()
                     ? null : ebayListingManageService.startSetPrice(snapshot.get());
+        }
+        if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_SET_QUANTITY) {
+            var snapshot = taskInputSnapshotStore.loadEbaySetQuantityInput(source.getId());
+            return snapshot.isEmpty() || snapshot.get().isEmpty()
+                    ? null : ebayListingManageService.startSetQuantity(snapshot.get());
         }
         if ("ebay".equals(source.getPlatform()) && taskType == TaskTypeEnum.EBAY_POISON_LISTING) {
             var snapshot = taskInputSnapshotStore.loadEbayPoisonListingInput(source.getId());
@@ -525,7 +531,7 @@ public class TaskExecutorManager {
             case EBAY_FETCH_ORDERS -> startEbayFetchOrders(params.getInteger("days"));
             case EBAY_ADD_TRACKING -> null;
             case EBAY_PROFIT_PRICE, EBAY_PROMO_PROFIT_PRICE -> null;
-            case EBAY_FETCH_LISTINGS, EBAY_END_LISTINGS, EBAY_RELIST_LISTINGS, EBAY_SET_PRICE -> null;
+            case EBAY_FETCH_LISTINGS, EBAY_END_LISTINGS, EBAY_RELIST_LISTINGS, EBAY_SET_PRICE, EBAY_SET_QUANTITY -> null;
         };
     }
 

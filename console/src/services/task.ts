@@ -22,6 +22,7 @@ const TASK_TYPE = {
     EBAY_END_LISTINGS: 'ebay_end_listings',
     EBAY_RELIST_LISTINGS: 'ebay_relist_listings',
     EBAY_SET_PRICE: 'ebay_set_price',
+    EBAY_SET_QUANTITY: 'ebay_set_quantity',
 };
 
 enum TASK_API {
@@ -100,6 +101,8 @@ enum TASK_API {
     EBAY_RELIST_LISTINGS_TEMPLATE = '/api/task/ebay/relistListingsTemplate',
     EBAY_START_SET_PRICE = '/api/task/ebay/startSetPrice',
     EBAY_SET_PRICE_TEMPLATE = '/api/task/ebay/setPriceTemplate',
+    EBAY_START_SET_QUANTITY = '/api/task/ebay/startSetQuantity',
+    EBAY_SET_QUANTITY_TEMPLATE = '/api/task/ebay/setQuantityTemplate',
 }
 
 export {TASK_API, TASK_TYPE}

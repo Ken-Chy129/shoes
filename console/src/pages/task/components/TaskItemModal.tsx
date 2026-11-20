@@ -607,6 +607,11 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
             {title: '原价', dataIndex: 'currentPrice', key: 'currentPrice', width: 90, render: money('$')},
             {title: '新价', dataIndex: 'targetPrice', key: 'targetPrice', width: 90, render: money('$')},
         ] : []),
+        ...(taskType === 'ebay_set_quantity' ? [
+            {title: '尺码', dataIndex: 'size', key: 'size', width: 70},
+            {title: 'SKU', dataIndex: 'sku', key: 'sku', width: 200, ellipsis: true},
+            {title: '新库存', dataIndex: 'listingQuantity', key: 'listingQuantity', width: 80},
+        ] : []),
         {title: '货号', dataIndex: 'styleId', key: 'styleId', width: 130},
         {title: '标题', dataIndex: 'title', key: 'title', width: 260, ellipsis: true},
         {title: '执行结果', dataIndex: 'operateResult', key: 'operateResult', width: 260, ellipsis: true},
@@ -665,7 +670,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
         ? ebayTrackingColumns
         : taskType === 'ebay_fetch_listings'
         ? ebayFetchListingColumns
-        : (taskType === 'ebay_end_listings' || taskType === 'ebay_relist_listings' || taskType === 'ebay_set_price')
+        : (taskType === 'ebay_end_listings' || taskType === 'ebay_relist_listings' || taskType === 'ebay_set_price' || taskType === 'ebay_set_quantity')
         ? ebayManageColumns
         : (taskType === 'ebay_profit_price' || taskType === 'eBay盈利改价' || taskType === 'ebay_promo_profit_price' || taskType === 'eBay活动改价')
         ? ebayProfitColumns
@@ -709,6 +714,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                                 : taskType === 'ebay_end_listings' ? '按编号下架明细'
                                 : taskType === 'ebay_relist_listings' ? '按编号重新上架明细'
                                 : taskType === 'ebay_set_price' ? '指定尺码改价明细'
+                                : taskType === 'ebay_set_quantity' ? '指定尺码改库存明细'
                                 : (taskType === 'ebay_promo_profit_price' || taskType === 'eBay活动改价') ? 'eBay活动改价明细'
                                 : (taskType === 'ebay_profit_price' || taskType === 'eBay盈利改价') ? 'eBay盈利改价明细'
                             : (taskType === 'ebay_bulk_listing' || taskType === 'eBay批量上架' || taskType === 'ebay_poison_listing' || taskType === 'eBay得物价上架' || taskType === 'ebay_price_sync' || taskType === 'eBay定时改价' || taskType === 'ebay_delist' || taskType === 'eBay下架' || taskType === 'ebay_zero_stock' || taskType === 'eBay库存清零')
@@ -835,7 +841,7 @@ const TaskItemModal: React.FC<TaskItemModalProps> = ({visible, taskId, onClose, 
                         : (taskType === 'ebay_fetch_orders' || taskType === 'eBay获取订单') ? 1860
                         : (taskType === 'ebay_add_tracking' || taskType === 'eBay添加追踪号码') ? 1400
                         : taskType === 'ebay_fetch_listings' ? 1900
-                        : (taskType === 'ebay_end_listings' || taskType === 'ebay_relist_listings' || taskType === 'ebay_set_price') ? 1400
+                        : (taskType === 'ebay_end_listings' || taskType === 'ebay_relist_listings' || taskType === 'ebay_set_price' || taskType === 'ebay_set_quantity') ? 1400
                         : (taskType === 'ebay_profit_price' || taskType === 'eBay盈利改价' || taskType === 'ebay_promo_profit_price' || taskType === 'eBay活动改价') ? 1600
                         : isCustodialListings ? 1410
                         : taskType === 'purchase' ? 1700

@@ -3,6 +3,7 @@ package cn.ken.shoes.controller;
 import cn.ken.shoes.common.Result;
 import cn.ken.shoes.model.excel.EbayItemIdExcel;
 import cn.ken.shoes.model.excel.EbaySetPriceExcel;
+import cn.ken.shoes.model.excel.EbaySetQuantityExcel;
 import cn.ken.shoes.service.EbayListingManageService;
 import com.alibaba.excel.EasyExcel;
 import com.alibaba.excel.ExcelWriter;
@@ -66,6 +67,11 @@ public class EbayListingManageController {
         return startWithExcel(file, EbaySetPriceExcel.class, "指定尺码改价模板", null, service::startSetPrice);
     }
 
+    @PostMapping("startSetQuantity")
+    public Result<String> startSetQuantity(@RequestParam("file") MultipartFile file) {
+        return startWithExcel(file, EbaySetQuantityExcel.class, "指定尺码改库存模板", null, service::startSetQuantity);
+    }
+
     @GetMapping("endListingsTemplate")
     public void endListingsTemplate(HttpServletResponse response) throws IOException {
         writeTemplate(response, "按编号下架模板", "物品编号", EbayItemIdExcel.class, List.of(
@@ -94,6 +100,18 @@ public class EbayListingManageController {
                 List.of("新价格(USD)", "必填；美元，最多两位小数。为空的行会忽略"),
                 List.of("SKU", "选填；填了优先按SKU匹配尺码"),
                 List.of("来源", "可直接上传「获取刊登」导出的表，只要在「新价格」列填上价格")));
+    }
+
+    @GetMapping("setQuantityTemplate")
+    public void setQuantityTemplate(HttpServletResponse response) throws IOException {
+        writeTemplate(response, "指定尺码改库存模板", "改库存", EbaySetQuantityExcel.class, List.of(
+                List.of("字段", "说明"),
+                List.of("物品编号", "必填；eBay物品编号，也可以直接粘贴商品链接"),
+                List.of("尺码", "多尺码刊登必填；填eBay页面上显示的尺码，例如 9.5"),
+                List.of("新库存", "必填；0到" + EbayListingManageService.MAX_QUANTITY
+                        + "的整数，是改完后的可售数量。为空的行会忽略"),
+                List.of("SKU", "选填；填了优先按SKU匹配尺码"),
+                List.of("注意", "单尺码刊登改成0时，店铺没开缺货控制(Out-of-stock control)的话eBay会直接结束该刊登")));
     }
 
     /** preferredSheet：上传的是「获取刊登」导出表时优先读这个 sheet，没有就读第一个。 */

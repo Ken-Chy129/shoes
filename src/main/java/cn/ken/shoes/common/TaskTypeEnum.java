@@ -35,6 +35,7 @@ public enum TaskTypeEnum {
     EBAY_END_LISTINGS("ebay_end_listings", "按编号下架", false),
     EBAY_RELIST_LISTINGS("ebay_relist_listings", "按编号重新上架", false),
     EBAY_SET_PRICE("ebay_set_price", "指定尺码改价", false),
+    EBAY_SET_QUANTITY("ebay_set_quantity", "指定尺码改库存", false),
     ;
 
     private final String code;

@@ -18,6 +18,7 @@ import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayItemIdExcel;
 import cn.ken.shoes.model.excel.EbaySetPriceExcel;
+import cn.ken.shoes.model.excel.EbaySetQuantityExcel;
 import cn.ken.shoes.model.ebay.EbayListingRegion;
 import cn.ken.shoes.model.task.TaskRequest;
 import com.alibaba.fastjson.JSONObject;
@@ -59,6 +60,7 @@ import java.util.regex.Pattern;
  *   <li>按编号下架：结束指定刊登。</li>
  *   <li>按编号重新上架：把已结束的刊登重新上架（会生成新编号）。</li>
  *   <li>指定尺码改价：把指定刊登的指定尺码改成指定价格。</li>
+ *   <li>指定尺码改库存：把指定刊登的指定尺码的可售数量改成指定值。</li>
  * </ul>
  *
  * <p>系统自己发布的刊登，eBay 上同时存在一份 offer 记录。只改刊登不改 offer 会让两边价格对不上，
@@ -72,6 +74,8 @@ public class EbayListingManageService {
     public static final String END_TASK_TYPE = "ebay_end_listings";
     public static final String RELIST_TASK_TYPE = "ebay_relist_listings";
     public static final String SET_PRICE_TASK_TYPE = "ebay_set_price";
+    public static final String SET_QUANTITY_TASK_TYPE = "ebay_set_quantity";
+    public static final int MAX_QUANTITY = 100;
 
     public static final String SCOPE_ACTIVE = "active";
     public static final String SCOPE_ENDED = "ended";
@@ -179,6 +183,15 @@ public class EbayListingManageService {
         return launch(SET_PRICE_TASK_TYPE, new JSONObject(true).fluentPut("inputCount", targets.size()),
                 taskId -> snapshotStore.saveEbaySetPriceInput(taskId, snapshot),
                 (taskId, cancelled) -> runSetPrice(taskId, targets, cancelled));
+    }
+
+    /** 指定刊登的指定尺码改成指定库存（可售数量）。 */
+    public synchronized Long startSetQuantity(List<EbaySetQuantityExcel> rows) {
+        List<PriceTarget> targets = normalizeQuantityTargets(rows);
+        List<EbaySetQuantityExcel> snapshot = targets.stream().map(PriceTarget::toQuantityExcel).toList();
+        return launch(SET_QUANTITY_TASK_TYPE, new JSONObject(true).fluentPut("inputCount", targets.size()),
+                taskId -> snapshotStore.saveEbaySetQuantityInput(taskId, snapshot),
+                (taskId, cancelled) -> runSetQuantity(taskId, targets, cancelled));
     }
 
     public void cancel(Long taskId) {
@@ -792,8 +805,15 @@ public class EbayListingManageService {
 
     // ==================== 指定尺码改价 ====================
 
-    /** 一行改价目标：size 与 sku 至少一个；size 按 eBay 上显示的尺码值匹配（例如 9.5）。 */
-    record PriceTarget(String itemId, String size, String sku, BigDecimal price) {
+    /**
+     * 一行修改目标：size 与 sku 至少一个；size 按 eBay 上显示的尺码值匹配（例如 9.5）。
+     * 改价任务只填 price，改库存任务只填 quantity（可售数量）。
+     */
+    record PriceTarget(String itemId, String size, String sku, BigDecimal price, Integer quantity) {
+        PriceTarget(String itemId, String size, String sku, BigDecimal price) {
+            this(itemId, size, sku, price, null);
+        }
+
         EbaySetPriceExcel toExcel() {
             EbaySetPriceExcel excel = new EbaySetPriceExcel();
             excel.setItemId(itemId);
@@ -802,11 +822,20 @@ public class EbayListingManageService {
             excel.setPrice(price.toPlainString());
             return excel;
         }
+
+        EbaySetQuantityExcel toQuantityExcel() {
+            EbaySetQuantityExcel excel = new EbaySetQuantityExcel();
+            excel.setItemId(itemId);
+            excel.setSize(size);
+            excel.setSku(sku);
+            excel.setQuantity(String.valueOf(quantity));
+            return excel;
+        }
     }
 
-    /** 一个改价目标解析后的结果：要改的 SKU（单品刊登可为空）和改前价格（未知时为空）。 */
+    /** 一个修改目标解析后的结果：要改的 SKU（单品刊登可为空）和改前价格、可售数量（未知时为空）。 */
     private record Resolved(PriceTarget target, String sku, String size, BigDecimal currentPrice, String title,
-                            boolean singleItem) {
+                            boolean singleItem, Integer currentQuantity) {
     }
 
     /**
@@ -815,6 +844,16 @@ public class EbayListingManageService {
      * 改价用 ReviseInventoryStatus 每次 4 个尺码；系统刊登的 offer 用 Inventory API 每批 25 个同步（不占额度）。
      */
     void runSetPrice(Long taskId, List<PriceTarget> targets, AtomicBoolean cancelled) {
+        runRevise(taskId, targets, cancelled, false);
+    }
+
+    /** 指定尺码改库存，流程与改价相同，只是改的是可售数量。 */
+    void runSetQuantity(Long taskId, List<PriceTarget> targets, AtomicBoolean cancelled) {
+        runRevise(taskId, targets, cancelled, true);
+    }
+
+    private void runRevise(Long taskId, List<PriceTarget> targets, AtomicBoolean cancelled, boolean quantityMode) {
+        String action = quantityMode ? "改库存" : "改价";
         Map<String, SellerListing> report = latestReportListings();
         Map<String, SellerListing> fetched = new HashMap<>();
         Map<String, String> readErrors = new HashMap<>();
@@ -828,19 +867,22 @@ public class EbayListingManageService {
             }
             try {
                 Resolved resolved = resolve(target, report, fetched, readErrors);
-                if (resolved.currentPrice() != null && resolved.currentPrice().compareTo(target.price()) == 0
-                        && fetched.containsKey(target.itemId())) {
-                    // 只有刚读到的实时价格才可信，报告里的旧价格不用来跳过。
+                // 只有刚读到的实时值才可信，报告里的旧值不用来跳过。
+                boolean unchanged = fetched.containsKey(target.itemId()) && (quantityMode
+                        ? target.quantity().equals(resolved.currentQuantity())
+                        : resolved.currentPrice() != null && resolved.currentPrice().compareTo(target.price()) == 0);
+                if (unchanged) {
                     counters[1]++;
-                    recordPrice(taskId, resolved, "价格未变($" + target.price().toPlainString() + ")");
+                    recordPrice(taskId, resolved, quantityMode ? "库存未变(" + target.quantity() + ")"
+                            : "价格未变($" + target.price().toPlainString() + ")");
                     done++;
                 } else {
                     pending.add(resolved);
                 }
             } catch (Exception e) {
                 counters[2]++;
-                recordPrice(taskId, new Resolved(target, target.sku(), target.size(), null, null, false),
-                        "改价失败(" + safeError(e) + ")");
+                recordPrice(taskId, new Resolved(target, target.sku(), target.size(), null, null, false, null),
+                        action + "失败(" + safeError(e) + ")");
                 done++;
             }
         }
@@ -856,18 +898,22 @@ public class EbayListingManageService {
                 if (error == null) {
                     counters[0]++;
                     succeeded.add(resolved);
-                    recordPrice(taskId, resolved, "改价成功 $" + plain(resolved.currentPrice()) + "→$"
+                    recordPrice(taskId, resolved, quantityMode
+                            ? "改库存成功 " + (resolved.currentQuantity() == null ? "?" : resolved.currentQuantity())
+                            + "→" + resolved.target().quantity()
+                            : "改价成功 $" + plain(resolved.currentPrice()) + "→$"
                             + resolved.target().price().toPlainString());
                 } else {
                     counters[2]++;
-                    recordPrice(taskId, resolved, "改价失败(" + error + ")");
+                    recordPrice(taskId, resolved, action + "失败(" + error + ")");
                 }
                 done++;
             }
             writeProgress(taskId, targets.size(), done, priceAttrs(counters[0], counters[1], counters[2]));
         }
         syncSystemOffers(succeeded);
-        finish(taskId, cancelled, counters[2], "改价完成：成功 " + (counters[0] + counters[1]) + "，失败 " + counters[2]);
+        finish(taskId, cancelled, counters[2], action + "完成：成功 " + (counters[0] + counters[1])
+                + "，失败 " + counters[2]);
     }
 
     private Resolved resolve(PriceTarget target, Map<String, SellerListing> report,
@@ -889,7 +935,7 @@ public class EbayListingManageService {
             }
         }
         if (notBlank(target.sku()) && known == null) {
-            return new Resolved(target, target.sku(), target.size(), null, null, false);
+            return new Resolved(target, target.sku(), target.size(), null, null, false, null);
         }
         String readError = readErrors.get(target.itemId());
         if (readError != null) {
@@ -913,10 +959,10 @@ public class EbayListingManageService {
 
     private static Resolved resolved(PriceTarget target, SellerListing listing, ListingVariation variation) {
         if (listing.hasVariations() && !notBlank(variation.sku())) {
-            throw new IllegalArgumentException("该尺码没有SKU，无法改价");
+            throw new IllegalArgumentException("该尺码没有SKU，无法修改");
         }
         return new Resolved(target, variation.sku(), variation.size() != null ? variation.size() : target.size(),
-                variation.price(), listing.title(), !listing.hasVariations());
+                variation.price(), listing.title(), !listing.hasVariations(), variation.available());
     }
 
     /** 改一批（最多 4 个），返回失败的及原因；整批失败时逐个重试，找出具体是哪个尺码有问题。 */
@@ -946,7 +992,7 @@ public class EbayListingManageService {
         // 单品刊登只按刊登号改；多尺码刊登必须带 SKU 指定尺码。
         return new EbayTradingApiClient.InventoryRevision(resolved.target().itemId(),
                 resolved.singleItem() ? null : resolved.sku(),
-                resolved.target().price(), null);
+                resolved.target().price(), resolved.target().quantity());
     }
 
     /** 518：应用当天的调用次数用完了，重试也没用。 */
@@ -956,7 +1002,7 @@ public class EbayListingManageService {
     }
 
     /**
-     * 系统刊登再把 offer 记录同步成同一个价，避免之后按 offer 的改价把价格改回去。
+     * 系统刊登再把 offer 记录同步成同样的价格/库存，避免之后按 offer 的操作把它改回去。
      * 走 Inventory API，不占 Trading 额度；失败只记日志（刊登已经改好）。
      */
     private void syncSystemOffers(List<Resolved> succeeded) {
@@ -986,7 +1032,7 @@ public class EbayListingManageService {
             if (mapping != null && notBlank(mapping.getOfferId())
                     && resolved.target().itemId().equals(nullToEmpty(mapping.getListingId()).trim())) {
                 updates.add(new EbaySellApiClient.OfferPriceQuantity(resolved.sku(), mapping.getOfferId(),
-                        resolved.target().price(), properties.getDefaultCurrency(), null));
+                        resolved.target().price(), properties.getDefaultCurrency(), resolved.target().quantity()));
             }
         }
         int limit = EbaySellApiClient.BULK_PRICE_QUANTITY_LIMIT;
@@ -1004,7 +1050,7 @@ public class EbayListingManageService {
             }
             for (EbaySellApiClient.OfferPriceQuantity update : batch) {
                 try {
-                    listingMapper.updatePriceAndQuantity(update.sku(), update.price(), null);
+                    listingMapper.updatePriceAndQuantity(update.sku(), update.price(), update.availableQuantity());
                 } catch (Exception e) {
                     log.warn("eBay映射价格更新失败, sku:{}", update.sku(), e);
                 }
@@ -1161,6 +1207,8 @@ public class EbayListingManageService {
         }
         item.setCurrentPrice(resolved.currentPrice());
         item.setTargetPrice(target.price());
+        // 改库存任务：新库存记在 listingQuantity，原库存写在执行结果里。
+        item.setListingQuantity(target.quantity());
         item.setOperateResult(truncate(result, 255));
         item.setOperateTime(new Date());
         taskItemMapper.insert(item);
@@ -1276,6 +1324,44 @@ public class EbayListingManageService {
         }
         if (targets.isEmpty()) {
             throw new IllegalArgumentException("Excel里没有要改价的行（新价格为空的行会被忽略）");
+        }
+        if (targets.size() > MAX_INPUT_ROWS) {
+            throw new IllegalArgumentException("单次最多" + MAX_INPUT_ROWS + "行");
+        }
+        return List.copyOf(targets.values());
+    }
+
+    static List<PriceTarget> normalizeQuantityTargets(List<EbaySetQuantityExcel> rows) {
+        Map<String, PriceTarget> targets = new LinkedHashMap<>();
+        int line = 1;
+        for (EbaySetQuantityExcel row : rows == null ? List.<EbaySetQuantityExcel>of() : rows) {
+            line++;
+            if (row == null || row.getQuantity() == null || row.getQuantity().isBlank()) {
+                continue;
+            }
+            String itemId = parseItemId(row.getItemId());
+            if (itemId == null) {
+                throw new IllegalArgumentException("第" + line + "行物品编号格式错误：" + row.getItemId());
+            }
+            String size = row.getSize() == null || row.getSize().isBlank() ? null : normalizeSize(row.getSize());
+            String sku = row.getSku() == null || row.getSku().isBlank() ? null : row.getSku().trim();
+            int quantity;
+            try {
+                // Excel 数字单元格会读成 "5.0"。
+                quantity = new BigDecimal(row.getQuantity().trim()).intValueExact();
+            } catch (NumberFormatException | ArithmeticException e) {
+                throw new IllegalArgumentException("第" + line + "行库存需为整数：" + row.getQuantity());
+            }
+            if (quantity < 0 || quantity > MAX_QUANTITY) {
+                throw new IllegalArgumentException("第" + line + "行库存需在0到" + MAX_QUANTITY + "之间");
+            }
+            String key = itemId + "|" + (sku != null ? sku.toUpperCase(Locale.ROOT) : "size:" + size);
+            // 同一尺码写了多行时以最后一行为准。
+            targets.remove(key);
+            targets.put(key, new PriceTarget(itemId, size, sku, null, quantity));
+        }
+        if (targets.isEmpty()) {
+            throw new IllegalArgumentException("Excel里没有要改库存的行（新库存为空的行会被忽略）");
         }
         if (targets.size() > MAX_INPUT_ROWS) {
             throw new IllegalArgumentException("单次最多" + MAX_INPUT_ROWS + "行");

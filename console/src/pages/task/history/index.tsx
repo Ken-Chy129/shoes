@@ -155,6 +155,11 @@ const EBAY_MANAGE_UPLOADS: Record<string, {
         requiredFields: ['物品编号', '尺码', '新价格(USD)'], optionalFields: ['SKU'],
         note: '尺码填eBay页面上显示的尺码（如9.5）；新价格为空的行忽略。可直接上传「获取刊登」导出的表，在「新价格」列填上价格即可。',
     },
+    ebay_set_quantity: {
+        name: '指定尺码改库存', api: TASK_API.EBAY_START_SET_QUANTITY, template: TASK_API.EBAY_SET_QUANTITY_TEMPLATE,
+        requiredFields: ['物品编号', '尺码', '新库存'], optionalFields: ['SKU'],
+        note: '新库存填0到100的整数（改完后的可售数量），为空的行忽略；尺码填eBay页面上显示的尺码（如9.5）。单尺码刊登改成0时，店铺没开缺货控制的话eBay会直接结束该刊登。',
+    },
 };
 
 const TaskPage = () => {
@@ -968,7 +973,7 @@ const TaskPage = () => {
                     } catch { return '-'; }
                 }
                 if ((record.taskType === 'ebay_end_listings' || record.taskType === 'ebay_relist_listings'
-                    || record.taskType === 'ebay_set_price') && record.attributes) {
+                    || record.taskType === 'ebay_set_price' || record.taskType === 'ebay_set_quantity') && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
                         const ok = record.taskType === 'ebay_end_listings' ? (attrs.ended ?? 0) + (attrs.alreadyEnded ?? 0)

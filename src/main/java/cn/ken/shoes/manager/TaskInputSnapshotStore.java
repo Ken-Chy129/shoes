@@ -15,6 +15,7 @@ import cn.ken.shoes.model.excel.EbayPoisonListingExcel;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
 import cn.ken.shoes.model.excel.EbayItemIdExcel;
 import cn.ken.shoes.model.excel.EbaySetPriceExcel;
+import cn.ken.shoes.model.excel.EbaySetQuantityExcel;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
 import org.springframework.stereotype.Component;
@@ -47,6 +48,7 @@ public class TaskInputSnapshotStore {
     private static final String EBAY_PROFIT_TARGETS_FILE = "ebay-profit-targets.json";
     private static final String EBAY_ITEM_ID_FILE = "ebay-item-ids.json";
     private static final String EBAY_SET_PRICE_FILE = "ebay-set-price.json";
+    private static final String EBAY_SET_QUANTITY_FILE = "ebay-set-quantity.json";
 
     private final Path root;
 
@@ -215,6 +217,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<EbaySetPriceExcel>> loadEbaySetPriceInput(Long taskId) {
         return loadList(taskId, EBAY_SET_PRICE_FILE, EbaySetPriceExcel.class, "指定尺码改价");
+    }
+
+    public void saveEbaySetQuantityInput(Long taskId, List<EbaySetQuantityExcel> input) {
+        write(taskPath(taskId, EBAY_SET_QUANTITY_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbaySetQuantityExcel>> loadEbaySetQuantityInput(Long taskId) {
+        return loadList(taskId, EBAY_SET_QUANTITY_FILE, EbaySetQuantityExcel.class, "指定尺码改库存");
     }
 
     private <T> Optional<List<T>> loadList(Long taskId, String fileName, Class<T> type, String label) {

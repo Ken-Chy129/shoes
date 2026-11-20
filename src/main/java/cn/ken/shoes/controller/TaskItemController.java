@@ -119,16 +119,22 @@ public class TaskItemController {
 
         if (task != null && (cn.ken.shoes.service.EbayListingManageService.END_TASK_TYPE.equals(task.getTaskType())
                 || cn.ken.shoes.service.EbayListingManageService.RELIST_TASK_TYPE.equals(task.getTaskType())
-                || cn.ken.shoes.service.EbayListingManageService.SET_PRICE_TASK_TYPE.equals(task.getTaskType()))) {
+                || cn.ken.shoes.service.EbayListingManageService.SET_PRICE_TASK_TYPE.equals(task.getTaskType())
+                || cn.ken.shoes.service.EbayListingManageService.SET_QUANTITY_TASK_TYPE.equals(task.getTaskType()))) {
             SimpleDateFormat manageDateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             boolean relist = cn.ken.shoes.service.EbayListingManageService.RELIST_TASK_TYPE.equals(task.getTaskType());
             boolean setPrice = cn.ken.shoes.service.EbayListingManageService.SET_PRICE_TASK_TYPE.equals(task.getTaskType());
+            boolean setQuantity = cn.ken.shoes.service.EbayListingManageService.SET_QUANTITY_TASK_TYPE
+                    .equals(task.getTaskType());
             List<List<String>> head = new ArrayList<>(List.of(List.of("物品编号")));
             if (relist) {
                 head.add(List.of("新物品编号"));
             }
             if (setPrice) {
                 head.addAll(List.of(List.of("尺码"), List.of("SKU"), List.of("原价格($)"), List.of("新价格($)")));
+            }
+            if (setQuantity) {
+                head.addAll(List.of(List.of("尺码"), List.of("SKU"), List.of("新库存")));
             }
             head.addAll(List.of(List.of("货号"), List.of("标题"), List.of("执行结果"), List.of("执行时间")));
             List<List<String>> data = new ArrayList<>();
@@ -141,6 +147,11 @@ public class TaskItemController {
                     row.addAll(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getSize()),
                             StrUtil.nullToEmpty(item.getSku()), plain(item.getCurrentPrice()),
                             plain(item.getTargetPrice())));
+                }
+                if (setQuantity) {
+                    row.addAll(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getSize()),
+                            StrUtil.nullToEmpty(item.getSku()),
+                            item.getListingQuantity() == null ? "" : String.valueOf(item.getListingQuantity())));
                 }
                 row.addAll(java.util.Arrays.asList(StrUtil.nullToEmpty(item.getStyleId()),
                         StrUtil.nullToEmpty(item.getTitle()), StrUtil.nullToEmpty(item.getOperateResult()),

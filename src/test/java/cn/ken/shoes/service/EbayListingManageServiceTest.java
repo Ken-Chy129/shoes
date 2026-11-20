@@ -126,6 +126,33 @@ class EbayListingManageServiceTest {
     }
 
     @Test
+    void normalizesQuantityTargetsAndRejectsBadRows() {
+        cn.ken.shoes.model.excel.EbaySetQuantityExcel row = new cn.ken.shoes.model.excel.EbaySetQuantityExcel();
+        row.setItemId("407333465699");
+        row.setSize("US 9.50");
+        row.setQuantity("5.0");
+        cn.ken.shoes.model.excel.EbaySetQuantityExcel empty = new cn.ken.shoes.model.excel.EbaySetQuantityExcel();
+        empty.setItemId("407333465699");
+        empty.setSize("10");
+
+        var targets = EbayListingManageService.normalizeQuantityTargets(List.of(row, empty));
+
+        assertThat(targets).hasSize(1);
+        assertThat(targets.get(0).size()).isEqualTo("9.5");
+        assertThat(targets.get(0).quantity()).isEqualTo(5);
+        assertThat(targets.get(0).price()).isNull();
+
+        row.setQuantity("0");
+        assertThat(EbayListingManageService.normalizeQuantityTargets(List.of(row)).get(0).quantity()).isZero();
+        row.setQuantity("101");
+        assertThatThrownBy(() -> EbayListingManageService.normalizeQuantityTargets(List.of(row)))
+                .hasMessageContaining("0到100");
+        row.setQuantity("2.5");
+        assertThatThrownBy(() -> EbayListingManageService.normalizeQuantityTargets(List.of(row)))
+                .hasMessageContaining("整数");
+    }
+
+    @Test
     void buildsListingRowWithOnSaleSizesPriceRangeAndStyleFromMapping() {
         EbayListingDO mapping = new EbayListingDO();
         mapping.setSku("S9");
@@ -346,6 +373,43 @@ class EbayListingManageServiceTest {
         verify(sell).bulkUpdatePriceQuantity(anyList());
         verify(taskMapper).updateTaskStatus(10L, "success");
         verify(taskMapper, atLeastOnce()).updateTaskAttributes(eq(10L), anyString());
+    }
+
+    @Test
+    void setQuantityRevisesOnlyQuantityAndSyncsSystemOffer() {
+        EbayListingDO mapping = new EbayListingDO();
+        mapping.setSku("S9");
+        mapping.setOfferId("OF1");
+        mapping.setListingId("1");
+        when(listingMapper.selectBySkus(anyList())).thenReturn(List.of(mapping));
+        when(trading.getItem("1")).thenReturn(listing("1", "Active", null,
+                new ListingVariation("S9", "9", new BigDecimal("140"), 5, 2),
+                new ListingVariation("S10", "10", new BigDecimal("150"), 4, 0)));
+        when(sell.bulkUpdatePriceQuantity(anyList())).thenReturn(List.of(
+                new EbaySellApiClient.OfferUpdateResult("S9", "OF1", 200, null)));
+
+        service.runSetQuantity(10L, List.of(
+                new EbayListingManageService.PriceTarget("1", "9", null, null, 0),
+                new EbayListingManageService.PriceTarget("1", "10", null, null, 4)),
+                new AtomicBoolean());
+
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(trading).reviseInventoryStatus(revisions.capture());
+        assertThat(revisions.getValue()).singleElement().satisfies(revision -> {
+            assertThat(revision.sku()).isEqualTo("S9");
+            assertThat(revision.quantity()).isZero();
+            assertThat(revision.price()).isNull();
+        });
+        ArgumentCaptor<List<EbaySellApiClient.OfferPriceQuantity>> offers = ArgumentCaptor.forClass(List.class);
+        verify(sell).bulkUpdatePriceQuantity(offers.capture());
+        assertThat(offers.getValue().get(0).availableQuantity()).isZero();
+        assertThat(offers.getValue().get(0).price()).isNull();
+        verify(listingMapper).updatePriceAndQuantity("S9", null, 0);
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, org.mockito.Mockito.times(2)).insert(items.capture());
+        assertThat(items.getAllValues()).extracting(TaskItemDO::getOperateResult)
+                .containsExactlyInAnyOrder("库存未变(4)", "改库存成功 3→0");
+        verify(taskMapper).updateTaskStatus(10L, "success");
     }
 
     @Test

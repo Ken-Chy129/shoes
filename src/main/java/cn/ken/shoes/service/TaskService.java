@@ -310,7 +310,8 @@ public class TaskService {
                     taskExecutorManager.cancelEbayFetchOrders(task.getId());
                 }
             }
-            case "ebay_fetch_listings", "ebay_end_listings", "ebay_relist_listings", "ebay_set_price" -> {
+            case "ebay_fetch_listings", "ebay_end_listings", "ebay_relist_listings", "ebay_set_price",
+                 "ebay_set_quantity" -> {
                 if (!clearState) {
                     taskExecutorManager.cancelEbayListingManage(task.getId());
                 }

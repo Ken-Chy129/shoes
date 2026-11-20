@@ -24,6 +24,7 @@ export const TASK_TYPE_LABELS: Record<string, string> = {
   ebay_end_listings: '按编号下架',
   ebay_relist_listings: '按编号重新上架',
   ebay_set_price: '指定尺码改价',
+  ebay_set_quantity: '指定尺码改库存',
 };
 
 export const EBAY_TASK_OPTIONS = [
@@ -40,6 +41,7 @@ export const EBAY_TASK_OPTIONS = [
   {label: TASK_TYPE_LABELS.ebay_end_listings, value: 'ebay_end_listings'},
   {label: TASK_TYPE_LABELS.ebay_relist_listings, value: 'ebay_relist_listings'},
   {label: TASK_TYPE_LABELS.ebay_set_price, value: 'ebay_set_price'},
+  {label: TASK_TYPE_LABELS.ebay_set_quantity, value: 'ebay_set_quantity'},
 ];
 
 export const STOCKX_TASK_OPTIONS = [
