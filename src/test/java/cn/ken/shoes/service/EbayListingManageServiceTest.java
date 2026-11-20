@@ -52,6 +52,8 @@ class EbayListingManageServiceTest {
     private EbayTradingApiClient trading;
     private EbaySellApiClient sell;
     private EbayAnalyticsApiClient analytics;
+    private cn.ken.shoes.client.EbayBrowseApiClient browse;
+    private cn.ken.shoes.client.EbayRateLimitApiClient rateLimits;
     private EbayListingManageService service;
 
     @BeforeEach
@@ -62,9 +64,11 @@ class EbayListingManageServiceTest {
         trading = mock(EbayTradingApiClient.class);
         sell = mock(EbaySellApiClient.class);
         analytics = mock(EbayAnalyticsApiClient.class);
+        browse = mock(cn.ken.shoes.client.EbayBrowseApiClient.class);
+        rateLimits = mock(cn.ken.shoes.client.EbayRateLimitApiClient.class);
         EbayProperties properties = new EbayProperties();
         service = new EbayListingManageService(taskMapper, taskItemMapper, listingMapper, trading, sell, analytics,
-                mock(TaskInputSnapshotStore.class), properties, Runnable::run,
+                browse, rateLimits, mock(TaskInputSnapshotStore.class), properties, Runnable::run,
                 Clock.fixed(Instant.parse("2026-11-09T00:00:00Z"), ZoneOffset.UTC), tempDir);
         when(listingMapper.selectBySkus(anyList())).thenReturn(List.of());
         when(listingMapper.selectByListingIds(anyList())).thenReturn(List.of());
@@ -73,7 +77,7 @@ class EbayListingManageServiceTest {
     private static SellerListing listing(String itemId, String status, String parent, ListingVariation... variations) {
         return new SellerListing(itemId, "Nike Dunk Low DD1391-100", "G1", status,
                 Instant.parse("2026-11-01T00:00:00Z"), Instant.parse("2026-12-01T00:00:00Z"), "P2DT10H37M34S", 5,
-                "Athletic Shoes", null, "FixedPriceItem", parent, null, null, List.of(variations));
+                "Athletic Shoes", null, "FixedPriceItem", parent, null, null, "HK", List.of(variations));
     }
 
     @Test
@@ -137,7 +141,7 @@ class EbayListingManageServiceTest {
                 new ListingVariation("S10", "10", new BigDecimal("150"), 1, 1),
                 new ListingVariation("S85", "8.5", new BigDecimal("90"), 1, 0));
 
-        var row = service.toRow(listing, service.lookup(List.of(listing)), 12);
+        var row = service.toRow(listing, service.lookup(List.of(listing)), 12, null);
 
         assertThat(row.brand()).isEqualTo("Nike");
         assertThat(row.styleId()).isEqualTo("DD1391-100");
@@ -151,6 +155,48 @@ class EbayListingManageServiceTest {
         assertThat(row.source()).isEqualTo("系统上架");
         assertThat(row.sizeRows()).hasSize(3);
         assertThat(row.sizeRows().get(0).euSize()).isEqualTo("42.5");
+    }
+
+    @Test
+    void fetchChecksAuthenticityWithinBrowseBudgetAndReusesPreviousResult() throws Exception {
+        SellerListing first = listing("1", "Active", null,
+                new ListingVariation("S9", "9", new BigDecimal("200"), 1, 0),
+                new ListingVariation("S95", "9.5", new BigDecimal("90"), 1, 0),
+                new ListingVariation("S10", "10", new BigDecimal("90"), 1, 1));
+        SellerListing second = listing("2", "Active", null, new ListingVariation("T9", "9", BigDecimal.TEN, 1, 0));
+        when(trading.getSellerListings(any(), any(), anyInt()))
+                .thenReturn(new EbayTradingApiClient.SellerListingPage(1, 1, 2, List.of(first, second)));
+        when(analytics.getListingViews(anyList(), any(), any(), anyString())).thenReturn(java.util.Map.of());
+        // 剩余额度只够查 1 条（101 - 余量 100）
+        when(rateLimits.getRateLimits("browse")).thenReturn(List.of(new cn.ken.shoes.client.EbayRateLimitApiClient
+                .ResourceRate("buy.browse", 0, 5000, 101, null, 86400)));
+        when(browse.getListingAuthenticity("1", true)).thenReturn(List.of(
+                new cn.ken.shoes.client.EbayBrowseApiClient.BrowseVariation(java.util.Set.of("US 9"), true),
+                new cn.ken.shoes.client.EbayBrowseApiClient.BrowseVariation(java.util.Set.of("9.5"), false)));
+        // 上次只查过 2，所以这次先查 1，2 沿用上次
+        var previous = new EbayListingManageService.ListingRow("2", "在售", null, null, "t", "9", 1, 1, 0, null,
+                null, null, null, null, 0, null, null, null, null, null, null, null,
+                List.of(new EbayListingManageService.SizeRow("2", "9", BigDecimal.TEN, "T9", 1, 0, null, "否")),
+                "香港", "否", "2026-11-08 10:00");
+        java.nio.file.Files.createDirectories(tempDir.resolve("5"));
+        java.nio.file.Files.writeString(tempDir.resolve("5").resolve("ebay-listings.json"),
+                new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(List.of(previous)));
+        cn.ken.shoes.model.entity.TaskDO task = new cn.ken.shoes.model.entity.TaskDO();
+        task.setId(5L);
+        when(taskMapper.selectByCondition(any())).thenReturn(List.of(task));
+
+        service.runFetch(12L, EbayListingManageService.SCOPE_ACTIVE, 30, new AtomicBoolean());
+
+        verify(browse, never()).getListingAuthenticity(eq("2"), org.mockito.ArgumentMatchers.anyBoolean());
+        var report = service.loadReport(12L).orElseThrow();
+        assertThat(report.get(0).shipFrom()).isEqualTo("香港");
+        assertThat(report.get(0).authenticity()).isEqualTo("部分(1/2)");
+        assertThat(report.get(0).authenticityTime()).isEqualTo("2026-11-09 08:00");
+        assertThat(report.get(0).sizeRows()).extracting(EbayListingManageService.SizeRow::authenticity)
+                .containsExactly("是", "否", null);
+        assertThat(report.get(1).authenticity()).isEqualTo("否");
+        assertThat(report.get(1).authenticityTime()).isEqualTo("2026-11-08 10:00");
+        verify(taskMapper).updateTaskFailReason(eq(12L), org.mockito.ArgumentMatchers.contains("沿用上次结果1条"));
     }
 
     @Test
@@ -306,11 +352,11 @@ class EbayListingManageServiceTest {
         java.util.List<EbayListingManageService.SizeRow> sizes = new java.util.ArrayList<>();
         for (int i = 4; i <= 9; i++) {
             sizes.add(new EbayListingManageService.SizeRow("1", String.valueOf(i), new BigDecimal("100"),
-                    "S" + i, 1, 0, null));
+                    "S" + i, 1, 0, null, null));
         }
         EbayListingManageService.ListingRow row = new EbayListingManageService.ListingRow("1", "在售", null, null,
                 "Nike Dunk Low DD1391-100", "", 6, 6, 0, null, null, null, null, null, 0, null, "G1", null, null,
-                null, null, null, sizes);
+                null, null, null, sizes, null, null, null);
         java.nio.file.Files.createDirectories(tempDir.resolve("77"));
         java.nio.file.Files.writeString(tempDir.resolve("77").resolve("ebay-listings.json"),
                 new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(List.of(row)));

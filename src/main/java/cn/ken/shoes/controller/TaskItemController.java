@@ -522,13 +522,15 @@ public class TaskItemController {
         List<cn.ken.shoes.service.EbayListingManageService.ListingRow> rows = ebayListingManageService
                 .loadReport(taskId).orElse(List.of()).stream().filter(row -> wanted.contains(row.itemId())).toList();
         List<List<String>> head = java.util.stream.Stream.of("物品编号", "尺码", "新价格(USD)", "SKU", "当前价($)",
-                "库存", "已售", "EU码", "状态", "品牌", "货号", "标题", "链接在售尺码", "链接在售尺码数", "链接总库存",
+                "库存", "已售", "EU码", "正品保证", "状态", "发货地", "链接正品保证", "正品保证查询时间", "品牌", "货号", "标题", "链接在售尺码", "链接在售尺码数", "链接总库存",
                 "链接已售", "链接最低价($)", "链接最高价($)", "剩余时间", "结束时间", "浏览人数", "收藏人数", "开始时间",
                 "商品组SKU", "来源", "原刊登编号", "重新上架后编号", "分类", "链接")
                 .map(List::of).toList();
         List<List<String>> data = new ArrayList<>();
         for (var row : rows) {
-            List<String> listingCols = java.util.Arrays.asList(row.status(), StrUtil.nullToEmpty(row.brand()),
+            List<String> listingCols = java.util.Arrays.asList(row.status(), StrUtil.nullToEmpty(row.shipFrom()),
+                    row.authenticity() == null ? "未获取" : row.authenticity(),
+                    StrUtil.nullToEmpty(row.authenticityTime()), StrUtil.nullToEmpty(row.brand()),
                     StrUtil.nullToEmpty(row.styleId()), StrUtil.nullToEmpty(row.title()),
                     StrUtil.nullToEmpty(row.sizes()), String.valueOf(row.sizeCount()), String.valueOf(row.quantity()),
                     String.valueOf(row.sold()), plain(row.minPrice()), plain(row.maxPrice()),
@@ -540,13 +542,13 @@ public class TaskItemController {
                     StrUtil.nullToEmpty(row.url()));
             var sizes = row.sizeRows() == null || row.sizeRows().isEmpty()
                     ? List.of(new cn.ken.shoes.service.EbayListingManageService.SizeRow(row.itemId(), null, null,
-                    null, 0, 0, null))
+                    null, 0, 0, null, null))
                     : row.sizeRows();
             for (var size : sizes) {
                 List<String> line = new ArrayList<>(java.util.Arrays.asList(row.itemId(),
                         StrUtil.nullToEmpty(size.size()), "", StrUtil.nullToEmpty(size.sku()), plain(size.price()),
                         String.valueOf(size.quantity()), String.valueOf(size.sold()),
-                        StrUtil.nullToEmpty(size.euSize())));
+                        StrUtil.nullToEmpty(size.euSize()), StrUtil.nullToEmpty(size.authenticity())));
                 line.addAll(listingCols);
                 data.add(line);
             }

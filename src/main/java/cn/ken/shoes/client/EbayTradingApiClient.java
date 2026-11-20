@@ -289,12 +289,13 @@ public class EbayTradingApiClient {
     /**
      * 一个刊登的概要（GetSellerList / GetItem 通用）。listingStatus 为 eBay 原值：Active / Completed / Ended。
      * relistParentId：它是从哪条旧刊登重新上架来的；relistedItemId：它已被重新上架成哪条新刊登。
+     * country：商品所在地（发货地）两位国家代码，如 US / HK。
      */
     public record SellerListing(String itemId, String title, String sku, String listingStatus,
                                 Instant startTime, Instant endTime, String timeLeft, int watchCount,
                                 String categoryName, String viewItemUrl, String listingType,
                                 String relistParentId, String relistedItemId, String endingReason,
-                                List<ListingVariation> variations) {
+                                String country, List<ListingVariation> variations) {
         public boolean active() {
             return "Active".equalsIgnoreCase(listingStatus);
         }
@@ -313,6 +314,7 @@ public class EbayTradingApiClient {
             "ItemArray.Item.WatchCount", "ItemArray.Item.ListingType", "ItemArray.Item.RelistParentID",
             "ItemArray.Item.ListingDetails", "ItemArray.Item.SellingStatus",
             "ItemArray.Item.PrimaryCategory.CategoryName", "ItemArray.Item.Variations.Variation",
+            "ItemArray.Item.Country",
             "PaginationResult", "HasMoreItems");
 
     /**
@@ -530,7 +532,7 @@ public class EbayTradingApiClient {
                 text(item, "PrimaryCategory/CategoryName"), text(item, "ListingDetails/ViewItemURL"),
                 text(item, "ListingType"), text(item, "RelistParentID"),
                 text(item, "ListingDetails/RelistedItemID"), text(item, "ListingDetails/EndingReason"),
-                List.copyOf(variations));
+                text(item, "Country"), List.copyOf(variations));
     }
 
     private static java.math.BigDecimal decimal(String value) {

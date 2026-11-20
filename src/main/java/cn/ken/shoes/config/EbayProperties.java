@@ -157,6 +157,10 @@ public class EbayProperties {
         return apiRoot() + "/sell/marketing/v1/";
     }
 
+    public String getBrowseApiEndpoint() {
+        return apiRoot() + "/buy/browse/v1/";
+    }
+
     public String getAnalyticsApiEndpoint() {
         return apiRoot() + "/sell/analytics/v1/";
     }
