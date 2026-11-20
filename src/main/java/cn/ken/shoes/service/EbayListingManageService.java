@@ -2,7 +2,6 @@ package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayAnalyticsApiClient;
 import cn.ken.shoes.client.EbayBrowseApiClient;
-import cn.ken.shoes.client.EbayRateLimitApiClient;
 import cn.ken.shoes.client.EbayQuotaExceededException;
 import cn.ken.shoes.client.EbayApiException;
 import cn.ken.shoes.client.EbaySellApiClient;
@@ -49,9 +48,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -85,10 +81,6 @@ public class EbayListingManageService {
     public static final int MAX_INPUT_ROWS = 5000;
     private static final int MAX_PAGES = 500;
     private static final String REPORT_FILE = "ebay-listings.json";
-    /** 正品保证查询给其它 Browse 调用留的余量；查不到 eBay 实时剩余额度时按 BROWSE_FALLBACK_BUDGET 查。 */
-    private static final int BROWSE_RESERVE = 100;
-    private static final int BROWSE_FALLBACK_BUDGET = 4500;
-    private static final int BROWSE_THREADS = 8;
     /** 报告是 record 列表，fastjson 1.x 不支持 record，用 Jackson 读写。 */
     private static final com.fasterxml.jackson.databind.ObjectMapper REPORT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper()
@@ -107,7 +99,6 @@ public class EbayListingManageService {
     private final EbaySellApiClient sellClient;
     private final EbayAnalyticsApiClient analyticsClient;
     private final EbayBrowseApiClient browseClient;
-    private final EbayRateLimitApiClient rateLimitClient;
     private final TaskInputSnapshotStore snapshotStore;
     private final EbayProperties properties;
     private final Executor executor;
@@ -120,17 +111,17 @@ public class EbayListingManageService {
     public EbayListingManageService(TaskMapper taskMapper, TaskItemMapper taskItemMapper,
                                     EbayListingMapper listingMapper, EbayTradingApiClient tradingClient,
                                     EbaySellApiClient sellClient, EbayAnalyticsApiClient analyticsClient,
-                                    EbayBrowseApiClient browseClient, EbayRateLimitApiClient rateLimitClient,
-                                    TaskInputSnapshotStore snapshotStore, EbayProperties properties) {
+                                    EbayBrowseApiClient browseClient, TaskInputSnapshotStore snapshotStore,
+                                    EbayProperties properties) {
         this(taskMapper, taskItemMapper, listingMapper, tradingClient, sellClient, analyticsClient, browseClient,
-                rateLimitClient, snapshotStore, properties, command -> Thread.ofVirtual().name("Ebay-Listing-Manage").start(command),
+                snapshotStore, properties, command -> Thread.ofVirtual().name("Ebay-Listing-Manage").start(command),
                 Clock.systemUTC(), Paths.get("files/task-input"));
     }
 
     EbayListingManageService(TaskMapper taskMapper, TaskItemMapper taskItemMapper, EbayListingMapper listingMapper,
                              EbayTradingApiClient tradingClient, EbaySellApiClient sellClient,
                              EbayAnalyticsApiClient analyticsClient, EbayBrowseApiClient browseClient,
-                             EbayRateLimitApiClient rateLimitClient, TaskInputSnapshotStore snapshotStore,
+                             TaskInputSnapshotStore snapshotStore,
                              EbayProperties properties, Executor executor, Clock clock, Path reportRoot) {
         this.taskMapper = taskMapper;
         this.taskItemMapper = taskItemMapper;
@@ -139,7 +130,6 @@ public class EbayListingManageService {
         this.sellClient = sellClient;
         this.analyticsClient = analyticsClient;
         this.browseClient = browseClient;
-        this.rateLimitClient = rateLimitClient;
         this.snapshotStore = snapshotStore;
         this.properties = properties;
         this.executor = executor;
@@ -256,17 +246,12 @@ public class EbayListingManageService {
                              BigDecimal maxPrice, String timeLeft, String endTime, Integer views, int watchers,
                              String startTime, String sku, String source, String relistParentId,
                              String relistedItemId, String category, String url,
-                             List<SizeRow> sizeRows, String shipFrom, String authenticity,
-                             String authenticityTime) {
+                             List<SizeRow> sizeRows, String shipFrom, String authenticity) {
     }
 
     /** 尺码明细，一行一个尺码；列顺序与「指定尺码改价」模板一致。 */
     public record SizeRow(String itemId, String size, BigDecimal price, String sku, int quantity, int sold,
-                          String euSize, String authenticity) {
-    }
-
-    /** 一条刊登的正品保证：bySize 按尺码（单品刊登为空串）记「是/否」；time 为查询时间（沿用上次结果时是上次的时间）。 */
-    record Authenticity(Map<String, String> bySize, String time) {
+                          String euSize) {
     }
 
     void runFetch(Long taskId, String scope, int viewDays, AtomicBoolean cancelled) {
@@ -299,7 +284,7 @@ public class EbayListingManageService {
             log.warn("获取刊登：浏览人数获取失败, taskId:{}", taskId, e);
         }
         JSONObject authStats = new JSONObject(true);
-        Map<String, Authenticity> authenticity = fetchAuthenticity(taskId, byId.values(), cancelled, progress,
+        Map<String, String> authenticity = fetchAuthenticity(taskId, byId.values(), cancelled, progress,
                 authStats);
         Lookup lookup = lookup(byId.values());
         List<ListingRow> rows = new ArrayList<>();
@@ -336,11 +321,9 @@ public class EbayListingManageService {
         if (viewsProblem != null) {
             problems.add(viewsProblem + "（其余数据正常，可在系统设置重新授权eBay后重跑）");
         }
-        if (authStats.getIntValue("authReused") + authStats.getIntValue("authMissing") > 0) {
-            problems.add("正品保证：本次实查" + authStats.getIntValue("authChecked") + "条，沿用上次结果"
-                    + authStats.getIntValue("authReused") + "条，未获取" + authStats.getIntValue("authMissing")
-                    + "条（eBay每天5000次额度，次日再跑会优先补查）"
-                    + (authStats.getString("authError") == null ? "" : "；" + authStats.getString("authError")));
+        if (authStats.getIntValue("authMissing") > 0) {
+            problems.add("正品保证：" + authStats.getIntValue("authMissing") + "条在售刊登未获取"
+                    + (authStats.getString("authError") == null ? "" : "（" + authStats.getString("authError") + "）"));
         }
         if (!problems.isEmpty()) {
             taskMapper.updateTaskFailReason(taskId, truncate(String.join("；", problems), 500));
@@ -381,135 +364,98 @@ public class EbayListingManageService {
     }
 
     /**
-     * 在售刊登的正品保证。Browse 每天额度约 5000 次、在售刊登可能更多，所以按 eBay 实时剩余额度查：
-     * 上次没查过的、上次查得最早的优先；本次没查到的沿用上次「获取刊登」的结果（带上次的查询时间）。
+     * 在售刊登是否有正品保证（刊登级别：任一在售尺码有即为「是」）。按卖家搜索一页 200 条，几十次调用查完；
+     * 搜索里没有的（不在服装鞋包分类、超过搜索上限 10000 条、搜索索引滞后等）且还有库存的，再逐条补查。
+     * 没有库存的刊登 eBay 搜不到也读不到，记为「无库存」。
      */
-    private Map<String, Authenticity> fetchAuthenticity(Long taskId, java.util.Collection<SellerListing> listings,
-                                                        AtomicBoolean cancelled, JSONObject progress,
-                                                        JSONObject stats) {
-        Map<String, Authenticity> previous = latestAuthenticity();
-        List<SellerListing> queue = new ArrayList<>(listings.stream().filter(SellerListing::active).toList());
-        // 时间格式 yyyy-MM-dd HH:mm 可直接按字符串排序；没查过的排最前。
-        queue.sort(java.util.Comparator.comparing(
-                (SellerListing l) -> previous.containsKey(l.itemId()) ? previous.get(l.itemId()).time() : "",
-                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())));
-        int budget = browseBudget();
-        List<SellerListing> toQuery = queue.subList(0, Math.min(budget, queue.size()));
-        Map<String, Authenticity> result = new ConcurrentHashMap<>();
-        AtomicBoolean stop = new AtomicBoolean();
-        java.util.concurrent.atomic.AtomicReference<String> error = new java.util.concurrent.atomic.AtomicReference<>();
-        String now = format(clock.instant());
-        try (ExecutorService pool = Executors.newFixedThreadPool(BROWSE_THREADS)) {
-            List<Future<?>> futures = new ArrayList<>();
-            for (SellerListing listing : toQuery) {
-                futures.add(pool.submit(() -> {
-                    if (stop.get() || cancelled.get()) {
-                        return;
-                    }
-                    try {
-                        result.put(listing.itemId(), new Authenticity(
-                                matchAuthenticity(listing, browseClient.getListingAuthenticity(listing.itemId(),
-                                        listing.hasVariations())), now));
-                    } catch (EbayQuotaExceededException e) {
-                        stop.set(true);
-                        error.compareAndSet(null, safeError(e));
-                    } catch (RuntimeException e) {
-                        error.compareAndSet(null, listing.itemId() + " " + safeError(e));
-                        log.warn("获取刊登：正品保证读取失败, itemId:{}", listing.itemId(), e);
-                    }
-                }));
-            }
-            for (int i = 0; i < futures.size(); i++) {
-                try {
-                    futures.get(i).get();
-                } catch (Exception e) {
-                    log.warn("获取刊登：正品保证线程异常", e);
-                }
-                if ((i + 1) % 200 == 0 || i + 1 == futures.size()) {
-                    progress.put("authenticity", (i + 1) + "/" + toQuery.size());
-                    taskMapper.updateTaskAttributes(taskId, progress.toJSONString());
-                }
-            }
-        }
-        int checked = result.size();
-        int reused = 0;
-        for (SellerListing listing : queue) {
-            if (!result.containsKey(listing.itemId()) && previous.containsKey(listing.itemId())) {
-                result.put(listing.itemId(), previous.get(listing.itemId()));
-                reused++;
-            }
-        }
-        stats.fluentPut("authChecked", checked).fluentPut("authReused", reused)
-                .fluentPut("authMissing", queue.size() - checked - reused);
-        if (error.get() != null) {
-            stats.put("authError", error.get());
-        }
-        return result;
-    }
-
-    /** 本次可用于正品保证查询的次数：eBay 实时剩余 buy.browse 额度减去余量。 */
-    private int browseBudget() {
-        try {
-            for (EbayRateLimitApiClient.ResourceRate rate : rateLimitClient.getRateLimits("browse")) {
-                if ("buy.browse".equals(rate.name())) {
-                    return (int) Math.max(0, rate.remaining() - BROWSE_RESERVE);
-                }
-            }
-        } catch (RuntimeException e) {
-            log.warn("获取刊登：读取Browse剩余额度失败，按默认额度查询", e);
-        }
-        // shortcut: 查不到实时额度时按固定次数查，额度不够会在 429 时停下
-        return BROWSE_FALLBACK_BUDGET;
-    }
-
-    /** Browse 返回的尺码按属性值对上 Trading 的尺码；Browse 只返回有货的尺码，卖完的尺码没有结果。 */
-    static Map<String, String> matchAuthenticity(SellerListing listing,
-                                                 List<EbayBrowseApiClient.BrowseVariation> variations) {
-        Map<String, String> bySize = new HashMap<>();
-        if (!listing.hasVariations()) {
-            if (!variations.isEmpty()) {
-                bySize.put("", variations.get(0).authenticityGuarantee() ? "是" : "否");
-            }
-            return bySize;
-        }
-        for (ListingVariation variation : listing.variations()) {
-            if (variation.size() == null) {
+    private Map<String, String> fetchAuthenticity(Long taskId, java.util.Collection<SellerListing> listings,
+                                                  AtomicBoolean cancelled, JSONObject progress, JSONObject stats) {
+        List<SellerListing> inStock = new ArrayList<>();
+        Map<String, String> result = new HashMap<>();
+        for (SellerListing listing : listings) {
+            if (!listing.active()) {
                 continue;
             }
-            for (EbayBrowseApiClient.BrowseVariation browse : variations) {
-                if (browse.aspectValues().stream().anyMatch(value -> sameSize(value, variation.size()))) {
-                    bySize.put(normalizeSize(variation.size()), browse.authenticityGuarantee() ? "是" : "否");
-                    break;
-                }
+            if (listing.variations().stream().anyMatch(variation -> variation.available() > 0)) {
+                inStock.add(listing);
+            } else {
+                result.put(listing.itemId(), "无库存");
             }
         }
-        return bySize;
-    }
-
-    /** 最近一次成功「获取刊登」里查过的正品保证，按物品编号索引。 */
-    private Map<String, Authenticity> latestAuthenticity() {
-        Map<String, Authenticity> result = new HashMap<>();
-        Long latest = latestFetchTaskId();
-        if (latest == null) {
-            return result;
-        }
+        String error = null;
+        int searched = 0;
+        int checked = 0;
         try {
-            for (ListingRow row : loadReport(latest).orElse(List.of())) {
-                if (row.authenticityTime() == null || row.sizeRows() == null) {
-                    continue;
+            String seller = null;
+            for (int i = 0; seller == null && i < inStock.size() && i < 3; i++) {
+                SellerListing first = inStock.get(i);
+                try {
+                    EbayBrowseApiClient.ListingAuthenticity info = browseClient.getListing(first.itemId(),
+                            first.hasVariations());
+                    result.put(first.itemId(), yesNo(info.authenticityGuarantee()));
+                    checked++;
+                    seller = info.seller();
+                } catch (EbayQuotaExceededException e) {
+                    throw e;
+                } catch (RuntimeException e) {
+                    log.warn("获取刊登：读取卖家账号失败, itemId:{}", first.itemId(), e);
                 }
-                Map<String, String> bySize = new HashMap<>();
-                for (SizeRow size : row.sizeRows()) {
-                    if (size.authenticity() != null) {
-                        bySize.put(size.size() == null ? "" : normalizeSize(size.size()), size.authenticity());
+            }
+            if (seller == null) {
+                throw new EbayApiException("读不到卖家账号");
+            }
+            Set<String> wanted = new java.util.HashSet<>();
+            inStock.forEach(listing -> wanted.add(listing.itemId()));
+            int total = Integer.MAX_VALUE;
+            for (int offset = 0; offset < Math.min(total, EbayBrowseApiClient.SEARCH_MAX_RESULTS) && !cancelled.get();
+                 offset += EbayBrowseApiClient.SEARCH_PAGE_SIZE) {
+                EbayBrowseApiClient.SearchPage page = browseClient.searchSeller(seller, offset);
+                total = page.total();
+                for (Map.Entry<String, Boolean> entry : page.byItemId().entrySet()) {
+                    if (wanted.contains(entry.getKey())
+                            && result.put(entry.getKey(), yesNo(entry.getValue())) == null) {
+                        searched++;
                     }
                 }
-                result.put(row.itemId(), new Authenticity(bySize, row.authenticityTime()));
+                if (page.byItemId().isEmpty()) {
+                    break;
+                }
+                progress.put("authenticitySearch", Math.min(offset + EbayBrowseApiClient.SEARCH_PAGE_SIZE, total)
+                        + "/" + total);
+                taskMapper.updateTaskAttributes(taskId, progress.toJSONString());
+            }
+            for (SellerListing listing : inStock) {
+                if (cancelled.get()) {
+                    break;
+                }
+                if (result.containsKey(listing.itemId())) {
+                    continue;
+                }
+                try {
+                    result.put(listing.itemId(), yesNo(browseClient.getListing(listing.itemId(),
+                            listing.hasVariations()).authenticityGuarantee()));
+                    checked++;
+                } catch (EbayQuotaExceededException e) {
+                    throw e;
+                } catch (RuntimeException e) {
+                    error = error == null ? listing.itemId() + " " + safeError(e) : error;
+                    log.warn("获取刊登：正品保证补查失败, itemId:{}", listing.itemId(), e);
+                }
             }
         } catch (RuntimeException e) {
-            log.warn("读取上次获取刊登的正品保证失败", e);
+            error = safeError(e);
+            log.warn("获取刊登：正品保证读取失败, taskId:{}", taskId, e);
+        }
+        stats.fluentPut("authSearched", searched).fluentPut("authChecked", checked)
+                .fluentPut("authMissing", inStock.stream().filter(l -> !result.containsKey(l.itemId())).count());
+        if (error != null) {
+            stats.put("authError", error);
         }
         return result;
+    }
+
+    private static String yesNo(boolean value) {
+        return value ? "是" : "否";
     }
 
     private static String shipFrom(String country) {
@@ -524,7 +470,7 @@ public class EbayListingManageService {
         };
     }
 
-    ListingRow toRow(SellerListing listing, Lookup lookup, Integer views, Authenticity authenticity) {
+    ListingRow toRow(SellerListing listing, Lookup lookup, Integer views, String authenticity) {
         List<EbayListingDO> mappings = lookup.byListing.getOrDefault(listing.itemId(), List.of());
         EbayListingDO any = null;
         for (ListingVariation variation : listing.variations()) {
@@ -550,10 +496,8 @@ public class EbayListingManageService {
         for (ListingVariation variation : listing.variations()) {
             EbayListingDO mapping = variation.sku() == null ? null : lookup.bySku.get(variation.sku());
             String euSize = mapping == null ? null : mapping.getEuSize();
-            String guaranteed = authenticity == null ? null : authenticity.bySize()
-                    .get(variation.size() == null ? "" : normalizeSize(variation.size()));
             sizeRows.add(new SizeRow(listing.itemId(), variation.size(), variation.price(), variation.sku(),
-                    variation.available(), variation.sold(), euSize, guaranteed));
+                    variation.available(), variation.sold(), euSize));
             quantity += variation.available();
             sold += variation.sold();
             if (variation.available() > 0) {
@@ -583,18 +527,7 @@ public class EbayListingManageService {
                 format(listing.endTime()), views, listing.watchCount(), format(listing.startTime()),
                 listing.sku(), source, listing.relistParentId(), listing.relistedItemId(), listing.categoryName(),
                 listing.viewItemUrl() == null ? "https://www.ebay.com/itm/" + listing.itemId() : listing.viewItemUrl(),
-                List.copyOf(sizeRows), shipFrom(listing.country()), summarize(authenticity),
-                authenticity == null ? null : authenticity.time());
-    }
-
-    /** 链接级正品保证：在售尺码全有为「是」，全没有为「否」，部分有为「部分(有/总)」；没查到为 null。 */
-    static String summarize(Authenticity authenticity) {
-        if (authenticity == null || authenticity.bySize().isEmpty()) {
-            return null;
-        }
-        long yes = authenticity.bySize().values().stream().filter("是"::equals).count();
-        int total = authenticity.bySize().size();
-        return yes == total ? "是" : yes == 0 ? "否" : "部分(" + yes + "/" + total + ")";
+                List.copyOf(sizeRows), shipFrom(listing.country()), authenticity);
     }
 
     private TaskItemDO toItem(Long taskId, ListingRow row) {
