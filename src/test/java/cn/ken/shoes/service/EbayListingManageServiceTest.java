@@ -156,7 +156,7 @@ class EbayListingManageServiceTest {
     }
 
     @Test
-    void fetchReadsAuthenticityFromSellerSearchAndChecksMissingOnesOneByOne() {
+    void fetchReadsAuthenticityFromSellerSearchAndMarksMissingOnesNotFound() {
         SellerListing first = listing("1", "Active", null,
                 new ListingVariation("S9", "9", new BigDecimal("200"), 1, 0),
                 new ListingVariation("S95", "9.5", new BigDecimal("90"), 1, 0));
@@ -168,8 +168,6 @@ class EbayListingManageServiceTest {
         when(analytics.getListingViews(anyList(), any(), any(), anyString())).thenReturn(java.util.Map.of());
         when(browse.getListing("1", true))
                 .thenReturn(new cn.ken.shoes.client.EbayBrowseApiClient.ListingAuthenticity("shop", true));
-        when(browse.getListing("3", true))
-                .thenReturn(new cn.ken.shoes.client.EbayBrowseApiClient.ListingAuthenticity("shop", false));
         when(browse.searchSeller("shop", 0)).thenReturn(new cn.ken.shoes.client.EbayBrowseApiClient.SearchPage(
                 2, java.util.Map.of("1", true, "2", false)));
 
@@ -177,10 +175,11 @@ class EbayListingManageServiceTest {
 
         verify(browse).searchSeller("shop", 0);
         verify(browse, never()).getListing(eq("2"), org.mockito.ArgumentMatchers.anyBoolean());
+        verify(browse, never()).getListing(eq("3"), org.mockito.ArgumentMatchers.anyBoolean());
         verify(browse, never()).getListing(eq("4"), org.mockito.ArgumentMatchers.anyBoolean());
         var report = service.loadReport(12L).orElseThrow();
         assertThat(report).extracting(EbayListingManageService.ListingRow::authenticity)
-                .containsExactly("是", "否", "否", "无库存");
+                .containsExactly("是", "否", "未搜到", "无库存");
         assertThat(report.get(0).shipFrom()).isEqualTo("香港");
         verify(taskMapper, never()).updateTaskFailReason(eq(12L), anyString());
     }

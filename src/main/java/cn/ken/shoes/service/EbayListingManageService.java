@@ -365,8 +365,8 @@ public class EbayListingManageService {
 
     /**
      * 在售刊登是否有正品保证（刊登级别：任一在售尺码有即为「是」）。按卖家搜索一页 200 条，几十次调用查完；
-     * 搜索里没有的（不在服装鞋包分类、超过搜索上限 10000 条、搜索索引滞后等）且还有库存的，再逐条补查。
-     * 没有库存的刊登 eBay 搜不到也读不到，记为「无库存」。
+     * 有库存但搜索里没有的（不在服装鞋包分类、超过搜索上限 10000 条、搜索索引滞后等）记为「未搜到」，不逐条补查；
+     * 没有库存的刊登 eBay 搜不到，记为「无库存」。搜索失败（如额度用完）时没查到的留空。
      */
     private Map<String, String> fetchAuthenticity(Long taskId, java.util.Collection<SellerListing> listings,
                                                   AtomicBoolean cancelled, JSONObject progress, JSONObject stats) {
@@ -384,7 +384,6 @@ public class EbayListingManageService {
         }
         String error = null;
         int searched = 0;
-        int checked = 0;
         try {
             String seller = null;
             for (int i = 0; seller == null && i < inStock.size() && i < 3; i++) {
@@ -393,7 +392,6 @@ public class EbayListingManageService {
                     EbayBrowseApiClient.ListingAuthenticity info = browseClient.getListing(first.itemId(),
                             first.hasVariations());
                     result.put(first.itemId(), yesNo(info.authenticityGuarantee()));
-                    checked++;
                     seller = info.seller();
                 } catch (EbayQuotaExceededException e) {
                     throw e;
@@ -425,28 +423,14 @@ public class EbayListingManageService {
                 taskMapper.updateTaskAttributes(taskId, progress.toJSONString());
             }
             for (SellerListing listing : inStock) {
-                if (cancelled.get()) {
-                    break;
-                }
-                if (result.containsKey(listing.itemId())) {
-                    continue;
-                }
-                try {
-                    result.put(listing.itemId(), yesNo(browseClient.getListing(listing.itemId(),
-                            listing.hasVariations()).authenticityGuarantee()));
-                    checked++;
-                } catch (EbayQuotaExceededException e) {
-                    throw e;
-                } catch (RuntimeException e) {
-                    error = error == null ? listing.itemId() + " " + safeError(e) : error;
-                    log.warn("获取刊登：正品保证补查失败, itemId:{}", listing.itemId(), e);
-                }
+                result.putIfAbsent(listing.itemId(), "未搜到");
             }
         } catch (RuntimeException e) {
             error = safeError(e);
             log.warn("获取刊登：正品保证读取失败, taskId:{}", taskId, e);
         }
-        stats.fluentPut("authSearched", searched).fluentPut("authChecked", checked)
+        stats.fluentPut("authSearched", searched)
+                .fluentPut("authNotFound", result.values().stream().filter("未搜到"::equals).count())
                 .fluentPut("authMissing", inStock.stream().filter(l -> !result.containsKey(l.itemId())).count());
         if (error != null) {
             stats.put("authError", error);
