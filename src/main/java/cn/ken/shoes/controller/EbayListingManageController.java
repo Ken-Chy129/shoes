@@ -107,7 +107,7 @@ public class EbayListingManageController {
         writeTemplate(response, "指定尺码改库存模板", "改库存", EbaySetQuantityExcel.class, List.of(
                 List.of("字段", "说明"),
                 List.of("物品编号", "必填；eBay物品编号，也可以直接粘贴商品链接"),
-                List.of("尺码", "多尺码刊登必填；填eBay页面上显示的尺码，例如 9.5"),
+                List.of("尺码", "选填；填eBay页面上显示的尺码，例如 9.5。尺码和SKU都不填时改该刊登的全部尺码"),
                 List.of("新库存", "必填；0到" + EbayListingManageService.MAX_QUANTITY
                         + "的整数，是改完后的可售数量。为空的行会忽略"),
                 List.of("SKU", "选填；填了优先按SKU匹配尺码"),

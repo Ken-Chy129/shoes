@@ -861,32 +861,46 @@ public class EbayListingManageService {
         int done = 0;
 
         List<Resolved> pending = new ArrayList<>();
-        for (PriceTarget target : targets) {
+        int total = targets.size();
+        for (PriceTarget row : targets) {
             if (cancelled.get()) {
                 break;
             }
+            List<PriceTarget> expanded;
             try {
-                Resolved resolved = resolve(target, report, fetched, readErrors);
-                // 只有刚读到的实时值才可信，报告里的旧值不用来跳过。
-                boolean unchanged = fetched.containsKey(target.itemId()) && (quantityMode
-                        ? target.quantity().equals(resolved.currentQuantity())
-                        : resolved.currentPrice() != null && resolved.currentPrice().compareTo(target.price()) == 0);
-                if (unchanged) {
-                    counters[1]++;
-                    recordPrice(taskId, resolved, quantityMode ? "库存未变(" + target.quantity() + ")"
-                            : "价格未变($" + target.price().toPlainString() + ")");
-                    done++;
-                } else {
-                    pending.add(resolved);
-                }
+                expanded = quantityMode ? expandWholeListing(row, fetched, readErrors) : List.of(row);
             } catch (Exception e) {
                 counters[2]++;
-                recordPrice(taskId, new Resolved(target, target.sku(), target.size(), null, null, false, null),
+                recordPrice(taskId, new Resolved(row, row.sku(), row.size(), null, null, false, null),
                         action + "失败(" + safeError(e) + ")");
                 done++;
+                continue;
+            }
+            total += expanded.size() - 1;
+            for (PriceTarget target : expanded) {
+                try {
+                    Resolved resolved = resolve(target, report, fetched, readErrors);
+                    // 只有刚读到的实时值才可信，报告里的旧值不用来跳过。
+                    boolean unchanged = fetched.containsKey(target.itemId()) && (quantityMode
+                            ? target.quantity().equals(resolved.currentQuantity())
+                            : resolved.currentPrice() != null && resolved.currentPrice().compareTo(target.price()) == 0);
+                    if (unchanged) {
+                        counters[1]++;
+                        recordPrice(taskId, resolved, quantityMode ? "库存未变(" + target.quantity() + ")"
+                                : "价格未变($" + target.price().toPlainString() + ")");
+                        done++;
+                    } else {
+                        pending.add(resolved);
+                    }
+                } catch (Exception e) {
+                    counters[2]++;
+                    recordPrice(taskId, new Resolved(target, target.sku(), target.size(), null, null, false, null),
+                            action + "失败(" + safeError(e) + ")");
+                    done++;
+                }
             }
         }
-        writeProgress(taskId, targets.size(), done, priceAttrs(counters[0], counters[1], counters[2]));
+        writeProgress(taskId, total, done, priceAttrs(counters[0], counters[1], counters[2]));
 
         List<Resolved> succeeded = new ArrayList<>();
         int limit = EbayTradingApiClient.REVISE_INVENTORY_LIMIT;
@@ -909,7 +923,7 @@ public class EbayListingManageService {
                 }
                 done++;
             }
-            writeProgress(taskId, targets.size(), done, priceAttrs(counters[0], counters[1], counters[2]));
+            writeProgress(taskId, total, done, priceAttrs(counters[0], counters[1], counters[2]));
         }
         syncSystemOffers(succeeded);
         finish(taskId, cancelled, counters[2], action + "完成：成功 " + (counters[0] + counters[1])
@@ -937,24 +951,49 @@ public class EbayListingManageService {
         if (notBlank(target.sku()) && known == null) {
             return new Resolved(target, target.sku(), target.size(), null, null, false, null);
         }
-        String readError = readErrors.get(target.itemId());
+        SellerListing live = liveListing(target.itemId(), fetched, readErrors);
+        return resolved(target, live, match(live, target));
+    }
+
+    /**
+     * 改库存时尺码和 SKU 都没填：按实时刊登展开成每个尺码一行（报告可能漏了新加的尺码，所以读实时的，
+     * 每条刊登 1 次调用；已是目标库存的尺码会跳过，不占改库存的调用）。
+     */
+    private List<PriceTarget> expandWholeListing(PriceTarget target, Map<String, SellerListing> fetched,
+                                                 Map<String, String> readErrors) {
+        if (notBlank(target.size()) || notBlank(target.sku())) {
+            return List.of(target);
+        }
+        SellerListing live = liveListing(target.itemId(), fetched, readErrors);
+        if (!live.hasVariations()) {
+            return List.of(target);
+        }
+        return live.variations().stream()
+                .map(v -> new PriceTarget(target.itemId(), v.size(), v.sku(), null, target.quantity()))
+                .toList();
+    }
+
+    /** 实时读一次刊登（同一刊登只读一次，读失败的也不重复读）。 */
+    private SellerListing liveListing(String itemId, Map<String, SellerListing> fetched,
+                                      Map<String, String> readErrors) {
+        String readError = readErrors.get(itemId);
         if (readError != null) {
             throw new IllegalStateException("读取刊登：" + readError);
         }
-        SellerListing live = fetched.get(target.itemId());
+        SellerListing live = fetched.get(itemId);
         if (live == null) {
             try {
-                live = tradingClient.getItem(target.itemId());
+                live = tradingClient.getItem(itemId);
             } catch (RuntimeException e) {
-                readErrors.put(target.itemId(), safeError(e));
+                readErrors.put(itemId, safeError(e));
                 throw new IllegalStateException("读取刊登：" + safeError(e), e);
             }
-            fetched.put(target.itemId(), live);
+            fetched.put(itemId, live);
         }
         if (!live.active()) {
             throw new IllegalStateException("刊登已结束");
         }
-        return resolved(target, live, match(live, target));
+        return live;
     }
 
     private static Resolved resolved(PriceTarget target, SellerListing listing, ListingVariation variation) {

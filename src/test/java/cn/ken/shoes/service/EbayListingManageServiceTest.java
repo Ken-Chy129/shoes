@@ -413,6 +413,29 @@ class EbayListingManageServiceTest {
     }
 
     @Test
+    void setQuantityWithoutSizeChangesEverySizeOfListing() {
+        when(trading.getItem("1")).thenReturn(listing("1", "Active", null,
+                new ListingVariation("S9", "9", new BigDecimal("140"), 5, 2),
+                new ListingVariation("S10", "10", new BigDecimal("150"), 0, 0),
+                new ListingVariation("S11", "11", new BigDecimal("160"), 1, 0)));
+
+        service.runSetQuantity(10L, List.of(new EbayListingManageService.PriceTarget("1", null, null, null, 0)),
+                new AtomicBoolean());
+
+        verify(trading, org.mockito.Mockito.times(1)).getItem("1");
+        ArgumentCaptor<List<EbayTradingApiClient.InventoryRevision>> revisions = ArgumentCaptor.forClass(List.class);
+        verify(trading).reviseInventoryStatus(revisions.capture());
+        assertThat(revisions.getValue()).extracting(EbayTradingApiClient.InventoryRevision::sku)
+                .containsExactly("S9", "S11");
+        assertThat(revisions.getValue()).allSatisfy(revision -> assertThat(revision.quantity()).isZero());
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, org.mockito.Mockito.times(3)).insert(items.capture());
+        assertThat(items.getAllValues()).extracting(TaskItemDO::getOperateResult)
+                .containsExactlyInAnyOrder("改库存成功 3→0", "库存未变(0)", "改库存成功 1→0");
+        verify(taskMapper).updateTaskStatus(10L, "success");
+    }
+
+    @Test
     void setPriceUsesSkuFromLatestFetchReportAndBatchesFourPerCall() throws Exception {
         java.util.List<EbayListingManageService.SizeRow> sizes = new java.util.ArrayList<>();
         for (int i = 4; i <= 9; i++) {
