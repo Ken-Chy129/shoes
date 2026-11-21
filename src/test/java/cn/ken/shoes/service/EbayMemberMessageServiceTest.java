@@ -20,15 +20,20 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -102,6 +107,34 @@ class EbayMemberMessageServiceTest {
         verify(client, never()).answerQuestion(anyString(), anyString(), anyString(), anyString());
         assertThat(lastResult().getStatus()).isEqualTo(EbayMemberMessageDO.STATUS_MANUAL);
         assertThat(lastResult().getError()).isEqualTo("该买家之前已自动回复过");
+    }
+
+    @Test
+    void concurrentQuestionsFromSameBuyerAreRepliedOnce() throws Exception {
+        AtomicBoolean replied = new AtomicBoolean();
+        when(mapper.hasRepliedSender(anyString(), anyString())).thenAnswer(inv -> replied.get());
+        doAnswer(inv -> {
+            if (EbayMemberMessageDO.STATUS_REPLIED.equals(inv.<EbayMemberMessageDO>getArgument(0).getStatus())) {
+                replied.set(true);
+            }
+            return 1;
+        }).when(mapper).updateResult(any());
+        doAnswer(inv -> {
+            Thread.sleep(100); // 放大检查与落库之间的窗口
+            return null;
+        }).when(client).answerQuestion(anyString(), anyString(), anyString(), anyString());
+
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            Future<Boolean> a = pool.submit(() -> service.handle(question("1", "ship today?"), "push"));
+            Future<Boolean> b = pool.submit(() -> service.handle(question("2", "ship tomorrow?"), "push"));
+            a.get();
+            b.get();
+        } finally {
+            pool.shutdownNow();
+        }
+
+        verify(client, times(1)).answerQuestion(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

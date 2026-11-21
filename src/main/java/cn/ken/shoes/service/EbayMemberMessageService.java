@@ -10,6 +10,7 @@ import cn.ken.shoes.mapper.EbayMemberMessageMapper;
 import cn.ken.shoes.model.entity.EbayMemberMessageDO;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import com.google.common.util.concurrent.Striped;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Lock;
 import java.util.regex.Pattern;
 
 /**
@@ -62,6 +64,8 @@ public class EbayMemberMessageService {
     private final Clock clock;
     private final Path settingsFile;
     private final AtomicBoolean reconciling = new AtomicBoolean();
+    /** 同一买家的“查是否回复过→回复→落库”串行，避免并发消息各回一次。shortcut: 进程内锁，后端多实例部署时需改成数据库锁。 */
+    private final Striped<Lock> senderLocks = Striped.lock(64);
     private volatile Instant lastReconcile;
 
     @Autowired
@@ -200,6 +204,16 @@ public class EbayMemberMessageService {
             mapper.updateResult(result);
             return true;
         }
+        Lock lock = senderLocks.get(question.senderId());
+        lock.lock();
+        try {
+            return replyOnce(question, rule, result);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private boolean replyOnce(MemberQuestion question, EbayProperties.ReplyRule rule, EbayMemberMessageDO result) {
         // 每个买家只自动回复一次，之后的提问转人工
         if (mapper.hasRepliedSender(question.senderId(), question.messageId())) {
             result.setStatus(EbayMemberMessageDO.STATUS_MANUAL);
