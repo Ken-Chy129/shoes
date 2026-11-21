@@ -766,7 +766,6 @@ public class EbayTradingApiClient {
                     <ApplicationEnable>Enable</ApplicationEnable>
                     <ApplicationURL>%s</ApplicationURL>
                     <DeviceType>Platform</DeviceType>
-                    <PayloadVersion>%s</PayloadVersion>
                   </ApplicationDeliveryPreferences>
                   <UserDeliveryPreferenceArray>
                     <NotificationEnable>
@@ -775,7 +774,8 @@ public class EbayTradingApiClient {
                     </NotificationEnable>
                   </UserDeliveryPreferenceArray>
                 </SetNotificationPreferencesRequest>
-                """.formatted(escapeXml(url.toString()), COMPATIBILITY_LEVEL);
+                """.formatted(escapeXml(url.toString()));
+        // 不传 PayloadVersion：eBay 拒绝 1423（12208），省略时按本次调用的 API 版本推送
         call("SetNotificationPreferences", payload);
     }
 

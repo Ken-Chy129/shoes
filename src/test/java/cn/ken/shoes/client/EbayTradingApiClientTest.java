@@ -261,7 +261,8 @@ class EbayTradingApiClientTest {
         String body = server.takeRequest().getBody().readUtf8();
         assertThat(body).contains("<ApplicationURL>https://shoes.example/api/ebay/notifications/trading</ApplicationURL>")
                 .contains("<EventType>AskSellerQuestion</EventType>")
-                .contains("<EventEnable>Enable</EventEnable>");
+                .contains("<EventEnable>Enable</EventEnable>")
+                .doesNotContain("PayloadVersion");
     }
 
     private static MockResponse xml(String body) {
