@@ -253,7 +253,7 @@ public class EbayMemberMessageService {
                 || EbayTradingApiClient.ASK_SELLER_QUESTION.equals(question.messageType());
     }
 
-    /** 按配置顺序匹配，关键词不区分大小写、按整词（短语）匹配；提问同时命中多个规则时取第一条。 */
+    /** 按配置顺序匹配，关键词不区分大小写、按整词（短语）匹配；提问同时命中多个规则时取第一条。关键词为空的规则匹配所有提问（兜底）。 */
     EbayProperties.ReplyRule match(MemberQuestion question) {
         String text = ((question.subject() == null ? "" : question.subject()) + " "
                 + (question.body() == null ? "" : question.body())).toLowerCase(Locale.ROOT);
@@ -264,6 +264,9 @@ public class EbayMemberMessageService {
             if (rule == null || rule.getReply() == null || rule.getReply().isBlank()
                     || rule.getReply().length() > EbayTradingApiClient.MAX_REPLY_LENGTH) {
                 continue;
+            }
+            if (rule.getKeywords().stream().allMatch(EbayMemberMessageService::isBlank)) {
+                return rule;
             }
             for (String keyword : rule.getKeywords()) {
                 if (keyword != null && !keyword.isBlank() && containsWord(text, keyword.toLowerCase(Locale.ROOT).trim())) {
@@ -425,7 +428,6 @@ public class EbayMemberMessageService {
             EbayProperties.ReplyRule rule = s.getRules().get(i);
             String label = "第" + (i + 1) + "条规则";
             require(!rule.getName().isEmpty(), label + "缺少名称");
-            require(!rule.getKeywords().isEmpty(), label + "缺少关键词");
             require(!rule.getReply().isEmpty(), label + "缺少回复内容");
             require(rule.getReply().length() <= EbayTradingApiClient.MAX_REPLY_LENGTH,
                     label + "回复超过 " + EbayTradingApiClient.MAX_REPLY_LENGTH + " 字符");

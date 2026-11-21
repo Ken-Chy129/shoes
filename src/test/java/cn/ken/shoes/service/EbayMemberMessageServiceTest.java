@@ -81,6 +81,19 @@ class EbayMemberMessageServiceTest {
     }
 
     @Test
+    void ruleWithoutKeywordsRepliesToEverythingAfterEarlierRules() {
+        EbayProperties.ReplyRule shipping = properties.getMessages().getRules().get(0);
+        EbayProperties.ReplyRule all = new EbayProperties.ReplyRule();
+        all.setName("all");
+        all.setReply("Thanks, we will reply soon.");
+        properties.getMessages().setRules(List.of(shipping, all));
+
+        assertThat(service.match(question("1", "Do you have size 12?")).getName()).isEqualTo("all");
+        assertThat(service.match(question("2", "ship today?")).getName()).isEqualTo("shipping");
+        EbayMemberMessageService.validate(properties.getMessages());
+    }
+
+    @Test
     void unmatchedQuestionGoesToManualWithoutCallingEbay() {
         service.handle(question("1", "Do you have size 12?"), "push");
 

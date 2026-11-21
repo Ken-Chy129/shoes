@@ -170,7 +170,7 @@ const EbayMessagesPage = () => {
                             <Input.Password autoComplete="new-password" placeholder={devIdConfigured ? '••••••••' : 'eBay Production Dev ID'} />
                         </Form.Item>
                     </Space>
-                    <Text strong>回复规则（按顺序匹配，第一条命中的生效；关键词不区分大小写、按整词匹配）</Text>
+                    <Text strong>回复规则（按顺序匹配，第一条命中的生效；关键词不区分大小写、按整词匹配；关键词留空=所有消息都回复，放最后当兜底）</Text>
                     <Form.List name="rules">
                         {(fields, {add, remove, move}) => (
                             <Space direction="vertical" style={{width: '100%', marginTop: 8}}>
@@ -185,8 +185,7 @@ const EbayMessagesPage = () => {
                                             <Form.Item name={[name, 'name']} label="名称" rules={[{required: true, message: '请填写名称'}]}>
                                                 <Input style={{width: 160}} />
                                             </Form.Item>
-                                            <Form.Item name={[name, 'keywords']} label="关键词（回车添加）"
-                                                       rules={[{required: true, message: '至少一个关键词'}]}>
+                                            <Form.Item name={[name, 'keywords']} label="关键词（回车添加，留空=全部回复）">
                                                 <Select mode="tags" open={false} tokenSeparators={[',', '，']} style={{width: 360}} />
                                             </Form.Item>
                                         </Space>
