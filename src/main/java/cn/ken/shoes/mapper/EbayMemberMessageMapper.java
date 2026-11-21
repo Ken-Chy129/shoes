@@ -46,4 +46,8 @@ public interface EbayMemberMessageMapper extends BaseMapper<EbayMemberMessageDO>
             </script>
             """)
     List<EbayMemberMessageDO> selectRecent(@Param("status") String status, @Param("limit") int limit);
+
+    /** gmt_create 只精确到秒，用 >= 避免同一秒内后写入的消息漏掉，调用方按 messageId 去重。 */
+    @Select("SELECT * FROM ebay_member_message WHERE gmt_create >= #{after} ORDER BY gmt_create LIMIT #{limit}")
+    List<EbayMemberMessageDO> selectCreatedAfter(@Param("after") java.util.Date after, @Param("limit") int limit);
 }

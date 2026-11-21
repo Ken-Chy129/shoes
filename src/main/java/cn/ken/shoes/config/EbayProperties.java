@@ -58,7 +58,8 @@ public class EbayProperties {
     /** 美区上架：发货地点与物流政策必须单独配置；付款/退货政策未配置时沿用默认值。 */
     private RegionSettings us = new RegionSettings();
     /** 买家提问（Ask Seller a Question）推送与自动回复。 */
-    private MessageSettings messages = new MessageSettings();
+    /** volatile：网页保存配置时整体替换，其他线程立即读到新值。 */
+    private volatile MessageSettings messages = new MessageSettings();
 
     @Data
     public static class MessageSettings {
@@ -74,6 +75,8 @@ public class EbayProperties {
         private int dailyCallLimit = 200;
         /** 兜底对账回溯天数。 */
         private int reconcileDays = 3;
+        /** 兜底对账间隔（分钟），网页可改。 */
+        private int reconcileIntervalMinutes = 240;
         /** 按顺序匹配，第一条命中的规则生效；关键词不区分大小写，按整词匹配。 */
         private java.util.List<ReplyRule> rules = new java.util.ArrayList<>();
     }

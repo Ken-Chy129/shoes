@@ -8,15 +8,24 @@ import cn.ken.shoes.client.EbayTradingQuotaGuard;
 import cn.ken.shoes.config.EbayProperties;
 import cn.ken.shoes.mapper.EbayMemberMessageMapper;
 import cn.ken.shoes.model.entity.EbayMemberMessageDO;
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +51,8 @@ public class EbayMemberMessageService {
 
     private static final int MAX_RECONCILE_PAGES = 5;
     private static final int MAX_LIST = 500;
+    private static final int MAX_RULES = 50;
+    static final Path DEFAULT_SETTINGS_FILE = Paths.get("files/config", "ebay-messages.json");
 
     private final EbayTradingApiClient tradingClient;
     private final EbayTradingQuotaGuard quotaGuard;
@@ -49,7 +60,9 @@ public class EbayMemberMessageService {
     private final EbayProperties properties;
     private final ExecutorService executor;
     private final Clock clock;
+    private final Path settingsFile;
     private final AtomicBoolean reconciling = new AtomicBoolean();
+    private volatile Instant lastReconcile;
 
     @Autowired
     public EbayMemberMessageService(EbayTradingApiClient tradingClient, EbayTradingQuotaGuard quotaGuard,
@@ -59,18 +72,19 @@ public class EbayMemberMessageService {
                     Thread thread = new Thread(runnable, "ebay-member-message");
                     thread.setDaemon(true);
                     return thread;
-                }), Clock.systemUTC());
+                }), Clock.systemUTC(), DEFAULT_SETTINGS_FILE);
     }
 
     EbayMemberMessageService(EbayTradingApiClient tradingClient, EbayTradingQuotaGuard quotaGuard,
                              EbayMemberMessageMapper mapper, EbayProperties properties,
-                             ExecutorService executor, Clock clock) {
+                             ExecutorService executor, Clock clock, Path settingsFile) {
         this.tradingClient = tradingClient;
         this.quotaGuard = quotaGuard;
         this.mapper = mapper;
         this.properties = properties;
         this.executor = executor;
         this.clock = clock;
+        this.settingsFile = settingsFile;
     }
 
     @PreDestroy
@@ -108,6 +122,7 @@ public class EbayMemberMessageService {
         if (!isEnabled() || !reconciling.compareAndSet(false, true)) {
             return -1;
         }
+        lastReconcile = clock.instant();
         try {
             int days = Math.max(1, Math.min(settings().getReconcileDays(), 30));
             Instant to = clock.instant();
@@ -137,6 +152,15 @@ public class EbayMemberMessageService {
             return 0;
         } finally {
             reconciling.set(false);
+        }
+    }
+
+    /** 定时任务每分钟调一次：距上次对账超过网页配置的间隔才真正对账。 */
+    public void reconcileIfDue() {
+        Instant last = lastReconcile;
+        long interval = Math.max(30, settings().getReconcileIntervalMinutes());
+        if (last == null || !clock.instant().isBefore(last.plus(Duration.ofMinutes(interval)))) {
+            reconcile();
         }
     }
 
@@ -290,6 +314,8 @@ public class EbayMemberMessageService {
         result.put("deliveryUrl", settings.getDeliveryUrl());
         result.put("dailyCallLimit", settings.getDailyCallLimit());
         result.put("usedCallsToday", usedCallsToday());
+        result.put("reconcileIntervalMinutes", settings.getReconcileIntervalMinutes());
+        result.put("lastReconcile", lastReconcile == null ? null : Date.from(lastReconcile));
         result.put("rules", settings.getRules().stream().map(EbayProperties.ReplyRule::getName).toList());
         return result;
     }
@@ -303,6 +329,117 @@ public class EbayMemberMessageService {
 
     public List<EbayMemberMessageDO> recent(String status, int limit) {
         return mapper.selectRecent(status, Math.max(1, Math.min(limit, MAX_LIST)));
+    }
+
+    /** 网页提醒轮询用：只查本地库，不消耗 eBay 额度。 */
+    public List<EbayMemberMessageDO> latest(long afterMillis) {
+        return mapper.selectCreatedAfter(new Date(afterMillis), 50);
+    }
+
+    // ==================== 网页配置 ====================
+
+    /** 启动时用网页保存过的配置覆盖 application.yml 的默认值。 */
+    @PostConstruct
+    void loadSettings() {
+        if (!Files.exists(settingsFile)) {
+            return;
+        }
+        try {
+            EbayProperties.MessageSettings saved =
+                    JSON.parseObject(Files.readString(settingsFile), EbayProperties.MessageSettings.class);
+            if (saved != null) {
+                properties.setMessages(merge(saved, settings()));
+            }
+        } catch (Exception e) {
+            log.error("读取eBay消息配置失败，沿用application.yml, file:{}", settingsFile, e);
+        }
+    }
+
+    /** 给网页回显：不返回 devId，只告诉是否已配置。 */
+    public JSONObject settingsView() {
+        EbayProperties.MessageSettings s = settings();
+        JSONObject result = new JSONObject(true);
+        result.put("enabled", s.isEnabled());
+        result.put("autoReply", s.isAutoReply());
+        result.put("devIdConfigured", s.getDevId() != null && !s.getDevId().isBlank());
+        result.put("deliveryUrl", s.getDeliveryUrl());
+        result.put("dailyCallLimit", s.getDailyCallLimit());
+        result.put("reconcileDays", s.getReconcileDays());
+        result.put("reconcileIntervalMinutes", s.getReconcileIntervalMinutes());
+        result.put("rules", s.getRules());
+        return result;
+    }
+
+    /** 校验并保存网页配置；devId/deliveryUrl 留空表示不修改。 */
+    public synchronized void saveSettings(EbayProperties.MessageSettings incoming) throws IOException {
+        EbayProperties.MessageSettings next = merge(incoming, settings());
+        validate(next);
+        Files.createDirectories(settingsFile.toAbsolutePath().getParent());
+        Path tmp = settingsFile.resolveSibling(settingsFile.getFileName() + ".tmp");
+        Files.writeString(tmp, JSON.toJSONString(next));
+        try {
+            Files.setPosixFilePermissions(tmp, PosixFilePermissions.fromString("rw-------"));
+        } catch (UnsupportedOperationException ignored) {
+            // 非 POSIX 文件系统（本地 Windows 开发）
+        }
+        Files.move(tmp, settingsFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        properties.setMessages(next);
+        log.info("eBay消息配置已更新, enabled:{}, autoReply:{}, rules:{}",
+                next.isEnabled(), next.isAutoReply(), next.getRules().size());
+    }
+
+    /** 生成新对象（不改动入参和当前配置），关键词去空白、去空项。 */
+    static EbayProperties.MessageSettings merge(EbayProperties.MessageSettings in, EbayProperties.MessageSettings current) {
+        EbayProperties.MessageSettings next = new EbayProperties.MessageSettings();
+        next.setEnabled(in.isEnabled());
+        next.setAutoReply(in.isAutoReply());
+        next.setDevId(isBlank(in.getDevId()) ? current.getDevId() : in.getDevId().trim());
+        next.setDeliveryUrl(isBlank(in.getDeliveryUrl()) ? current.getDeliveryUrl() : in.getDeliveryUrl().trim());
+        next.setDailyCallLimit(in.getDailyCallLimit());
+        next.setReconcileDays(in.getReconcileDays());
+        next.setReconcileIntervalMinutes(in.getReconcileIntervalMinutes());
+        List<EbayProperties.ReplyRule> rules = new ArrayList<>();
+        for (EbayProperties.ReplyRule rule : in.getRules() == null ? List.<EbayProperties.ReplyRule>of() : in.getRules()) {
+            if (rule == null) {
+                continue;
+            }
+            EbayProperties.ReplyRule copy = new EbayProperties.ReplyRule();
+            copy.setName(rule.getName() == null ? "" : rule.getName().trim());
+            copy.setReply(rule.getReply() == null ? "" : rule.getReply().trim());
+            copy.setKeywords(rule.getKeywords() == null ? List.of() : rule.getKeywords().stream()
+                    .filter(k -> !isBlank(k)).map(String::trim).toList());
+            rules.add(copy);
+        }
+        next.setRules(List.copyOf(rules));
+        return next;
+    }
+
+    static void validate(EbayProperties.MessageSettings s) {
+        require(s.getDailyCallLimit() >= 0 && s.getDailyCallLimit() <= 5000, "每日调用上限需在 0~5000 之间");
+        require(s.getReconcileIntervalMinutes() >= 30 && s.getReconcileIntervalMinutes() <= 10080,
+                "对账间隔需在 30~10080 分钟之间");
+        require(s.getReconcileDays() >= 1 && s.getReconcileDays() <= 30, "回溯天数需在 1~30 之间");
+        require(isBlank(s.getDeliveryUrl()) || s.getDeliveryUrl().startsWith("https://"), "推送地址必须是 https://");
+        require(s.getRules().size() <= MAX_RULES, "规则最多 " + MAX_RULES + " 条");
+        for (int i = 0; i < s.getRules().size(); i++) {
+            EbayProperties.ReplyRule rule = s.getRules().get(i);
+            String label = "第" + (i + 1) + "条规则";
+            require(!rule.getName().isEmpty(), label + "缺少名称");
+            require(!rule.getKeywords().isEmpty(), label + "缺少关键词");
+            require(!rule.getReply().isEmpty(), label + "缺少回复内容");
+            require(rule.getReply().length() <= EbayTradingApiClient.MAX_REPLY_LENGTH,
+                    label + "回复超过 " + EbayTradingApiClient.MAX_REPLY_LENGTH + " 字符");
+        }
+    }
+
+    private static void require(boolean ok, String message) {
+        if (!ok) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private EbayProperties.MessageSettings settings() {

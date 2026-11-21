@@ -10,8 +10,11 @@ import cn.ken.shoes.model.entity.EbayMemberMessageDO;
 import com.google.common.util.concurrent.MoreExecutors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -19,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ExecutorService;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -35,6 +39,9 @@ class EbayMemberMessageServiceTest {
     private EbayMemberMessageMapper mapper;
     private EbayProperties properties;
     private EbayMemberMessageService service;
+    @TempDir
+    Path tempDir;
+    private Path settingsFile;
 
     @BeforeEach
     void setUp() {
@@ -50,8 +57,9 @@ class EbayMemberMessageServiceTest {
         shipping.setReply("Ships in 2 days.");
         properties.getMessages().setRules(List.of(shipping));
         ExecutorService direct = MoreExecutors.newDirectExecutorService();
+        settingsFile = tempDir.resolve("ebay-messages.json");
         service = new EbayMemberMessageService(client, guard, mapper, properties, direct,
-                Clock.fixed(Instant.parse("2026-11-18T01:00:00Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-11-18T01:00:00Z"), ZoneOffset.UTC), settingsFile);
         when(mapper.insertIfAbsent(any())).thenReturn(1);
     }
 
@@ -175,6 +183,66 @@ class EbayMemberMessageServiceTest {
 
         assertThat(service.reconcile()).isEqualTo(-1);
         verify(client, never()).getUnansweredMessages(any(), any(), anyInt());
+    }
+
+    @Test
+    void reconcileIfDueWaitsForConfiguredInterval() {
+        when(client.getUnansweredMessages(any(), any(), anyInt()))
+                .thenReturn(new EbayTradingApiClient.MemberQuestionPage(List.of(), 1));
+
+        service.reconcileIfDue();
+        service.reconcileIfDue();
+
+        verify(client, org.mockito.Mockito.times(1)).getUnansweredMessages(any(), any(), anyInt());
+    }
+
+    @Test
+    void savedSettingsKeepSecretsWhenBlankAndSurviveRestart() throws Exception {
+        properties.getMessages().setDevId("secret-dev-id");
+        properties.getMessages().setDeliveryUrl("https://example.com/api/ebay/notifications/trading");
+        EbayProperties.MessageSettings form = new EbayProperties.MessageSettings();
+        form.setEnabled(true);
+        form.setReconcileIntervalMinutes(60);
+        EbayProperties.ReplyRule rule = new EbayProperties.ReplyRule();
+        rule.setName(" stock ");
+        rule.setKeywords(List.of(" in stock ", " "));
+        rule.setReply("Yes, in stock.");
+        form.setRules(List.of(rule));
+
+        service.saveSettings(form);
+
+        EbayProperties.MessageSettings now = properties.getMessages();
+        assertThat(now.getDevId()).isEqualTo("secret-dev-id");
+        assertThat(now.getDeliveryUrl()).startsWith("https://example.com");
+        assertThat(now.getRules().get(0).getKeywords()).containsExactly("in stock");
+        assertThat(now.getRules().get(0).getName()).isEqualTo("stock");
+        assertThat(service.settingsView().toJSONString()).doesNotContain("secret-dev-id")
+                .contains("\"devIdConfigured\":true");
+
+        // 模拟重启：yml 默认值 + 文件覆盖
+        properties.setMessages(new EbayProperties.MessageSettings());
+        service.loadSettings();
+        assertThat(properties.getMessages().getReconcileIntervalMinutes()).isEqualTo(60);
+        assertThat(properties.getMessages().getDevId()).isEqualTo("secret-dev-id");
+        assertThat(properties.getMessages().getRules()).hasSize(1);
+    }
+
+    @Test
+    void invalidSettingsAreRejectedAndNotWritten() {
+        EbayProperties.MessageSettings form = new EbayProperties.MessageSettings();
+        form.setReconcileIntervalMinutes(5);
+        assertThatThrownBy(() -> service.saveSettings(form)).hasMessageContaining("对账间隔");
+
+        EbayProperties.MessageSettings badRule = new EbayProperties.MessageSettings();
+        EbayProperties.ReplyRule rule = new EbayProperties.ReplyRule();
+        rule.setName("long");
+        rule.setKeywords(List.of("x"));
+        rule.setReply("a".repeat(EbayTradingApiClient.MAX_REPLY_LENGTH + 1));
+        badRule.setRules(List.of(rule));
+        assertThatThrownBy(() -> service.saveSettings(badRule)).hasMessageContaining("第1条规则");
+
+        assertThat(Files.exists(settingsFile)).isFalse();
+        assertThat(properties.getMessages().isAutoReply()).isTrue();
     }
 
     private EbayMemberMessageDO lastResult() {

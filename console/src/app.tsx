@@ -9,6 +9,7 @@ import { errorConfig } from './requestErrorConfig';
 import React from 'react';
 import {doGetRequest} from "@/util/http";
 import {USER_API} from "@/services/user";
+import EbayMessageNotifier from '@/components/EbayMessageNotifier';
 
 const isDev = process.env.NODE_ENV === 'development';
 const loginPath = '/user/login';
@@ -170,6 +171,10 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
           path: "/catalog"
         },
         {
+          name: "eBay消息",
+          path: "/ebay/messages"
+        },
+        {
           name: "任务",
           path: "/task"
         },
@@ -189,6 +194,7 @@ export const layout: RunTimeLayoutConfig = ({ initialState, setInitialState }) =
       return (
         <>
           {children}
+          <EbayMessageNotifier />
           {isDev && (
             <SettingDrawer
               disableUrlParams

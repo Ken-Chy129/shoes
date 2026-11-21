@@ -91,6 +91,11 @@ export default [
     component: './catalog'
   },
   {
+    path: '/ebay/messages',
+    layout: true,
+    component: './ebay/messages'
+  },
+  {
     path: '/task',
     layout: true,
     component: './task/history'
