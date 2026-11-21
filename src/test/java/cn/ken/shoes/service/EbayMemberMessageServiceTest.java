@@ -94,6 +94,17 @@ class EbayMemberMessageServiceTest {
     }
 
     @Test
+    void buyerAlreadyAutoRepliedGoesToManual() {
+        when(mapper.hasRepliedSender("buyer1", "2")).thenReturn(true);
+
+        service.handle(question("2", "ship today?"), "push");
+
+        verify(client, never()).answerQuestion(anyString(), anyString(), anyString(), anyString());
+        assertThat(lastResult().getStatus()).isEqualTo(EbayMemberMessageDO.STATUS_MANUAL);
+        assertThat(lastResult().getError()).isEqualTo("该买家之前已自动回复过");
+    }
+
+    @Test
     void unmatchedQuestionGoesToManualWithoutCallingEbay() {
         service.handle(question("1", "Do you have size 12?"), "push");
 

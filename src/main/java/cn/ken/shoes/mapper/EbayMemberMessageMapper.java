@@ -29,6 +29,11 @@ public interface EbayMemberMessageMapper extends BaseMapper<EbayMemberMessageDO>
             + "OR (status = 'processing' AND gmt_modified < NOW() - INTERVAL 30 MINUTE))")
     int claimFailed(@Param("messageId") String messageId);
 
+    /** 该买家的其他消息是否已被自动回复过。shortcut: sender_id 无索引，消息量到十万级再加索引。 */
+    @Select("SELECT COUNT(*) > 0 FROM ebay_member_message "
+            + "WHERE sender_id = #{senderId} AND status = 'replied' AND message_id <> #{messageId}")
+    boolean hasRepliedSender(@Param("senderId") String senderId, @Param("messageId") String messageId);
+
     @Update("""
             UPDATE ebay_member_message
             SET status = #{status}, matched_rule = #{matchedRule}, reply = #{reply}, error = #{error},

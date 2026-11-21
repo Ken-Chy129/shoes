@@ -200,6 +200,13 @@ public class EbayMemberMessageService {
             mapper.updateResult(result);
             return true;
         }
+        // 每个买家只自动回复一次，之后的提问转人工
+        if (mapper.hasRepliedSender(question.senderId(), question.messageId())) {
+            result.setStatus(EbayMemberMessageDO.STATUS_MANUAL);
+            result.setError("该买家之前已自动回复过");
+            mapper.updateResult(result);
+            return true;
+        }
         if (!hasBudget(1)) {
             result.setStatus(EbayMemberMessageDO.STATUS_MANUAL);
             result.setError("消息调用已达今日上限");
