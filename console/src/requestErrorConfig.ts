@@ -1,6 +1,7 @@
 ﻿import type { RequestOptions } from '@@/plugin-request/request';
 import type { RequestConfig } from '@umijs/max';
-import { message, notification } from 'antd';
+import { history } from '@umijs/max';
+import { notification } from 'antd';
 
 
 // 与后端约定的响应数据格式
@@ -82,11 +83,24 @@ export const errorConfig: RequestConfig = {
   //   },
   // },
 
+  // 401 → 清登录态并回登录页；错误继续抛给调用方
+  errorConfig: {
+    errorHandler: (error: any) => {
+      if (error?.response?.status === 401) {
+        sessionStorage.removeItem('token');
+        if (history.location.pathname !== '/user/login') {
+          history.push('/user/login');
+        }
+      }
+      throw error;
+    },
+  },
+
   // 请求拦截器
   requestInterceptors: [
     (config: RequestOptions) => {
-      // 从 localStorage 获取 token
-      const token = localStorage.getItem('token');
+      // 登录页把 token 存在 sessionStorage
+      const token = sessionStorage.getItem('token');
 
       if (token && config.headers) {
         // 添加token到请求头

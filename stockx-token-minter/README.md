@@ -56,7 +56,7 @@ node index.js
 | 字段 | 说明 |
 |---|---|
 | `backendBaseUrl` | 后端地址。跑在服务器上用 `http://127.0.0.1:8080` |
-| `apiToken` | 预留：若后端给 setting 接口加了 `api-token` 鉴权则填（当前接口无鉴权，可留空） |
+| `apiToken` | 必填：与后端 application.yml 的 `api.token` 一致（后端全局鉴权，未带会返回 401） |
 | `refreshIntervalMs` | 刷新间隔，默认 39600000（11h，留 1h 安全边际） |
 | `headless` | 日常 true；首次 login.js 会强制有头 |
 | `useRealChrome` | true 用本机真实 Chrome（channel:chrome），比 Chromium 更不易被判机器人 |

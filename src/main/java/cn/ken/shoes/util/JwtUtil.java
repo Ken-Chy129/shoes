@@ -6,14 +6,30 @@ import io.jsonwebtoken.SignatureAlgorithm;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.security.SecureRandom;
+import java.util.Base64;
 import java.util.Date;
 
 @Component
 public class JwtUtil {
-    
-    private static String secret = "01234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789";  // 从配置文件读取
+
+    /** Base64 编码的 HS512 密钥；未配置时每次启动随机生成（重启后需重新登录）。 */
+    private static volatile String secret = randomSecret();
     private static Long expiration = 86400000L;  // 24小时
-    
+
+    @Value("${auth.jwt-secret:}")
+    void setSecret(String configured) {
+        if (configured != null && !configured.isBlank()) {
+            secret = configured.trim();
+        }
+    }
+
+    private static String randomSecret() {
+        byte[] key = new byte[64];
+        new SecureRandom().nextBytes(key);
+        return Base64.getEncoder().encodeToString(key);
+    }
+
     public static String generateToken(Long userId) {
         Date now = new Date();
         Date expiryDate = new Date(now.getTime() + expiration);
@@ -27,19 +43,10 @@ public class JwtUtil {
     }
     
     public static Long getUserIdFromToken(String token) {
-        try {
-            System.out.println("Parsing token: " + token);
-            Claims claims = Jwts.parser()
-                    .setSigningKey(secret)
-                    .parseClaimsJws(token)
-                    .getBody();
-            String subject = claims.getSubject();
-            System.out.println("Extracted subject: " + subject);
-            return Long.parseLong(subject);
-        } catch (Exception e) {
-            System.out.println("Error parsing token: " + e.getMessage());
-            e.printStackTrace();
-            throw e;
-        }
+        Claims claims = Jwts.parser()
+                .setSigningKey(secret)
+                .parseClaimsJws(token)
+                .getBody();
+        return Long.parseLong(claims.getSubject());
     }
 } 

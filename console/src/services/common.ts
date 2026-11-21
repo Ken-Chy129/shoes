@@ -1,7 +1,7 @@
 import { request } from '@umijs/max';
 
 export async function outLogin(options?: { [key: string]: any }) {
-    return request<Record<string, any>>('/api/login/outLogin', {
+    return request<Record<string, any>>('/api/user/logout', {
         method: 'POST',
         ...(options || {}),
     });
