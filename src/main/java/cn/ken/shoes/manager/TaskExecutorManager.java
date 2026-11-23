@@ -698,8 +698,19 @@ public class TaskExecutorManager {
             }
             return null;
         }
-        return ebayProfitPriceService.start(params.getLongValue("intervalHours"),
-                EbayProfitPriceService.Rules.fromParams(params, rows == null ? List.of() : rows));
+        EbayProfitPriceService.Rules rules;
+        try {
+            rules = EbayProfitPriceService.Rules.fromParams(params, rows == null ? List.of() : rows);
+        } catch (RuntimeException e) {
+            // 含参数缺失导致的空指针：同样要写原因，否则列表里只显示「已搁置」。
+            try {
+                taskMapper.updateTaskFailReason(source.getId(), "盈利改价参数校验失败，已停止恢复，请重新创建任务：" + e.getMessage());
+            } catch (Exception ex) {
+                log.warn("eBay盈利改价恢复失败原因写入失败, taskId:{}", source.getId(), ex);
+            }
+            throw e;
+        }
+        return ebayProfitPriceService.start(params.getLongValue("intervalHours"), rules);
     }
 
     public void cancelEbayProfitPrice(Long taskId) {

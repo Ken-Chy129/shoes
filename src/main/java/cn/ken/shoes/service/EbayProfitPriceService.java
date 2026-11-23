@@ -171,8 +171,8 @@ public class EbayProfitPriceService {
     }
 
     /**
-     * 旧参数（单一运费、单一默认盈利、按货号盈利）换算成 {@link Rules}：10 个尺码段运费都用该运费，两档盈利都用默认盈利，
-     * 不开广告调整和引流，结果与改造前一致。用于恢复改造前创建的任务。
+     * 旧参数（单一运费、单一默认盈利、按货号盈利）换算成 {@link Rules}：5 个尺码段运费都用该运费，两档盈利都用默认盈利，
+     * 不开广告调整和引流。用于恢复改造前创建的任务；与新任务一样会读特殊运费表，表里有数据时还会查 AG。
      *
      * @param overrides 按货号指定的目标盈利，优先于默认值；可为空
      * @return 任务ID；本任务或「eBay定时改价」正在运行时返回 null
@@ -574,6 +574,10 @@ public class EbayProfitPriceService {
                 if (search.byItemId().isEmpty()) {
                     break;
                 }
+            }
+            if (total > EbayBrowseApiClient.SEARCH_MAX_RESULTS) {
+                counters.agError = "正品保证(AG)查询共" + total + "条，超过搜索上限"
+                        + EbayBrowseApiClient.SEARCH_MAX_RESULTS + "条，超出部分按非AG运费计算";
             }
         } catch (TaskCancelledException e) {
             throw e;
@@ -1492,7 +1496,12 @@ public class EbayProfitPriceService {
         }
 
         BigDecimal bucketFreight(String euSize, boolean ag) {
-            return (ag ? agFreights : nonAgFreights).get(sizeBucket(euSize));
+            List<BigDecimal> freights = ag ? agFreights : nonAgFreights;
+            // 五段运费相同（含旧任务换算）时不需要尺码，非数字尺码也能照常改价。
+            if (freights.stream().allMatch(f -> f.compareTo(freights.get(0)) == 0)) {
+                return freights.get(0);
+            }
+            return freights.get(sizeBucket(euSize));
         }
 
         /** 只调整投了广告的商品；调整后低于 0 按 0。 */

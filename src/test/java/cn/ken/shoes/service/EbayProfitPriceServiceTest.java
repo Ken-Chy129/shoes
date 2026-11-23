@@ -827,6 +827,29 @@ class EbayProfitPriceServiceTest {
     }
 
     @Test
+    void uniformFreightIgnoresNonNumericSize() {
+        assertThat(rules(null, null, null, List.of()).bucketFreight("XL", false)).isEqualByComparingTo("25");
+        List<BigDecimal> tiered = List.of(new BigDecimal("10"), new BigDecimal("20"), new BigDecimal("30"),
+                new BigDecimal("40"), new BigDecimal("50"));
+        EbayProfitPriceService.Rules rules = EbayProfitPriceService.Rules.of(tiered, tiered, new BigDecimal("450"),
+                new BigDecimal("30"), new BigDecimal("80"), null, null, null, List.of());
+        assertThat(rules.bucketFreight("42", false)).isEqualByComparingTo("30");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> rules.bucketFreight("XL", false))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void agSearchOverLimitIsReported() {
+        singleListing();
+        when(browseClient.getListing("L1", false)).thenReturn(new EbayBrowseApiClient.ListingAuthenticity("shop", true));
+        when(browseClient.searchSeller(eq("shop"), anyInt())).thenReturn(
+                new EbayBrowseApiClient.SearchPage(12000, Map.of("L1", true)));
+        service.runSingleRound(7L, 1, agRules(), BigDecimal.ZERO, new AtomicBoolean());
+        assertThat(results().get("SKU-A")).contains("运费¥25(AG)");
+        verify(taskMapper).updateTaskFailReason(eq(7L), argThat(r -> r != null && r.contains("超过搜索上限")));
+    }
+
+    @Test
     void matchKeyPrefersItemIdThenSizeSpecific() {
         Map<String, BigDecimal> rules = new java.util.HashMap<>();
         rules.put("123|42", BigDecimal.ONE);

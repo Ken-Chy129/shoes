@@ -134,6 +134,18 @@ class TaskExecutorManagerEbayProfitPriceTest {
         verify(taskMapper).updateTaskFailReason(eq(9L), contains("快照不存在"));
     }
 
+    @Test
+    void recordsFailReasonWhenNewProfitParamsInvalid() {
+        source.setTaskType(EbayProfitPriceService.TASK_TYPE);
+        when(snapshotStore.loadEbayProfitRules(9L)).thenReturn(Optional.empty());
+        JSONObject params = ruleParams(0).fluentPut("agFreights", List.of(new BigDecimal("30")));
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> manager.startEbayProfitPriceFromSnapshot(source, params))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(service, never()).start(anyLong(), any(EbayProfitPriceService.Rules.class));
+        verify(taskMapper).updateTaskFailReason(eq(9L), contains("参数校验失败"));
+    }
+
     private static JSONObject ruleParams(int ruleCount) {
         List<BigDecimal> freights = java.util.Collections.nCopies(EbayProfitPriceService.SIZE_BUCKETS,
                 new BigDecimal("30"));

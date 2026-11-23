@@ -125,11 +125,12 @@ const EbaySpecialFreight = () => {
             <Form form={form} layout="vertical" preserve={false}>
                 <Form.Item name="target" label="货号或物品编号"
                            rules={[{required: true, whitespace: true, message: '请输入货号或物品编号'}]}
-                           extra="可粘贴商品链接；同一货号/编号+尺码再次保存会覆盖原值">
-                    <Input/>
+                           extra={editing?.id ? '编辑只能改运费；要改货号或尺码请删除后重新添加'
+                               : '可粘贴商品链接；同一货号/编号+尺码再次保存会覆盖原值'}>
+                    <Input disabled={!!editing?.id}/>
                 </Form.Item>
                 <Form.Item name="size" label="尺码(EU)" extra="不填表示全尺码">
-                    <Input/>
+                    <Input disabled={!!editing?.id}/>
                 </Form.Item>
                 <Form.Item name="freight" label="AG运费"
                            rules={[
