@@ -130,7 +130,7 @@ CREATE TABLE search_task
     id           BIGINT AUTO_INCREMENT PRIMARY KEY    COMMENT '主键ID',
     platform     VARCHAR(255)                         NOT NULL COMMENT '平台标识',
     type         VARCHAR(32)                          NULL     COMMENT '任务类型：keyword-关键词搜索，model-货号搜索',
-    query        TEXT                                 NOT NULL COMMENT '搜索关键词或货号',
+    query        MEDIUMTEXT                           NOT NULL COMMENT '搜索关键词或货号',
     sorts        VARCHAR(500)                         NOT NULL COMMENT '排序规则，逗号分隔',
     page_count   INT                                  NOT NULL COMMENT '每个排序规则查询的页数',
     search_type  VARCHAR(20)                          NULL     COMMENT '搜索类型：shoes-鞋类，clothes-服饰',
