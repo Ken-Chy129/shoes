@@ -1,5 +1,6 @@
 package cn.ken.shoes.service;
 
+import cn.ken.shoes.client.EbayBrowseApiClient;
 import cn.ken.shoes.client.EbayMarketingApiClient;
 import cn.ken.shoes.client.EbayQuotaExceededException;
 import cn.ken.shoes.client.EbaySellApiClient;
@@ -17,6 +18,7 @@ import cn.ken.shoes.model.entity.EbayListingDO;
 import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
+import cn.ken.shoes.model.excel.EbayProfitRuleExcel;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
 import cn.ken.shoes.util.ShoesUtil;
 import com.alibaba.fastjson.JSONObject;
@@ -27,9 +29,12 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -41,7 +46,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.LongConsumer;
 
 /**
  * eBay 盈利改价（含广告费）：与 {@link EbayPriceSyncService} 并列的独立任务，二者互斥。
@@ -58,6 +65,14 @@ import java.util.function.Consumer;
  * <p>同一套逻辑还承载「eBay活动改价」（{@link #PROMO_TASK_TYPE}）：eBay 折扣活动里买家按折扣付款，
  * 折扣部分卖家承担一定比例（如 15% 折扣、卖家承担 7 成 = 标价的 10.5%），这部分之后从货款扣回。
  * 活动改价在到手金额里额外扣掉这笔补贴，其余算法与盈利改价完全一致。
+ *
+ * <p>盈利改价按 {@link Rules} 给每个 SKU 单独定运费、目标盈利和广告费率：
+ * <ul>
+ *   <li>运费：特殊运费表（{@link EbaySpecialFreightService}，非 AG ×1.2）→ 按 AG/非AG 的 5 个尺码段运费；</li>
+ *   <li>目标盈利：任务表格（可填「不动」跳过）→ 低价引流 SKU → 按得物价阈值取两档之一；</li>
+ *   <li>广告费率：投了广告的商品按实际费率加减调整值计算（不改 eBay 上的真实费率）。</li>
+ * </ul>
+ * 活动改价用 {@link Rules#flat} 退化为单一运费、单一盈利，行为不变。
  */
 @Slf4j
 @Service
@@ -77,6 +92,15 @@ public class EbayProfitPriceService {
     private static final int MAX_OVERRIDE_ROWS = 20000;
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     static final String RELISTED_PREFIX = "[重新上架链接] ";
+    /** 表格里填这个值：该尺码/货号价格和库存都不改。 */
+    public static final String HOLD = "不动";
+    /** 非 AG 链接运费 = AG 运费 × 1.2（特殊运费表只填 AG 运费）。 */
+    static final BigDecimal NON_AG_FREIGHT_FACTOR = new BigDecimal("1.2");
+    /** 尺码段上界（含）：≤35、≤39.5、≤44、≤47.5，其余为第 5 段。 */
+    private static final List<BigDecimal> SIZE_BUCKET_UPPER = List.of(new BigDecimal("35"), new BigDecimal("39.5"),
+            new BigDecimal("44"), new BigDecimal("47.5"));
+    public static final int SIZE_BUCKETS = SIZE_BUCKET_UPPER.size() + 1;
+    private static final int MAX_LEAD_SKU_COUNT = 100;
 
     private final TaskMapper taskMapper;
     private final TaskItemMapper taskItemMapper;
@@ -87,6 +111,10 @@ public class EbayProfitPriceService {
     private final PoisonClient poisonClient;
     private final TaskInputSnapshotStore snapshotStore;
     private final EbayProperties properties;
+    private final EbaySpecialFreightService specialFreightService;
+    private final EbayBrowseApiClient browseClient;
+    /** 卖家账号（Browse API 按卖家搜 AG 用），首次读到后不变。 */
+    private volatile String seller;
     private final Consumer<Runnable> threadStarter;
     private final Map<Long, RunHandle> running = new java.util.concurrent.ConcurrentHashMap<>();
     private final ExecutorService updateExecutor = Executors.newVirtualThreadPerTaskExecutor();
@@ -102,9 +130,10 @@ public class EbayProfitPriceService {
                                   EbayListingMapper ebayListingMapper, EbaySellApiClient sellClient,
                                   EbayTradingApiClient tradingClient, EbayMarketingApiClient marketingClient,
                                   PoisonClient poisonClient, TaskInputSnapshotStore snapshotStore,
-                                  EbayProperties properties) {
+                                  EbayProperties properties, EbaySpecialFreightService specialFreightService,
+                                  EbayBrowseApiClient browseClient) {
         this(taskMapper, taskItemMapper, ebayListingMapper, sellClient, tradingClient, marketingClient,
-                poisonClient, snapshotStore, properties,
+                poisonClient, snapshotStore, properties, specialFreightService, browseClient,
                 runnable -> Thread.ofVirtual().name("Ebay-Profit-Price").start(runnable));
     }
 
@@ -112,9 +141,10 @@ public class EbayProfitPriceService {
                            EbayListingMapper ebayListingMapper, EbaySellApiClient sellClient,
                            EbayTradingApiClient tradingClient, EbayMarketingApiClient marketingClient,
                            PoisonClient poisonClient, TaskInputSnapshotStore snapshotStore,
-                           EbayProperties properties, Consumer<Runnable> threadStarter) {
+                           EbayProperties properties, EbaySpecialFreightService specialFreightService,
+                           EbayBrowseApiClient browseClient, Consumer<Runnable> threadStarter) {
         this(taskMapper, taskItemMapper, ebayListingMapper, sellClient, tradingClient, marketingClient,
-                poisonClient, snapshotStore, properties, threadStarter,
+                poisonClient, snapshotStore, properties, specialFreightService, browseClient, threadStarter,
                 new EbayRepricingRecovery(sellClient, ebayListingMapper, properties));
     }
 
@@ -122,7 +152,8 @@ public class EbayProfitPriceService {
                            EbayListingMapper ebayListingMapper, EbaySellApiClient sellClient,
                            EbayTradingApiClient tradingClient, EbayMarketingApiClient marketingClient,
                            PoisonClient poisonClient, TaskInputSnapshotStore snapshotStore,
-                           EbayProperties properties, Consumer<Runnable> threadStarter,
+                           EbayProperties properties, EbaySpecialFreightService specialFreightService,
+                           EbayBrowseApiClient browseClient, Consumer<Runnable> threadStarter,
                            EbayRepricingRecovery recovery) {
         this.recovery = recovery;
         this.taskMapper = taskMapper;
@@ -134,16 +165,37 @@ public class EbayProfitPriceService {
         this.poisonClient = poisonClient;
         this.snapshotStore = snapshotStore;
         this.properties = properties;
+        this.specialFreightService = specialFreightService;
+        this.browseClient = browseClient;
         this.threadStarter = threadStarter;
     }
 
     /**
+     * 旧参数（单一运费、单一默认盈利、按货号盈利）换算成 {@link Rules}：10 个尺码段运费都用该运费，两档盈利都用默认盈利，
+     * 不开广告调整和引流，结果与改造前一致。用于恢复改造前创建的任务。
+     *
      * @param overrides 按货号指定的目标盈利，优先于默认值；可为空
      * @return 任务ID；本任务或「eBay定时改价」正在运行时返回 null
      */
     public synchronized Long start(long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
                                    List<EbayProfitTargetExcel> overrides) {
-        return start(Mode.PROFIT, intervalHours, defaultProfit, freight, overrides);
+        validate(intervalHours, defaultProfit, freight);
+        List<EbayProfitRuleExcel> rows = new ArrayList<>();
+        normalizeOverrides(overrides).forEach((styleId, profit) ->
+                rows.add(new EbayProfitRuleExcel(styleId, "", profit.toPlainString())));
+        List<BigDecimal> freights = Collections.nCopies(SIZE_BUCKETS, freight);
+        return start(intervalHours, Rules.of(freights, freights, BigDecimal.ZERO, defaultProfit, defaultProfit,
+                null, null, null, rows));
+    }
+
+    /** @return 任务ID；任一改价任务正在运行时返回 null */
+    public synchronized Long start(long intervalHours, Rules rules) {
+        validate(intervalHours, BigDecimal.ZERO, BigDecimal.ZERO);
+        return start(Mode.PROFIT, intervalHours, rules, rules.params(), taskId -> {
+            if (!rules.targets().isEmpty()) {
+                snapshotStore.saveEbayProfitRules(taskId, rules.rows());
+            }
+        });
     }
 
     /**
@@ -157,16 +209,8 @@ public class EbayProfitPriceService {
                                         BigDecimal discountPercent, BigDecimal sellerSharePercent,
                                         List<EbayProfitTargetExcel> overrides) {
         validatePromo(discountPercent, sellerSharePercent);
-        return start(Mode.promo(discountPercent, sellerSharePercent), intervalHours, defaultProfit, freight, overrides);
-    }
-
-    private Long start(Mode mode, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
-                       List<EbayProfitTargetExcel> overrides) {
         validate(intervalHours, defaultProfit, freight);
         Map<String, BigDecimal> targets = normalizeOverrides(overrides);
-        if (!canRun()) {
-            return null;
-        }
         List<EbayProfitTargetExcel> snapshot = new ArrayList<>();
         targets.forEach((styleId, profit) -> {
             EbayProfitTargetExcel row = new EbayProfitTargetExcel();
@@ -174,6 +218,26 @@ public class EbayProfitPriceService {
             row.setTargetProfit(profit);
             snapshot.add(row);
         });
+        Mode mode = Mode.promo(discountPercent, sellerSharePercent);
+        JSONObject params = new JSONObject(true)
+                .fluentPut("defaultProfit", defaultProfit)
+                .fluentPut("freight", freight)
+                .fluentPut("discountPercent", mode.discountPercent())
+                .fluentPut("sellerSharePercent", mode.sellerSharePercent())
+                .fluentPut("sellerSubsidyRate", mode.subsidyRate())
+                .fluentPut("overrideCount", snapshot.size());
+        return start(mode, intervalHours, Rules.flat(defaultProfit, freight, targets), params, taskId -> {
+            if (!snapshot.isEmpty()) {
+                snapshotStore.saveEbayProfitTargets(taskId, snapshot);
+            }
+        });
+    }
+
+    private Long start(Mode mode, long intervalHours, Rules rules, JSONObject ruleParams,
+                       LongConsumer saveSnapshot) {
+        if (!canRun()) {
+            return null;
+        }
         TaskDO task = new TaskDO();
         task.setPlatform("ebay");
         task.setTaskType(mode.taskType());
@@ -181,28 +245,15 @@ public class EbayProfitPriceService {
         task.setStatus(TaskDO.TaskStatusEnum.RUNNING.getCode());
         task.setStartTime(new Date());
         task.setRound(0);
-        JSONObject params = new JSONObject(true)
-                .fluentPut("intervalHours", intervalHours)
-                .fluentPut("defaultProfit", defaultProfit)
-                .fluentPut("freight", freight);
-        if (mode.promo()) {
-            params.fluentPut("discountPercent", mode.discountPercent())
-                    .fluentPut("sellerSharePercent", mode.sellerSharePercent())
-                    .fluentPut("sellerSubsidyRate", mode.subsidyRate());
-        }
-        task.setParams(params
-                .fluentPut("overrideCount", snapshot.size())
-                .fluentPut("marketplaceId", properties.getDefaultMarketplaceId())
-                .toJSONString());
+        JSONObject params = new JSONObject(true).fluentPut("intervalHours", intervalHours);
+        params.putAll(ruleParams);
+        task.setParams(params.fluentPut("marketplaceId", properties.getDefaultMarketplaceId()).toJSONString());
         taskMapper.insert(task);
         RunHandle handle = new RunHandle();
         running.put(task.getId(), handle);
         try {
-            if (!snapshot.isEmpty()) {
-                snapshotStore.saveEbayProfitTargets(task.getId(), snapshot);
-            }
-            threadStarter.accept(() -> runLoop(task.getId(), mode, intervalHours, defaultProfit, freight, targets,
-                    handle));
+            saveSnapshot.accept(task.getId());
+            threadStarter.accept(() -> runLoop(task.getId(), mode, intervalHours, rules, handle));
             return task.getId();
         } catch (RuntimeException e) {
             running.remove(task.getId());
@@ -231,16 +282,14 @@ public class EbayProfitPriceService {
                 TaskDO.TaskStatusEnum.RUNNING.getCode()) == null;
     }
 
-    private void runLoop(Long taskId, Mode mode, long intervalHours, BigDecimal defaultProfit, BigDecimal freight,
-                         Map<String, BigDecimal> targets, RunHandle handle) {
+    private void runLoop(Long taskId, Mode mode, long intervalHours, Rules rules, RunHandle handle) {
         int round = 0;
         boolean cancelled = false;
         try {
             while (!handle.cancelled.get()) {
                 round++;
                 try {
-                    runSingleRound(taskId, round, defaultProfit, freight, mode.subsidyRate(), targets,
-                            handle.cancelled);
+                    runSingleRound(taskId, round, rules, mode.subsidyRate(), handle.cancelled);
                     taskMapper.updateTaskRound(taskId, round);
                 } catch (TaskCancelledException | java.util.concurrent.CancellationException e) {
                     break;
@@ -427,6 +476,10 @@ public class EbayProfitPriceService {
     void runSingleRound(Long taskId, int round, BigDecimal defaultProfit, BigDecimal freight,
                         BigDecimal subsidyRate, Map<String, BigDecimal> targets,
                         AtomicBoolean cancelled) {
+        runSingleRound(taskId, round, Rules.flat(defaultProfit, freight, targets), subsidyRate, cancelled);
+    }
+
+    void runSingleRound(Long taskId, int round, Rules rules, BigDecimal subsidyRate, AtomicBoolean cancelled) {
         ensureNotCancelled(cancelled);
         BigDecimal exchangeRate = exchangeRate();
 
@@ -452,15 +505,21 @@ public class EbayProfitPriceService {
 
         Map<String, BigDecimal> adRates = marketingClient.getRunningAdRates();
         ensureNotCancelled(cancelled);
+        Map<String, BigDecimal> specialFreights = rules.profitRules() ? specialFreightService.load() : Map.of();
 
         Counters counters = new Counters(skippedUsRegion, adRates.size());
         Set<String> processed = new HashSet<>();
         EbayRepricingRecovery.Round recoveryRound = recovery.newRound();
+        AtomicReference<Set<String>> agListings = new AtomicReference<>();
         try {
             tradingClient.forEachActiveSkuPage(cancelled::get, page -> {
                 ensureNotCancelled(cancelled);
-                processPage(taskId, round, page, bySku, resolver, processed, adRates, targets, defaultProfit,
-                        exchangeRate, freight, subsidyRate, counters, cancelled, recoveryRound);
+                if (agListings.get() == null) {
+                    agListings.set(rules.needsAg(specialFreights)
+                            ? authenticityGuaranteed(page, counters, cancelled) : Set.of());
+                }
+                processPage(taskId, round, page, bySku, resolver, processed, adRates, rules, specialFreights,
+                        agListings.get(), exchangeRate, subsidyRate, counters, cancelled, recoveryRound);
                 counters.pages = page.pageNumber();
                 counters.totalPages = page.totalPages();
                 writeAttributes(taskId, counters);
@@ -484,18 +543,87 @@ public class EbayProfitPriceService {
         if (counters.poisonSkippedPages > 0) {
             problems.add(counters.poisonSkippedPages + " 页得物查价未返回结果，已跳过这些页");
         }
+        if (counters.agError != null) {
+            problems.add(counters.agError);
+        }
         taskMapper.updateTaskFailReason(taskId, problems.isEmpty() ? null : String.join("；", problems));
         writeAttributes(taskId, counters);
     }
 
+    /**
+     * 本轮有正品保证（AG）的物品编号：按卖家账号把 Browse API 搜一遍（每页 200 条，几十次调用）。
+     * 搜不到的（无库存、超过搜索上限 10000 条等）按非 AG；整体失败（含额度用完）时本轮全部按非 AG
+     * （非 AG 运费更高，价格偏保守），原因写进任务。
+     */
+    private Set<String> authenticityGuaranteed(EbayTradingApiClient.ActiveSkuPage page, Counters counters,
+                                               AtomicBoolean cancelled) {
+        Set<String> result = new HashSet<>();
+        try {
+            String sellerName = sellerName(page);
+            int total = Integer.MAX_VALUE;
+            for (int offset = 0; offset < Math.min(total, EbayBrowseApiClient.SEARCH_MAX_RESULTS);
+                 offset += EbayBrowseApiClient.SEARCH_PAGE_SIZE) {
+                ensureNotCancelled(cancelled);
+                EbayBrowseApiClient.SearchPage search = browseClient.searchSeller(sellerName, offset);
+                total = search.total();
+                search.byItemId().forEach((itemId, ag) -> {
+                    if (Boolean.TRUE.equals(ag)) {
+                        result.add(itemId);
+                    }
+                });
+                if (search.byItemId().isEmpty()) {
+                    break;
+                }
+            }
+        } catch (TaskCancelledException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            log.warn("eBay盈利改价AG查询失败，本轮按非AG运费计算", e);
+            counters.agError = "正品保证(AG)查询失败，本轮全部按非AG运费计算：" + safeError(e);
+            return Set.of();
+        }
+        counters.agListings = result.size();
+        return result;
+    }
+
+    /** 用本页前几个链接读卖家账号（多尺码链接按商品组读）。 */
+    private String sellerName(EbayTradingApiClient.ActiveSkuPage page) {
+        if (seller != null) {
+            return seller;
+        }
+        Set<String> tried = new HashSet<>();
+        for (EbayTradingApiClient.ActiveSku sku : page.skus()) {
+            if (tried.size() >= 3) {
+                break;
+            }
+            if (isBlank(sku.listingId()) || !tried.add(sku.listingId())) {
+                continue;
+            }
+            try {
+                String name = browseClient.getListing(sku.listingId(), sku.parentSku() != null).seller();
+                if (!isBlank(name)) {
+                    seller = name;
+                    return name;
+                }
+            } catch (EbayQuotaExceededException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                log.warn("eBay盈利改价读取卖家账号失败, itemId:{}", sku.listingId(), e);
+            }
+        }
+        throw new IllegalStateException("读不到卖家账号");
+    }
+
     private void processPage(Long taskId, int round, EbayTradingApiClient.ActiveSkuPage page,
                              Map<String, EbayListingDO> bySku, RelistedSkuResolver resolver,
-                             Set<String> processed, Map<String, BigDecimal> adRates, Map<String, BigDecimal> targets,
-                             BigDecimal defaultProfit, BigDecimal exchangeRate, BigDecimal freight,
+                             Set<String> processed, Map<String, BigDecimal> adRates, Rules rules,
+                             Map<String, BigDecimal> specialFreights, Set<String> agListings,
+                             BigDecimal exchangeRate,
                              BigDecimal subsidyRate, Counters counters, AtomicBoolean cancelled,
                              EbayRepricingRecovery.Round recoveryRound) {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
+        Set<String> heldListings = new HashSet<>();
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
             EbayListingDO mapping = mappingOf(current, bySku, resolver);
             // 不在港区映射里、也推不出货号尺码的（美区或非本系统上架）不处理。
@@ -516,9 +644,20 @@ public class EbayProfitPriceService {
                 continue;
             }
             String styleId = mapping.getStyleId().trim();
-            contexts.add(new Context(mapping, current, euSize, styleId,
-                    adRates.getOrDefault(current.listingId(), BigDecimal.ZERO),
-                    targets.getOrDefault(normalizeStyleId(styleId), defaultProfit), subsidyRate, relisted));
+            Context context = new Context(mapping, current, euSize, styleId,
+                    rules.adjustAdRate(adRates.getOrDefault(current.listingId(), BigDecimal.ZERO)),
+                    null, null, subsidyRate, relisted, "");
+            String ruleKey = matchKey(rules.targets(), current.listingId(), styleId, euSize);
+            if (ruleKey != null && rules.targets().get(ruleKey) == null) {
+                // 表格里填了「不动」：价格和库存都不碰（得物无价也不清库存），也不参与引流计数。
+                counters.total++;
+                counters.held++;
+                heldListings.add(current.listingId());
+                recordItem(taskId, round, context, null, null, null, current.availableQuantity(),
+                        (relisted ? RELISTED_PREFIX : "") + "按表格设置不动，跳过");
+                continue;
+            }
+            contexts.add(context);
             modelNos.add(styleId);
         }
         if (contexts.isEmpty()) {
@@ -545,14 +684,21 @@ public class EbayProfitPriceService {
 
         counters.total += contexts.size();
         Set<String> pricedListings = pricedListings(page, bySku, resolver, prices);
+        // 有「不动」尺码的链接仍有库存，不能当整组无价处理。
+        pricedListings.addAll(heldListings);
+        Set<Context> leads = leadSkus(contexts, prices, rules);
+        counters.lead += leads.size();
         List<Planned> planned = new ArrayList<>();
-        for (Context context : contexts) {
+        for (Context raw : contexts) {
+            Context context = raw;
             BigDecimal poisonPrice = prices.get(priceKey(context.styleId(), context.euSize()));
             ensureNotCancelled(cancelled);
             Decision decision;
             try {
+                context = priced(raw, poisonPrice, rules, specialFreights, agListings, leads.contains(raw));
                 decision = decide(context.live().price(), context.live().availableQuantity(), poisonPrice,
-                        context.adRate(), context.subsidyRate(), context.targetProfit(), exchangeRate, freight);
+                        context.adRate(), context.subsidyRate(), context.targetProfit(), exchangeRate,
+                        context.freight());
             } catch (IllegalArgumentException | ArithmeticException e) {
                 counters.failed++;
                 log.warn("eBay盈利改价计算失败，保留价格和库存, taskId={}, sku={}",
@@ -904,13 +1050,14 @@ public class EbayProfitPriceService {
         if (d.newPrice() != null && d.profitAfterStep() != null) {
             text.append("→¥").append(displayProfit(d.profitAfterStep()).toPlainString());
         }
-        text.append(" 目标¥").append(plan.context().targetProfit().stripTrailingZeros().toPlainString())
+        BigDecimal target = plan.context().targetProfit();
+        text.append(" 目标").append(target == null ? "-" : "¥" + target.stripTrailingZeros().toPlainString())
                 .append(" 广告").append(plan.context().adRate().stripTrailingZeros().toPlainString()).append('%');
         if (plan.context().subsidyRate().signum() > 0) {
             text.append(" 活动补贴").append(plan.context().subsidyRate().movePointRight(2).stripTrailingZeros()
                     .toPlainString()).append('%');
         }
-        return text.toString();
+        return text.append(plan.context().note()).toString();
     }
 
     private void rememberSnapshot(Planned plan) {
@@ -983,6 +1130,9 @@ public class EbayProfitPriceService {
                     .fluentPut("notListed", c.notListed)
                     .fluentPut("poisonSkipped", c.poisonSkipped)
                     .fluentPut("adListings", c.adListings)
+                    .fluentPut("held", c.held)
+                    .fluentPut("leadSkus", c.lead)
+                    .fluentPut("agListings", c.agListings)
                     .fluentPut("pages", c.pages)
                     .fluentPut("totalPages", c.totalPages)
                     .toJSONString());
@@ -1108,6 +1258,309 @@ public class EbayProfitPriceService {
         return styleId == null ? "" : styleId.trim().toUpperCase(Locale.ROOT);
     }
 
+    // ==================== 盈利改价按 SKU 取值 ====================
+
+    /**
+     * 定下这个 SKU 的目标盈利和运费。目标盈利：表格 → 引流 → 得物价两档；
+     * 运费：特殊运费表（非 AG ×1.2）→ 按 AG/非AG 的尺码段运费。得物无价时只清库存，用不到这两项。
+     */
+    private static Context priced(Context c, BigDecimal poisonPrice, Rules rules,
+                                  Map<String, BigDecimal> specialFreights, Set<String> agListings, boolean lead) {
+        if (poisonPrice == null) {
+            return c;
+        }
+        String listingId = c.live().listingId();
+        String ruleKey = matchKey(rules.targets(), listingId, c.styleId(), c.euSize());
+        BigDecimal target;
+        String targetSource;
+        if (ruleKey != null) {
+            target = rules.targets().get(ruleKey);
+            targetSource = "表格";
+        } else if (lead) {
+            target = rules.leadProfit();
+            targetSource = "引流";
+        } else {
+            boolean low = poisonPrice.compareTo(rules.profitThreshold()) <= 0;
+            target = low ? rules.profitLow() : rules.profitHigh();
+            targetSource = "得物价" + (low ? "≤" : ">") + rules.profitThreshold().stripTrailingZeros().toPlainString();
+        }
+        boolean ag = agListings.contains(listingId);
+        String freightKey = matchKey(specialFreights, listingId, c.styleId(), c.euSize());
+        BigDecimal freight = freightKey == null ? rules.bucketFreight(c.euSize(), ag)
+                : ag ? specialFreights.get(freightKey) : specialFreights.get(freightKey).multiply(NON_AG_FREIGHT_FACTOR);
+        String note = !rules.profitRules() ? "" : " 来源:" + targetSource + " 运费¥"
+                + freight.stripTrailingZeros().toPlainString() + "(" + (ag ? "AG" : "非AG")
+                + (freightKey == null ? "" : "·特殊") + ")";
+        return new Context(c.mapping(), c.live(), c.euSize(), c.styleId(), c.adRate(), target, freight,
+                c.subsidyRate(), c.relisted(), note);
+    }
+
+    /**
+     * 低价引流：同一链接有得物价的 SKU 数 ≥ N 时，得物价最低（相同取尺码最小）的那个用引流目标盈利。
+     * 表格里设了目标盈利的 SKU 计入数量但不当引流，改由剩下最低的那个当；设了「不动」的不在 contexts 里。
+     */
+    private static Set<Context> leadSkus(List<Context> contexts, Map<String, BigDecimal> prices, Rules rules) {
+        Set<Context> leads = Collections.newSetFromMap(new IdentityHashMap<>());
+        if (rules.leadMinSkuCount() == null) {
+            return leads;
+        }
+        Map<String, List<Context>> byListing = new LinkedHashMap<>();
+        for (Context c : contexts) {
+            if (prices.containsKey(priceKey(c.styleId(), c.euSize()))) {
+                byListing.computeIfAbsent(c.live().listingId(), ignored -> new ArrayList<>()).add(c);
+            }
+        }
+        for (List<Context> listing : byListing.values()) {
+            if (listing.size() < rules.leadMinSkuCount()) {
+                continue;
+            }
+            listing.stream()
+                    .filter(c -> matchKey(rules.targets(), c.live().listingId(), c.styleId(), c.euSize()) == null)
+                    .min(Comparator.comparing((Context c) -> prices.get(priceKey(c.styleId(), c.euSize())))
+                            .thenComparing(c -> sizeOrder(c.euSize())))
+                    .ifPresent(leads::add);
+        }
+        return leads;
+    }
+
+    /** 按 物品编号+尺码 → 物品编号 → 货号+尺码 → 货号 的顺序，返回第一条存在的键；都没有返回 null。 */
+    static String matchKey(Map<String, ?> rules, String listingId, String styleId, String euSize) {
+        if (rules.isEmpty()) {
+            return null;
+        }
+        for (String target : new String[]{listingId, styleId}) {
+            if (isBlank(target)) {
+                continue;
+            }
+            for (String size : new String[]{euSize, null}) {
+                String key = ruleKey(target, size);
+                if (rules.containsKey(key)) {
+                    return key;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 表格/特殊运费的匹配键：「货号或物品编号|尺码」，尺码为空表示全尺码。 */
+    public static String ruleKey(String target, String size) {
+        return ruleTarget(target) + "|" + sizeKey(size);
+    }
+
+    /** 物品编号（也可以是商品链接）规整为纯数字，其余按货号转大写。 */
+    public static String ruleTarget(String raw) {
+        String itemId = EbayListingManageService.parseItemId(raw);
+        return itemId != null ? itemId : normalizeStyleId(raw);
+    }
+
+    /** EU 尺码规整：⅔→.5、⅓ 舍去，去掉 EU 前缀和多余的 0（42.0→42），空为 ""。 */
+    public static String sizeKey(String size) {
+        if (isBlank(size)) {
+            return "";
+        }
+        String value = ShoesUtil.normalizeUnicodeFraction(size.trim()).trim().toUpperCase(Locale.ROOT);
+        if (value.startsWith("EU")) {
+            value = value.substring(2).trim();
+        }
+        try {
+            return new BigDecimal(value).stripTrailingZeros().toPlainString();
+        } catch (NumberFormatException e) {
+            return value;
+        }
+    }
+
+    /** 尺码段下标 0~4：≤35、≤39.5、≤44、≤47.5、其余。 */
+    static int sizeBucket(String euSize) {
+        BigDecimal size;
+        try {
+            size = new BigDecimal(sizeKey(euSize));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("尺码" + euSize + "无法匹配运费尺码段");
+        }
+        for (int i = 0; i < SIZE_BUCKET_UPPER.size(); i++) {
+            if (size.compareTo(SIZE_BUCKET_UPPER.get(i)) <= 0) {
+                return i;
+            }
+        }
+        return SIZE_BUCKET_UPPER.size();
+    }
+
+    private static BigDecimal sizeOrder(String euSize) {
+        try {
+            return new BigDecimal(sizeKey(euSize));
+        } catch (NumberFormatException e) {
+            return MAX_SAFE_PRICE;
+        }
+    }
+
+    /**
+     * 盈利改价每个 SKU 的取值规则。targets：{@link #ruleKey} → 目标盈利，值为 null 表示「不动」。
+     * profitRules=false 是活动改价/旧单元测试用的单一运费、单一盈利，不读特殊运费表、不查 AG。
+     *
+     * @param agFreights      AG 链接 5 个尺码段运费（元）
+     * @param nonAgFreights   非 AG 链接 5 个尺码段运费（元）
+     * @param profitThreshold 得物价 ≤ 它用 profitLow，否则用 profitHigh
+     * @param adRateAdjust    广告费率加减的百分点，只作用于投了广告的商品；null 为不调整
+     * @param leadMinSkuCount 低价引流：链接有价 SKU 数 ≥ 它才选引流 SKU；null 为不开
+     */
+    public record Rules(List<BigDecimal> agFreights, List<BigDecimal> nonAgFreights, BigDecimal profitThreshold,
+                        BigDecimal profitLow, BigDecimal profitHigh, BigDecimal adRateAdjust,
+                        Integer leadMinSkuCount, BigDecimal leadProfit, Map<String, BigDecimal> targets,
+                        boolean profitRules) {
+
+        static Rules flat(BigDecimal profit, BigDecimal freight, Map<String, BigDecimal> styleTargets) {
+            List<BigDecimal> freights = Collections.nCopies(SIZE_BUCKETS, freight);
+            Map<String, BigDecimal> targets = new HashMap<>();
+            styleTargets.forEach((styleId, value) -> targets.put(ruleKey(styleId, null), value));
+            return new Rules(freights, freights, BigDecimal.ZERO, profit, profit, null, null, null, targets, false);
+        }
+
+        /** 校验并解析启动参数；rows 为「货号或物品编号、尺码、目标盈利/不动」表格，可为空。 */
+        public static Rules of(List<BigDecimal> agFreights, List<BigDecimal> nonAgFreights, BigDecimal profitThreshold,
+                               BigDecimal profitLow, BigDecimal profitHigh, BigDecimal adRateAdjust,
+                               Integer leadMinSkuCount, BigDecimal leadProfit, List<EbayProfitRuleExcel> rows) {
+            requireFreights(agFreights, "AG");
+            requireFreights(nonAgFreights, "非AG");
+            if (profitThreshold == null || profitThreshold.signum() < 0 || profitThreshold.compareTo(MAX_PROFIT) > 0) {
+                throw new IllegalArgumentException("得物价阈值必须在0到100000元之间");
+            }
+            requireProfit(profitLow, "得物价≤阈值的目标盈利");
+            requireProfit(profitHigh, "得物价>阈值的目标盈利");
+            if (adRateAdjust != null && adRateAdjust.abs().compareTo(HUNDRED) > 0) {
+                throw new IllegalArgumentException("广告费率调整必须在-100到100之间");
+            }
+            if ((leadMinSkuCount == null) != (leadProfit == null)) {
+                throw new IllegalArgumentException("低价引流需要同时填写SKU数量和引流目标盈利");
+            }
+            if (leadMinSkuCount != null) {
+                if (leadMinSkuCount < 1 || leadMinSkuCount > MAX_LEAD_SKU_COUNT) {
+                    throw new IllegalArgumentException("低价引流的SKU数量必须在1到" + MAX_LEAD_SKU_COUNT + "之间");
+                }
+                requireProfit(leadProfit, "引流目标盈利");
+            }
+            return new Rules(List.copyOf(agFreights), List.copyOf(nonAgFreights), profitThreshold, profitLow,
+                    profitHigh, adRateAdjust, leadMinSkuCount, leadProfit, parseRuleRows(rows), true);
+        }
+
+        /** 从任务参数恢复（服务重启）；表格行存在快照里。 */
+        public static Rules fromParams(JSONObject params, List<EbayProfitRuleExcel> rows) {
+            return of(params.getJSONArray("agFreights").toJavaList(BigDecimal.class),
+                    params.getJSONArray("nonAgFreights").toJavaList(BigDecimal.class),
+                    params.getBigDecimal("profitThreshold"), params.getBigDecimal("profitLow"),
+                    params.getBigDecimal("profitHigh"), params.getBigDecimal("adRateAdjust"),
+                    params.getInteger("leadMinSkuCount"), params.getBigDecimal("leadProfit"), rows);
+        }
+
+        JSONObject params() {
+            JSONObject params = new JSONObject(true)
+                    .fluentPut("agFreights", agFreights)
+                    .fluentPut("nonAgFreights", nonAgFreights)
+                    .fluentPut("profitThreshold", profitThreshold)
+                    .fluentPut("profitLow", profitLow)
+                    .fluentPut("profitHigh", profitHigh);
+            if (adRateAdjust != null) {
+                params.put("adRateAdjust", adRateAdjust);
+            }
+            if (leadMinSkuCount != null) {
+                params.fluentPut("leadMinSkuCount", leadMinSkuCount).fluentPut("leadProfit", leadProfit);
+            }
+            return params.fluentPut("ruleCount", targets.size());
+        }
+
+        /** 快照用：把规则键还原成表格行。 */
+        List<EbayProfitRuleExcel> rows() {
+            List<EbayProfitRuleExcel> rows = new ArrayList<>();
+            targets.forEach((key, value) -> {
+                int split = key.lastIndexOf('|');
+                rows.add(new EbayProfitRuleExcel(key.substring(0, split), key.substring(split + 1),
+                        value == null ? HOLD : value.toPlainString()));
+            });
+            return rows;
+        }
+
+        /** 两套尺码段运费不同、或有特殊运费时才需要区分 AG（查 AG 要调 Browse API）。 */
+        boolean needsAg(Map<String, BigDecimal> specialFreights) {
+            if (!profitRules) {
+                return false;
+            }
+            for (int i = 0; i < SIZE_BUCKETS; i++) {
+                if (agFreights.get(i).compareTo(nonAgFreights.get(i)) != 0) {
+                    return true;
+                }
+            }
+            return !specialFreights.isEmpty();
+        }
+
+        BigDecimal bucketFreight(String euSize, boolean ag) {
+            return (ag ? agFreights : nonAgFreights).get(sizeBucket(euSize));
+        }
+
+        /** 只调整投了广告的商品；调整后低于 0 按 0。 */
+        BigDecimal adjustAdRate(BigDecimal adRate) {
+            if (adRateAdjust == null || adRate == null || adRate.signum() <= 0) {
+                return adRate;
+            }
+            return adRate.add(adRateAdjust).max(BigDecimal.ZERO);
+        }
+
+        private static void requireFreights(List<BigDecimal> freights, String name) {
+            if (freights == null || freights.size() != SIZE_BUCKETS) {
+                throw new IllegalArgumentException(name + "运费需要填" + SIZE_BUCKETS + "个尺码段");
+            }
+            for (BigDecimal freight : freights) {
+                if (freight == null || freight.signum() < 0 || freight.compareTo(MAX_PROFIT) > 0) {
+                    throw new IllegalArgumentException(name + "运费必须在0到100000元之间");
+                }
+            }
+        }
+
+        private static void requireProfit(BigDecimal profit, String name) {
+            if (profit == null || profit.abs().compareTo(MAX_PROFIT) > 0) {
+                throw new IllegalArgumentException(name + "必须在-100000到100000元之间");
+            }
+        }
+    }
+
+    /** 解析表格：目标盈利填数字或「不动」（存为 null）；同一货号/编号+尺码以最后一行为准。 */
+    static Map<String, BigDecimal> parseRuleRows(List<EbayProfitRuleExcel> rows) {
+        Map<String, BigDecimal> targets = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
+        int line = 1;
+        for (EbayProfitRuleExcel row : rows == null ? List.<EbayProfitRuleExcel>of() : rows) {
+            line++;
+            if (row == null || (isBlank(row.getTarget()) && isBlank(row.getSize()) && isBlank(row.getTargetProfit()))) {
+                continue;
+            }
+            if (isBlank(row.getTarget()) || row.getTarget().contains("|")) {
+                errors.add("第" + line + "行货号或物品编号无效");
+                continue;
+            }
+            String profit = row.getTargetProfit() == null ? "" : row.getTargetProfit().trim();
+            BigDecimal value = null;
+            if (!HOLD.equals(profit)) {
+                try {
+                    value = new BigDecimal(profit).setScale(2, RoundingMode.HALF_UP);
+                } catch (NumberFormatException e) {
+                    errors.add("第" + line + "行目标盈利只能填数字或「" + HOLD + "」");
+                    continue;
+                }
+                if (value.abs().compareTo(MAX_PROFIT) > 0) {
+                    errors.add("第" + line + "行目标盈利必须在-100000到100000元之间");
+                    continue;
+                }
+            }
+            targets.put(ruleKey(row.getTarget(), row.getSize()), value);
+        }
+        if (!errors.isEmpty()) {
+            throw new IllegalArgumentException(String.join("；", errors.subList(0, Math.min(10, errors.size())))
+                    + (errors.size() > 10 ? " 等" + errors.size() + "处错误" : ""));
+        }
+        if (targets.size() > MAX_OVERRIDE_ROWS) {
+            throw new IllegalArgumentException("表格最多" + MAX_OVERRIDE_ROWS + "行");
+        }
+        return targets;
+    }
+
     private static String priceKey(String modelNo, String euSize) {
         return modelNo.trim().toUpperCase(Locale.ROOT) + ":" + ShoesUtil.normalizeUnicodeFraction(euSize);
     }
@@ -1160,8 +1613,8 @@ public class EbayProfitPriceService {
 
     /** relisted：eBay 后台重新上架出来的副本 listing，按 listing 号改，不走 offer。 */
     private record Context(EbayListingDO mapping, EbayTradingApiClient.ActiveSku live, String euSize,
-                           String styleId, BigDecimal adRate, BigDecimal targetProfit, BigDecimal subsidyRate,
-                           boolean relisted) {
+                           String styleId, BigDecimal adRate, BigDecimal targetProfit, BigDecimal freight,
+                           BigDecimal subsidyRate, boolean relisted, String note) {
     }
 
     private record Planned(Context context, BigDecimal poisonPrice, Decision decision) {
@@ -1191,6 +1644,13 @@ public class EbayProfitPriceService {
         int relisted;
         /** 本轮 offer 与刊登价格脱钩、额外直接改刊登价的尺码数（含失败）。 */
         int synced;
+        /** 表格设为「不动」跳过的 SKU 数。 */
+        int held;
+        /** 低价引流 SKU 数。 */
+        int lead;
+        /** 本轮查到的 AG 链接数。 */
+        int agListings;
+        String agError;
 
         Counters(int skippedUsRegion, int adListings) {
             this.skippedUsRegion = skippedUsRegion;

@@ -1,6 +1,7 @@
 package cn.ken.shoes.service;
 
 import cn.ken.shoes.client.EbayMarketingApiClient;
+import cn.ken.shoes.client.EbayBrowseApiClient;
 import cn.ken.shoes.client.EbaySellApiClient;
 import cn.ken.shoes.client.EbayTradingApiClient;
 import cn.ken.shoes.client.PoisonClient;
@@ -15,6 +16,7 @@ import cn.ken.shoes.model.entity.PoisonPriceDO;
 import cn.ken.shoes.model.entity.TaskDO;
 import cn.ken.shoes.model.entity.TaskItemDO;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
+import cn.ken.shoes.model.excel.EbayProfitRuleExcel;
 import cn.ken.shoes.service.EbayProfitPriceService.Action;
 import cn.ken.shoes.service.EbayProfitPriceService.Decision;
 import org.junit.jupiter.api.AfterEach;
@@ -72,6 +74,8 @@ class EbayProfitPriceServiceTest {
     private EbayMarketingApiClient marketingClient;
     private PoisonClient poisonClient;
     private TaskInputSnapshotStore snapshotStore;
+    private EbaySpecialFreightService specialFreightService;
+    private EbayBrowseApiClient browseClient;
     private EbayProfitPriceService service;
     private List<Runnable> started;
     private Double oldRate;
@@ -87,6 +91,8 @@ class EbayProfitPriceServiceTest {
         marketingClient = mock(EbayMarketingApiClient.class);
         poisonClient = mock(PoisonClient.class);
         snapshotStore = mock(TaskInputSnapshotStore.class);
+        specialFreightService = mock(EbaySpecialFreightService.class);
+        browseClient = mock(EbayBrowseApiClient.class);
         EbayProperties properties = new EbayProperties();
         properties.setDefaultMarketplaceId("EBAY_US");
         properties.setDefaultCurrency("USD");
@@ -96,7 +102,8 @@ class EbayProfitPriceServiceTest {
         PriceSwitch.FREIGHT = 25;
         started = new ArrayList<>();
         service = new EbayProfitPriceService(taskMapper, taskItemMapper, listingMapper, sellClient, tradingClient,
-                marketingClient, poisonClient, snapshotStore, properties, started::add);
+                marketingClient, poisonClient, snapshotStore, properties, specialFreightService, browseClient,
+                started::add);
         when(sellClient.bulkUpdatePriceQuantity(anyList())).thenAnswer(invocation -> {
             List<EbaySellApiClient.OfferPriceQuantity> updates = invocation.getArgument(0);
             return updates.stream().map(u -> new EbaySellApiClient.OfferUpdateResult(u.sku(), u.offerId(), 200, null))
@@ -545,11 +552,15 @@ class EbayProfitPriceServiceTest {
         assertThat(service.start(2, new BigDecimal("50"), new BigDecimal("30"), List.of(row))).isEqualTo(55L);
         ArgumentCaptor<TaskDO> created = ArgumentCaptor.forClass(TaskDO.class);
         verify(taskMapper).insert(created.capture());
-        assertThat(com.alibaba.fastjson.JSONObject.parseObject(created.getValue().getParams())
-                .getBigDecimal("freight")).isEqualByComparingTo("30");
+        com.alibaba.fastjson.JSONObject params = com.alibaba.fastjson.JSONObject.parseObject(
+                created.getValue().getParams());
+        assertThat(params.getJSONArray("agFreights").toJavaList(BigDecimal.class))
+                .hasSize(EbayProfitPriceService.SIZE_BUCKETS).allMatch(f -> f.compareTo(new BigDecimal("30")) == 0);
+        assertThat(params.getIntValue("ruleCount")).isEqualTo(1);
         assertThat(started).hasSize(1);
-        verify(snapshotStore).saveEbayProfitTargets(eq(55L), argThat(list -> list.size() == 1
-                && "DD1391-100".equals(list.get(0).getStyleId())));
+        verify(snapshotStore).saveEbayProfitRules(eq(55L), argThat(list -> list.size() == 1
+                && "DD1391-100".equals(list.get(0).getTarget()) && "".equals(list.get(0).getSize())
+                && "80.00".equals(list.get(0).getTargetProfit())));
         assertThat(service.canRun()).isFalse();
     }
 
@@ -798,6 +809,176 @@ class EbayProfitPriceServiceTest {
 
     private static EbayTradingApiClient.ActiveSku sku(String sku, String listingId, String price, int quantity) {
         return new EbayTradingApiClient.ActiveSku(sku, listingId, new BigDecimal(price), quantity);
+    }
+
+    // ==================== 盈利改价新规则 ====================
+
+    @Test
+    void sizeBucketBoundaries() {
+        assertThat(EbayProfitPriceService.sizeBucket("35")).isEqualTo(0);
+        assertThat(EbayProfitPriceService.sizeBucket("35⅓")).isEqualTo(0);
+        assertThat(EbayProfitPriceService.sizeBucket("35.5")).isEqualTo(1);
+        assertThat(EbayProfitPriceService.sizeBucket("EU 39.5")).isEqualTo(1);
+        assertThat(EbayProfitPriceService.sizeBucket("39⅔")).isEqualTo(1);
+        assertThat(EbayProfitPriceService.sizeBucket("44")).isEqualTo(2);
+        assertThat(EbayProfitPriceService.sizeBucket("44.5")).isEqualTo(3);
+        assertThat(EbayProfitPriceService.sizeBucket("47.5")).isEqualTo(3);
+        assertThat(EbayProfitPriceService.sizeBucket("48")).isEqualTo(4);
+    }
+
+    @Test
+    void matchKeyPrefersItemIdThenSizeSpecific() {
+        Map<String, BigDecimal> rules = new java.util.HashMap<>();
+        rules.put("123|42", BigDecimal.ONE);
+        rules.put("123|", BigDecimal.ONE);
+        rules.put("AAA-1|42", BigDecimal.ONE);
+        rules.put("AAA-1|", BigDecimal.ONE);
+        assertThat(EbayProfitPriceService.matchKey(rules, "123", "aaa-1", "42")).isEqualTo("123|42");
+        assertThat(EbayProfitPriceService.matchKey(rules, "123", "aaa-1", "43")).isEqualTo("123|");
+        assertThat(EbayProfitPriceService.matchKey(rules, "999", "aaa-1", "42")).isEqualTo("AAA-1|42");
+        assertThat(EbayProfitPriceService.matchKey(rules, "999", "aaa-1", "43")).isEqualTo("AAA-1|");
+        assertThat(EbayProfitPriceService.matchKey(rules, "999", "BBB-2", "43")).isNull();
+    }
+
+    @Test
+    void wholeStyleHoldButOneSizeHasNumber() {
+        Map<String, BigDecimal> targets = EbayProfitPriceService.parseRuleRows(List.of(
+                new EbayProfitRuleExcel("aaa-1", "", "不动"),
+                new EbayProfitRuleExcel("https://www.ebay.com/itm/123456789012?var=1", "42⅔", "80")));
+        assertThat(targets).containsEntry("AAA-1|", null).containsEntry("123456789012|42.5", new BigDecimal("80.00"));
+        assertThat(EbayProfitPriceService.matchKey(targets, "123456789012", "AAA-1", "42.5"))
+                .isEqualTo("123456789012|42.5");
+        assertThat(EbayProfitPriceService.matchKey(targets, "123456789012", "AAA-1", "43")).isEqualTo("AAA-1|");
+    }
+
+    @Test
+    void parseRuleRowsReportsBadRows() {
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> EbayProfitPriceService.parseRuleRows(List.of(
+                        new EbayProfitRuleExcel("AAA-1", "", "abc"),
+                        new EbayProfitRuleExcel("", "42", "50"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("第2行目标盈利").hasMessageContaining("第3行货号");
+    }
+
+    @Test
+    void adRateAdjustOnlyForAdvertisedAndNotBelowZero() {
+        EbayProfitPriceService.Rules rules = rules(new BigDecimal("-3"), null, null, List.of());
+        assertThat(rules.adjustAdRate(BigDecimal.ZERO)).isEqualByComparingTo("0");
+        assertThat(rules.adjustAdRate(new BigDecimal("2"))).isEqualByComparingTo("0");
+        assertThat(rules.adjustAdRate(new BigDecimal("5"))).isEqualByComparingTo("2");
+        assertThat(rules(null, null, null, List.of()).adjustAdRate(new BigDecimal("5"))).isEqualByComparingTo("5");
+    }
+
+    @Test
+    void heldSkuIsNotTouchedEvenWithoutPoisonPrice() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L1");
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        pages(List.of(sku("SKU-A", "L1", "999", 1)));
+
+        service.runSingleRound(7L, 1, rules(null, null, null,
+                List.of(new EbayProfitRuleExcel("AAA-1", "42", "不动"))), BigDecimal.ZERO, new AtomicBoolean());
+
+        verify(poisonClient, never()).batchQueryPrice(anyList());
+        verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+        assertThat(results()).containsEntry("SKU-A", "按表格设置不动，跳过");
+    }
+
+    @Test
+    void leadSkuIsCheapestPricedSizeAndTableRowsAreSkipped() {
+        threeSizeListing();
+        service.runSingleRound(7L, 1, rules(null, 3, null, List.of()), BigDecimal.ZERO, new AtomicBoolean());
+        Map<String, String> results = results();
+        assertThat(results.get("S41")).contains("来源:引流");
+        assertThat(results.get("S42")).contains("来源:得物价≤450");
+        assertThat(results.get("S40")).contains("来源:得物价>450");
+
+        org.mockito.Mockito.clearInvocations(taskItemMapper);
+        service.runSingleRound(7L, 2, rules(null, 3, null, List.of(new EbayProfitRuleExcel("AAA-1", "41", "50"))),
+                BigDecimal.ZERO, new AtomicBoolean());
+        results = results();
+        assertThat(results.get("S41")).contains("来源:表格");
+        assertThat(results.get("S42")).contains("来源:引流");
+
+        org.mockito.Mockito.clearInvocations(taskItemMapper);
+        service.runSingleRound(7L, 3, rules(null, 4, null, List.of()), BigDecimal.ZERO, new AtomicBoolean());
+        assertThat(results().values()).noneMatch(r -> r.contains("来源:引流"));
+    }
+
+    @Test
+    void agListingUsesAgFreightAndFailureFallsBackToNonAg() {
+        singleListing();
+        when(browseClient.getListing("L1", false)).thenReturn(new EbayBrowseApiClient.ListingAuthenticity("shop", true));
+        when(browseClient.searchSeller("shop", 0)).thenReturn(new EbayBrowseApiClient.SearchPage(1, Map.of("L1", true)));
+        service.runSingleRound(7L, 1, agRules(), BigDecimal.ZERO, new AtomicBoolean());
+        assertThat(results().get("SKU-A")).contains("运费¥25(AG)");
+
+        org.mockito.Mockito.clearInvocations(taskItemMapper);
+        when(browseClient.searchSeller("shop", 0)).thenThrow(new RuntimeException("quota"));
+        service.runSingleRound(7L, 2, agRules(), BigDecimal.ZERO, new AtomicBoolean());
+        assertThat(results().get("SKU-A")).contains("运费¥40(非AG)");
+        verify(taskMapper).updateTaskFailReason(eq(7L), argThat(r -> r != null && r.contains("AG")));
+    }
+
+    @Test
+    void specialFreightAppliesNonAgFactor() {
+        singleListing();
+        when(specialFreightService.load()).thenReturn(Map.of("AAA-1|", new BigDecimal("50")));
+        when(browseClient.getListing("L1", false)).thenReturn(new EbayBrowseApiClient.ListingAuthenticity("shop", true));
+        when(browseClient.searchSeller("shop", 0)).thenReturn(new EbayBrowseApiClient.SearchPage(0, Map.of()));
+        service.runSingleRound(7L, 1, rules(null, null, null, List.of()), BigDecimal.ZERO, new AtomicBoolean());
+        assertThat(results().get("SKU-A")).contains("运费¥60(非AG·特殊)");
+    }
+
+    private void singleListing() {
+        EbayListingDO mapping = listing("SKU-A", "offer-A", "AAA-1", "HK");
+        mapping.setListingId("L1");
+        when(listingMapper.selectActive()).thenReturn(List.of(mapping));
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        pages(List.of(sku("SKU-A", "L1", "999", 1)));
+    }
+
+    private void threeSizeListing() {
+        List<EbayListingDO> mappings = new ArrayList<>();
+        List<EbayTradingApiClient.ActiveSku> skus = new ArrayList<>();
+        for (String size : List.of("40", "41", "42")) {
+            EbayListingDO mapping = listing("S" + size, "offer-" + size, "AAA-1", "HK");
+            mapping.setListingId("L1");
+            mapping.setEuSize(size);
+            mappings.add(mapping);
+            skus.add(sku("S" + size, "L1", "999", 1));
+        }
+        when(listingMapper.selectActive()).thenReturn(mappings);
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", "40", 500),
+                poison("AAA-1", "41", 400), poison("AAA-1", "42", 400)));
+        pages(skus);
+    }
+
+    private Map<String, String> results() {
+        ArgumentCaptor<TaskItemDO> items = ArgumentCaptor.forClass(TaskItemDO.class);
+        verify(taskItemMapper, org.mockito.Mockito.atLeastOnce()).insert(items.capture());
+        Map<String, String> results = new java.util.HashMap<>();
+        items.getAllValues().forEach(item -> results.put(item.getSku(), item.getOperateResult()));
+        return results;
+    }
+
+    private static EbayProfitPriceService.Rules agRules() {
+        return EbayProfitPriceService.Rules.of(java.util.Collections.nCopies(5, new BigDecimal("25")),
+                java.util.Collections.nCopies(5, new BigDecimal("40")), new BigDecimal("450"), new BigDecimal("30"),
+                new BigDecimal("80"), null, null, null, List.of());
+    }
+
+    private static EbayProfitPriceService.Rules rules(BigDecimal adRateAdjust, Integer leadCount, BigDecimal unused,
+                                                      List<EbayProfitRuleExcel> rows) {
+        List<BigDecimal> freights = java.util.Collections.nCopies(5, new BigDecimal("25"));
+        return EbayProfitPriceService.Rules.of(freights, freights, new BigDecimal("450"), new BigDecimal("30"),
+                new BigDecimal("80"), adRateAdjust, leadCount, leadCount == null ? null : new BigDecimal("-20"), rows);
+    }
+
+    private static PoisonPriceDO poison(String modelNo, String euSize, int price) {
+        PoisonPriceDO p = poison(modelNo, price);
+        p.setEuSize(euSize);
+        return p;
     }
 
     private static EbayListingDO listing(String sku, String offerId, String styleId, String region) {

@@ -13,6 +13,7 @@ import cn.ken.shoes.model.excel.EbayListingExcel;
 import cn.ken.shoes.model.excel.EbayTrackingExcel;
 import cn.ken.shoes.model.excel.EbayPoisonListingExcel;
 import cn.ken.shoes.model.excel.EbayProfitTargetExcel;
+import cn.ken.shoes.model.excel.EbayProfitRuleExcel;
 import cn.ken.shoes.model.excel.EbayItemIdExcel;
 import cn.ken.shoes.model.excel.EbaySetPriceExcel;
 import cn.ken.shoes.model.excel.EbaySetQuantityExcel;
@@ -46,6 +47,7 @@ public class TaskInputSnapshotStore {
     private static final String EBAY_POISON_LISTING_FILE = "ebay-poison-listing.json";
     private static final String EBAY_TRACKING_FILE = "ebay-tracking.json";
     private static final String EBAY_PROFIT_TARGETS_FILE = "ebay-profit-targets.json";
+    private static final String EBAY_PROFIT_RULES_FILE = "ebay-profit-rules.json";
     private static final String EBAY_ITEM_ID_FILE = "ebay-item-ids.json";
     private static final String EBAY_SET_PRICE_FILE = "ebay-set-price.json";
     private static final String EBAY_SET_QUANTITY_FILE = "ebay-set-quantity.json";
@@ -201,6 +203,14 @@ public class TaskInputSnapshotStore {
 
     public Optional<List<EbayProfitTargetExcel>> loadEbayProfitTargets(Long taskId) {
         return loadList(taskId, EBAY_PROFIT_TARGETS_FILE, EbayProfitTargetExcel.class, "eBay盈利改价");
+    }
+
+    public void saveEbayProfitRules(Long taskId, List<EbayProfitRuleExcel> input) {
+        write(taskPath(taskId, EBAY_PROFIT_RULES_FILE), JSON.toJSONString(input));
+    }
+
+    public Optional<List<EbayProfitRuleExcel>> loadEbayProfitRules(Long taskId) {
+        return loadList(taskId, EBAY_PROFIT_RULES_FILE, EbayProfitRuleExcel.class, "eBay盈利改价");
     }
 
     public void saveEbayItemIdInput(Long taskId, List<EbayItemIdExcel> input) {

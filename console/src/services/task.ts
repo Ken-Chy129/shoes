@@ -91,6 +91,13 @@ enum TASK_API {
     // eBay 盈利改价（含广告费；默认目标盈利 + 可选按货号目标盈利 Excel）
     EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice',
     EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate',
+    EBAY_PROFIT_RULE_TEMPLATE = '/api/task/ebay/profitRuleTemplate',
+    // eBay 特殊运费（盈利改价每轮读取；填AG运费，非AG ×1.2）
+    EBAY_SPECIAL_FREIGHT_LIST = '/api/task/ebay/specialFreight/list',
+    EBAY_SPECIAL_FREIGHT_SAVE = '/api/task/ebay/specialFreight/save',
+    EBAY_SPECIAL_FREIGHT_DELETE = '/api/task/ebay/specialFreight/delete',
+    EBAY_SPECIAL_FREIGHT_IMPORT = '/api/task/ebay/specialFreight/import',
+    EBAY_SPECIAL_FREIGHT_TEMPLATE = '/api/task/ebay/specialFreight/template',
     // eBay 活动改价：盈利改价基础上，到手再扣卖家承担的折扣补贴（标价 × 折扣% × 卖家承担%）
     EBAY_START_PROMO_PROFIT_PRICE = '/api/task/ebay/startPromoProfitPrice',
     // eBay 刊登管理：获取刊登 / 按编号下架 / 按编号重新上架 / 指定尺码改价

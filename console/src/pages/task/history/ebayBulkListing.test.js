@@ -96,6 +96,14 @@ describe('eBay bulk listing task UI', () => {
     expect(page).toContain('只有得物没价格才将库存置0');
     expect(service).toContain("EBAY_START_PROFIT_PRICE = '/api/task/ebay/startProfitPrice'");
     expect(service).toContain("EBAY_PROFIT_TARGET_TEMPLATE = '/api/task/ebay/profitTargetTemplate'");
+    // 盈利改价新规则：两套尺码段运费、两档盈利、可选广告/引流、含「不动」的表格
+    expect(page).toContain("formData.append('agFreights', values.agFreights.join(','))");
+    expect(page).toContain("formData.append('nonAgFreights', values.nonAgFreights.join(','))");
+    expect(page).toContain("if (values.adRateAdjustEnabled) formData.append('adRateAdjust'");
+    expect(page).toContain("formData.append('leadMinSkuCount'");
+    expect(page).toContain('href={TASK_API.EBAY_PROFIT_RULE_TEMPLATE}');
+    expect(service).toContain("EBAY_PROFIT_RULE_TEMPLATE = '/api/task/ebay/profitRuleTemplate'");
+    expect(service).toContain("EBAY_SPECIAL_FREIGHT_LIST = '/api/task/ebay/specialFreight/list'");
   });
 
   it('offers eBay promo repricing with discount and seller share inputs', () => {

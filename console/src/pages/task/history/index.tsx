@@ -421,11 +421,22 @@ const TaskPage = () => {
                 const taskName = promo ? 'eBay活动改价' : 'eBay盈利改价';
                 const formData = new FormData();
                 formData.append('intervalHours', String(values.profitIntervalHours));
-                formData.append('defaultProfit', String(values.defaultProfit));
-                formData.append('freight', String(values.profitFreight));
                 if (promo) {
+                    formData.append('defaultProfit', String(values.defaultProfit));
+                    formData.append('freight', String(values.profitFreight));
                     formData.append('discountPercent', String(values.promoDiscountPercent));
                     formData.append('sellerSharePercent', String(values.promoSellerSharePercent));
+                } else {
+                    formData.append('agFreights', values.agFreights.join(','));
+                    formData.append('nonAgFreights', values.nonAgFreights.join(','));
+                    formData.append('profitThreshold', String(values.profitThreshold));
+                    formData.append('profitLow', String(values.profitLow));
+                    formData.append('profitHigh', String(values.profitHigh));
+                    if (values.adRateAdjustEnabled) formData.append('adRateAdjust', String(values.adRateAdjust));
+                    if (values.leadEnabled) {
+                        formData.append('leadMinSkuCount', String(values.leadMinSkuCount));
+                        formData.append('leadProfit', String(values.leadProfit));
+                    }
                 }
                 const file = values.ebayProfitExcel?.[0]?.originFileObj;
                 if (file) formData.append('file', file);
@@ -1000,7 +1011,7 @@ const TaskPage = () => {
                 if ((record.taskType === 'ebay_profit_price' || record.taskType === 'ebay_promo_profit_price') && record.attributes) {
                     try {
                         const attrs = JSON.parse(record.attributes);
-                        const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 调至盈利 ${attrs.raised ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 得物无价清库存 ${attrs.zeroed ?? 0} | 不动 ${attrs.kept ?? 0} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}${attrs.groupWithdrawn ? ` | 整组无价下架 ${attrs.groupWithdrawn}` : ''}${attrs.removedByEbay ? ` | eBay违规移除 ${attrs.removedByEbay}` : ''}${attrs.relisted ? ` | 含重新上架链接 ${attrs.relisted}` : ''}${attrs.synced ? ` | 同步刊登价 ${attrs.synced}` : ''}`;
+                        const tip = `${attrs.totalPages ? `第 ${attrs.pages ?? 0}/${attrs.totalPages} 页 | ` : ''}本轮 ${attrs.total ?? 0} | 降价 ${attrs.lowered ?? 0} | 调至盈利 ${attrs.raised ?? 0} | 恢复库存 ${attrs.restored ?? 0} | 得物无价清库存 ${attrs.zeroed ?? 0} | 价格不变 ${attrs.kept ?? 0}${attrs.held ? ` | 表格不动 ${attrs.held}` : ''}${attrs.leadSkus ? ` | 引流 ${attrs.leadSkus}` : ''}${attrs.agListings ? ` | AG链接 ${attrs.agListings}` : ''} | 已为0 ${attrs.alreadyZero ?? 0} | 失败 ${attrs.failed ?? 0}${attrs.groupWithdrawn ? ` | 整组无价下架 ${attrs.groupWithdrawn}` : ''}${attrs.removedByEbay ? ` | eBay违规移除 ${attrs.removedByEbay}` : ''}${attrs.relisted ? ` | 含重新上架链接 ${attrs.relisted}` : ''}${attrs.synced ? ` | 同步刊登价 ${attrs.synced}` : ''}`;
                         return <Tooltip title={tip}>
                             <span style={{cursor: 'pointer', lineHeight: 1.3, display: 'inline-block'}}>
                                 降价 {attrs.lowered ?? 0}<br/>调至盈利 {attrs.raised ?? 0}
@@ -1152,6 +1163,97 @@ const TaskPage = () => {
     ];
 
     // ==================== 新建任务表单 ====================
+
+    const SIZE_BUCKET_LABELS = ['≤35', '≤39.5', '≤44', '≤47.5', '>47.5'];
+    const profitNumber = (min: number, label: string) => [
+        {required: true, message: `请输入${label}`},
+        {type: 'number' as const, min, max: 100000, message: `请输入${min}到100000之间的数字`},
+    ];
+
+    // eBay盈利改价：AG/非AG 各 5 段尺码运费 + 得物价两档盈利 + 可选广告费率调整、低价引流 + 表格（含「不动」）。
+    const renderEbayProfitRuleFields = () => <>
+        {(['agFreights', 'nonAgFreights'] as const).map((name) => (
+            <Form.Item key={name} label={name === 'agFreights' ? 'AG运费' : '非AG运费'} required
+                       extra={name === 'agFreights'
+                           ? '按EU尺码分段，人民币；有正品保证(AG)的链接用这一行'
+                           : '无AG、或AG查询失败的链接用这一行；特殊货号运费在「特殊货号 → eBay特殊运费」里维护（优先于这里）'}>
+                <Space wrap>
+                    {SIZE_BUCKET_LABELS.map((bucket, i) => (
+                        <Form.Item key={bucket} name={[name, i]} noStyle initialValue={25}
+                                   rules={profitNumber(0, `${bucket}运费`)}>
+                            <InputNumber min={0} max={100000} precision={2} addonBefore={bucket} style={{width: 150}}/>
+                        </Form.Item>
+                    ))}
+                </Space>
+            </Form.Item>
+        ))}
+        <Form.Item label="目标盈利" required
+                   extra="得物价 ≤ 阈值用第一档，否则用第二档；利润 = 到手美元 × 汇率 − 得物价 − 运费，有得物价时直接调到刚好盈利的最低价，只有得物没价格才将库存置0">
+            <Space wrap>
+                <Form.Item name="profitThreshold" noStyle rules={profitNumber(0, '得物价阈值')}>
+                    <InputNumber min={0} max={100000} precision={2} addonBefore="得物价阈值" addonAfter="元"
+                                 style={{width: 220}}/>
+                </Form.Item>
+                <Form.Item name="profitLow" noStyle rules={profitNumber(-100000, '≤阈值的目标盈利')}>
+                    <InputNumber min={-100000} max={100000} precision={2} addonBefore="≤阈值" addonAfter="元"
+                                 style={{width: 190}}/>
+                </Form.Item>
+                <Form.Item name="profitHigh" noStyle rules={profitNumber(-100000, '>阈值的目标盈利')}>
+                    <InputNumber min={-100000} max={100000} precision={2} addonBefore=">阈值" addonAfter="元"
+                                 style={{width: 190}}/>
+                </Form.Item>
+            </Space>
+        </Form.Item>
+        <Form.Item label="广告费率调整" extra="只调整投了广告的商品（费率>0），调整后低于0按0算；对所有尺码生效">
+            <Space>
+                <Form.Item name="adRateAdjustEnabled" noStyle valuePropName="checked"><Switch/></Form.Item>
+                <Form.Item noStyle shouldUpdate={(a, b) => a.adRateAdjustEnabled !== b.adRateAdjustEnabled}>
+                    {({getFieldValue}) => getFieldValue('adRateAdjustEnabled') &&
+                        <Form.Item name="adRateAdjust" noStyle rules={[
+                            {required: true, message: '请输入调整的百分点'},
+                            {type: 'number', min: -100, max: 100, message: '请输入-100到100之间的数字'},
+                        ]}>
+                            <InputNumber min={-100} max={100} step={0.5} precision={2} addonBefore="±"
+                                         addonAfter="百分点" style={{width: 200}}/>
+                        </Form.Item>}
+                </Form.Item>
+            </Space>
+        </Form.Item>
+        <Form.Item label="低价引流"
+                   extra="一条链接有得物价的尺码数 ≥ N 时，得物价最低的一个（同价取尺码小的）用引流盈利；优先级：表格 > 引流 > 两档盈利">
+            <Space wrap>
+                <Form.Item name="leadEnabled" noStyle valuePropName="checked"><Switch/></Form.Item>
+                <Form.Item noStyle shouldUpdate={(a, b) => a.leadEnabled !== b.leadEnabled}>
+                    {({getFieldValue}) => getFieldValue('leadEnabled') && <Space wrap>
+                        <Form.Item name="leadMinSkuCount" noStyle rules={[
+                            {required: true, message: '请输入SKU数量'},
+                            {type: 'number', min: 1, max: 100, message: '请输入1到100之间的整数'},
+                        ]}>
+                            <InputNumber min={1} max={100} precision={0} addonBefore="SKU数 ≥" style={{width: 160}}/>
+                        </Form.Item>
+                        <Form.Item name="leadProfit" noStyle rules={profitNumber(-100000, '引流目标盈利')}>
+                            <InputNumber min={-100000} max={100000} precision={2} addonBefore="引流盈利"
+                                         addonAfter="元" style={{width: 210}}/>
+                        </Form.Item>
+                    </Space>}
+                </Form.Item>
+            </Space>
+        </Form.Item>
+        <Form.Item name="ebayProfitExcel" label="按货号/尺码设置" valuePropName="fileList"
+                   getValueFromEvent={(e: any) => e?.fileList}
+                   extra={<ExcelFieldHint
+                       requiredFields={['货号或物品编号', '目标盈利']}
+                       optionalFields={['尺码']}
+                       note="选填；目标盈利填数字，或填「不动」：这些尺码价格、库存都不改。匹配：物品编号+尺码 > 物品编号 > 货号+尺码 > 货号。"
+                   />}>
+            <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+            </Upload>
+        </Form.Item>
+        <div style={{margin: `0 0 24px ${CREATE_FORM_LABEL_WIDTH}px`}}>
+            <Button href={TASK_API.EBAY_PROFIT_RULE_TEMPLATE} icon={<DownloadOutlined/>}>下载模板</Button>
+        </div>
+    </>;
 
     const renderCreateForm = () => {
         if (createPlatform === 'ebay' && createTaskType === 'ebay_bulk_listing') {
@@ -1324,15 +1426,14 @@ const TaskPage = () => {
                                      style={{width: 160}}/>
                     </Form.Item>
                 </>}
+                {promo ? <>
                 <Form.Item name="defaultProfit" label="默认目标盈利"
-                           initialValue={promo ? -30 : undefined}
+                           initialValue={-30}
                            rules={[
                                {required: true, message: '请输入默认目标盈利'},
                                {type: 'number', min: -100000, max: 100000, message: '请输入-100000到100000之间的数字'},
                            ]}
-                           extra={promo
-                               ? '利润 = (到手美元 − 标价 × 卖家承担补贴率) × 汇率 − 得物价 − 运费；费用与$150门槛仍按标价计算，其余规则与盈利改价相同'
-                               : '利润 = 到手美元 × 汇率 − 得物价 − 运费；有得物价时直接调到刚好盈利的最低价（不盈利则调高，有余量则一次降到底）；只有得物没价格才将库存置0'}>
+                           extra="利润 = (到手美元 − 标价 × 卖家承担补贴率) × 汇率 − 得物价 − 运费；费用与$150门槛仍按标价计算，其余规则与盈利改价相同">
                     <InputNumber min={-100000} max={100000} step={10} precision={2} addonAfter="元"
                                  style={{width: 160}}/>
                 </Form.Item>
@@ -1361,6 +1462,7 @@ const TaskPage = () => {
                         下载目标盈利模板
                     </Button>
                 </div>
+                </> : renderEbayProfitRuleFields()}
             </>;
         }
 
@@ -1768,7 +1870,7 @@ const TaskPage = () => {
         maxListCount: '最大上架数', searchMode: '搜索方式', operation: '操作', inputCount: '输入行数', modelNoCount: '货号数', modelNoSearch: '货号搜索模式', modelNoSizeFilters: '指定尺码', listingFetchMode: '商品获取方式', processOutsideExcel: '处理Excel外商品', feeMonitorEnabled: '费率监控', merchantFeeRate: '手续费', minMerchantFee: '最低手续费', transferFeeRate: '转账费', unprofitableAction: '不盈利操作', delistMode: '下架类型', deleteMode: '撤销范围',
         orderTypes: '订单类型', shipmentTypes: '货运类型', soldStartTime: '售出开始时间', soldEndTime: '售出结束时间',
         region: '发货区域', marketplaceId: '站点', currency: '币种', merchantLocationKey: '发货地点', fulfillmentPolicyId: '物流政策',
-        trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数', scope: '刊登范围', viewDays: '浏览人数天数',
+        trigger: '触发方式', priceFormula: '上架价格公式', quantity: '每尺码数量', intervalHours: '自动间隔', priceMultiplier: '得物价格系数', priceAddition: '固定加价', defaultProfit: '默认目标盈利', freight: '运费', overrideCount: '单独设置货号数', agFreights: 'AG运费(≤35/≤39.5/≤44/≤47.5/其余)', nonAgFreights: '非AG运费(≤35/≤39.5/≤44/≤47.5/其余)', profitThreshold: '得物价阈值', profitLow: '≤阈值目标盈利', profitHigh: '>阈值目标盈利', adRateAdjust: '广告费率调整', leadMinSkuCount: '引流最少SKU数', leadProfit: '引流目标盈利', ruleCount: '表格行数', scope: '刊登范围', viewDays: '浏览人数天数',
     };
 
     const formatParamValue = (k: string, v: any): string => {
@@ -1803,7 +1905,12 @@ const TaskPage = () => {
         if (k === 'unprofitableAction') return v === 'markup' ? '加价$100' : '下架';
         if (k === 'trigger') return v === 'scheduled' ? '自动触发' : '手动触发';
         if (k === 'intervalHours') return `${v}小时`;
-        if (k === 'priceAddition' || k === 'defaultProfit' || k === 'freight') return `¥${v}`;
+        if (k === 'priceAddition' || k === 'defaultProfit' || k === 'freight' || k === 'profitThreshold'
+            || k === 'profitLow' || k === 'profitHigh' || k === 'leadProfit') return `¥${v}`;
+        if (k === 'agFreights' || k === 'nonAgFreights') return (Array.isArray(v) ? v : [v]).map((f: any) => `¥${f}`).join(' / ');
+        if (k === 'adRateAdjust') return `${Number(v) > 0 ? '+' : ''}${v}个百分点`;
+        if (k === 'leadMinSkuCount') return `${v}个`;
+        if (k === 'ruleCount') return `${v}行`;
         if (k === 'overrideCount') return `${v}个`;
         if (k === 'orderTypes') {
             const labels: Record<string, string> = {pending: '待处理', completed: '已完成', cancelled: '已取消', pending_payout: '待付款'};

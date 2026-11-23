@@ -631,6 +631,9 @@ public class TaskExecutorManager {
      * 拒绝启动：否则这些货号会悄悄退回默认目标盈利，按更低的门槛被降价。
      */
     Long startEbayProfitPriceFromSnapshot(TaskDO source, JSONObject params) {
+        if (EbayProfitPriceService.TASK_TYPE.equals(source.getTaskType()) && params.containsKey("agFreights")) {
+            return startEbayProfitPriceFromRules(source, params);
+        }
         int expected = params.getIntValue("overrideCount");
         List<EbayProfitTargetExcel> targets;
         String problem = null;
@@ -668,6 +671,35 @@ public class TaskExecutorManager {
         }
         return startEbayProfitPrice(params.getLongValue("intervalHours"), params.getBigDecimal("defaultProfit"),
                 freight, overrides);
+    }
+
+    /** 新版盈利改价（分段运费/两档盈利/表格含「不动」）：表格快照缺失或条数不符时同样拒绝恢复。 */
+    private Long startEbayProfitPriceFromRules(TaskDO source, JSONObject params) {
+        int expected = params.getIntValue("ruleCount");
+        List<cn.ken.shoes.model.excel.EbayProfitRuleExcel> rows;
+        String problem = null;
+        try {
+            rows = taskInputSnapshotStore.loadEbayProfitRules(source.getId()).orElse(null);
+        } catch (RuntimeException e) {
+            log.error("读取eBay盈利改价表格快照失败, taskId:{}", source.getId(), e);
+            rows = null;
+            problem = "盈利改价表格快照读取失败";
+        }
+        if (expected > 0 && (rows == null || rows.size() != expected)) {
+            if (problem == null) {
+                problem = rows == null ? "盈利改价表格快照不存在"
+                        : "盈利改价表格快照条数不符（应为" + expected + "，实际" + rows.size() + "）";
+            }
+            log.error("eBay盈利改价未恢复：{}, taskId:{}", problem, source.getId());
+            try {
+                taskMapper.updateTaskFailReason(source.getId(), problem + "，为避免按默认目标盈利改价已停止恢复，请重新上传Excel创建任务");
+            } catch (Exception e) {
+                log.warn("eBay盈利改价恢复失败原因写入失败, taskId:{}", source.getId(), e);
+            }
+            return null;
+        }
+        return ebayProfitPriceService.start(params.getLongValue("intervalHours"),
+                EbayProfitPriceService.Rules.fromParams(params, rows == null ? List.of() : rows));
     }
 
     public void cancelEbayProfitPrice(Long taskId) {

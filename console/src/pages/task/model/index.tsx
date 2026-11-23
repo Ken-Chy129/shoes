@@ -1,10 +1,11 @@
 import {
-    Button, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tag, Upload,
+    Button, Form, Input, message, Modal, Popconfirm, Select, Space, Table, Tabs, Tag, Upload,
 } from "antd";
 import {PlusOutlined, UploadOutlined, DownloadOutlined} from "@ant-design/icons";
 import React, {useEffect, useState} from "react";
 import {doDeleteRequest, doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
 import {SETTING_API} from "@/services/shoes";
+import EbaySpecialFreight from "./EbaySpecialFreight";
 
 interface SpecialModelRecord {
     modelNo: string;
@@ -25,7 +26,7 @@ const CATEGORY_LABELS: Record<string, { text: string; color: string }> = {
     notCompare: {text: '不比价', color: 'orange'},
 };
 
-const ModelPage = () => {
+const SpecialModelTab = () => {
     const [dataSource, setDataSource] = useState<SpecialModelRecord[]>([]);
     const [pageIndex, setPageIndex] = useState(1);
     const [pageSize, setPageSize] = useState(20);
@@ -228,5 +229,10 @@ const ModelPage = () => {
 
     </>;
 };
+
+const ModelPage = () => <Tabs items={[
+    {key: 'special', label: '特殊货号', children: <SpecialModelTab/>},
+    {key: 'ebayFreight', label: 'eBay特殊运费', children: <EbaySpecialFreight/>},
+]}/>;
 
 export default ModelPage;
