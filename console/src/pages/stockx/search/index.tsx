@@ -12,13 +12,15 @@ import {
     Space,
     Table,
     Tag,
-    Tooltip
+    Tooltip,
+    Upload
 } from "antd";
 
 const { TextArea } = Input;
 import React, {useEffect, useState, useRef} from "react";
-import {DownloadOutlined, PlusOutlined, StopOutlined} from "@ant-design/icons";
-import {doGetRequest, doPostRequest} from "@/util/http";
+import {DownloadOutlined, PlusOutlined, StopOutlined, UploadOutlined} from "@ant-design/icons";
+import {doGetRequest, doPostRequest, doUploadRequestWithParams} from "@/util/http";
+import ExcelFieldHint from "@/components/ExcelFieldHint";
 import {SEARCH_TASK_API} from "@/services/stockx";
 import {STOCKX_DOWNLOAD_API} from "@/services/file";
 import {SETTING_API} from "@/services/shoes";
@@ -170,39 +172,19 @@ const SearchPage = () => {
                     });
                 });
             } else {
-                // 货号搜索模式
-                const {modelNumbers} = values;
-
-                // 根据换行符拆分货号
-                const modelNoList = modelNumbers
-                    .split('\n')
-                    .map((m: string) => m.trim())
-                    .filter((m: string) => m.length > 0);
-
-                if (modelNoList.length === 0) {
-                    message.error('请输入至少一个货号');
-                    setLoading(false);
-                    return;
-                }
-
-                // 将所有货号用换行符连接成一个字符串,只创建一个任务
-                const queryString = modelNoList.join('\n');
-                const {accountName} = values;
-                doPostRequest(SEARCH_TASK_API.CREATE, {
-                    platform: "stockx",
-                    query: queryString,
-                    sorts: 'featured',
-                    pageCount: 1,
-                    type: 'modelNo',
-                    accountName
-                }, {
+                // 货号搜索模式：上传Excel，由后端解析货号
+                const file = values.modelNoExcel?.[0]?.originFileObj;
+                doUploadRequestWithParams(SEARCH_TASK_API.CREATE_MODEL_NO_BY_EXCEL, file, {accountName: values.accountName}, {
                     onSuccess: res => {
-                        message.success(`货号搜索任务创建成功！共${modelNoList.length}个货号`);
-                        handleCreateModalClose();
-                        queryTaskList();
+                        // 业务失败已由响应拦截器提示，保留弹窗便于重新上传
+                        if (res?.success !== false) {
+                            message.success('货号搜索任务创建成功');
+                            handleCreateModalClose();
+                            queryTaskList();
+                        }
                         setLoading(false);
                     },
-                    onError: err => {
+                    onError: () => {
                         message.error('任务创建失败');
                         setLoading(false);
                     }
@@ -320,6 +302,12 @@ const SearchPage = () => {
             dataIndex: 'query',
             key: 'query',
             width: 120,
+            render: (query: string, record: SearchTask) => {
+                if (record.type !== 'modelNo') return query;
+                // 货号任务可能有上千个货号，只展示摘要，避免整列渲染卡死
+                const list = (query || '').split('\n').filter(Boolean);
+                return list.length <= 3 ? list.join(', ') : `${list.slice(0, 3).join(', ')} 等${list.length}个货号`;
+            }
         },
         {
             title: '任务类型',
@@ -547,7 +535,6 @@ const SearchPage = () => {
                     searchType: 'shoes',
                     sorts: defaultSorts,
                     pageCount: 25,
-                    modelNumbers: ''
                 }}
             >
                 <Form.Item
@@ -641,31 +628,16 @@ const SearchPage = () => {
                     </>
                 ) : (
                     <Form.Item
-                        name="modelNumbers"
-                        label="货号列表"
-                        validateTrigger="onBlur"
-                        rules={[
-                            {
-                                required: true,
-                                message: '请输入货号'
-                            },
-                            {
-                                validator: async (_, value) => {
-                                    if (value) {
-                                        const modelNumbers = value.split('\n').map((m: string) => m.trim()).filter((m: string) => m.length > 0);
-                                        if (modelNumbers.length === 0) {
-                                            return Promise.reject(new Error('至少需要输入一个货号'));
-                                        }
-                                    }
-                                },
-                            },
-                        ]}
-                        extra="每行一个货号,支持多行输入。"
+                        name="modelNoExcel"
+                        label="货号Excel"
+                        valuePropName="fileList"
+                        getValueFromEvent={(e: any) => e?.fileList}
+                        rules={[{required: true, message: '请上传货号Excel'}]}
+                        extra={<ExcelFieldHint requiredFields={['货号']} note="重复货号会自动去重，所有货号合并为一个任务。"/>}
                     >
-                        <TextArea
-                            rows={8}
-                            placeholder="请输入货号,每行一个&#10;例如:&#10;DZ5485-612&#10;FD0774-200&#10;DM9652-102"
-                        />
+                        <Upload accept=".xlsx,.xls" maxCount={1} beforeUpload={() => false}>
+                            <Button icon={<UploadOutlined/>}>选择 Excel</Button>
+                        </Upload>
                     </Form.Item>
                 )}
             </Form>
