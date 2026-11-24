@@ -61,21 +61,22 @@ public class SizeConvertUtil {
                     .computeIfAbsent(gender, k -> new ArrayList<>())
                     .add(sizeChart);
 
-            // 通用 usSize
-            if (usSize != null && !usSize.isEmpty()) {
-                String key = buildKey(stockxBrand, gender, usSize);
-                STOCKX_SIZE_CACHE.put(key, euSize);
+            String menUSSize = sizeChart.getMenUSSize();
+            String womenUSSize = sizeChart.getWomenUSSize();
+
+            // 本性别尺码：女款行的 us_size 多数填的是男码，女码要取 women_us_size
+            String ownUsSize = Gender.WOMENS.name().equals(gender) ? firstNonBlank(womenUSSize, usSize)
+                    : Gender.MENS.name().equals(gender) ? firstNonBlank(menUSSize, usSize)
+                    : usSize;
+            if (isPresent(ownUsSize)) {
+                STOCKX_SIZE_CACHE.put(buildKey(stockxBrand, gender, ownUsSize), euSize);
             }
 
-            // 男款 usSize
-            String menUSSize = sizeChart.getMenUSSize();
+            // 跨性别列只作兜底，不覆盖本性别行
             if (menUSSize != null && !menUSSize.isEmpty()) {
                 String key = buildKey(stockxBrand, Gender.MENS.name(), menUSSize);
                 STOCKX_SIZE_CACHE.putIfAbsent(key, euSize);
             }
-
-            // 女款 usSize
-            String womenUSSize = sizeChart.getWomenUSSize();
             if (womenUSSize != null && !womenUSSize.isEmpty()) {
                 String key = buildKey(stockxBrand, Gender.WOMENS.name(), womenUSSize);
                 STOCKX_SIZE_CACHE.putIfAbsent(key, euSize);
@@ -103,9 +104,10 @@ public class SizeConvertUtil {
 
         // 提取性别
         Gender gender = GenderUtil.extractGender(PlatformEnum.STOCKX, size);
+        // StockX 女码形如 9.5W，尺码表里存的是不带 W 的数字
+        String lookupSize = gender == Gender.WOMENS ? size.replace("W", "").trim() : size;
 
-
-        String key = buildKey(brand, gender.name(), size);
+        String key = buildKey(brand, gender.name(), lookupSize);
         String euSize = STOCKX_SIZE_CACHE.get(key);
 
         // 因为K和C对应Baby和Kids不好区分，这里提取性别时默认返回Baby，然后再兜底从Kids查询
@@ -193,19 +195,17 @@ public class SizeConvertUtil {
         String normalizedEuSize = normalizeSize(euSize);
         String menSize = null;
         String womenSize = null;
-        for (List<SizeChartDO> charts : brandCharts.values()) {
-            for (SizeChartDO chart : charts) {
-                if (!normalizedEuSize.equals(normalizeSize(chart.getEuSize()))) {
-                    continue;
-                }
-                String chartGender = normalizeGender(chart.getGender());
-                menSize = firstNonBlank(menSize, chart.getMenUSSize());
-                womenSize = firstNonBlank(womenSize, chart.getWomenUSSize());
-                if (Gender.MENS.name().equals(chartGender)) {
-                    menSize = firstNonBlank(menSize, chart.getUsSize());
-                } else if (Gender.WOMENS.name().equals(chartGender)) {
-                    womenSize = firstNonBlank(womenSize, chart.getUsSize());
-                }
+        for (SizeChartDO chart : preferredFirst(brandCharts, normalizeGender(gender))) {
+            if (!normalizedEuSize.equals(normalizeSize(chart.getEuSize()))) {
+                continue;
+            }
+            String chartGender = normalizeGender(chart.getGender());
+            menSize = firstNonBlank(menSize, chart.getMenUSSize());
+            womenSize = firstNonBlank(womenSize, chart.getWomenUSSize());
+            if (Gender.MENS.name().equals(chartGender)) {
+                menSize = firstNonBlank(menSize, chart.getUsSize());
+            } else if (Gender.WOMENS.name().equals(chartGender)) {
+                womenSize = firstNonBlank(womenSize, chart.getUsSize());
             }
         }
         if (isPresent(menSize) && isPresent(womenSize)) {
@@ -217,22 +217,34 @@ public class SizeConvertUtil {
     /**
      * 根据 KC 尺码表把男码或女码输入转换为 eBay 男女合并尺码展示值。
      * USM/USW 仅表示输入尺码使用哪一列，不用于判断商品本身的性别。
+     * productGender 为商品性别（men/women 等），为空时按输入码制的性别。
      */
-    public static String getKcUsSizeDisplayFromUs(String brand, String sizeSystem, String usSize) {
-        String euSize = getKcEuSizeFromUs(brand, sizeSystem, usSize);
+    public static String getKcUsSizeDisplayFromUs(String brand, String sizeSystem, String usSize,
+                                                  String productGender) {
+        String euSize = getKcEuSizeFromUs(brand, sizeSystem, usSize, productGender);
         if (euSize == null) {
             return null;
         }
         String normalizedSystem = sizeSystem.trim().toUpperCase(Locale.ROOT);
-        String display = getKcUsSizeDisplay(brand,
-                "USM".equals(normalizedSystem) ? "men" : "women", euSize);
+        String display = getKcUsSizeDisplay(brand, isPresent(productGender) ? productGender
+                : "USM".equals(normalizedSystem) ? "men" : "women", euSize);
         return isPresent(display) ? display : usSize.trim();
     }
 
     /**
      * 根据 KC 尺码表把男码或女码输入反查为对应欧码。
+     * 不知道商品性别时，按输入码制的性别（USM 男款、USW 女款）优先查。
      */
     public static String getKcEuSizeFromUs(String brand, String sizeSystem, String usSize) {
+        return getKcEuSizeFromUs(brand, sizeSystem, usSize, null);
+    }
+
+    /**
+     * 同一美码在男款行、女款行对应的欧码不同（如 Puma 男 8.5：男款 41、女款 40.5），
+     * 所以优先查商品性别的行；productGender 为空时按输入码制的性别。
+     */
+    public static String getKcEuSizeFromUs(String brand, String sizeSystem, String usSize,
+                                           String productGender) {
         if (brand == null || brand.isBlank() || sizeSystem == null
                 || usSize == null || usSize.isBlank()) {
             return null;
@@ -245,23 +257,39 @@ public class SizeConvertUtil {
         if (brandCharts == null) {
             return null;
         }
+        String preferredGender = normalizeGender(productGender);
+        if (preferredGender == null) {
+            preferredGender = "USM".equals(normalizedSystem) ? Gender.MENS.name() : Gender.WOMENS.name();
+        }
 
         String normalizedUsSize = normalizeSize(usSize);
-        for (List<SizeChartDO> charts : brandCharts.values()) {
-            for (SizeChartDO chart : charts) {
-                String chartGender = normalizeGender(chart.getGender());
-                String chartUsSize = "USM".equals(normalizedSystem)
-                        ? firstNonBlank(chart.getMenUSSize(),
-                        Gender.MENS.name().equals(chartGender) ? chart.getUsSize() : null)
-                        : firstNonBlank(chart.getWomenUSSize(),
-                        Gender.WOMENS.name().equals(chartGender) ? chart.getUsSize() : null);
-                if (!normalizedUsSize.equals(normalizeSize(chartUsSize))) {
-                    continue;
-                }
-                return isPresent(chart.getEuSize()) ? chart.getEuSize().trim() : null;
+        for (SizeChartDO chart : preferredFirst(brandCharts, preferredGender)) {
+            String chartGender = normalizeGender(chart.getGender());
+            String chartUsSize = "USM".equals(normalizedSystem)
+                    ? firstNonBlank(chart.getMenUSSize(),
+                    Gender.MENS.name().equals(chartGender) ? chart.getUsSize() : null)
+                    : firstNonBlank(chart.getWomenUSSize(),
+                    Gender.WOMENS.name().equals(chartGender) ? chart.getUsSize() : null);
+            if (!normalizedUsSize.equals(normalizeSize(chartUsSize))) {
+                continue;
             }
+            return isPresent(chart.getEuSize()) ? chart.getEuSize().trim() : null;
         }
         return null;
+    }
+
+    /** HashMap 遍历顺序不固定（女款行常排在男款行前），所以把指定性别的行显式放到最前。 */
+    private static List<SizeChartDO> preferredFirst(Map<String, List<SizeChartDO>> brandCharts,
+                                                    String gender) {
+        List<SizeChartDO> rows = new ArrayList<>();
+        brandCharts.forEach((chartGender, charts) -> {
+            if (gender != null && gender.equals(normalizeGender(chartGender))) {
+                rows.addAll(0, charts);
+            } else {
+                rows.addAll(charts);
+            }
+        });
+        return rows;
     }
 
     private static Map<String, List<SizeChartDO>> findBrandCharts(String brand) {

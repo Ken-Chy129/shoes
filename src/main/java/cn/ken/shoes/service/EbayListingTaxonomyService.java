@@ -380,7 +380,7 @@ public class EbayListingTaxonomyService {
                 ? SizeConvertUtil.getKcUsSizeDisplay(
                         metadata.getBrand(), targetGender(department), sizeValue)
                 : SizeConvertUtil.getKcUsSizeDisplayFromUs(
-                        metadata.getBrand(), sizeSystem, sizeValue);
+                        metadata.getBrand(), sizeSystem, sizeValue, targetGender(department));
         return isCombinedSize(combined) ? combined : standard;
     }
 
@@ -402,7 +402,7 @@ public class EbayListingTaxonomyService {
             return sizeValue;
         }
         String euSize = SizeConvertUtil.getKcEuSizeFromUs(
-                metadata.getBrand(), sizeSystem, sizeValue);
+                metadata.getBrand(), sizeSystem, sizeValue, targetGender);
         String converted = ebayUsSize(SizeConvertUtil.getKcUsSize(
                 metadata.getBrand(), targetGender, euSize), department);
         return converted == null || converted.isBlank() ? sizeValue : converted;
