@@ -461,6 +461,46 @@ class EbayProfitPriceServiceTest {
 
         verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
         verify(taskMapper).updateTaskFailReason(eq(7L), contains("得物查价未返回结果"));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItemDO>> noops = ArgumentCaptor.forClass(List.class);
+        verify(taskItemMapper).insertRepricingBatch(noops.capture());
+        assertThat(noops.getValue()).singleElement().satisfies(item -> {
+            assertThat(item.getSku()).isEqualTo("SKU-A");
+            assertThat(item.getRound()).isEqualTo(1);
+            assertThat(item.getOperateResult()).startsWith("跳过-得物查价无结果(");
+        });
+    }
+
+    @Test
+    void recordsUnchangedSizesSoEveryCoveredSkuHasADetailRow() {
+        BigDecimal target = new BigDecimal("100");
+        BigDecimal atTarget = EbayProfitPriceService.minimumProfitablePrice(new BigDecimal("500"), BigDecimal.ZERO,
+                target, RATE, FREIGHT);
+        EbayListingDO noStyle = listing("SKU-N", "offer-N", "AAA-1", "HK");
+        noStyle.setStyleId(null);
+        when(listingMapper.selectActive()).thenReturn(List.of(
+                listing("SKU-K", "offer-K", "AAA-1", "HK"),
+                listing("SKU-Z", "offer-Z", "ZZZ-9", "HK"),
+                noStyle));
+        when(marketingClient.getRunningAdRates()).thenReturn(Map.of());
+        when(poisonClient.batchQueryPrice(anyList())).thenReturn(List.of(poison("AAA-1", 500)));
+        pages(List.of(
+                sku("SKU-K", "L-K", atTarget.toPlainString(), 1),
+                sku("SKU-Z", "L-Z", "150", 0),
+                sku("SKU-N", "L-N", "150", 1)));
+
+        service.runSingleRound(7L, 1, target, Map.of(), new AtomicBoolean());
+
+        verify(sellClient, never()).bulkUpdatePriceQuantity(anyList());
+        verify(taskItemMapper, never()).insert(any(TaskItemDO.class));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItemDO>> noops = ArgumentCaptor.forClass(List.class);
+        verify(taskItemMapper).insertRepricingBatch(noops.capture());
+        Map<String, String> results = noops.getValue().stream()
+                .collect(java.util.stream.Collectors.toMap(TaskItemDO::getSku, TaskItemDO::getOperateResult));
+        assertThat(results.get("SKU-K")).startsWith("无须改价(已是目标价 $" + atTarget.toPlainString());
+        assertThat(results.get("SKU-Z")).isEqualTo("无须改价(得物无价，库存已为0)");
+        assertThat(results.get("SKU-N")).isEqualTo("跳过-映射信息不全(缺少货号，价格和库存未改动)");
     }
 
     @Test

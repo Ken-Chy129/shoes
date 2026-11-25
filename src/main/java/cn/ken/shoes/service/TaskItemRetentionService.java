@@ -19,7 +19,8 @@ import java.util.concurrent.TimeUnit;
  * <ul>
  *   <li>压价任务：删除 {@value #KEEP_RECENT_ROUNDS} 轮之前的无操作明细（保持-/跳过-/无须），真实压价/下架/待对账结果全部保留，
  *       任务列表的成功统计不受影响；</li>
- *   <li>eBay 定时改价/盈利改价：明细不参与统计，只保留最近 {@value #EBAY_RETENTION_DAYS} 天。</li>
+ *   <li>eBay 定时改价/盈利改价：明细不参与统计，只保留最近 {@value #EBAY_RETENTION_DAYS} 天；其中每轮都会全量写一遍的
+ *       无操作明细（无须改价/跳过-）只保留最近 {@value #KEEP_RECENT_ROUNDS} 轮。</li>
  * </ul>
  * 按小批次删除并设置单次运行上限，避免长事务和持续占满磁盘 IO。
  */
@@ -83,6 +84,11 @@ public class TaskItemRetentionService {
         for (TaskDO task : timeTasks == null ? List.<TaskDO>of() : timeTasks) {
             if (task.getId() == null) {
                 continue;
+            }
+            Integer round = task.getRound();
+            if (round != null && round > KEEP_RECENT_ROUNDS) {
+                int beforeRound = round - KEEP_RECENT_ROUNDS + 1;
+                deleted += drain(budget, () -> taskItemMapper.deleteStaleNoopItems(task.getId(), beforeRound, BATCH_SIZE));
             }
             // 已结束任务以结束时间为基准，保留结束前最后 N 天的明细
             long anchor = task.getEndTime() != null && !"running".equals(task.getStatus())

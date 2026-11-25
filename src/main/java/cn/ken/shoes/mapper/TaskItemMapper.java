@@ -42,6 +42,11 @@ public interface TaskItemMapper extends BaseMapper<TaskItemDO> {
     void markPendingResult(@Param("taskId") Long taskId, @Param("result") String result);
 
     /**
+     * 批量写入改价明细（只写改价用到的列），用于 eBay 盈利改价每轮大量「无须改价/跳过」记录。
+     */
+    int insertRepricingBatch(@Param("items") List<TaskItemDO> items);
+
+    /**
      * 根据任务ID删除所有明细
      */
     void deleteByTaskId(@Param("taskId") Long taskId);

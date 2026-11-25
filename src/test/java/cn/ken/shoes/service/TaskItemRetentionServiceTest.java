@@ -27,7 +27,7 @@ class TaskItemRetentionServiceTest {
         TaskDO endedEbay = task(4L, "ebay_profit_price", "cancel", 5, ebayEnd);
 
         List<String> calls = new ArrayList<>();
-        Deque<Integer> noopResults = new ArrayDeque<>(List.of(TaskItemRetentionService.BATCH_SIZE, 7));
+        Deque<Integer> noopResults = new ArrayDeque<>(List.of(TaskItemRetentionService.BATCH_SIZE, 7, 1, 2));
         TaskMapper taskMapper = proxy(TaskMapper.class, (method, args) -> {
             if (!"selectTrimCandidates".equals(method)) return null;
             @SuppressWarnings("unchecked")
@@ -51,10 +51,12 @@ class TaskItemRetentionServiceTest {
         long running = now.getTime() - TimeUnit.DAYS.toMillis(TaskItemRetentionService.EBAY_RETENTION_DAYS);
         long ended = ebayEnd.getTime() - TimeUnit.DAYS.toMillis(TaskItemRetentionService.EBAY_RETENTION_DAYS);
         int beforeRound = 10 - TaskItemRetentionService.KEEP_RECENT_ROUNDS + 1;
+        int ebayBeforeRound = 5 - TaskItemRetentionService.KEEP_RECENT_ROUNDS + 1;
         assertThat(calls).containsExactly(
                 "noop:1:" + beforeRound, "noop:1:" + beforeRound,
-                "time:3:" + running, "time:4:" + ended);
-        assertThat(deleted).isEqualTo(TaskItemRetentionService.BATCH_SIZE + 7 + 3 + 3);
+                "noop:3:" + ebayBeforeRound, "time:3:" + running,
+                "noop:4:" + ebayBeforeRound, "time:4:" + ended);
+        assertThat(deleted).isEqualTo(TaskItemRetentionService.BATCH_SIZE + 7 + 1 + 2 + 3 + 3);
     }
 
     @Test

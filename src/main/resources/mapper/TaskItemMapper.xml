@@ -148,6 +148,18 @@
         DELETE FROM task_item WHERE task_id = #{taskId}
     </delete>
 
+    <insert id="insertRepricingBatch">
+        INSERT INTO task_item (task_id, round, title, listing_id, sku, offer_id, style_id, size, eu_size,
+                               current_price, target_price, listing_quantity, poison_price, profit_35,
+                               operate_result, operate_time)
+        VALUES
+        <foreach collection="items" item="i" separator=",">
+            (#{i.taskId}, #{i.round}, #{i.title}, #{i.listingId}, #{i.sku}, #{i.offerId}, #{i.styleId},
+             #{i.size}, #{i.euSize}, #{i.currentPrice}, #{i.targetPrice}, #{i.listingQuantity},
+             #{i.poisonPrice}, #{i.profit35}, #{i.operateResult}, #{i.operateTime})
+        </foreach>
+    </insert>
+
     <!--
       过滤下拉项按"类别"收敛：类别 = operate_result 中第一个 '(' 之前的部分，
       剥掉 "($734)"/"(实际$X)" 等带具体价格/原因的可变尾巴，避免下拉项爆成几千条。

@@ -92,6 +92,8 @@ public class EbayProfitPriceService {
     private static final int MAX_OVERRIDE_ROWS = 20000;
     private static final BigDecimal HUNDRED = new BigDecimal("100");
     static final String RELISTED_PREFIX = "[重新上架链接] ";
+    /** 无操作明细每次批量写入的行数。 */
+    static final int NOOP_INSERT_BATCH = 500;
     /** 表格里填这个值：该尺码/货号价格和库存都不改。 */
     public static final String HOLD = "不动";
     /** 非 AG 链接运费 = AG 运费 × 1.2（特殊运费表只填 AG 运费）。 */
@@ -628,6 +630,26 @@ public class EbayProfitPriceService {
         List<Context> contexts = new ArrayList<>();
         Set<String> modelNos = new HashSet<>();
         Set<String> heldListings = new HashSet<>();
+        // 价格和库存都没动的尺码也写一条明细（无须改价/跳过），按页批量写入，方便按货号核对是否被覆盖到。
+        List<TaskItemDO> noops = new ArrayList<>();
+        try {
+            processPage(taskId, round, page, bySku, resolver, processed, adRates, rules, specialFreights,
+                    agListings, exchangeRate, subsidyRate, counters, cancelled, recoveryRound,
+                    contexts, modelNos, heldListings, noops);
+        } finally {
+            recordNoops(taskId, noops);
+        }
+    }
+
+    private void processPage(Long taskId, int round, EbayTradingApiClient.ActiveSkuPage page,
+                             Map<String, EbayListingDO> bySku, RelistedSkuResolver resolver,
+                             Set<String> processed, Map<String, BigDecimal> adRates, Rules rules,
+                             Map<String, BigDecimal> specialFreights, Set<String> agListings,
+                             BigDecimal exchangeRate,
+                             BigDecimal subsidyRate, Counters counters, AtomicBoolean cancelled,
+                             EbayRepricingRecovery.Round recoveryRound,
+                             List<Context> contexts, Set<String> modelNos, Set<String> heldListings,
+                             List<TaskItemDO> noops) {
         for (EbayTradingApiClient.ActiveSku current : page.skus()) {
             EbayListingDO mapping = mappingOf(current, bySku, resolver);
             // 不在港区映射里、也推不出货号尺码的（美区或非本系统上架）不处理。
@@ -645,6 +667,9 @@ public class EbayProfitPriceService {
             String euSize = firstNonBlank(mapping.getEuSize(), euSizeFrom(mapping.getSize()));
             if ((!relisted && isBlank(mapping.getOfferId())) || isBlank(mapping.getStyleId()) || euSize == null) {
                 counters.skipped++;
+                noops.add(buildItem(taskId, round, mapping, current, euSize, null, null, null,
+                        current.availableQuantity(), "跳过-映射信息不全(缺少"
+                                + missingFields(mapping, relisted, euSize) + "，价格和库存未改动)"));
                 continue;
             }
             String styleId = mapping.getStyleId().trim();
@@ -676,6 +701,11 @@ public class EbayProfitPriceService {
             counters.poisonSkipped += contexts.size();
             log.warn("eBay盈利改价第{}页得物查价无结果，跳过该页{}个商品, taskId={}", page.pageNumber(),
                     contexts.size(), taskId);
+            for (Context context : contexts) {
+                noops.add(buildItem(taskId, round, context, null, null, null,
+                        context.live().availableQuantity(), "跳过-得物查价无结果(第" + page.pageNumber()
+                                + "页整页没有查到得物价，价格和库存未改动，下轮重试)"));
+            }
             return;
         }
         Map<String, BigDecimal> prices = new HashMap<>();
@@ -715,8 +745,15 @@ public class EbayProfitPriceService {
             }
             if (decision.action() == Action.KEEP) {
                 counters.kept++;
+                noops.add(buildItem(taskId, round, context, poisonPrice, decision.profit(), null,
+                        context.live().availableQuantity(), truncate("无须改价("
+                                + (context.relisted() ? RELISTED_PREFIX : "") + "已是目标价 "
+                                + detail(new Planned(context, poisonPrice, decision)) + ")", 250)));
             } else if (decision.action() == Action.ALREADY_ZERO) {
                 counters.alreadyZero++;
+                noops.add(buildItem(taskId, round, context, poisonPrice, null, null,
+                        context.live().availableQuantity(), "无须改价("
+                                + (context.relisted() ? RELISTED_PREFIX : "") + "得物无价，库存已为0)"));
             } else {
                 planned.add(new Planned(context, poisonPrice, decision));
             }
@@ -1088,29 +1125,68 @@ public class EbayProfitPriceService {
 
     private void recordItem(Long taskId, int round, Context context, BigDecimal poisonPrice,
                             BigDecimal profit, BigDecimal targetPrice, Integer quantity, String result) {
-        EbayListingDO mapping = context.mapping();
+        TaskItemDO item = buildItem(taskId, round, context, poisonPrice, profit, targetPrice, quantity, result);
+        try {
+            taskItemMapper.insert(item);
+        } catch (Exception e) {
+            log.warn("eBay盈利改价明细写入失败, taskId={}, sku={}", taskId, item.getSku(), e);
+        }
+    }
+
+    private static TaskItemDO buildItem(Long taskId, int round, Context context, BigDecimal poisonPrice,
+                                        BigDecimal profit, BigDecimal targetPrice, Integer quantity,
+                                        String result) {
+        return buildItem(taskId, round, context.mapping(), context.live(), context.euSize(), poisonPrice, profit,
+                targetPrice, quantity, result);
+    }
+
+    private static TaskItemDO buildItem(Long taskId, int round, EbayListingDO mapping,
+                                        EbayTradingApiClient.ActiveSku live, String euSize,
+                                        BigDecimal poisonPrice, BigDecimal profit, BigDecimal targetPrice,
+                                        Integer quantity, String result) {
         TaskItemDO item = new TaskItemDO();
         item.setTaskId(taskId);
         item.setRound(round);
         item.setTitle(mapping.getTitle());
-        item.setListingId(context.live().listingId());
+        item.setListingId(live.listingId());
         item.setSku(mapping.getSku());
         item.setOfferId(mapping.getOfferId());
         item.setStyleId(mapping.getStyleId());
         item.setSize(mapping.getSize());
-        item.setEuSize(context.euSize());
-        item.setCurrentPrice(context.live().price());
+        item.setEuSize(euSize);
+        item.setCurrentPrice(live.price());
         item.setTargetPrice(targetPrice);
         item.setListingQuantity(quantity);
         item.setPoisonPrice(poisonPrice);
         item.setProfit35(displayProfit(profit));
         item.setOperateResult(result);
         item.setOperateTime(new Date());
-        try {
-            taskItemMapper.insert(item);
-        } catch (Exception e) {
-            log.warn("eBay盈利改价明细写入失败, taskId={}, sku={}", taskId, mapping.getSku(), e);
+        return item;
+    }
+
+    /** 无操作明细按批写入；写失败只记日志，不影响改价。 */
+    private void recordNoops(Long taskId, List<TaskItemDO> items) {
+        for (List<TaskItemDO> batch : partition(items, NOOP_INSERT_BATCH)) {
+            try {
+                taskItemMapper.insertRepricingBatch(batch);
+            } catch (Exception e) {
+                log.warn("eBay盈利改价无操作明细写入失败, taskId={}, count={}", taskId, batch.size(), e);
+            }
         }
+    }
+
+    private static String missingFields(EbayListingDO mapping, boolean relisted, String euSize) {
+        List<String> missing = new ArrayList<>();
+        if (!relisted && isBlank(mapping.getOfferId())) {
+            missing.add("offer号");
+        }
+        if (isBlank(mapping.getStyleId())) {
+            missing.add("货号");
+        }
+        if (euSize == null) {
+            missing.add("EU尺码");
+        }
+        return String.join("/", missing);
     }
 
     private void writeAttributes(Long taskId, Counters c) {
