@@ -21,6 +21,13 @@ import {
 } from "./taskOptions";
 import TaskOperationCounts from "./TaskOperationCounts";
 import {formatRatePercent} from "./taskParamFormat";
+import {
+    isRememberedEbayRepriceTask,
+    parseEbayRepriceTaskParams,
+    readEbayRepricePreset,
+    saveEbayRepricePreset,
+    shouldApplyServerEbayRepricePreset,
+} from "./ebayRepricePreset";
 import ExcelFieldHint, {ExcelFieldHintProps} from "@/components/ExcelFieldHint";
 
 interface TaskRecord {
@@ -190,8 +197,45 @@ const TaskPage = () => {
     const [createTaskType, setCreateTaskType] = useState<string>('price_down');
     const [stockxAccounts, setStockxAccounts] = useState<any[]>([]);
     const [creating, setCreating] = useState(false);
+    const createFormDirtyRef = useRef(false);
+    const presetRequestRef = useRef(0);
+    const latestServerTaskIdRef = useRef<Record<string, string>>({});
 
     useEffect(() => { queryTaskList(); }, [pageIndex, pageSize]);
+
+    useEffect(() => {
+        const requestId = ++presetRequestRef.current;
+        createFormDirtyRef.current = false;
+        if (!createModalVisible || createPlatform !== 'ebay' || !isRememberedEbayRepriceTask(createTaskType)) {
+            return;
+        }
+        const taskType = createTaskType;
+        const localPreset = readEbayRepricePreset(taskType);
+        if (localPreset) {
+            createForm.setFieldsValue(localPreset.values);
+        }
+        request(TASK_API.PAGE, {
+            method: 'GET',
+            params: {platform: 'ebay', taskType, pageIndex: 1, pageSize: 1},
+            skipErrorHandler: true,
+        }).then((res: any) => {
+            if (presetRequestRef.current !== requestId) return;
+            const latest = res?.success ? res.data?.[0] : null;
+            if (!latest?.id) return;
+            const latestId = String(latest.id);
+            latestServerTaskIdRef.current[taskType] = latestId;
+            if (!shouldApplyServerEbayRepricePreset(localPreset, latestId)) return;
+            const parsed = parseEbayRepriceTaskParams(taskType, latest.params);
+            if (!parsed) return;
+            saveEbayRepricePreset(taskType, parsed, {taskId: latestId, lastKnownServerTaskId: latestId});
+            if (!createFormDirtyRef.current) {
+                createForm.setFieldsValue(parsed);
+            }
+        }).catch(() => {});
+        return () => {
+            presetRequestRef.current += 1;
+        };
+    }, [createModalVisible, createPlatform, createTaskType]);
 
     useEffect(() => {
         const shouldPoll = taskList.some(t =>
@@ -440,6 +484,10 @@ const TaskPage = () => {
                 }
                 const file = values.ebayProfitExcel?.[0]?.originFileObj;
                 if (file) formData.append('file', file);
+                const submittedTaskType = createTaskType;
+                saveEbayRepricePreset(submittedTaskType, values, {
+                    lastKnownServerTaskId: latestServerTaskIdRef.current[submittedTaskType],
+                });
                 request(promo ? TASK_API.EBAY_START_PROMO_PROFIT_PRICE : TASK_API.EBAY_START_PROFIT_PRICE,
                     {method: 'POST', data: formData})
                     .then((res: any) => {
@@ -447,6 +495,12 @@ const TaskPage = () => {
                             message.error(res.errorMsg || `${taskName}任务创建失败`);
                             return;
                         }
+                        const createdId = res.data ? String(res.data) : null;
+                        if (createdId) latestServerTaskIdRef.current[submittedTaskType] = createdId;
+                        saveEbayRepricePreset(submittedTaskType, values, {
+                            taskId: createdId,
+                            lastKnownServerTaskId: createdId || latestServerTaskIdRef.current[submittedTaskType],
+                        });
                         message.success(`${taskName}任务已创建${res.data ? ` #${res.data}` : ''}`);
                         setCreateModalVisible(false);
                         queryTaskList();
@@ -454,6 +508,9 @@ const TaskPage = () => {
                     .catch(() => message.error(`${taskName}任务创建失败`))
                     .finally(() => setCreating(false));
             } else if (createPlatform === 'ebay' && createTaskType === 'ebay_price_sync') {
+                saveEbayRepricePreset('ebay_price_sync', values, {
+                    lastKnownServerTaskId: latestServerTaskIdRef.current.ebay_price_sync,
+                });
                 doPostRequest(TASK_API.EBAY_START_PRICE_SYNC, {
                     intervalHours: values.intervalHours,
                     priceMultiplier: values.priceMultiplier,
@@ -464,6 +521,12 @@ const TaskPage = () => {
                             message.error(res.errorMsg || 'eBay定时改价任务创建失败');
                             return;
                         }
+                        const createdId = res.data ? String(res.data) : null;
+                        if (createdId) latestServerTaskIdRef.current.ebay_price_sync = createdId;
+                        saveEbayRepricePreset('ebay_price_sync', values, {
+                            taskId: createdId,
+                            lastKnownServerTaskId: createdId || latestServerTaskIdRef.current.ebay_price_sync,
+                        });
                         message.success(`eBay定时改价任务已创建${res.data ? ` #${res.data}` : ''}`);
                         setCreateModalVisible(false);
                         queryTaskList();
@@ -1991,6 +2054,7 @@ const TaskPage = () => {
         >
             <Form form={createForm} layout="horizontal" labelAlign="right" labelWrap
                   labelCol={{span: 6}} wrapperCol={{span: 18}}
+                  onValuesChange={() => { createFormDirtyRef.current = true; }}
                   style={{width: '100%', maxWidth: 440, margin: '20px auto 0'}}>
                 <Form.Item label="平台">
                     <Select value={createPlatform} onChange={(v) => {
