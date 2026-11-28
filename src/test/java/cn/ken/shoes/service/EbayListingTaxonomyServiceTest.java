@@ -112,7 +112,7 @@ class EbayListingTaxonomyServiceTest {
                         }]}
                         """));
         JSONObject required = new JSONObject(true);
-        required.put("localizedAspectName", "Country of Origin");
+        required.put("localizedAspectName", "Closure");
         required.put("aspectConstraint", new JSONObject(true).fluentPut("aspectRequired", true));
         when(client.getItemAspectsForCategory("0", "15709"))
                 .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(required)));
@@ -120,8 +120,34 @@ class EbayListingTaxonomyServiceTest {
         assertThatThrownBy(() -> service.resolve(
                 null, "DD1391-100", metadata(), "USM", "10"))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Country of Origin")
+                .hasMessageContaining("Closure")
                 .hasMessageContaining("商品资料库");
+    }
+
+    @Test
+    void alwaysFillsVietnamAsCountryOfOriginIgnoringProductData() {
+        when(client.getCategorySuggestions("0", "Nike Dunk Low Retro White Black Men Shoes"))
+                .thenReturn(JSON.parseObject("""
+                        {"categorySuggestions":[{
+                          "category":{"categoryId":"15709","categoryName":"Athletic Shoes"},
+                          "categoryTreeNodeAncestors":[{"categoryName":"Men's Shoes"}]
+                        }]}
+                        """));
+        JSONObject origin = new JSONObject(true);
+        origin.put("localizedAspectName", "Country of Origin");
+        origin.put("aspectConstraint", new JSONObject(true)
+                .fluentPut("aspectRequired", false).fluentPut("aspectMode", "SELECTION_ONLY"));
+        origin.put("aspectValues", List.of(new JSONObject().fluentPut("localizedValue", "China"),
+                new JSONObject().fluentPut("localizedValue", "Vietnam")));
+        when(client.getItemAspectsForCategory("0", "15709"))
+                .thenReturn(new JSONObject(true).fluentPut("aspects", List.of(origin)));
+        EbayProductMetadata metadata = metadata();
+        metadata.setCountryOfOrigin("China");
+
+        EbayListingTaxonomyService.ResolvedTaxonomy resolved = service.resolve(
+                null, "DD1391-100", metadata, "USM", "10");
+
+        assertThat(resolved.aspects()).containsEntry("Country of Origin", List.of("Vietnam"));
     }
 
     @Test

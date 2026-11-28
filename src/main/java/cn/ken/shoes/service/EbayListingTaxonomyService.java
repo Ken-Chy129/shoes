@@ -27,6 +27,10 @@ public class EbayListingTaxonomyService {
     private static final String BABY_DEPARTMENT = "Unisex Baby & Toddler";
 
     private final EbayProperties properties;
+    /** eBay 鞋类类目的产地属性名，和统一填写的产地。 */
+    public static final String COUNTRY_OF_ORIGIN_ASPECT = "Country of Origin";
+    public static final String DEFAULT_COUNTRY_OF_ORIGIN = "Vietnam";
+
     private final EbayTaxonomyApiClient client;
     private final Map<String, CategoryChoice> categoryCache = new ConcurrentHashMap<>();
     private final Map<String, List<AspectRule>> aspectCache = new ConcurrentHashMap<>();
@@ -237,7 +241,8 @@ public class EbayListingTaxonomyService {
             case "stylecode", "mpn" -> styleCode;
             case "model", "modell", "modelname", "modellbezeichnung" -> metadata.getModelName();
             case "productline", "produktlinie" -> metadata.getProductLine();
-            case "countryoforigin", "countryregionofmanufacture", "ursprungsland" -> metadata.getCountryOfOrigin();
+            // 运营要求：产地统一填越南，不使用商品资料里的原产国。
+            case "countryoforigin", "countryregionofmanufacture", "ursprungsland" -> DEFAULT_COUNTRY_OF_ORIGIN;
             default -> null;
         };
     }
@@ -455,6 +460,7 @@ public class EbayListingTaxonomyService {
         put(result, "Department", department);
         put(result, "Color", metadata.getColor());
         put(result, "Upper Material", metadata.getUpperMaterial());
+        put(result, COUNTRY_OF_ORIGIN_ASPECT, DEFAULT_COUNTRY_OF_ORIGIN);
         return result;
     }
 
